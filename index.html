@@ -458,6 +458,158 @@
     </script>
 
     <script>
+        // [two-player Retro Bowl] Home-screen UI rework.
+        // Hide schedule strip (obj_matchline) and standings table (obj_division).
+        // Add a PLAY 2P button in the cleared area. Override the rightmost-bottom
+        // button (CONTINUE / Draft / etc., whichever obj_button instance is at
+        // game x=384, y=232) so its click shows a "Placeholder page" overlay
+        // instead of advancing the season.
+        (function () {
+            var STATE_HOME = 14;
+            var BTN_2P  = { x: 200, y: 64, w: 80, h: 28, sprite: 166, label: 'PLAY 2P' };
+            var BTN_CONT = { x: 384, y: 232, w: 80, h: 28 };
+
+            // -------- Placeholder overlay (HTML, sits above canvas) --------
+            var ph = document.createElement('div');
+            ph.id = 'rb-placeholder-page';
+            ph.style.cssText =
+                'position:fixed;left:0;top:0;width:100vw;height:100vh;' +
+                'background:#1a3fd6;color:#fff;display:none;z-index:2000;' +
+                'align-items:center;justify-content:center;flex-direction:column;' +
+                'font-family:monospace;text-align:center;cursor:pointer;' +
+                'image-rendering:pixelated;letter-spacing:4px;';
+            ph.innerHTML =
+                '<div style="font-size:64px;font-weight:bold;margin-bottom:24px;">' +
+                'PLACEHOLDER PAGE</div>' +
+                '<div style="font-size:18px;opacity:0.85;letter-spacing:2px;">' +
+                'click anywhere to return</div>';
+            ph.addEventListener('click', function () { ph.style.display = 'none'; });
+            document.body.appendChild(ph);
+            function showPlaceholder() { ph.style.display = 'flex'; }
+
+            // -------- Hide an object's draw event when on rm_home --------
+            var hidden = {};
+            function hideOnHome(name) {
+                if (hidden[name]) return;
+                try {
+                    var defs = _Ec2._UX3;
+                    for (var i = 0; i < defs.length; i++) {
+                        var def = defs[i];
+                        if (!def || def._fE2 !== name) continue;
+                        if (typeof def._j2 !== 'function') return;  // nothing to hide
+                        var orig = def._j2;
+                        def._j2 = function (inst, t) {
+                            if (_ft._gt() === STATE_HOME) return;  // suppress on home
+                            orig.call(this, inst, t);
+                        };
+                        hidden[name] = true;
+                        break;
+                    }
+                } catch (e) {}
+            }
+
+            // -------- Hook obj_button draw to add PLAY 2P button on home --------
+            // Home uses obj_button (NOT obj_button_med — that's the options grid).
+            var btnHooked = false;
+            function hookBtn() {
+                if (btnHooked) return;
+                try {
+                    var defs = _Ec2._UX3;
+                    for (var i = 0; i < defs.length; i++) {
+                        var def = defs[i];
+                        if (!def || def._fE2 !== 'obj_button') continue;
+                        if (typeof def._j2 !== 'function') return;
+                        btnHooked = true;
+                        var orig = def._j2;
+                        var lastFrame = -1;
+                        def._j2 = function (inst, t) {
+                            orig.call(this, inst, t);
+                            try {
+                                var f = _ft._ZB();
+                                if (f === lastFrame) return;
+                                if (_ft._gt() !== STATE_HOME) return;
+                                lastFrame = f;
+                                drawPlay2P(inst);
+                            } catch (e) {}
+                        };
+                        break;
+                    }
+                } catch (e) {}
+            }
+
+            function drawPlay2P(inst) {
+                var spr = BTN_2P.sprite, x = BTN_2P.x, y = BTN_2P.y;
+                var s = _Te2._Ue2(spr);
+                if (s && s._53 && s._53[0]) { BTN_2P.w = s._53[0]._J52; BTN_2P.h = s._53[0]._K52; }
+                _mh1(inst, spr, 2, x + 2, y + 2, 1, 1, 0, 4210752, 0.5);
+                _Kh1(inst, spr, 0, x, y);
+                _mh1(inst, spr, 2, x, y, 1, 1, 0, inst._po || 4294967295, 1);
+                _gh1(1);
+                _hh1(1);
+                _nh1(x + BTN_2P.w / 2 + 1, y + BTN_2P.h / 2 - 1, BTN_2P.label);
+                _hh1(1);
+            }
+
+            // -------- Disable the original CONTINUE-slot button click --------
+            // The button at game (384, 232) on home runs the season's next-action
+            // script (Draft / Continue / etc.). Setting _0G to -4 makes the
+            // engine's click handler a no-op without affecting the draw, so our
+            // canvas click listener can route to the placeholder page cleanly.
+            var savedContG = null;
+            function disableCont() {
+                try {
+                    if (_ft._gt() !== STATE_HOME) return;
+                    var all = _Sc2._GL2._oq2;
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || !inst._eE2) continue;
+                        if (inst._eE2._fE2 !== 'obj_button') continue;
+                        if (inst.x !== BTN_CONT.x || inst.y !== BTN_CONT.y) continue;
+                        if (inst._0G !== -4) {
+                            if (savedContG === null) savedContG = inst._0G;
+                            inst._0G = -4;
+                        }
+                        break;
+                    }
+                } catch (e) {}
+            }
+
+            // -------- Click intercept on the canvas --------
+            var canvas = document.getElementById('canvas');
+            canvas.addEventListener('click', function (e) {
+                try {
+                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_HOME) return;
+                    var r = canvas.getBoundingClientRect();
+                    var gx = ((e.clientX - r.left) / r.width) * 480;
+                    var gy = ((e.clientY - r.top) / r.height) * 270;
+                    var hitCont = gx >= BTN_CONT.x && gx <= BTN_CONT.x + BTN_CONT.w &&
+                                  gy >= BTN_CONT.y && gy <= BTN_CONT.y + BTN_CONT.h;
+                    var hit2P   = gx >= BTN_2P.x   && gx <= BTN_2P.x   + BTN_2P.w   &&
+                                  gy >= BTN_2P.y   && gy <= BTN_2P.y   + BTN_2P.h;
+                    if (!hitCont && !hit2P) return;
+                    try {
+                        var st = _6E2._Ue2(64);
+                        if (st && _Ai(st._Gn, 'op_soundfx')) _8z(5, 1, 0);
+                    } catch (ex) {}
+                    showPlaceholder();
+                } catch (ex) {}
+            });
+
+            // -------- Install hooks --------
+            setInterval(function () {
+                if (typeof _Ec2 !== 'undefined' && _Ec2._UX3 && _Ec2._UX3.length) {
+                    hideOnHome('obj_matchline');
+                    hideOnHome('obj_division');
+                    hookBtn();
+                }
+                if (typeof _Sc2 !== 'undefined' && _Sc2._GL2 && _Sc2._GL2._oq2) {
+                    disableCont();
+                }
+            }, 500);
+        })();
+    </script>
+
+    <script>
         (function () {
             function fin(ok) {
                 (function checkInit() {
