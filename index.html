@@ -458,36 +458,84 @@
     </script>
 
     <script>
-        // [two-player Retro Bowl] Home-screen UI rework.
-        // Hide schedule strip (obj_matchline) and standings table (obj_division).
-        // Add a PLAY 2P button in the cleared area. Override the rightmost-bottom
-        // button (CONTINUE / Draft / etc., whichever obj_button instance is at
-        // game x=384, y=232) so its click shows a "Placeholder page" overlay
-        // instead of advancing the season.
+        // [two-player Retro Bowl] Home-screen UI rework + one-game-vs-KC entry.
+        //
+        // 1. Hide schedule strip (obj_matchline) and standings table (obj_division)
+        //    on rm_home so the home screen is clean.
+        // 2. Add a PLAY 2P button in the cleared area.
+        // 3. Wire BOTH the PLAY 2P button AND the bottom-right CONTINUE button
+        //    to start a single game vs Kansas City (uid 5). No placeholder page.
+        //    Every press starts the same game vs KC — that's our "only game".
+        //
+        // ------------------------------------------------------------------
+        // s_play_one_game_vs_KC — the saved code for playing ONE specific game
+        // ------------------------------------------------------------------
+        // _gx (line ~49412 in retrobowl.js) is the GameMaker script that sets
+        // up a match: it picks a random opponent uid via _dq(31), looks the
+        // team up in the master team list (_._Ej), populates _._Fj = [opp,
+        // user], and computes all the helmet/shirt/pants color overrides.
+        //
+        // We force the "random" choice to be Kansas City (uid 5) by monkey-
+        // patching _dq for the duration of the call — when _gx asks for
+        // _dq(31), our wrapper returns 5; everything else delegates. After
+        // _gx returns, _._Fj[0] is the KC team data and all colors are right.
+        //
+        // Then we set _._fx = 0 (regular game, NOT training mode 1/2/3) and
+        // jump to rm_match (room id 17). That's it.
+        //
+        // Reusable: every CONTINUE / PLAY 2P press calls this. After the
+        // match ends and the engine returns to home, the next press starts
+        // another fresh game vs KC. From the player's view, KC is the only
+        // opponent that exists.
+        // ------------------------------------------------------------------
         (function () {
             var STATE_HOME = 14;
-            var BTN_2P  = { x: 200, y: 64, w: 80, h: 28, sprite: 166, label: 'PLAY 2P' };
+            var STATE_MATCH = 17;
+            var KC_UID = 5;
+            var BTN_2P   = { x: 200, y: 64,  w: 80, h: 28, sprite: 166, label: 'PLAY 2P' };
             var BTN_CONT = { x: 384, y: 232, w: 80, h: 28 };
 
-            // -------- Placeholder overlay (HTML, sits above canvas) --------
-            var ph = document.createElement('div');
-            ph.id = 'rb-placeholder-page';
-            ph.style.cssText =
-                'position:fixed;left:0;top:0;width:100vw;height:100vh;' +
-                'background:#1a3fd6;color:#fff;display:none;z-index:2000;' +
-                'align-items:center;justify-content:center;flex-direction:column;' +
-                'font-family:monospace;text-align:center;cursor:pointer;' +
-                'image-rendering:pixelated;letter-spacing:4px;';
-            ph.innerHTML =
-                '<div style="font-size:64px;font-weight:bold;margin-bottom:24px;">' +
-                'PLACEHOLDER PAGE</div>' +
-                '<div style="font-size:18px;opacity:0.85;letter-spacing:2px;">' +
-                'click anywhere to return</div>';
-            ph.addEventListener('click', function () { ph.style.display = 'none'; });
-            document.body.appendChild(ph);
-            function showPlaceholder() { ph.style.display = 'flex'; }
+            function startGameVsKC() {
+                try {
+                    // Pick any active instance to use as the `_` (self) arg for _gx.
+                    // _gx only uses `_` for _jj(_, t, 64) lookups which are global.
+                    var anyInst = null;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (inst && !inst._HL2 && inst._eE2) { anyInst = inst; break; }
+                    }
+                    if (!anyInst) return;
 
-            // -------- Hide an object's draw event when on rm_home --------
+                    // Monkey-patch _dq globally so _gx's _dq(31) returns 5 (KC uid).
+                    var origDq = window._dq;
+                    window._dq = function (n) {
+                        if (n === 31) return KC_UID;
+                        return origDq(n);
+                    };
+                    try {
+                        _gx(anyInst, _Sc2);
+                    } finally {
+                        window._dq = origDq;
+                    }
+
+                    var st = _6E2._Ue2(64);
+                    if (st) st._fx = 0;     // regular game — _fx in {1,2,3} is FG/2-min/etc. training
+                    _Hj(STATE_MATCH);       // enter rm_match
+                } catch (e) { console.log('[2p-rb] startGameVsKC error:', e); }
+            }
+            // expose for debugging / future callers
+            window.s_play_one_game_vs_KC = startGameVsKC;
+
+            // -------- Silence a whole object on rm_home --------
+            // Wraps draw (_j2), step (_h2), and end-step (_l2). Hiding draw
+            // alone isn't enough — obj_matchline and obj_division still have
+            // step events that poll mouse clicks and route to btn_click_League
+            // (script 100156), so clicking the now-invisible schedule strip
+            // or standings table still took you to the deleted league page.
+            // Wrapping the step events too cuts the click pipeline at the
+            // type level — every instance of that type on rm_home becomes
+            // visually and interactively inert.
             var hidden = {};
             function hideOnHome(name) {
                 if (hidden[name]) return;
@@ -496,20 +544,38 @@
                     for (var i = 0; i < defs.length; i++) {
                         var def = defs[i];
                         if (!def || def._fE2 !== name) continue;
-                        if (typeof def._j2 !== 'function') return;  // nothing to hide
-                        var orig = def._j2;
-                        def._j2 = function (inst, t) {
-                            if (_ft._gt() === STATE_HOME) return;  // suppress on home
-                            orig.call(this, inst, t);
-                        };
-                        hidden[name] = true;
+                        var didWrap = false;
+                        if (typeof def._j2 === 'function') {
+                            var origDraw = def._j2;
+                            def._j2 = function (inst, t) {
+                                if (_ft._gt() === STATE_HOME) return;
+                                origDraw.call(this, inst, t);
+                            };
+                            didWrap = true;
+                        }
+                        if (typeof def._h2 === 'function') {
+                            var origStep = def._h2;
+                            def._h2 = function (inst, t) {
+                                if (_ft._gt() === STATE_HOME) return;
+                                origStep.call(this, inst, t);
+                            };
+                            didWrap = true;
+                        }
+                        if (typeof def._l2 === 'function') {
+                            var origEnd = def._l2;
+                            def._l2 = function (inst, t) {
+                                if (_ft._gt() === STATE_HOME) return;
+                                origEnd.call(this, inst, t);
+                            };
+                            didWrap = true;
+                        }
+                        if (didWrap) hidden[name] = true;
                         break;
                     }
                 } catch (e) {}
             }
 
             // -------- Hook obj_button draw to add PLAY 2P button on home --------
-            // Home uses obj_button (NOT obj_button_med — that's the options grid).
             var btnHooked = false;
             function hookBtn() {
                 if (btnHooked) return;
@@ -551,11 +617,10 @@
             }
 
             // -------- Disable the original CONTINUE-slot button click --------
-            // The button at game (384, 232) on home runs the season's next-action
-            // script (Draft / Continue / etc.). Setting _0G to -4 makes the
-            // engine's click handler a no-op without affecting the draw, so our
-            // canvas click listener can route to the placeholder page cleanly.
-            var savedContG = null;
+            // The home button at (384, 232) runs btn_click_Details_Continue (in
+            // fresh saves) or btn_click_Continue (mid-season) — neither of those
+            // is what we want. Set _0G to -4 (no-op) so the engine ignores the
+            // click; our canvas listener routes to startGameVsKC instead.
             function disableCont() {
                 try {
                     if (_ft._gt() !== STATE_HOME) return;
@@ -565,23 +630,20 @@
                         if (!inst || !inst._eE2) continue;
                         if (inst._eE2._fE2 !== 'obj_button') continue;
                         if (inst.x !== BTN_CONT.x || inst.y !== BTN_CONT.y) continue;
-                        if (inst._0G !== -4) {
-                            if (savedContG === null) savedContG = inst._0G;
-                            inst._0G = -4;
-                        }
+                        if (inst._0G !== -4) inst._0G = -4;
                         break;
                     }
                 } catch (e) {}
             }
 
-            // -------- Click intercept on the canvas --------
+            // -------- Click intercept --------
             var canvas = document.getElementById('canvas');
             canvas.addEventListener('click', function (e) {
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_HOME) return;
                     var r = canvas.getBoundingClientRect();
-                    var gx = ((e.clientX - r.left) / r.width) * 480;
-                    var gy = ((e.clientY - r.top) / r.height) * 270;
+                    var gx = ((e.clientX - r.left) / r.width)  * 480;
+                    var gy = ((e.clientY - r.top)  / r.height) * 270;
                     var hitCont = gx >= BTN_CONT.x && gx <= BTN_CONT.x + BTN_CONT.w &&
                                   gy >= BTN_CONT.y && gy <= BTN_CONT.y + BTN_CONT.h;
                     var hit2P   = gx >= BTN_2P.x   && gx <= BTN_2P.x   + BTN_2P.w   &&
@@ -591,7 +653,7 @@
                         var st = _6E2._Ue2(64);
                         if (st && _Ai(st._Gn, 'op_soundfx')) _8z(5, 1, 0);
                     } catch (ex) {}
-                    showPlaceholder();
+                    startGameVsKC();
                 } catch (ex) {}
             });
 
