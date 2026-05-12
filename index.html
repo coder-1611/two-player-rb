@@ -657,6 +657,36 @@
                 } catch (ex) {}
             });
 
+            // -------- Recenter the right-side stat panels --------
+            // FANS / MORALE / OFFENSE / DEFENSE were placed flush against the
+            // right edge of the screen because they originally sat next to the
+            // standings table (24..232). With the standings hidden, the right
+            // half looked lopsided. Shift each instance left by 112 px so the
+            // whole row is horizontally centered on the 480 px game canvas.
+            //
+            //   FANS bar  (208 wide):  x 248 -> 136   (centered around 240)
+            //   MORALE box (64 wide):  x 248 -> 136
+            //   OFFENSE box (64 wide): x 320 -> 208
+            //   DEFENSE box (64 wide): x 392 -> 280
+            //
+            // Idempotent: once the x is shifted, the equality guard skips it
+            // on subsequent ticks.
+            function recenterHomeStats() {
+                try {
+                    if (_ft._gt() !== STATE_HOME) return;
+                    var all = _Sc2._GL2._oq2;
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || !inst._eE2 || inst._HL2) continue;
+                        var n = inst._eE2._fE2;
+                        if (n === 'obj_meter_fans'  && inst.x === 248) inst.x = 136;
+                        else if (n === 'obj_box_morale'  && inst.x === 248) inst.x = 136;
+                        else if (n === 'obj_box_offense' && inst.x === 320) inst.x = 208;
+                        else if (n === 'obj_box_defense' && inst.x === 392) inst.x = 280;
+                    }
+                } catch (e) {}
+            }
+
             // -------- Install hooks --------
             setInterval(function () {
                 if (typeof _Ec2 !== 'undefined' && _Ec2._UX3 && _Ec2._UX3.length) {
@@ -666,6 +696,7 @@
                 }
                 if (typeof _Sc2 !== 'undefined' && _Sc2._GL2 && _Sc2._GL2._oq2) {
                     disableCont();
+                    recenterHomeStats();
                 }
             }, 500);
         })();
