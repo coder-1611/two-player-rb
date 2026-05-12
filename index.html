@@ -101,6 +101,135 @@
             top: 38px;
             right: 10px;
         }
+
+        /* ============ 2-Player Lobby ============ */
+        #rb-lobby {
+            position: fixed;
+            inset: 0;
+            z-index: 5000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: #1a3fd6;
+            color: #fff;
+            font-family: monospace;
+            letter-spacing: 4px;
+            text-align: center;
+            image-rendering: pixelated;
+        }
+        #rb-lobby [data-view] { display: none; }
+        #rb-lobby[data-active="entry"] [data-view="entry"] { display: flex; flex-direction: column; align-items: center; }
+        #rb-lobby[data-active="room"]  [data-view="room"]  { display: flex; flex-direction: column; align-items: center; }
+        #rb-lobby h1 {
+            font-size: 44px;
+            font-weight: bold;
+            margin: 0 0 32px 0;
+            text-shadow: 4px 4px 0 #000;
+            letter-spacing: 6px;
+        }
+        #rb-lobby .prompt {
+            font-size: 14px;
+            opacity: 0.85;
+            margin: 0 0 12px 0;
+        }
+        #rb-lobby input {
+            font: bold 36px monospace;
+            text-align: center;
+            letter-spacing: 12px;
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            border: 4px solid #fff;
+            width: 220px;
+            padding: 12px 0;
+            margin: 0 0 16px 0;
+            text-transform: uppercase;
+            outline: none;
+        }
+        #rb-lobby button {
+            font-family: monospace;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-size: 16px;
+            background: #fff;
+            color: #1a3fd6;
+            border: 4px solid #fff;
+            padding: 12px 24px;
+            margin: 6px 4px;
+            cursor: pointer;
+            min-width: 160px;
+        }
+        #rb-lobby button:hover:not(:disabled) {
+            background: #1a3fd6;
+            color: #fff;
+        }
+        #rb-lobby button:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        #rb-lobby .msg {
+            font-size: 13px;
+            min-height: 16px;
+            margin: 12px 0 0 0;
+            opacity: 0.85;
+            color: #ff8c8c;
+        }
+        #rb-lobby .slots {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin: 24px 0;
+        }
+        #rb-lobby .slot {
+            padding: 20px 16px;
+            border: 4px solid #fff;
+            min-width: 160px;
+            background: rgba(0,0,0,0.15);
+        }
+        #rb-lobby .slot.you {
+            background: rgba(255,255,255,0.15);
+        }
+        #rb-lobby .slot.ready {
+            border-color: #3cff7a;
+            background: rgba(60,255,122,0.15);
+        }
+        #rb-lobby .slot .role {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-bottom: 6px;
+        }
+        #rb-lobby .slot .team {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+        #rb-lobby .slot .state {
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+        #rb-lobby .vs {
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            text-shadow: 3px 3px 0 #000;
+        }
+        #rb-lobby .you-are {
+            font-size: 13px;
+            opacity: 0.85;
+            margin: 8px 0;
+            letter-spacing: 3px;
+        }
+        #rb-lobby .you-are b {
+            color: #3cff7a;
+        }
+        #rb-lobby .status {
+            font-size: 14px;
+            margin: 8px 0 16px 0;
+            letter-spacing: 2px;
+            opacity: 0.9;
+            min-height: 18px;
+        }
     </style>
 </head>
 
@@ -115,6 +244,41 @@
 
     <button id="credits-btn" class="cheat-btn" title="Set Coaching Credits">CC: ---</button>
     <button id="max-btn" class="cheat-btn" title="Max All Players">MAX</button>
+
+    <!-- 2-Player Lobby — fullscreen overlay, shown until both players ready -->
+    <div id="rb-lobby" data-active="entry">
+        <div data-view="entry">
+            <h1>RETRO BOWL 2P</h1>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE</p>
+            <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
+            <div>
+                <button id="rb-join">JOIN ROOM</button>
+            </div>
+            <p id="rb-entry-msg" class="msg"></p>
+        </div>
+        <div data-view="room">
+            <h1>ROOM <span id="rb-room-name"></span></h1>
+            <div class="slots">
+                <div class="slot" id="rb-slot-a">
+                    <div class="role">PLAYER A</div>
+                    <div class="team">BUFFALO</div>
+                    <div class="state">EMPTY</div>
+                </div>
+                <div class="vs">VS</div>
+                <div class="slot" id="rb-slot-b">
+                    <div class="role">PLAYER B</div>
+                    <div class="team">KANSAS CITY</div>
+                    <div class="state">EMPTY</div>
+                </div>
+            </div>
+            <p class="you-are">YOU ARE: <b id="rb-you-role">—</b></p>
+            <p class="status" id="rb-status">Waiting for opponent…</p>
+            <div>
+                <button id="rb-ready" disabled>READY</button>
+                <button id="rb-leave">LEAVE</button>
+            </div>
+        </div>
+    </div>
 
     <script type="text/javascript" src="retrobowl.js"></script>
 
@@ -495,10 +659,22 @@
             var BTN_2P   = { x: 200, y: 64,  w: 80, h: 28, sprite: 166, label: 'PLAY 2P' };
             var BTN_CONT = { x: 384, y: 232, w: 80, h: 28 };
 
-            function startGameVsKC() {
+            function startGameVsKC() { startTwoPlayerMatch('a'); }
+
+            // Generalised: set up a match between BUFF (uid 0) and KC (uid 5)
+            // with the local user's team determined by role. _gx wants the
+            // "random" opponent uid via _dq(31) and the user uid via _._Ip.
+            // We monkey-patch _dq for the opponent and write _._Ip ourselves.
+            //
+            //   role 'a' -> user = BUFF (0), opponent = KC   (5)
+            //   role 'b' -> user = KC   (5), opponent = BUFF (0)
+            //
+            // After _Hj(17) lands us in the match, role 'b' is force-parked in
+            // the wait state (UD != 0z, Vy = 10) so player A is the one who
+            // gets first possession. The existing wait overlay + receive loop
+            // unstalls B when player A's first drive resolves over Firebase.
+            function startTwoPlayerMatch(role) {
                 try {
-                    // Pick any active instance to use as the `_` (self) arg for _gx.
-                    // _gx only uses `_` for _jj(_, t, 64) lookups which are global.
                     var anyInst = null;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
@@ -507,10 +683,16 @@
                     }
                     if (!anyInst) return;
 
-                    // Monkey-patch _dq globally so _gx's _dq(31) returns 5 (KC uid).
+                    var BUFF_UID = 0;
+                    var userUid = role === 'a' ? BUFF_UID : KC_UID;
+                    var oppUid  = role === 'a' ? KC_UID   : BUFF_UID;
+
+                    var st = _6E2._Ue2(64);
+                    if (st) st._Ip = userUid;   // local user identity
+
                     var origDq = window._dq;
                     window._dq = function (n) {
-                        if (n === 31) return KC_UID;
+                        if (n === 31) return oppUid;
                         return origDq(n);
                     };
                     try {
@@ -519,13 +701,33 @@
                         window._dq = origDq;
                     }
 
-                    var st = _6E2._Ue2(64);
-                    if (st) st._fx = 0;     // regular game — _fx in {1,2,3} is FG/2-min/etc. training
-                    _Hj(STATE_MATCH);       // enter rm_match
-                } catch (e) { console.log('[2p-rb] startGameVsKC error:', e); }
+                    if (st) st._fx = 0;
+                    _Hj(STATE_MATCH);
+
+                    if (role === 'b') {
+                        // Park B in WAIT state until A's first drive lands.
+                        var tries = 0;
+                        var poll = setInterval(function () {
+                            tries++;
+                            try {
+                                var m = _6E2._Ue2(71);
+                                if (!m || m._0z == null) {
+                                    if (tries > 100) clearInterval(poll);
+                                    return;
+                                }
+                                m._UD = m._0z ? 0 : 1;
+                                m._Vy = 10;
+                                clearInterval(poll);
+                            } catch (e) {
+                                if (tries > 100) clearInterval(poll);
+                            }
+                        }, 50);
+                    }
+                } catch (e) { console.log('[2p-rb] startTwoPlayerMatch error:', e); }
             }
             // expose for debugging / future callers
             window.s_play_one_game_vs_KC = startGameVsKC;
+            window.s_play_two_player_match = startTwoPlayerMatch;
 
             // -------- Silence a whole object on rm_home --------
             // Wraps draw (_j2), step (_h2), and end-step (_l2). Hiding draw
@@ -950,106 +1152,296 @@
     </script>
 
     <script type="module">
-        // [two-player Retro Bowl] Firebase Realtime Database bridge.
+        // [two-player Retro Bowb] Lobby + Firebase RTDB pairing.
         //
-        // Network glue between two browsers playing the same match. Pairing
-        // is done via a 4-char ROOM CODE: both players type the same code
-        // into the prompt; whoever joins first claims slot A (kicks off),
-        // the other becomes B. Each player writes their drive-outcome JSON
-        // to /rooms/{CODE}/outcomes/{role}; both subscribe to the opposite
-        // slot via onValue. The local _twoPlayer.send/receive hooks set up
-        // in the previous IIFE are the only touchpoints — the engine sees
-        // nothing of this layer.
+        // Replaces the page's home screen with a fullscreen lobby until both
+        // players in the room toggle READY, then auto-launches the match on
+        // both ends with mirrored team perspectives:
         //
-        // Schema:
-        //   /rooms/{CODE}/players/{a|b} = { ts }       // role claim
-        //   /rooms/{CODE}/outcomes/{a|b} = { ...outcome }  // latest only
+        //   Role A (joined first) -> plays as Buffalo, opponent = Kansas City,
+        //                            starts on offense
+        //   Role B (joined second) -> plays as Kansas City, opponent = Buffalo,
+        //                            starts parked in WAIT until A's first
+        //                            drive lands over Firebase
         //
-        // Auth: none (relies on open RTDB rules — fine for prototyping).
+        // Firebase schema:
+        //   /rooms/{CODE}/players/{a|b} = { ts, ready }
+        //   /rooms/{CODE}/outcomes/{a|b} = { type, yardLine, ..., ts }
+        //
+        // Auth: none (open RTDB rules). Slot release via onDisconnect on the
+        // player record so tab-close leaves a clean room.
 
-        // Wait for the local bridge IIFE to install window._twoPlayer.
+        // Wait for the local _twoPlayer bridge IIFE.
         await new Promise(function (resolve) {
-            if (window._twoPlayer) return resolve();
+            if (window._twoPlayer && window.s_play_two_player_match) return resolve();
             var t = setInterval(function () {
-                if (window._twoPlayer) { clearInterval(t); resolve(); }
+                if (window._twoPlayer && window.s_play_two_player_match) {
+                    clearInterval(t); resolve();
+                }
             }, 50);
         });
 
         var { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js");
-        var { getDatabase, ref, set, onValue, runTransaction } =
-            await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js");
+        var FB = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js");
 
         var app = initializeApp({
             databaseURL: 'https://realretrobowl2p-default-rtdb.firebaseio.com/',
             projectId: 'realretrobowl2p'
         });
-        var db = getDatabase(app);
+        var db = FB.getDatabase(app);
 
-        // ---- Room code (prompt once per tab; persists via sessionStorage) ----
-        var roomCode = sessionStorage.getItem('rb_room');
-        if (!roomCode) {
-            var raw = (prompt('Enter a 4-char room code (blank = TEST):') || 'TEST');
-            roomCode = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'TEST';
-            sessionStorage.setItem('rb_room', roomCode);
-        }
+        // ---- DOM ----
+        var lobby      = document.getElementById('rb-lobby');
+        var $input     = document.getElementById('rb-room-input');
+        var $join      = document.getElementById('rb-join');
+        var $entryMsg  = document.getElementById('rb-entry-msg');
+        var $roomName  = document.getElementById('rb-room-name');
+        var $slotA     = document.getElementById('rb-slot-a');
+        var $slotB     = document.getElementById('rb-slot-b');
+        var $youRole   = document.getElementById('rb-you-role');
+        var $status    = document.getElementById('rb-status');
+        var $ready     = document.getElementById('rb-ready');
+        var $leave     = document.getElementById('rb-leave');
 
-        // ---- Claim a slot (a or b) via Firebase transaction ----
-        var role = sessionStorage.getItem('rb_role_' + roomCode);
-        if (!role) {
-            var claim = async function (slot) {
-                var res = await runTransaction(
-                    ref(db, 'rooms/' + roomCode + '/players/' + slot),
-                    function (cur) { return cur === null ? { ts: Date.now() } : undefined; }
-                );
-                return res.committed;
-            };
-            if (await claim('a')) role = 'a';
-            else if (await claim('b')) role = 'b';
-            else {
-                alert('Room ' + roomCode + ' is full. Pick a different code.');
+        function showView(name) { lobby.dataset.active = name; lobby.style.display = 'flex'; }
+        function hideLobby()    { lobby.style.display = 'none'; }
+
+        // ---- Lobby state ----
+        var myRoom = null;
+        var myRole = null;
+        var myReady = false;
+        var unsubscribePlayers = null;
+        var unsubscribeOutcomes = null;
+        var gameStarted = false;
+
+        showView('entry');
+
+        // ---- Restore session if a refresh happened ----
+        // We only restore if the slot in the DB still matches our session.
+        // Otherwise (slot taken, or DB cleared), drop back to entry cleanly.
+        (async function tryRestore() {
+            var savedRoom = sessionStorage.getItem('rb_room');
+            if (!savedRoom) return;
+            var savedRole = sessionStorage.getItem('rb_role_' + savedRoom);
+            if (!savedRole) return;
+            try {
+                var snap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole));
+                if (snap.exists()) {
+                    enterRoom(savedRoom, savedRole, /*restoring=*/true);
+                } else {
+                    // Slot was released. Try to re-claim quietly.
+                    await FB.set(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole),
+                                 { ts: Date.now(), ready: false });
+                    enterRoom(savedRoom, savedRole, /*restoring=*/true);
+                }
+            } catch (e) {
                 sessionStorage.removeItem('rb_room');
-                location.reload();
-                throw new Error('room full');
+                sessionStorage.removeItem('rb_role_' + savedRoom);
             }
-            sessionStorage.setItem('rb_role_' + roomCode, role);
+        })();
+
+        // ---- Entry handlers ----
+        $input.addEventListener('input', function () {
+            $input.value = $input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        });
+        $input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') $join.click();
+        });
+        $join.addEventListener('click', function () { joinByCode(); });
+
+        async function joinByCode() {
+            $entryMsg.textContent = '';
+            var code = ($input.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+            if (code.length < 1) {
+                $entryMsg.textContent = 'Enter at least 1 character.';
+                return;
+            }
+            $join.disabled = true;
+            try {
+                var role = await claimSlot(code);
+                if (!role) {
+                    $entryMsg.textContent = 'Room ' + code + ' is full.';
+                    return;
+                }
+                enterRoom(code, role, false);
+            } catch (e) {
+                $entryMsg.textContent = 'Connection error: ' + (e.message || e);
+                console.log('[lobby join err]', e);
+            } finally {
+                $join.disabled = false;
+            }
         }
-        var otherRole = role === 'a' ? 'b' : 'a';
 
-        // ---- Visible badge so the player knows where they are ----
-        var badge = document.createElement('div');
-        badge.id = 'rb-fb-badge';
-        badge.style.cssText =
-            'position:fixed;left:6px;top:6px;padding:5px 10px;' +
-            'background:rgba(0,0,0,0.78);color:#3cff7a;' +
-            'font:bold 11px monospace;z-index:9999;border-radius:4px;' +
-            'letter-spacing:2px;border:1px solid #3cff7a;';
-        badge.textContent = 'RM:' + roomCode + ' • YOU:' + role.toUpperCase();
-        document.body.appendChild(badge);
+        async function claimSlot(code) {
+            // Try A, then B; return the role we ended up with (or null).
+            var resA = await FB.runTransaction(
+                FB.ref(db, 'rooms/' + code + '/players/a'),
+                function (cur) { return cur === null ? { ts: Date.now(), ready: false } : undefined; }
+            );
+            if (resA.committed) return 'a';
+            var resB = await FB.runTransaction(
+                FB.ref(db, 'rooms/' + code + '/players/b'),
+                function (cur) { return cur === null ? { ts: Date.now(), ready: false } : undefined; }
+            );
+            if (resB.committed) return 'b';
+            return null;
+        }
 
-        // ---- Hook SEND: relay every outcome up to Firebase ----
-        var origSend = window._twoPlayer.send.bind(window._twoPlayer);
-        window._twoPlayer.send = function (outcome) {
-            origSend(outcome);
-            set(ref(db, 'rooms/' + roomCode + '/outcomes/' + role), outcome)
-                .catch(function (e) { console.log('[fb send err]', e); });
-        };
+        function enterRoom(code, role, restoring) {
+            myRoom = code;
+            myRole = role;
+            myReady = false;
+            gameStarted = false;
+            sessionStorage.setItem('rb_room', code);
+            sessionStorage.setItem('rb_role_' + code, role);
 
-        // ---- Subscribe to opponent slot, push into RECEIVE ----
-        // Skip the very first snapshot — when player B joins after A has
-        // already played a drive, onValue fires immediately with A's last
-        // outcome; we don't want to apply something that's already been
-        // resolved on the field. Subsequent updates are real plays.
-        var firstSnap = true;
-        var lastTs = 0;
-        onValue(ref(db, 'rooms/' + roomCode + '/outcomes/' + otherRole), function (snap) {
-            var val = snap.val();
-            if (firstSnap) { firstSnap = false; lastTs = (val && val.ts) || 0; return; }
-            if (!val || !val.ts || val.ts <= lastTs) return;
-            lastTs = val.ts;
-            window._twoPlayer.receive(val);
+            $roomName.textContent = code;
+            $youRole.textContent = role.toUpperCase();
+            $slotA.classList.toggle('you', role === 'a');
+            $slotB.classList.toggle('you', role === 'b');
+            $ready.textContent = 'READY';
+            $ready.dataset.state = 'not-ready';
+
+            // Subscribe to player presence
+            unsubscribePlayers = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/players'),
+                function (snap) {
+                    var players = snap.val() || {};
+                    renderPlayers(players);
+                    if (players.a && players.b && players.a.ready && players.b.ready && !gameStarted) {
+                        gameStarted = true;
+                        startMatch();
+                    }
+                }
+            );
+
+            // Release slot on tab close so the room frees up
+            FB.onDisconnect(FB.ref(db, 'rooms/' + code + '/players/' + role)).remove();
+
+            showView('room');
+        }
+
+        function renderPlayers(players) {
+            var a = players.a;
+            var b = players.b;
+            $slotA.querySelector('.state').textContent =
+                a ? (a.ready ? '✓ READY' : '· not ready') : 'EMPTY';
+            $slotB.querySelector('.state').textContent =
+                b ? (b.ready ? '✓ READY' : '· not ready') : 'EMPTY';
+            $slotA.classList.toggle('ready', !!(a && a.ready));
+            $slotB.classList.toggle('ready', !!(b && b.ready));
+
+            var bothIn = !!(a && b);
+            $ready.disabled = !bothIn;
+            if (!bothIn) {
+                $status.textContent = 'Waiting for opponent to join…';
+            } else if (a.ready && b.ready) {
+                $status.textContent = 'Starting…';
+            } else if (
+                (myRole === 'a' && a.ready) ||
+                (myRole === 'b' && b.ready)
+            ) {
+                $status.textContent = 'Waiting for opponent to ready up…';
+            } else {
+                $status.textContent = 'Both players in — ready up to start.';
+            }
+        }
+
+        // ---- Ready toggle ----
+        $ready.addEventListener('click', async function () {
+            if (!myRoom || !myRole) return;
+            myReady = !myReady;
+            $ready.disabled = true;
+            try {
+                await FB.set(
+                    FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole + '/ready'),
+                    myReady
+                );
+                $ready.textContent = myReady ? 'CANCEL' : 'READY';
+            } catch (e) {
+                console.log('[lobby ready err]', e);
+                myReady = !myReady;
+            } finally {
+                $ready.disabled = false;
+            }
         });
 
-        console.log('[fb] connected as ' + role.toUpperCase() + ' in room ' + roomCode);
+        // ---- Leave ----
+        $leave.addEventListener('click', async function () {
+            await leaveRoom();
+        });
+
+        async function leaveRoom() {
+            if (unsubscribePlayers) { unsubscribePlayers(); unsubscribePlayers = null; }
+            if (unsubscribeOutcomes) { unsubscribeOutcomes(); unsubscribeOutcomes = null; }
+            try {
+                if (myRoom && myRole) {
+                    await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
+                }
+            } catch (e) { /* best effort */ }
+            sessionStorage.removeItem('rb_room');
+            if (myRoom) sessionStorage.removeItem('rb_role_' + myRoom);
+            myRoom = null; myRole = null; myReady = false; gameStarted = false;
+            $slotA.classList.remove('you', 'ready');
+            $slotB.classList.remove('you', 'ready');
+            $ready.textContent = 'READY';
+            $input.value = '';
+            $entryMsg.textContent = '';
+            showView('entry');
+        }
+
+        // ---- Match start ----
+        function startMatch() {
+            // Wire SEND to Firebase BEFORE entering the match. The local
+            // bridge already mutates _twoPlayer.send once installed; we
+            // chain on top of whatever's there so simulate()/sentLog still
+            // work for debugging.
+            var origSend = window._twoPlayer.send.bind(window._twoPlayer);
+            window._twoPlayer.send = function (outcome) {
+                origSend(outcome);
+                FB.set(
+                    FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + myRole),
+                    outcome
+                ).catch(function (e) { console.log('[fb send err]', e); });
+            };
+
+            // Subscribe to opponent outcomes. Skip the first snapshot
+            // (it's a stale read from any prior session).
+            var otherRole = myRole === 'a' ? 'b' : 'a';
+            var firstSnap = true;
+            var lastTs = 0;
+            unsubscribeOutcomes = FB.onValue(
+                FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
+                function (snap) {
+                    var val = snap.val();
+                    if (firstSnap) {
+                        firstSnap = false;
+                        lastTs = (val && val.ts) || 0;
+                        return;
+                    }
+                    if (!val || !val.ts || val.ts <= lastTs) return;
+                    lastTs = val.ts;
+                    window._twoPlayer.receive(val);
+                }
+            );
+
+            // In-game badge so the player remembers which side they're on
+            var badge = document.createElement('div');
+            badge.id = 'rb-fb-badge';
+            badge.style.cssText =
+                'position:fixed;left:6px;top:6px;padding:5px 10px;' +
+                'background:rgba(0,0,0,0.78);color:#3cff7a;' +
+                'font:bold 11px monospace;z-index:9999;border-radius:4px;' +
+                'letter-spacing:2px;border:1px solid #3cff7a;';
+            badge.textContent =
+                'RM:' + myRoom + ' • YOU:' + myRole.toUpperCase() +
+                ' (' + (myRole === 'a' ? 'BUF' : 'KC') + ')';
+            document.body.appendChild(badge);
+
+            hideLobby();
+            window.s_play_two_player_match(myRole);
+            console.log('[lobby] match started as', myRole);
+        }
     </script>
 
     <script>
