@@ -949,6 +949,109 @@
         })();
     </script>
 
+    <script type="module">
+        // [two-player Retro Bowl] Firebase Realtime Database bridge.
+        //
+        // Network glue between two browsers playing the same match. Pairing
+        // is done via a 4-char ROOM CODE: both players type the same code
+        // into the prompt; whoever joins first claims slot A (kicks off),
+        // the other becomes B. Each player writes their drive-outcome JSON
+        // to /rooms/{CODE}/outcomes/{role}; both subscribe to the opposite
+        // slot via onValue. The local _twoPlayer.send/receive hooks set up
+        // in the previous IIFE are the only touchpoints — the engine sees
+        // nothing of this layer.
+        //
+        // Schema:
+        //   /rooms/{CODE}/players/{a|b} = { ts }       // role claim
+        //   /rooms/{CODE}/outcomes/{a|b} = { ...outcome }  // latest only
+        //
+        // Auth: none (relies on open RTDB rules — fine for prototyping).
+
+        // Wait for the local bridge IIFE to install window._twoPlayer.
+        await new Promise(function (resolve) {
+            if (window._twoPlayer) return resolve();
+            var t = setInterval(function () {
+                if (window._twoPlayer) { clearInterval(t); resolve(); }
+            }, 50);
+        });
+
+        var { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js");
+        var { getDatabase, ref, set, onValue, runTransaction } =
+            await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js");
+
+        var app = initializeApp({
+            databaseURL: 'https://realretrobowl2p-default-rtdb.firebaseio.com/',
+            projectId: 'realretrobowl2p'
+        });
+        var db = getDatabase(app);
+
+        // ---- Room code (prompt once per tab; persists via sessionStorage) ----
+        var roomCode = sessionStorage.getItem('rb_room');
+        if (!roomCode) {
+            var raw = (prompt('Enter a 4-char room code (blank = TEST):') || 'TEST');
+            roomCode = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'TEST';
+            sessionStorage.setItem('rb_room', roomCode);
+        }
+
+        // ---- Claim a slot (a or b) via Firebase transaction ----
+        var role = sessionStorage.getItem('rb_role_' + roomCode);
+        if (!role) {
+            var claim = async function (slot) {
+                var res = await runTransaction(
+                    ref(db, 'rooms/' + roomCode + '/players/' + slot),
+                    function (cur) { return cur === null ? { ts: Date.now() } : undefined; }
+                );
+                return res.committed;
+            };
+            if (await claim('a')) role = 'a';
+            else if (await claim('b')) role = 'b';
+            else {
+                alert('Room ' + roomCode + ' is full. Pick a different code.');
+                sessionStorage.removeItem('rb_room');
+                location.reload();
+                throw new Error('room full');
+            }
+            sessionStorage.setItem('rb_role_' + roomCode, role);
+        }
+        var otherRole = role === 'a' ? 'b' : 'a';
+
+        // ---- Visible badge so the player knows where they are ----
+        var badge = document.createElement('div');
+        badge.id = 'rb-fb-badge';
+        badge.style.cssText =
+            'position:fixed;left:6px;top:6px;padding:5px 10px;' +
+            'background:rgba(0,0,0,0.78);color:#3cff7a;' +
+            'font:bold 11px monospace;z-index:9999;border-radius:4px;' +
+            'letter-spacing:2px;border:1px solid #3cff7a;';
+        badge.textContent = 'RM:' + roomCode + ' • YOU:' + role.toUpperCase();
+        document.body.appendChild(badge);
+
+        // ---- Hook SEND: relay every outcome up to Firebase ----
+        var origSend = window._twoPlayer.send.bind(window._twoPlayer);
+        window._twoPlayer.send = function (outcome) {
+            origSend(outcome);
+            set(ref(db, 'rooms/' + roomCode + '/outcomes/' + role), outcome)
+                .catch(function (e) { console.log('[fb send err]', e); });
+        };
+
+        // ---- Subscribe to opponent slot, push into RECEIVE ----
+        // Skip the very first snapshot — when player B joins after A has
+        // already played a drive, onValue fires immediately with A's last
+        // outcome; we don't want to apply something that's already been
+        // resolved on the field. Subsequent updates are real plays.
+        var firstSnap = true;
+        var lastTs = 0;
+        onValue(ref(db, 'rooms/' + roomCode + '/outcomes/' + otherRole), function (snap) {
+            var val = snap.val();
+            if (firstSnap) { firstSnap = false; lastTs = (val && val.ts) || 0; return; }
+            if (!val || !val.ts || val.ts <= lastTs) return;
+            lastTs = val.ts;
+            window._twoPlayer.receive(val);
+        });
+
+        console.log('[fb] connected as ' + role.toUpperCase() + ' in room ' + roomCode);
+    </script>
+
     <script>
         (function () {
             function fin(ok) {
