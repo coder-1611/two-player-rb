@@ -616,12 +616,12 @@
                 _hh1(1);
             }
 
-            // -------- Disable the original CONTINUE-slot button click --------
-            // The home button at (384, 232) runs btn_click_Details_Continue (in
-            // fresh saves) or btn_click_Continue (mid-season) — neither of those
-            // is what we want. Set _0G to -4 (no-op) so the engine ignores the
-            // click; our canvas listener routes to startGameVsKC instead.
-            function disableCont() {
+            // -------- Hide the CONTINUE-slot button entirely --------
+            // The button at (384, 232) on home is now redundant — PLAY 2P is the
+            // single entry point. Setting _g2 = 0 makes the engine skip its draw
+            // AND step events (see _ow4.prototype._935 + _CX3 dispatch). We also
+            // null its _0G as a belt-and-braces measure.
+            function hideCont() {
                 try {
                     if (_ft._gt() !== STATE_HOME) return;
                     var all = _Sc2._GL2._oq2;
@@ -630,13 +630,14 @@
                         if (!inst || !inst._eE2) continue;
                         if (inst._eE2._fE2 !== 'obj_button') continue;
                         if (inst.x !== BTN_CONT.x || inst.y !== BTN_CONT.y) continue;
+                        if (inst._g2 !== 0) inst._g2 = 0;
                         if (inst._0G !== -4) inst._0G = -4;
                         break;
                     }
                 } catch (e) {}
             }
 
-            // -------- Click intercept --------
+            // -------- Click intercept (PLAY 2P only — CONTINUE is gone) --------
             var canvas = document.getElementById('canvas');
             canvas.addEventListener('click', function (e) {
                 try {
@@ -644,11 +645,9 @@
                     var r = canvas.getBoundingClientRect();
                     var gx = ((e.clientX - r.left) / r.width)  * 480;
                     var gy = ((e.clientY - r.top)  / r.height) * 270;
-                    var hitCont = gx >= BTN_CONT.x && gx <= BTN_CONT.x + BTN_CONT.w &&
-                                  gy >= BTN_CONT.y && gy <= BTN_CONT.y + BTN_CONT.h;
-                    var hit2P   = gx >= BTN_2P.x   && gx <= BTN_2P.x   + BTN_2P.w   &&
-                                  gy >= BTN_2P.y   && gy <= BTN_2P.y   + BTN_2P.h;
-                    if (!hitCont && !hit2P) return;
+                    var hit2P = gx >= BTN_2P.x && gx <= BTN_2P.x + BTN_2P.w &&
+                                gy >= BTN_2P.y && gy <= BTN_2P.y + BTN_2P.h;
+                    if (!hit2P) return;
                     try {
                         var st = _6E2._Ue2(64);
                         if (st && _Ai(st._Gn, 'op_soundfx')) _8z(5, 1, 0);
@@ -695,10 +694,258 @@
                     hookBtn();
                 }
                 if (typeof _Sc2 !== 'undefined' && _Sc2._GL2 && _Sc2._GL2._oq2) {
-                    disableCont();
+                    hideCont();
                     recenterHomeStats();
                 }
             }, 500);
+        })();
+    </script>
+
+    <script>
+        // [two-player Retro Bowl] Drive-outcome bridge.
+        //
+        // Hooks the engine's possession-change script (_1c1, s_change_possession)
+        // to detect when the local player's drive ends. Packages the outcome
+        // (type + yard line + scores + message) into a Firebase-friendly JSON
+        // and calls window._twoPlayer.send().
+        //
+        // Conversely, when the AI side stalls in _Ib1 case 10 (Vy=10 with the
+        // AI as possessing team — which never advances because we nulled the
+        // AI offense drive simulator), we poll, show a WAITING overlay, and
+        // when an outcome is pushed into window._twoPlayer.pending we apply
+        // it: bump scores if needed, set yard line, flip possession back to
+        // the user, reset Vy, and kick the FSM. The HTML/Firebase glue layer
+        // can later be added on top of this API without touching the bridge.
+        //
+        // For local testing: window._twoPlayer.simulate('INT', 30) injects a
+        // fake outcome and unstalls the game.
+        (function () {
+            var STATE_MATCH = 17;
+            var MATCH_ID = 71;   // singleton match instance id
+
+            // ===== _twoPlayer API surface =====
+            window._twoPlayer = {
+                pending: [],
+                sentLog: [],
+                receivedLog: [],
+
+                send: function (outcome) {
+                    this.sentLog.push(outcome);
+                    console.log('[2P send]', outcome);
+                    // TODO: forward to Firebase here when wired up.
+                },
+
+                receive: function (outcome) {
+                    this.receivedLog.push(outcome);
+                    console.log('[2P receive]', outcome);
+                    this.pending.push(outcome);
+                },
+
+                // Local-test helper. Examples:
+                //   _twoPlayer.simulate('INT', 40)
+                //   _twoPlayer.simulate('TD')         // kickoff to user
+                //   _twoPlayer.simulate('PUNT', 25)
+                simulate: function (type, yardLine) {
+                    if (yardLine == null) yardLine = (type === 'TD' ? 25 : 30);
+                    var msg = {
+                        INT:       'Interception. On your ' + yardLine + ' yard line',
+                        FUMBLE:    'Fumble recovered. On your ' + yardLine + ' yard line',
+                        PUNT:      'Punt. On your ' + yardLine + ' yard line',
+                        TD:        'Touchdown by opponent. Kickoff to your ' + yardLine + ' yard line',
+                        FG:        'Field goal good. Kickoff to your ' + yardLine + ' yard line',
+                        MISSED_FG: 'Missed field goal. On your ' + yardLine + ' yard line',
+                        DOWNS:     'Turnover on downs. On your ' + yardLine + ' yard line',
+                        SAFETY:    'Safety by your defense. Free kick at the ' + yardLine,
+                        HALF_END:  'End of half.'
+                    }[type] || ('Outcome: ' + type);
+                    this.receive({
+                        type: type, yardLine: yardLine,
+                        ownSide: yardLine <= 50,
+                        message: msg, ts: Date.now()
+                    });
+                }
+            };
+
+            // ===== Outcome type inference & build =====
+            // _._2c1 is set by the FSM right before _1c1: it stashes the Vy that
+            // led to possession change. See lines 55264 (turnover), 55330
+            // (turnover/punt), 55074 (onside success), 55295 (FG scored), etc.
+            function inferType(prevVy) {
+                if (prevVy === 9 || prevVy === 16) return 'TD';     // TD reached -> kickoff
+                if (prevVy === 8)                  return 'INT';    // turnover (INT/fumble bucketed)
+                if (prevVy === 12 || prevVy === 23) return 'PUNT';
+                if (prevVy === 14)                 return 'FG';     // FG made -> kickoff
+                if (prevVy === 24)                 return 'HALF_END';
+                return 'OTHER';
+            }
+            function describeYard(yard, ownSide) {
+                if (yard === 0)  return 'in the endzone';
+                if (yard >= 45)  return 'midfield';
+                return (ownSide ? 'your ' : 'opponent ') + yard + ' yard line';
+            }
+            function messageFor(type, yard, ownSide) {
+                var loc = describeYard(yard, ownSide);
+                switch (type) {
+                    case 'TD':       return 'Touchdown by opponent. Kickoff to ' + loc;
+                    case 'INT':      return 'Interception. On ' + loc;
+                    case 'PUNT':     return 'Punt. On ' + loc;
+                    case 'FG':       return 'Field goal good. Kickoff to ' + loc;
+                    case 'HALF_END': return 'End of half.';
+                    default:         return 'Possession change. On ' + loc;
+                }
+            }
+
+            // ===== Hook _1c1 to SEND on possession change =====
+            // The flag below short-circuits the SEND path when we ourselves are
+            // calling _1c1 from applyOutcome (avoids infinite loops).
+            var applyingOutcome = false;
+            var orig1c1 = null;
+            var hooked1c1 = false;
+            function hook1c1() {
+                if (hooked1c1 || typeof window._1c1 !== 'function') return;
+                orig1c1 = window._1c1;
+                hooked1c1 = true;
+                window._1c1 = function (_, t) {
+                    var pre = readMatch();
+                    var prevVy = pre ? pre._2c1 || pre._Vy : null;
+                    orig1c1.call(this, _, t);
+                    if (applyingOutcome) return;
+                    var post = readMatch();
+                    if (!pre || !post) return;
+                    // Only SEND when the *local* user just lost possession.
+                    if (pre._UD === pre._0z && post._UD !== post._0z) {
+                        try { window._twoPlayer.send(buildOutcome(pre, post, prevVy)); }
+                        catch (e) { console.log('[2P] send err', e); }
+                    }
+                };
+            }
+
+            function getMatch() {
+                try { return _6E2._Ue2(MATCH_ID); } catch (e) { return null; }
+            }
+            function readMatch() {
+                try {
+                    var m = getMatch();
+                    if (!m) return null;
+                    return {
+                        _UD: m._UD, _0z: m._0z, _6F: m._6F,
+                        _Vy: m._Vy, _2c1: m._2c1, _Wy: m._Wy,
+                        _Sb1: m._Sb1 ? [m._Sb1[0], m._Sb1[1]] : [0, 0],
+                        _bL: m._bL ? [m._bL[0], m._bL[1]] : ['', ''],
+                        _t11: m._t11, _l61: m._l61
+                    };
+                } catch (e) { return null; }
+            }
+
+            function buildOutcome(pre, post, prevVy) {
+                var userIdx = post._0z;
+                var oppIdx = userIdx ? 0 : 1;
+                var type = inferType(prevVy);
+                // _._6F after _1c1 is from the new possessing team's view.
+                // Positive = own half, so abs(_6F) is "yards from own goal".
+                var yard = Math.abs(post._6F);
+                var ownSide = post._6F >= 0;
+                return {
+                    type: type,
+                    yardLine: yard,
+                    ownSide: ownSide,
+                    scoreUser: post._Sb1[userIdx],
+                    scoreOpp:  post._Sb1[oppIdx],
+                    quarter: post._Wy,
+                    fromTeam: pre._bL[pre._UD],
+                    toTeam:   post._bL[post._UD],
+                    message: messageFor(type, yard, ownSide),
+                    ts: Date.now()
+                };
+            }
+
+            // ===== Apply received outcome =====
+            // Skip the in-engine ceremony (kickoff animation, ETC.) and jump
+            // straight to "user has the ball at yardLine". Scores updated to
+            // reflect the AI's drive outcome.
+            function applyOutcome(outcome) {
+                try {
+                    var m = getMatch();
+                    if (!m) return false;
+                    var oppIdx = m._0z ? 0 : 1;
+                    if (outcome.type === 'TD' && m._Sb1) {
+                        m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 7;   // TD + assumed XP
+                    } else if (outcome.type === 'FG' && m._Sb1) {
+                        m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 3;
+                    } else if (outcome.type === 'SAFETY' && m._Sb1) {
+                        m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 2;
+                    }
+                    applyingOutcome = true;
+                    try {
+                        m._UD = m._0z;                          // user has ball
+                        m._6F = outcome.yardLine || 25;          // their yard line
+                        if (m._6F < 0) m._6F = 0;
+                        if (m._6F > 50) m._6F = 50;
+                        m._t11 = 1;                              // 1st down
+                        m._l61 = 10;                             // 10 to go
+                        m._2c1 = m._Vy;                          // stash prior Vy (mirrors _1c1)
+                        m._Vy = 2;                               // drive in progress (skip kickoff ceremony)
+                        m._8c1 = 0;
+                        m._831 = '';                             // clear sub-message
+                        // Don't call _Ib1 — Vy=1 triggers a kickoff cascade
+                        // that flips possession right back to AI. The engine
+                        // picks up Vy=2 on its next tick naturally.
+                    } finally {
+                        applyingOutcome = false;
+                    }
+                    return true;
+                } catch (e) {
+                    console.log('[2P] applyOutcome err', e);
+                    applyingOutcome = false;
+                    return false;
+                }
+            }
+
+            // ===== WAITING overlay =====
+            var wait = document.createElement('div');
+            wait.id = 'rb-waiting';
+            wait.style.cssText =
+                'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
+                'padding:24px 48px;background:rgba(0,0,0,0.88);color:#fff;' +
+                'border:4px solid #fff;font-family:monospace;text-align:center;' +
+                'letter-spacing:4px;z-index:1500;display:none;image-rendering:pixelated;';
+            wait.innerHTML =
+                '<div style="font-size:28px;font-weight:bold;">WAITING FOR OPPONENT</div>' +
+                '<div id="rb-waiting-sub" style="font-size:14px;margin-top:10px;opacity:0.7;letter-spacing:2px;">' +
+                'opponent is on offense</div>';
+            document.body.appendChild(wait);
+            var waitSub = wait.querySelector('#rb-waiting-sub');
+            function showWait(msg) {
+                wait.style.display = 'block';
+                if (msg) waitSub.textContent = msg;
+            }
+            function hideWait() { wait.style.display = 'none'; }
+
+            // ===== Poll loop: detect stall + drain pending =====
+            setInterval(function () {
+                try {
+                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) {
+                        hideWait();
+                        return;
+                    }
+                    hook1c1();
+                    var m = getMatch();
+                    if (!m) { hideWait(); return; }
+                    // AI possession + FSM stalled at the deleted case-10.
+                    var aiStalled = (m._UD !== m._0z) && (m._Vy === 10);
+                    if (aiStalled) {
+                        if (window._twoPlayer.pending.length > 0) {
+                            var o = window._twoPlayer.pending.shift();
+                            if (applyOutcome(o)) hideWait();
+                            else showWait('apply failed — see console');
+                        } else {
+                            showWait('opponent is on offense');
+                        }
+                    } else {
+                        hideWait();
+                    }
+                } catch (e) {}
+            }, 200);
         })();
     </script>
 
