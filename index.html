@@ -1115,12 +1115,26 @@
                     var m = getMatch();
                     if (!m) return false;
                     var oppIdx = m._0z ? 0 : 1;
-                    if (outcome.type === 'TD' && m._Sb1) {
-                        m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 7;   // TD + assumed XP
-                    } else if (outcome.type === 'FG' && m._Sb1) {
-                        m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 3;
-                    } else if (outcome.type === 'SAFETY' && m._Sb1) {
-                        m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 2;
+                    // If the outcome carries absolute scores (the sender's
+                    // perspective: their own score, their opponent's score),
+                    // mirror them straight into our local Sb1. That avoids
+                    // double-counting alongside the live-state sync — the
+                    // live push and the outcome at drive end converge to the
+                    // same absolute values.
+                    if (m._Sb1) {
+                        if (typeof outcome.scoreUser === 'number') {
+                            m._Sb1[oppIdx] = outcome.scoreUser;   // sender's user = my opp
+                        }
+                        if (typeof outcome.scoreOpp === 'number') {
+                            m._Sb1[m._0z] = outcome.scoreOpp;     // sender's opp = me
+                        }
+                        // Fallback for outcomes missing absolute scores
+                        // (e.g. simulate() calls without scoreUser set).
+                        if (typeof outcome.scoreUser !== 'number') {
+                            if (outcome.type === 'TD')      m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 7;
+                            else if (outcome.type === 'FG') m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 3;
+                            else if (outcome.type === 'SAFETY') m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 2;
+                        }
                     }
                     applyingOutcome = true;
                     try {
@@ -1153,13 +1167,20 @@
             wait.id = 'rb-waiting';
             wait.style.cssText =
                 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
-                'padding:24px 48px;background:rgba(0,0,0,0.88);color:#fff;' +
+                'padding:22px 44px;background:rgba(0,0,0,0.88);color:#fff;' +
                 'border:4px solid #fff;font-family:monospace;text-align:center;' +
                 'letter-spacing:4px;z-index:1500;display:none;image-rendering:pixelated;';
             wait.innerHTML =
-                '<div style="font-size:28px;font-weight:bold;">WAITING FOR OPPONENT</div>' +
-                '<div id="rb-waiting-sub" style="font-size:14px;margin-top:10px;opacity:0.7;letter-spacing:2px;">' +
-                'opponent is on offense</div>';
+                '<div style="font-size:24px;font-weight:bold;">WAITING FOR OPPONENT</div>' +
+                '<div style="margin:14px 0 6px 0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:14px;letter-spacing:3px;">' +
+                    '<span style="opacity:0.7;">YOU</span>' +
+                    '<span id="rb-wait-myscore" style="font-size:30px;font-weight:bold;color:#3cff7a;letter-spacing:0;">0</span>' +
+                    '<span style="opacity:0.5;">—</span>' +
+                    '<span id="rb-wait-oppscore" style="font-size:30px;font-weight:bold;color:#ff8c8c;letter-spacing:0;">0</span>' +
+                    '<span style="opacity:0.7;">OPP</span>' +
+                '</div>' +
+                '<div id="rb-wait-clock" style="font-size:14px;letter-spacing:3px;opacity:0.85;">1ST QTR 2:00</div>' +
+                '<div id="rb-waiting-sub" style="font-size:11px;margin-top:10px;opacity:0.55;letter-spacing:2px;">opponent is on offense</div>';
             document.body.appendChild(wait);
             var waitSub = wait.querySelector('#rb-waiting-sub');
             function showWait(msg) {
@@ -1167,6 +1188,19 @@
                 if (msg) waitSub.textContent = msg;
             }
             function hideWait() { wait.style.display = 'none'; }
+
+            // Public helpers so the Firebase module can refresh the live
+            // score + clock without poking DOM ids itself.
+            window._twoPlayer.refreshWaitDisplay = function (myScore, oppScore, clockText) {
+                try {
+                    var $ms = document.getElementById('rb-wait-myscore');
+                    var $os = document.getElementById('rb-wait-oppscore');
+                    var $ck = document.getElementById('rb-wait-clock');
+                    if ($ms && myScore != null) $ms.textContent = String(myScore);
+                    if ($os && oppScore != null) $os.textContent = String(oppScore);
+                    if ($ck && clockText) $ck.textContent = clockText;
+                } catch (e) {}
+            };
 
             // ===== Poll loop: detect stall + drain pending =====
             setInterval(function () {
@@ -1488,6 +1522,98 @@
                 'RM:' + myRoom + ' • YOU:' + myRole.toUpperCase() +
                 ' (' + (myRole === 'a' ? 'BUF' : 'KC') + ')';
             document.body.appendChild(badge);
+
+            // ---- Live state sync ----
+            // While I'm on offense, push my local score + clock every 500ms
+            // to /rooms/{CODE}/live/{me}. The opponent is on defense (parked
+            // in WAIT) and won't be writing, so there's no race for who's
+            // authoritative — the offensive side always is.
+            //
+            // The receiving side mirrors the pushed values into their local
+            // m._Sb1 / m._Yc1 / m._Wy so the in-game scoreboard and clock
+            // visible behind the WAITING overlay both reflect what's
+            // happening on the offensive side in near-realtime.
+            //
+            // At drive end the SEND outcome carries the same absolute
+            // scores; applyOutcome sets them again (no double-count because
+            // it's an assignment, not an increment).
+            function qtrName(q) {
+                if (q === 1) return '1ST QTR';
+                if (q === 2) return '2ND QTR';
+                if (q === 3) return '3RD QTR';
+                if (q === 4) return '4TH QTR';
+                if (q === 5) return 'OT';
+                return 'QTR ' + q;
+            }
+            function formatClock(q, elapsed, duration) {
+                var rem = Math.max(0, (duration || 0) - (elapsed || 0));
+                var mins = Math.floor(rem / 60);
+                var secs = Math.floor(rem % 60);
+                return qtrName(q) + ' ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+            }
+
+            var liveSeq = 0;
+            setInterval(function () {
+                try {
+                    if (typeof _ft === 'undefined' || _ft._gt() !== 17) return;
+                    var m = window._6E2 ? _6E2._Ue2(71) : null;
+                    if (!m || m._Sb1 == null || m._0z == null) return;
+                    // Push from both sides. The receive side only mirrors
+                    // when m._UD !== m._0z (defense) so we don't fight over
+                    // who's authoritative — but during kickoff sequences
+                    // UD swaps around and either side can be "on offense"
+                    // briefly, so we always emit and let the receiver gate.
+                    var data = {
+                        myScore:  Number(m._Sb1[m._0z]) || 0,
+                        oppScore: Number(m._Sb1[1 - m._0z]) || 0,
+                        elapsed:  Number(m._Yc1) || 0,
+                        duration: ((Number(m._5F) || 2) * 60),
+                        quarter:  Number(m._Wy) || 1,
+                        seq: ++liveSeq,
+                        ts: Date.now()
+                    };
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/live/' + myRole), data)
+                        .catch(function () {});
+                } catch (e) {}
+            }, 500);
+
+            // Subscribe to opponent's live state. When it arrives and I'm
+            // on defense (or just not yet on offense), mirror it into my
+            // local match instance and refresh the WAITING overlay.
+            var lastLiveTs = 0;
+            FB.onValue(
+                FB.ref(db, 'rooms/' + myRoom + '/live/' + otherRole),
+                function (snap) {
+                    var data = snap.val();
+                    if (!data || !data.ts || data.ts <= lastLiveTs) return;
+                    lastLiveTs = data.ts;
+                    var m = window._6E2 ? _6E2._Ue2(71) : null;
+                    if (!m || m._Sb1 == null || m._0z == null) return;
+                    // Sender's myScore = sender's team = my opponent's team
+                    // Sender's oppScore = sender's opp = my team
+                    //
+                    // We only sync _Sb1 (scoreboard) into the engine — it's
+                    // stable across frames so the in-game scoreboard reflects
+                    // the live value. _Yc1 (clock elapsed) and _Wy (quarter)
+                    // get reset every frame by the engine on the stalled side
+                    // so trying to mirror them is pointless. The HTML overlay
+                    // below is the authoritative live-clock display while
+                    // waiting.
+                    if (m._UD !== m._0z) {
+                        m._Sb1[1 - m._0z] = data.myScore;
+                        m._Sb1[m._0z]     = data.oppScore;
+                    }
+                    // Always refresh the WAITING overlay text, even if we
+                    // can't safely mutate m (e.g. m doesn't exist yet).
+                    if (window._twoPlayer && window._twoPlayer.refreshWaitDisplay) {
+                        window._twoPlayer.refreshWaitDisplay(
+                            data.oppScore,    // me, from sender's perspective
+                            data.myScore,     // opp, from sender's perspective
+                            formatClock(data.quarter, data.elapsed, data.duration)
+                        );
+                    }
+                }
+            );
 
             hideLobby();
             window.s_play_two_player_match(myRole);
