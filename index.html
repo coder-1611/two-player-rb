@@ -245,6 +245,51 @@
     <button id="credits-btn" class="cheat-btn" title="Set Coaching Credits">CC: ---</button>
     <button id="max-btn" class="cheat-btn" title="Max All Players">MAX</button>
 
+    <!-- Capture-phase keyboard shield. GameMaker's HTML5 runner binds global
+         keydown/keyup listeners and preventDefault()s most keys to stop the
+         browser from scrolling, tab-cycling, etc. That also kills typing in
+         any HTML input we overlay. This listener runs in the capture phase
+         (before GameMaker's bubble-phase handler) and stops propagation for
+         any keyboard event whose target sits inside the lobby DOM, so the
+         browser's native text-input default action still fires but GameMaker
+         never gets a chance to preventDefault on it. -->
+    <script>
+        (function () {
+            // stopImmediatePropagation in capture phase blocks target-phase
+            // listeners too (DOM spec: propagation stops AT capture, target
+            // listeners never fire). That's intentional — we don't want
+            // GameMaker to see the key — but it also kills any listener we
+            // attach to the input (e.g. "Enter -> submit"). So we handle
+            // those key bindings here in the shield itself.
+            function shieldLobby(e) {
+                var lob = document.getElementById('rb-lobby');
+                if (!lob || lob.style.display === 'none') return;
+                var tgt = e.target;
+                if (!tgt || !tgt.closest) return;
+                if (!tgt.closest('#rb-lobby')) return;
+
+                // Enter on the room-code input triggers JOIN
+                if (e.type === 'keydown' && e.key === 'Enter' &&
+                    tgt.id === 'rb-room-input') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var joinBtn = document.getElementById('rb-join');
+                    if (joinBtn && !joinBtn.disabled) joinBtn.click();
+                    return;
+                }
+
+                // Block everything else from reaching GameMaker. We do NOT
+                // preventDefault — the browser still needs to insert chars,
+                // delete via backspace, move cursor with arrows, etc.
+                e.stopImmediatePropagation();
+            }
+            ['keydown', 'keypress', 'keyup'].forEach(function (t) {
+                document.addEventListener(t, shieldLobby, true);
+                window.addEventListener(t, shieldLobby, true);
+            });
+        })();
+    </script>
+
     <!-- 2-Player Lobby — fullscreen overlay, shown until both players ready -->
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
@@ -1203,8 +1248,14 @@
         var $ready     = document.getElementById('rb-ready');
         var $leave     = document.getElementById('rb-leave');
 
-        function showView(name) { lobby.dataset.active = name; lobby.style.display = 'flex'; }
-        function hideLobby()    { lobby.style.display = 'none'; }
+        function showView(name) {
+            lobby.dataset.active = name;
+            lobby.style.display = 'flex';
+            if (name === 'entry') {
+                setTimeout(function () { try { $input.focus(); $input.select(); } catch (e) {} }, 50);
+            }
+        }
+        function hideLobby() { lobby.style.display = 'none'; }
 
         // ---- Lobby state ----
         var myRoom = null;
