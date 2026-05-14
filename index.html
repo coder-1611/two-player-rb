@@ -706,6 +706,85 @@
 
             function startGameVsKC() { startTwoPlayerMatch('a'); }
 
+            // ---- forceLocalDrive: spawn the offensive snap scene ----
+            // The original AI-offense case-10 was gutted, which breaks the
+            // engine's natural kickoff-to-snap cascade: obj_btn_kickoff sits
+            // on screen forever and obj_controller._kp never advances to a
+            // state that calls _eb1 (s_set_up_play). _eb1 is the script that
+            // creates 11 obj_playerOF + 11 obj_playerDF + obj_ball at the
+            // line of scrimmage — without it there's nothing to play.
+            //
+            // We invoke _eb1 directly with the controller as self. Used at:
+            //   - Player A's match start (their first offensive drive)
+            //   - After applyOutcome on every subsequent received drive
+            // Idempotent: if obj_ball already exists, _eb1 is skipped.
+            function forceLocalDrive(yardLine) {
+                try {
+                    var m = _6E2._Ue2(71);
+                    if (!m) return false;
+                    // Drop any lingering kickoff button — it gates the
+                    // controller's step and would re-trigger the dead path.
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2) continue;
+                        if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
+                            inst._HL2 = true;
+                        }
+                    }
+                    // Field state for a fresh 1st & 10.
+                    // _._6F is signed: positive = own half (0..50),
+                    // negative = opp half (-1..-50, the red zone). Clamp to
+                    // engine's valid range but PRESERVE sign — a turnover in
+                    // our own red zone legitimately needs a negative value.
+                    m._UD  = m._0z;
+                    m._t11 = 1;
+                    m._l61 = 10;
+                    m._6F  = (typeof yardLine === 'number') ? yardLine : 25;
+                    if (m._6F < -50) m._6F = -50;
+                    if (m._6F >  50) m._6F =  50;
+                    if (m._501 == null || m._501 === 0) m._501 = 1;
+                    m._Vy  = 2;
+                    // _kp = 1 is REQUIRED by obj_controller case-1 to fire _eb1
+                    // (spawns 22 players + ball). But _kp = 1 in _y11 means
+                    // "snap, ball live, waiting for input release" — a state
+                    // the engine cannot exit on its own in this hooked setup,
+                    // so the play would freeze after spawning. We set _kp = 1
+                    // just long enough to spawn, then reset to _kp = 0
+                    // (pre-snap, waiting for the user's tap to begin the play).
+                    m._kp  = 1;
+
+                    // Skip _eb1 if ball already on the field (we're mid-drive).
+                    var ballCount = 0;
+                    for (var j = 0; j < all.length; j++) {
+                        var x = all[j];
+                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') ballCount++;
+                    }
+                    if (ballCount > 0) {
+                        m._kp = 0;       // already-spawned scene → ready for input
+                        return true;
+                    }
+
+                    var ebIdx = _Y._OU1.indexOf('gml_Script_s_set_up_play');
+                    var ebFn  = ebIdx >= 0 ? _Y._PU1[ebIdx] : null;
+                    if (typeof ebFn !== 'function') return false;
+                    ebFn(m, _Sc2, 0);
+
+                    // Drop to pre-snap so the engine's _y11 case-0 runs and
+                    // waits for the user's input to set _kp = 1 (real snap).
+                    m._kp = 0;
+                    return true;
+                } catch (e) {
+                    console.log('[2p-rb] forceLocalDrive err:', e);
+                    return false;
+                }
+            }
+            window._rb2p_forceLocalDrive = forceLocalDrive;
+            // Public alias documented in "how the hell can I not do this,
+            // actually wait, now I can.md" — call this from devtools to force
+            // the user offense at any signed yard line.
+            window.__summonUserOffense  = forceLocalDrive;
+
             // Generalised: set up a match between BUFF (uid 0) and KC (uid 5)
             // with the local user's team determined by role. _gx wants the
             // "random" opponent uid via _dq(31) and the user uid via _._Ip.
@@ -749,22 +828,78 @@
                     if (st) st._fx = 0;
                     _Hj(STATE_MATCH);
 
-                    if (role === 'b') {
-                        // Park B in WAIT state until A's first drive lands.
+                    if (role === 'a') {
+                        // Force Player A onto offense at match start.
+                        // The engine's natural opening sequence may award
+                        // first possession to either team via a coin-flip;
+                        // when it goes to B's team the AI drive simulator
+                        // (which has been gutted) would normally run that
+                        // possession, so A is stuck staring at a frozen
+                        // field with no offense to play. Fix: as soon as
+                        // rm_match is live, slam _UD to A's team and write
+                        // _Vy = 1 so the engine runs case-1 (possession
+                        // start / kickoff init) for A — same path that
+                        // applyOutcome uses on every subsequent turn.
+                        // Sentinels are cleared so the just-installed _1c1
+                        // wrapper doesn't see the override as a possession
+                        // loss and SEND a phantom outcome.
+                        var triesA = 0;
+                        var pollA = setInterval(function () {
+                            triesA++;
+                            try {
+                                if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) {
+                                    if (triesA > 400) clearInterval(pollA);
+                                    return;
+                                }
+                                var m = _6E2._Ue2(71);
+                                if (!m || m._0z == null) {
+                                    if (triesA > 400) clearInterval(pollA);
+                                    return;
+                                }
+                                // forceLocalDrive: kills obj_btn_kickoff,
+                                // sets field state, calls _eb1 to spawn
+                                // 11 offensive + 11 defensive + ball. Without
+                                // this the engine sits forever on the kickoff
+                                // staging screen and X never triggers.
+                                m._2c1 = m._Vy;
+                                if (!forceLocalDrive(25)) {
+                                    if (triesA > 400) clearInterval(pollA);
+                                    return;
+                                }
+                                window._rb2p_waitingForOpponent = false;
+                                window._rb2p_sendInProgress      = false;
+                                window._rb2p_lastApplyTs         = Date.now();
+                                clearInterval(pollA);
+                            } catch (e) {
+                                if (triesA > 400) clearInterval(pollA);
+                            }
+                        }, 50);
+                    } else if (role === 'b') {
+                        // Bug 4: park B until A's first drive lands.
+                        // Old loop bailed at tries > 100 (≈5s) and used
+                        // _Vy = 10 as the wait sentinel; both wrong. Now we
+                        // wait up to 20s for both rm_match AND the match
+                        // singleton to exist, then flip the proper sentinel
+                        // (_rb2p_waitingForOpponent) — the poll loop in the
+                        // bridge IIFE will pick it up and show the overlay.
                         var tries = 0;
                         var poll = setInterval(function () {
                             tries++;
                             try {
-                                var m = _6E2._Ue2(71);
-                                if (!m || m._0z == null) {
-                                    if (tries > 100) clearInterval(poll);
+                                if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) {
+                                    if (tries > 400) clearInterval(poll);
                                     return;
                                 }
-                                m._UD = m._0z ? 0 : 1;
-                                m._Vy = 10;
+                                var m = _6E2._Ue2(71);
+                                if (!m || m._0z == null) {
+                                    if (tries > 400) clearInterval(poll);
+                                    return;
+                                }
+                                m._UD = m._0z ? 0 : 1;          // opponent has ball
+                                window._rb2p_waitingForOpponent = true;
                                 clearInterval(poll);
                             } catch (e) {
-                                if (tries > 100) clearInterval(poll);
+                                if (tries > 400) clearInterval(poll);
                             }
                         }, 50);
                     }
@@ -970,6 +1105,21 @@
             var STATE_MATCH = 17;
             var MATCH_ID = 71;   // singleton match instance id
 
+            // ===== Cross-script wait/send sentinels (Bug 2 + Bug 5) =====
+            // _rb2p_waitingForOpponent: TRUE when the local player has lost
+            //   possession and is awaiting an outcome from Firebase. Drives
+            //   the WAITING overlay. Replaces the brittle `_Vy === 10` check.
+            // _rb2p_sendInProgress: one-shot guard so the _1c1 wrapper sends
+            //   exactly once per drive even though the engine may invoke the
+            //   possession-change script multiple times during kickoff/post-
+            //   turnover state walks. Cleared only by applyOutcome.
+            // _rb2p_lastApplyTs: cooldown floor — _1c1 SENDs within 2s of an
+            //   applyOutcome are suppressed (handles kickoff transitions that
+            //   briefly flip _UD around).
+            if (window._rb2p_waitingForOpponent == null) window._rb2p_waitingForOpponent = false;
+            if (window._rb2p_sendInProgress == null)    window._rb2p_sendInProgress    = false;
+            if (window._rb2p_lastApplyTs == null)       window._rb2p_lastApplyTs       = 0;
+
             // ===== _twoPlayer API surface =====
             window._twoPlayer = {
                 pending: [],
@@ -1043,29 +1193,109 @@
             }
 
             // ===== Hook _1c1 to SEND on possession change =====
-            // The flag below short-circuits the SEND path when we ourselves are
-            // calling _1c1 from applyOutcome (avoids infinite loops).
+            // Bug 1 fix: GameMaker scripts live in _Y._PU1 (indexed by the
+            // _Y._OU1 name table), NOT on window. The previous hook checked
+            // `typeof window._1c1 !== 'function'` and returned immediately,
+            // so the wrap never installed and outcomes were never sent.
+            //
+            // Bug 5 fix: the engine may call _1c1 multiple times during one
+            // logical possession change (kickoff sequence flips _UD briefly,
+            // post-turnover detail cases re-enter the script). Without a
+            // one-shot guard we'd send several outcomes per drive and the
+            // receiver would apply the last one, which is usually a half-
+            // initialized state — that's the "drive ends prematurely" report.
+            // _rb2p_sendInProgress gates this: set on first valid send, cleared
+            // only when applyOutcome runs on this side (i.e. our turn).
             var applyingOutcome = false;
             var orig1c1 = null;
             var hooked1c1 = false;
+            var hooked1c1Idx = -1;
             function hook1c1() {
-                if (hooked1c1 || typeof window._1c1 !== 'function') return;
-                orig1c1 = window._1c1;
-                hooked1c1 = true;
-                window._1c1 = function (_, t) {
-                    var pre = readMatch();
-                    var prevVy = pre ? pre._2c1 || pre._Vy : null;
-                    orig1c1.call(this, _, t);
-                    if (applyingOutcome) return;
-                    var post = readMatch();
-                    if (!pre || !post) return;
-                    // Only SEND when the *local* user just lost possession.
-                    if (pre._UD === pre._0z && post._UD !== post._0z) {
+                if (hooked1c1) return;
+                try {
+                    if (typeof _Y === 'undefined' || !_Y._OU1 || !_Y._PU1) return;
+                    var idx = _Y._OU1.indexOf('gml_Script_s_change_possession');
+                    if (idx < 0) idx = _Y._OU1.indexOf('gml_Script__1c1');
+                    if (idx < 0) return;
+                    var fn = _Y._PU1[idx];
+                    if (typeof fn !== 'function') return;
+                    if (fn._p2p_hooked) { hooked1c1 = true; hooked1c1Idx = idx; return; }
+                    orig1c1 = fn;
+                    var wrapped = function (_, t) {
+                        var pre = readMatch();
+                        var prevVy = pre ? (pre._2c1 || pre._Vy) : null;
+                        orig1c1.call(this, _, t);
+                        if (applyingOutcome) return;
+                        var post = readMatch();
+                        if (!pre || !post) return;
+                        // Local user must have just lost possession this call.
+                        if (!(pre._UD === pre._0z && post._UD !== post._0z)) return;
+                        // One-shot guard: ignore re-entries within the same drive.
+                        if (window._rb2p_sendInProgress) return;
+                        // Cooldown after applyOutcome — kickoff transitions can
+                        // briefly flip _UD and trick us into sending a bogus
+                        // outcome on the first frame of our own drive.
+                        if (Date.now() - (window._rb2p_lastApplyTs || 0) < 2000) return;
+                        window._rb2p_sendInProgress = true;
+                        window._rb2p_waitingForOpponent = true;
                         try { window._twoPlayer.send(buildOutcome(pre, post, prevVy)); }
                         catch (e) { console.log('[2P] send err', e); }
-                    }
-                };
+                    };
+                    wrapped._p2p_hooked = true;
+                    _Y._PU1[idx] = wrapped;
+                    hooked1c1 = true;
+                    hooked1c1Idx = idx;
+                } catch (e) { /* registry not ready yet */ }
             }
+
+            // ===== Hook _Ib1 (s_update_commentary) to suppress UD flipping =====
+            // Critical fix: _Ib1 contains code that writes
+            //   _._UD = _._0z ? 0 : 1   (force opponent to have ball)
+            //   _._UD = (_._0z ? 0 : 1) (kickoff announce path)
+            // These exist because in single-player Retro Bowl the AI drives an
+            // alternating possession cycle. In our 2P build the AI offense is
+            // gutted (case 10 is a no-op) and possession is managed via the
+            // Firebase _1c1 hook. So letting _Ib1 run freely lets it flip _UD
+            // away from the local user, which routes the engine into the
+            // dead AI-offense path: field empties out, "Kansas City in their
+            // own half" caption appears, no offense for the local user.
+            //
+            // Fix: make _Ib1 a no-op on the local side. Clock-keeping and
+            // possession-change events are handled by:
+            //   • applyOutcome (clock/quarter from outcome payload)
+            //   • _1c1 wrapper (possession change → SEND to Firebase)
+            //   • engine's _Id1 (ticks _r11/_s11 during live plays)
+            // so we don't need _Ib1's commentary FSM at all in 2P.
+            var hookedIb1 = false;
+            function hookIb1Noop() {
+                if (hookedIb1) return;
+                try {
+                    if (typeof _Y === 'undefined' || !_Y._OU1 || !_Y._PU1) return;
+                    var idx = _Y._OU1.indexOf('gml_Script_s_update_commentary');
+                    if (idx < 0) return;
+                    var fn = _Y._PU1[idx];
+                    if (typeof fn !== 'function') return;
+                    if (fn._p2p_noop) { hookedIb1 = true; return; }
+                    var noop = function (_, t) { /* intentionally empty */ };
+                    noop._p2p_noop = true;
+                    _Y._PU1[idx] = noop;
+                    hookedIb1 = true;
+                } catch (e) {}
+            }
+
+            // ===== Watchdog: clamp _._UD = _._0z when not waiting =====
+            // Belt-and-braces guard. If anything (engine path we missed,
+            // re-init, etc.) flips _._UD away from _._0z while we're meant
+            // to be on offense, force it back. Runs every 100ms.
+            setInterval(function () {
+                try {
+                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
+                    if (window._rb2p_waitingForOpponent === true) return;  // legit waiting
+                    var m = getMatch();
+                    if (!m || m._0z == null) return;
+                    if (m._UD !== m._0z) m._UD = m._0z;
+                } catch (e) {}
+            }, 100);
 
             function getMatch() {
                 try { return _6E2._Ue2(MATCH_ID); } catch (e) { return null; }
@@ -1088,10 +1318,33 @@
                 var userIdx = post._0z;
                 var oppIdx = userIdx ? 0 : 1;
                 var type = inferType(prevVy);
-                // _._6F after _1c1 is from the new possessing team's view.
-                // Positive = own half, so abs(_6F) is "yards from own goal".
-                var yard = Math.abs(post._6F);
-                var ownSide = post._6F >= 0;
+                // _._6F after _1c1 is already mirrored: the engine does
+                // `_._6F = -_._6F` inside _1c1 (verified by reading the script
+                // body in retrobowl.js). That mirror flips A's perspective
+                // into the new possessor's view, which is the same view B
+                // uses on B's device. So `post._6F` is directly compatible
+                // with B's _._6F — preserve the sign, do NOT take Math.abs.
+                // Math.abs() was the historic bug: it dropped the sign and
+                // left the receiver always in their own half, even when the
+                // turnover happened in their own red zone (where they should
+                // start backed up at -X).
+                var yard = post._6F;
+                var ownSide = yard >= 0;   // kept for message text only
+                // Capture the on-screen clock state. The scoreboard renders
+                // _._r11 (minutes remaining) and _._s11 (seconds remaining)
+                // directly — NOT _._Yc1, which is actually a tick-allowance
+                // counter that the engine decrements alongside _s11 in _Id1.
+                // Syncing _Yc1 instead of r11/s11 was the historic bug — the
+                // receiver would queue N seconds of clock-down and the engine
+                // would visibly count down from there.
+                var minLeft = 0, secLeft = 0;
+                try {
+                    var raw = _6E2._Ue2(MATCH_ID);
+                    if (raw) {
+                        if (typeof raw._r11 === 'number') minLeft = raw._r11;
+                        if (typeof raw._s11 === 'number') secLeft = raw._s11;
+                    }
+                } catch (e) {}
                 return {
                     type: type,
                     yardLine: yard,
@@ -1099,9 +1352,11 @@
                     scoreUser: post._Sb1[userIdx],
                     scoreOpp:  post._Sb1[oppIdx],
                     quarter: post._Wy,
+                    minutesLeft: minLeft,
+                    secondsLeft: secLeft,
                     fromTeam: pre._bL[pre._UD],
                     toTeam:   post._bL[post._UD],
-                    message: messageFor(type, yard, ownSide),
+                    message: messageFor(type, Math.abs(yard), ownSide),
                     ts: Date.now()
                 };
             }
@@ -1112,6 +1367,13 @@
             // reflect the AI's drive outcome.
             function applyOutcome(outcome) {
                 try {
+                    // Bug 2/5: clear wait + send sentinels BEFORE any match
+                    // mutation. If something below throws, we still leave the
+                    // flags in a sane state and the next outcome can be drained.
+                    window._rb2p_waitingForOpponent = false;
+                    window._rb2p_sendInProgress    = false;
+                    window._rb2p_lastApplyTs       = Date.now();
+
                     var m = getMatch();
                     if (!m) return false;
                     var oppIdx = m._0z ? 0 : 1;
@@ -1136,21 +1398,63 @@
                             else if (outcome.type === 'SAFETY') m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 2;
                         }
                     }
+                    // Clock + quarter sync. The scoreboard reads _._r11 (min)
+                    // and _._s11 (sec) directly; _._Yc1 is a tick-allowance
+                    // queue that the engine decrements via _Id1 alongside
+                    // _s11. So we sync r11/s11 (the visible value) and zero
+                    // _Yc1 (no pending ticks) — the engine resumes from this
+                    // exact clock state when B plays.
+                    if (typeof outcome.quarter      === 'number') m._Wy  = outcome.quarter;
+                    if (typeof outcome.minutesLeft  === 'number') m._r11 = outcome.minutesLeft;
+                    if (typeof outcome.secondsLeft  === 'number') m._s11 = outcome.secondsLeft;
+                    m._Yc1 = 0;   // no carryover tick allowance from prior drive
+                    window._rb2p_lastSyncedClock = {
+                        Wy: outcome.quarter,
+                        r11: outcome.minutesLeft,
+                        s11: outcome.secondsLeft
+                    };
+
                     applyingOutcome = true;
                     try {
-                        m._UD = m._0z;                          // user has ball
-                        m._6F = outcome.yardLine || 25;          // their yard line
-                        if (m._6F < 0) m._6F = 0;
-                        if (m._6F > 50) m._6F = 50;
-                        m._t11 = 1;                              // 1st down
-                        m._l61 = 10;                             // 10 to go
-                        m._2c1 = m._Vy;                          // stash prior Vy (mirrors _1c1)
-                        m._Vy = 2;                               // drive in progress (skip kickoff ceremony)
+                        // Stash prior Vy + clear sub-message before the
+                        // forceLocalDrive call (which writes _Vy etc.).
+                        m._2c1 = m._Vy;
                         m._8c1 = 0;
-                        m._831 = '';                             // clear sub-message
-                        // Don't call _Ib1 — Vy=1 triggers a kickoff cascade
-                        // that flips possession right back to AI. The engine
-                        // picks up Vy=2 on its next tick naturally.
+                        m._831 = '';
+                        // forceLocalDrive does the heavy lifting: kills any
+                        // residual obj_btn_kickoff, sets _UD/_t11/_l61/_6F/_Vy
+                        // /_kp, and calls _eb1 to spawn the 22 players + ball.
+                        //
+                        // Yard-line policy:
+                        //   • TD / FG by the sender → receiver gets a kickoff
+                        //     and conventionally starts at their own 25. The
+                        //     yard line in the outcome (which would be the
+                        //     end-zone position) is ignored.
+                        //   • All other types (PUNT, INT, fumble, turnover-
+                        //     on-downs, etc.) → use outcome.yardLine signed.
+                        //     The sender already mirrored via _1c1's negation,
+                        //     so positive = our half, negative = opp half
+                        //     (we're backed up in our own end zone).
+                        var yard;
+                        if (outcome.type === 'TD' || outcome.type === 'FG') {
+                            yard = 25;
+                        } else if (typeof outcome.yardLine === 'number') {
+                            yard = outcome.yardLine;
+                        } else {
+                            yard = 25;
+                        }
+                        // Clamp to engine's valid range.
+                        if (yard < -50) yard = -50;
+                        if (yard >  50) yard =  50;
+                        if (typeof window._rb2p_forceLocalDrive === 'function') {
+                            window._rb2p_forceLocalDrive(yard);
+                        } else {
+                            m._UD  = m._0z;
+                            m._6F  = yard;
+                            m._t11 = 1;
+                            m._l61 = 10;
+                            m._Vy  = 2;
+                        }
                     } finally {
                         applyingOutcome = false;
                     }
@@ -1210,11 +1514,14 @@
                         return;
                     }
                     hook1c1();
+                    hookIb1Noop();
                     var m = getMatch();
                     if (!m) { hideWait(); return; }
-                    // AI possession + FSM stalled at the deleted case-10.
-                    var aiStalled = (m._UD !== m._0z) && (m._Vy === 10);
-                    if (aiStalled) {
+                    // Bug 2: _rb2p_waitingForOpponent is the single sentinel.
+                    // It's set by the _1c1 wrapper when we lose possession,
+                    // and by startTwoPlayerMatch('b') for the initial park.
+                    // _Vy === 10 is unreliable because the engine resets _Vy.
+                    if (window._rb2p_waitingForOpponent === true) {
                         if (window._twoPlayer.pending.length > 0) {
                             var o = window._twoPlayer.pending.shift();
                             if (applyOutcome(o)) hideWait();
@@ -1551,6 +1858,11 @@
                 var secs = Math.floor(rem % 60);
                 return qtrName(q) + ' ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
             }
+            function formatClockRS(q, mins, secs) {
+                mins = Math.max(0, mins | 0);
+                secs = Math.max(0, secs | 0);
+                return qtrName(q) + ' ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+            }
 
             var liveSeq = 0;
             setInterval(function () {
@@ -1564,11 +1876,16 @@
                     // UD swaps around and either side can be "on offense"
                     // briefly, so we always emit and let the receiver gate.
                     var data = {
-                        myScore:  Number(m._Sb1[m._0z]) || 0,
-                        oppScore: Number(m._Sb1[1 - m._0z]) || 0,
-                        elapsed:  Number(m._Yc1) || 0,
-                        duration: ((Number(m._5F) || 2) * 60),
-                        quarter:  Number(m._Wy) || 1,
+                        myScore:     Number(m._Sb1[m._0z]) || 0,
+                        oppScore:    Number(m._Sb1[1 - m._0z]) || 0,
+                        // Legacy (elapsed/duration) kept for backward compat;
+                        // new field is minutesLeft/secondsLeft straight off
+                        // the engine's display registers.
+                        elapsed:     Number(m._Yc1) || 0,
+                        duration:    ((Number(m._5F) || 2) * 60),
+                        minutesLeft: Number(m._r11),
+                        secondsLeft: Number(m._s11),
+                        quarter:     Number(m._Wy) || 1,
                         seq: ++liveSeq,
                         ts: Date.now()
                     };
@@ -1592,24 +1909,35 @@
                     // Sender's myScore = sender's team = my opponent's team
                     // Sender's oppScore = sender's opp = my team
                     //
-                    // We only sync _Sb1 (scoreboard) into the engine — it's
-                    // stable across frames so the in-game scoreboard reflects
-                    // the live value. _Yc1 (clock elapsed) and _Wy (quarter)
-                    // get reset every frame by the engine on the stalled side
-                    // so trying to mirror them is pointless. The HTML overlay
-                    // below is the authoritative live-clock display while
-                    // waiting.
+                    // Sync _Sb1 (scoreboard), _r11/_s11 (clock minutes:seconds),
+                    // and _Wy (quarter) into the engine while we're on defense.
+                    // The scoreboard renderer (_qh1) reads _r11/_s11 — those
+                    // are the visible MIN:SEC remaining. _Yc1 is a different
+                    // beast (tick-allowance counter) and writing it just
+                    // queues clock-down ticks; we deliberately set it to 0 so
+                    // the engine doesn't try to drain the clock on our side
+                    // while we're parked.
                     if (m._UD !== m._0z) {
                         m._Sb1[1 - m._0z] = data.myScore;
                         m._Sb1[m._0z]     = data.oppScore;
+                        if (typeof data.minutesLeft === 'number') m._r11 = data.minutesLeft;
+                        if (typeof data.secondsLeft === 'number') m._s11 = data.secondsLeft;
+                        if (typeof data.quarter === 'number') m._Wy = data.quarter;
+                        m._Yc1 = 0;   // stop the local engine from ticking the clock
                     }
                     // Always refresh the WAITING overlay text, even if we
                     // can't safely mutate m (e.g. m doesn't exist yet).
                     if (window._twoPlayer && window._twoPlayer.refreshWaitDisplay) {
+                        var clockText;
+                        if (typeof data.minutesLeft === 'number' && typeof data.secondsLeft === 'number') {
+                            clockText = formatClockRS(data.quarter, data.minutesLeft, data.secondsLeft);
+                        } else {
+                            clockText = formatClock(data.quarter, data.elapsed, data.duration);
+                        }
                         window._twoPlayer.refreshWaitDisplay(
                             data.oppScore,    // me, from sender's perspective
                             data.myScore,     // opp, from sender's perspective
-                            formatClock(data.quarter, data.elapsed, data.duration)
+                            clockText
                         );
                     }
                 }
