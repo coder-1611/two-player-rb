@@ -771,14 +771,16 @@
                     if (m._6F >  50) m._6F =  50;
                     if (m._501 == null || m._501 === 0) m._501 = 1;
                     m._Vy  = 2;
-                    // _kp = 1 is REQUIRED by obj_controller case-1 to fire _eb1
-                    // (spawns 22 players + ball). But _kp = 1 in _y11 means
-                    // "snap, ball live, waiting for input release" — a state
-                    // the engine cannot exit on its own in this hooked setup,
-                    // so the play would freeze after spawning. We set _kp = 1
-                    // just long enough to spawn, then reset to _kp = 0
-                    // (pre-snap, waiting for the user's tap to begin the play).
-                    m._kp  = 1;
+                    // CRITICAL: match._kp = 2 is the "active play" state.
+                    // Verified empirically:
+                    //   • obj_ball's step event (_I7) GATES its body on
+                    //     `match._kp == 2`. If match._kp != 2, the ball is
+                    //     inert — _y11 never runs, _q01(1) is never read,
+                    //     taps do nothing, "GET READY!" stays forever.
+                    //   • obj_controller's step switch maps `_._kp == 2` to
+                    //     the case that calls _eb1 (spawn) + _Ad1 (clock).
+                    // Setting _kp to 0 or 1 here = silent freeze.
+                    m._kp  = 2;
 
                     // Skip _eb1 if ball already on the field (we're mid-drive).
                     var ballCount = 0;
@@ -787,7 +789,7 @@
                         if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') ballCount++;
                     }
                     if (ballCount > 0) {
-                        m._kp = 0;       // already-spawned scene → ready for input
+                        m._kp = 2;       // active play state — ball step runs
                         return true;
                     }
 
@@ -796,9 +798,9 @@
                     if (typeof ebFn !== 'function') return false;
                     ebFn(m, _Sc2, 0);
 
-                    // Drop to pre-snap so the engine's _y11 case-0 runs and
-                    // waits for the user's input to set _kp = 1 (real snap).
-                    m._kp = 0;
+                    // Stay in "active play" state so the ball's step event
+                    // (_I7 / _y11) actually executes and processes user taps.
+                    m._kp = 2;
                     return true;
                 } catch (e) {
                     console.log('[2p-rb] forceLocalDrive err:', e);
