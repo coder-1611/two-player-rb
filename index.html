@@ -1274,24 +1274,20 @@
                 } catch (e) { /* registry not ready yet */ }
             }
 
-            // ===== Hook _Ib1 (s_update_commentary) to suppress UD flipping =====
-            // Critical fix: _Ib1 contains code that writes
-            //   _._UD = _._0z ? 0 : 1   (force opponent to have ball)
-            //   _._UD = (_._0z ? 0 : 1) (kickoff announce path)
-            // These exist because in single-player Retro Bowl the AI drives an
-            // alternating possession cycle. In our 2P build the AI offense is
-            // gutted (case 10 is a no-op) and possession is managed via the
-            // Firebase _1c1 hook. So letting _Ib1 run freely lets it flip _UD
-            // away from the local user, which routes the engine into the
-            // dead AI-offense path: field empties out, "Kansas City in their
-            // own half" caption appears, no offense for the local user.
+            // ===== Hook _Ib1 (s_update_commentary): RUN it, then re-clamp UD =====
+            // Earlier fix made _Ib1 a full no-op to stop it flipping _._UD.
+            // That broke gameplay: _Ib1 ALSO advances `_._kp` between plays
+            // (kp=2 transitions after a snap, post-play state changes, etc.)
+            // and ticks the inter-play commentary FSM. Noop'ing it froze the
+            // snap — formation + "GET READY!" stayed on screen, input had
+            // nowhere to land, every tap was ignored.
             //
-            // Fix: make _Ib1 a no-op on the local side. Clock-keeping and
-            // possession-change events are handled by:
-            //   • applyOutcome (clock/quarter from outcome payload)
-            //   • _1c1 wrapper (possession change → SEND to Firebase)
-            //   • engine's _Id1 (ticks _r11/_s11 during live plays)
-            // so we don't need _Ib1's commentary FSM at all in 2P.
+            // Better fix: WRAP, don't replace. Call the original (so _kp /
+            // _Vy transitions still happen), then if _._UD ended up flipped
+            // away from _._0z AND we're not legitimately in waiting state,
+            // snap it back BEFORE the next frame's draw uses the wrong team
+            // name. This catches the stray writes inside _Ib1 without
+            // breaking the FSM transitions it owns.
             var hookedIb1 = false;
             function hookIb1Noop() {
                 if (hookedIb1) return;
@@ -1301,10 +1297,20 @@
                     if (idx < 0) return;
                     var fn = _Y._PU1[idx];
                     if (typeof fn !== 'function') return;
-                    if (fn._p2p_noop) { hookedIb1 = true; return; }
-                    var noop = function (_, t) { /* intentionally empty */ };
-                    noop._p2p_noop = true;
-                    _Y._PU1[idx] = noop;
+                    if (fn._p2p_clamp) { hookedIb1 = true; return; }
+                    var origIb1 = fn;
+                    var clamp = function (_, t) {
+                        var m = (typeof _6E2 !== 'undefined') ? _6E2._Ue2(MATCH_ID) : null;
+                        var preUD = m ? m._UD : null;
+                        origIb1.call(this, _, t);
+                        // If _Ib1 flipped UD away from _0z and we're meant to
+                        // be on offense, restore it immediately (same tick).
+                        if (m && m._0z != null && window._rb2p_waitingForOpponent !== true) {
+                            if (m._UD !== m._0z) m._UD = m._0z;
+                        }
+                    };
+                    clamp._p2p_clamp = true;
+                    _Y._PU1[idx] = clamp;
                     hookedIb1 = true;
                 } catch (e) {}
             }
