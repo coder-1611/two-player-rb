@@ -2,9 +2,35 @@
 <html lang="en">
 
 <head>
+    <!-- ============================================================
+         Auto cache-bust (runs BEFORE anything else loads).
+         GitHub Pages caches index.html at the Fastly CDN for ~10 min
+         with no way to change the HTTP headers. To make deploys
+         propagate to users without them having to hard-reload, we
+         force ONE cache-bust per browser session: the first time the
+         user opens this page in a session, we redirect to the same
+         URL with a fresh ?v=<timestamp> query string. The CDN treats
+         that as a different cache key and serves the latest content.
+         sessionStorage flag prevents an infinite reload loop.
+         ============================================================ -->
+    <script>
+        (function () {
+            try {
+                if (sessionStorage.getItem('__rb_cb')) return;
+                sessionStorage.setItem('__rb_cb', '1');
+                var u = new URL(location.href);
+                // If the URL already has a fresh ?v=, leave it alone.
+                if (u.searchParams.has('v')) return;
+                u.searchParams.set('v', Date.now().toString(36));
+                location.replace(u.toString());
+            } catch (e) { /* sessionStorage blocked? fall through. */ }
+        })();
+    </script>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta http-equiv="X-Frame-Options" content="DENY" />
-    <meta http-equiv="pragma" content="no-cache" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
