@@ -1330,6 +1330,46 @@
                         // briefly flip _UD and trick us into sending a bogus
                         // outcome on the first frame of our own drive.
                         if (Date.now() - (window._rb2p_lastApplyTs || 0) < 2000) return;
+
+                        // === PICK-6 rule ===
+                        // Every INT in this 2P build automatically becomes a
+                        // defensive touchdown (interception returned for TD).
+                        // Effect:
+                        //   • Opponent's score +6
+                        //   • Sender (we) keep the ball — start a new drive at
+                        //     own 25..40 (kickoff-receive position) right away
+                        //   • Receiver gets a 'PICK_6' outcome that only
+                        //     updates the score; their parked-WAITING state
+                        //     stays the same. The next handoff still happens
+                        //     normally when we ACTUALLY lose possession (punt,
+                        //     downs, TD, FG, etc.).
+                        if (prevVy === 8) {
+                            var m6 = getMatch();
+                            if (m6 && m6._0z != null) {
+                                var oppIdx6 = m6._0z ? 0 : 1;
+                                // Local: +6 to opponent.
+                                m6._Sb1[oppIdx6] = (m6._Sb1[oppIdx6] || 0) + 6;
+                                // Build PICK_6 outcome (carries the +6 score).
+                                var pickOutcome = buildOutcome(pre, post, prevVy);
+                                pickOutcome.type = 'PICK_6';
+                                pickOutcome.scoreOpp = (pickOutcome.scoreOpp || 0) + 6;
+                                pickOutcome.message  = 'Pick 6! Returned for a defensive TD.';
+                                window._rb2p_sendInProgress = true;
+                                try { window._twoPlayer.send(pickOutcome); }
+                                catch (e) { console.log('[2P] pick6 send err', e); }
+                                // Stay on offense: flip everything back + new drive.
+                                m6._UD = m6._0z;
+                                var kickYard = -(25 + Math.floor(Math.random() * 16));
+                                if (typeof window._rb2p_forceLocalDrive === 'function') {
+                                    window._rb2p_forceLocalDrive(kickYard);
+                                }
+                                window._rb2p_waitingForOpponent = false;
+                                window._rb2p_lastApplyTs = Date.now();
+                                window._rb2p_sendInProgress = false;
+                            }
+                            return;
+                        }
+
                         window._rb2p_sendInProgress = true;
                         window._rb2p_waitingForOpponent = true;
                         try { window._twoPlayer.send(buildOutcome(pre, post, prevVy)); }
@@ -1559,6 +1599,38 @@
             // reflect the AI's drive outcome.
             function applyOutcome(outcome) {
                 try {
+                    // PICK_6 special case: sender's defense intercepted us
+                    // (we're the parked side and the opponent is on offense,
+                    // they threw an INT and the engine ruled it a defensive
+                    // TD). We DO NOT take possession — sender keeps the ball
+                    // and starts a new drive on their side. Our job is just
+                    // to mirror the +6 score so our scoreboard is correct.
+                    if (outcome.type === 'PICK_6') {
+                        var mp = getMatch();
+                        if (!mp) return false;
+                        var oppIdxP = mp._0z ? 0 : 1;
+                        if (mp._Sb1) {
+                            if (typeof outcome.scoreUser === 'number') {
+                                mp._Sb1[oppIdxP] = outcome.scoreUser;
+                            }
+                            if (typeof outcome.scoreOpp === 'number') {
+                                mp._Sb1[mp._0z] = outcome.scoreOpp;
+                            }
+                        }
+                        // Stay parked: don't clear waitingForOpponent,
+                        // don't change _UD, don't spawn. Just refresh the
+                        // overlay text so the +6 shows immediately.
+                        if (window._twoPlayer && window._twoPlayer.refreshWaitDisplay) {
+                            window._twoPlayer.refreshWaitDisplay(
+                                mp._Sb1[mp._0z],     // me
+                                mp._Sb1[oppIdxP],    // opp
+                                null                 // leave clock as-is
+                            );
+                        }
+                        console.log('[2P apply v4] type=PICK_6 — +6 to opp, staying parked');
+                        return true;
+                    }
+
                     // Bug 2/5: clear wait + send sentinels BEFORE any match
                     // mutation. If something below throws, we still leave the
                     // flags in a sane state and the next outcome can be drained.
