@@ -947,8 +947,15 @@
                                 // 11 offensive + 11 defensive + ball. Without
                                 // this the engine sits forever on the kickoff
                                 // staging screen and X never triggers.
+                                //
+                                // Opening yard line is randomized 25..40
+                                // (same range as the engine's natural _Zb1
+                                // kickoff math), so A's first drive feels
+                                // like a real game's opening kickoff return
+                                // instead of always starting at own 25.
                                 m._2c1 = m._Vy;
-                                if (!forceLocalDrive(25)) {
+                                var openingYard = 25 + Math.floor(Math.random() * 16);
+                                if (!forceLocalDrive(openingYard)) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
