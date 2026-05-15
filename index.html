@@ -1303,12 +1303,18 @@
                     var origIb1 = fn;
                     var clamp = function (_, t) {
                         var m = (typeof _6E2 !== 'undefined') ? _6E2._Ue2(MATCH_ID) : null;
-                        var preUD = m ? m._UD : null;
                         origIb1.call(this, _, t);
-                        // If _Ib1 flipped UD away from _0z and we're meant to
-                        // be on offense, restore it immediately (same tick).
-                        if (m && m._0z != null && window._rb2p_waitingForOpponent !== true) {
-                            if (m._UD !== m._0z) m._UD = m._0z;
+                        // Bidirectional same-tick clamp (mirrors watchdog).
+                        // Without this, _Ib1 writes _._UD inside its body and
+                        // the engine's NEXT frame draws with the wrong UD —
+                        // closing the live-sync gate before the watchdog's
+                        // 100ms tick can correct it.
+                        if (m && m._0z != null) {
+                            if (window._rb2p_waitingForOpponent === true) {
+                                if (m._UD === m._0z) m._UD = m._0z ? 0 : 1;
+                            } else {
+                                if (m._UD !== m._0z) m._UD = m._0z;
+                            }
                         }
                     };
                     clamp._p2p_clamp = true;
@@ -1317,17 +1323,32 @@
                 } catch (e) {}
             }
 
-            // ===== Watchdog: clamp _._UD = _._0z when not waiting =====
-            // Belt-and-braces guard. If anything (engine path we missed,
-            // re-init, etc.) flips _._UD away from _._0z while we're meant
-            // to be on offense, force it back. Runs every 100ms.
+            // ===== Bidirectional UD watchdog =====
+            // Rule:
+            //   _rb2p_waitingForOpponent === false → user is on offense.
+            //     _._UD must === _._0z so the engine runs user-offense logic.
+            //   _rb2p_waitingForOpponent === true  → opponent is on offense.
+            //     _._UD must !== _._0z so the engine treats us as defense AND
+            //     so the live-sync receiver's gate (`m._UD !== m._0z`) stays
+            //     OPEN. That gate is what writes incoming scoreboard/clock
+            //     values into _._Sb1 / _._r11 / _._s11 — without it, the
+            //     in-game scoreboard freezes at its initial values while the
+            //     HTML waiting overlay (which has no gate) still updates.
+            //
+            // _Ib1 writes _._UD in both directions on its own, so without
+            // this watchdog, every ~100ms _Ib1 can stomp the live-sync gate.
             setInterval(function () {
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
-                    if (window._rb2p_waitingForOpponent === true) return;  // legit waiting
                     var m = getMatch();
                     if (!m || m._0z == null) return;
-                    if (m._UD !== m._0z) m._UD = m._0z;
+                    if (window._rb2p_waitingForOpponent === true) {
+                        // Defense: opponent owns the ball in the engine's view.
+                        if (m._UD === m._0z) m._UD = m._0z ? 0 : 1;
+                    } else {
+                        // Offense: user owns the ball.
+                        if (m._UD !== m._0z) m._UD = m._0z;
+                    }
                 } catch (e) {}
             }, 100);
 
