@@ -256,6 +256,39 @@
             opacity: 0.9;
             min-height: 18px;
         }
+        #rb-lobby .diff-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 0 0 14px 0;
+        }
+        #rb-lobby .diff-label {
+            font-size: 12px;
+            letter-spacing: 3px;
+            opacity: 0.85;
+            margin-right: 6px;
+        }
+        #rb-lobby .diff-btn {
+            font-family: monospace;
+            font-weight: bold;
+            letter-spacing: 2px;
+            font-size: 12px;
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            border: 3px solid #fff;
+            padding: 6px 10px;
+            margin: 0;
+            min-width: 60px;
+            cursor: pointer;
+        }
+        #rb-lobby .diff-btn:hover {
+            background: rgba(255,255,255,0.25);
+        }
+        #rb-lobby .diff-btn.selected {
+            background: #3cff7a;
+            color: #0a3a18;
+            border-color: #3cff7a;
+        }
     </style>
 </head>
 
@@ -344,6 +377,13 @@
             </div>
             <p class="you-are">YOU ARE: <b id="rb-you-role">—</b></p>
             <p class="status" id="rb-status">Waiting for opponent…</p>
+            <div class="diff-row">
+                <span class="diff-label">DEFENSE:</span>
+                <button class="diff-btn" data-dif="easy">EASY</button>
+                <button class="diff-btn" data-dif="medium">MED</button>
+                <button class="diff-btn" data-dif="hard">HARD</button>
+                <button class="diff-btn" data-dif="max">MAX</button>
+            </div>
             <div>
                 <button id="rb-ready" disabled>READY</button>
                 <button id="rb-leave">LEAVE</button>
@@ -769,6 +809,24 @@
                     m._6F  = (typeof yardLine === 'number') ? yardLine : 25;
                     if (m._6F < -50) m._6F = -50;
                     if (m._6F >  50) m._6F =  50;
+
+                    // Apply local 2P difficulty preference.
+                    // _._001 is the per-match difficulty modifier. Lower =
+                    // harder defense (defenders close gaps faster). The
+                    // engine's defense-aim AI does:
+                    //   G = clamp(_._001, 1, 10) / 10  (aggression multiplier)
+                    // Mapping (matches the engine's _Z6 ladder):
+                    //   max:    -5  (G clamps to 0.1, hardest)
+                    //   hard:   -5
+                    //   medium:  2
+                    //   easy:    7
+                    // Default is 'max' if the user hasn't picked anything.
+                    try {
+                        var pref = localStorage.getItem('rb2p_difficulty') || 'max';
+                        var difTable = { max: -5, hard: -5, medium: 2, easy: 7 };
+                        var dif = difTable[pref];
+                        if (typeof dif === 'number') m._001 = dif;
+                    } catch (e) {}
                     if (m._501 == null || m._501 === 0) m._501 = 1;
                     m._Vy  = 2;
                     // CRITICAL: match._kp = 2 is the "active play" state.
@@ -1705,6 +1763,38 @@
         var $status    = document.getElementById('rb-status');
         var $ready     = document.getElementById('rb-ready');
         var $leave     = document.getElementById('rb-leave');
+        var $diffBtns  = lobby.querySelectorAll('.diff-btn');
+
+        // ---- Difficulty toggle (LOCAL ONLY — affects this device's offense)
+        // Persisted to localStorage under 'rb2p_difficulty'. Default = 'max'.
+        // forceLocalDrive reads this same key and applies it to _._001 on
+        // every play setup, so changes take effect from the next drive.
+        function getDif() {
+            try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
+            catch (e) { return 'max'; }
+        }
+        function setDif(v) {
+            try { localStorage.setItem('rb2p_difficulty', v); } catch (e) {}
+            renderDif();
+            // If we're already in a match, apply immediately for the current play.
+            try {
+                if (typeof _ft !== 'undefined' && _ft._gt() === 17) {
+                    var m = window._6E2 ? _6E2._Ue2(71) : null;
+                    var t = { max: -5, hard: -5, medium: 2, easy: 7 }[v];
+                    if (m && typeof t === 'number') m._001 = t;
+                }
+            } catch (e) {}
+        }
+        function renderDif() {
+            var cur = getDif();
+            $diffBtns.forEach(function (b) {
+                b.classList.toggle('selected', b.dataset.dif === cur);
+            });
+        }
+        $diffBtns.forEach(function (b) {
+            b.addEventListener('click', function () { setDif(b.dataset.dif); });
+        });
+        renderDif();
 
         function showView(name) {
             lobby.dataset.active = name;
