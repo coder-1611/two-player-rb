@@ -1323,6 +1323,68 @@
                 } catch (e) {}
             }
 
+            // ===== Drive-end watchdog (CRITICAL) =====
+            // The engine's commentary FSM (_Ib1) drives the cascade after a
+            // play ends: TD → PAT → kickoff → _1c1 (possession change).
+            // Several cases in this cascade route through case 10 (AI play
+            // call), which was GUTTED in the 2P build — case 10 is a no-op.
+            // When the cascade reaches a state that needs case 10, _Vy hangs
+            // forever, _1c1 is never called, and the system never sends a
+            // possession-change outcome to the opponent. Symptom: A scores a
+            // TD, score updates to 6, but the drive never ends — B is stuck
+            // in WAITING forever.
+            //
+            // Known dead-end _Vy values that route to dead case 10:
+            //   4  = 4th-down go-for-it path (calls case 10 to "pick play")
+            //   10 = AI play call itself (gutted)
+            //   11 = PAT setup (cascades to FG kick → can hang on AI kickoff)
+            //
+            // Fix: poll _Vy on the offensive side. If it stays at one of these
+            // dead values for >1.5s, force-end the drive by calling _1c1
+            // directly. The _1c1 wrapper will then send the outcome to the
+            // opponent over Firebase, unblocking their handoff.
+            //
+            // We pre-set _._Vy = 9 (TD) when a score increase is observed so
+            // inferType returns 'TD' and the receiver gets a proper kickoff
+            // (own 25). Otherwise _Vy = 8 (turnover-on-downs).
+            var deadVy = { 4: true, 10: true, 11: true };
+            var stuckVy = null, stuckSince = 0, lastSb = -1;
+            setInterval(function () {
+                try {
+                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
+                    if (window._rb2p_waitingForOpponent === true) return;  // already handed off
+                    var m = getMatch();
+                    if (!m || m._0z == null || m._Sb1 == null) return;
+
+                    // Track score so we can pick TD vs turnover for the forced end.
+                    var myScore = m._Sb1[m._0z];
+                    if (lastSb < 0) lastSb = myScore;
+
+                    if (m._Vy !== stuckVy) {
+                        stuckVy = m._Vy;
+                        stuckSince = Date.now();
+                        return;
+                    }
+                    if (!deadVy[m._Vy]) return;
+                    if (Date.now() - stuckSince < 1500) return;
+                    if (Date.now() - (window._rb2p_lastApplyTs || 0) < 3000) return;
+                    if (window._rb2p_sendInProgress) return;
+
+                    // Score went up since last reset → TD/FG. Otherwise turnover-on-downs.
+                    var scoredRecently = myScore > lastSb;
+                    var endVy = scoredRecently ? 9 : 8;  // 9 = TD, 8 = turnover
+                    console.log('[2P] drive stuck at _Vy=' + m._Vy + ' for ' +
+                                (Date.now() - stuckSince) + 'ms — forcing end as Vy=' + endVy +
+                                ' (myScore ' + lastSb + '→' + myScore + ')');
+                    m._Vy = endVy;
+                    m._2c1 = endVy;  // _1c1 reads pre._2c1 || pre._Vy via inferType
+                    var idx = _Y._OU1.indexOf('gml_Script_s_change_possession');
+                    if (idx >= 0) _Y._PU1[idx](m, _Sc2);
+                    lastSb = myScore;
+                    stuckSince = Date.now();
+                } catch (e) {}
+            }, 250);
+
             // ===== Bidirectional UD watchdog =====
             // Rule:
             //   _rb2p_waitingForOpponent === false → user is on offense.
