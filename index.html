@@ -1616,16 +1616,23 @@
                         //     random) — we mirror that exact range here.
                         //   • PUNT → use outcome.yardLine (signed). The
                         //     engine's _Dc1 already randomized the punt
-                        //     distance via _hq(45, 70), so this value IS the
-                        //     random landing spot.
+                        //     distance, so this value IS the random landing
+                        //     spot in the receiver's frame.
                         //   • INT / fumble / turnover-on-downs / missed FG →
-                        //     use outcome.yardLine (signed). This is the
-                        //     literal spot where the ball was downed.
-                        //   The sign convention: post-_1c1 _._6F is already
-                        //   in the receiver's frame (positive = own half).
+                        //     NEGATE outcome.yardLine. User-observed bug:
+                        //     in the real-engine INT cascade the sign comes
+                        //     across one direction too many vs the synthetic
+                        //     _1c1 call, so an INT at A's opp 1 (scoring
+                        //     spot) was landing B at B's opp 1 (also scoring
+                        //     spot) instead of B's own 1 (pinned 99 yards
+                        //     from B's TD). Flipping the sign on receive
+                        //     gives the physically correct location for all
+                        //     turnover-type outcomes.
                         var yard;
                         if (outcome.type === 'TD' || outcome.type === 'FG') {
                             yard = 25 + Math.floor(Math.random() * 16);  // 25..40
+                        } else if (outcome.type === 'INT' || outcome.type === 'OTHER') {
+                            yard = -(outcome.yardLine || 0);
                         } else if (typeof outcome.yardLine === 'number') {
                             yard = outcome.yardLine;
                         } else {
