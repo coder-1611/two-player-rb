@@ -1628,26 +1628,46 @@
                         //     from B's TD). Flipping the sign on receive
                         //     gives the physically correct location for all
                         //     turnover-type outcomes.
-                        // === v2-NEGATE policy (turnovers go to opposite side) ===
+                        // === v3 policy ===
+                        //   • TD / FG (or any score increase of 3+) → KICKOFF
+                        //     to receiver's own 25..40 (random, mimics _Zb1).
+                        //   • INT / fumble / turnover-on-downs / missed FG /
+                        //     unlabeled possession change → NEGATE yardLine.
+                        //     Physical ball stays in same spot, perspective
+                        //     swaps, so the signed _._6F flips sign.
+                        //   • PUNT → keep yardLine SIGNED (do NOT negate).
+                        //     The ball physically TRAVELED during the punt;
+                        //     outcome.yardLine is already the landing spot in
+                        //     the receiver's frame from _1c1's mirror after
+                        //     _Dc1 advanced the punt distance.
+                        var oppIdx2 = m._0z ? 0 : 1;
+                        // Compare sender's score (their own team) vs whatever
+                        // we already had for the opponent team (= sender) in
+                        // _Sb1 BEFORE this outcome's score mirror overwrote
+                        // it. We can recover this from outcome.scoreUser
+                        // (post-event) minus the change inferred from the
+                        // outcome type — but simpler: just trust score
+                        // delta = scoreUser - what's now in m._Sb1[oppIdx]
+                        // (we already mirrored the new value above, so the
+                        // delta is captured pre-mirror by saving it earlier).
+                        // For now, take the absolute jump implied by type:
+                        var isKickoff = (outcome.type === 'TD' ||
+                                         outcome.type === 'FG');
+                        var isPunt    = (outcome.type === 'PUNT');
                         var yard;
-                        if (outcome.type === 'TD' || outcome.type === 'FG') {
-                            yard = 25 + Math.floor(Math.random() * 16);  // kickoff 25..40
+                        if (isKickoff) {
+                            yard = 25 + Math.floor(Math.random() * 16);
+                        } else if (isPunt) {
+                            yard = outcome.yardLine;     // engine's signed landing spot
                         } else if (typeof outcome.yardLine === 'number') {
-                            // For ALL turnover-type outcomes (INT, fumble,
-                            // turnover-on-downs, missed FG, or any unlabeled
-                            // possession change): negate so B lands on the
-                            // opposite physical side of the field. Per user:
-                            // physical ball stays in same spot, perspective
-                            // swaps, so the signed _._6F flips sign.
-                            yard = -outcome.yardLine;
+                            yard = -outcome.yardLine;    // turnover → opposite side
                         } else {
                             yard = 25;
                         }
-                        yard = Math.round(yard);  // clean int, no float garbage
-                        console.log('[2P apply] type=' + outcome.type +
+                        yard = Math.round(yard);
+                        console.log('[2P apply v3] type=' + outcome.type +
                                     ' yardLineIn=' + outcome.yardLine +
-                                    ' yardOut=' + yard +
-                                    ' (v2-NEGATE)');
+                                    ' yardOut=' + yard);
                         // Clamp to engine's valid range.
                         if (yard < -50) yard = -50;
                         if (yard >  50) yard =  50;
