@@ -954,7 +954,8 @@
                                 // like a real game's opening kickoff return
                                 // instead of always starting at own 25.
                                 m._2c1 = m._Vy;
-                                var openingYard = 25 + Math.floor(Math.random() * 16);
+                                // Receiver's own X = NEGATIVE _._6F.
+                                var openingYard = -(25 + Math.floor(Math.random() * 16));
                                 if (!forceLocalDrive(openingYard)) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
@@ -1663,16 +1664,18 @@
                         var isPunt    = (outcome.type === 'PUNT');
                         var yard;
                         if (isKickoff) {
-                            yard = 25 + Math.floor(Math.random() * 16);
+                            // Receiver's own 25..40 = NEGATIVE _._6F in this
+                            // engine's convention (negative = own side).
+                            yard = -(25 + Math.floor(Math.random() * 16));
                         } else if (isPunt) {
                             yard = outcome.yardLine;     // engine's signed landing spot
                         } else if (typeof outcome.yardLine === 'number') {
                             yard = -outcome.yardLine;    // turnover → opposite side
                         } else {
-                            yard = 25;
+                            yard = -25;
                         }
                         yard = Math.round(yard);
-                        console.log('[2P apply v3] type=' + outcome.type +
+                        console.log('[2P apply v4] type=' + outcome.type +
                                     ' yardLineIn=' + outcome.yardLine +
                                     ' yardOut=' + yard);
                         // Clamp to engine's valid range.
