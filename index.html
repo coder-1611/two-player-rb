@@ -1628,16 +1628,26 @@
                         //     from B's TD). Flipping the sign on receive
                         //     gives the physically correct location for all
                         //     turnover-type outcomes.
+                        // === v2-NEGATE policy (turnovers go to opposite side) ===
                         var yard;
                         if (outcome.type === 'TD' || outcome.type === 'FG') {
-                            yard = 25 + Math.floor(Math.random() * 16);  // 25..40
-                        } else if (outcome.type === 'INT' || outcome.type === 'OTHER') {
-                            yard = -(outcome.yardLine || 0);
+                            yard = 25 + Math.floor(Math.random() * 16);  // kickoff 25..40
                         } else if (typeof outcome.yardLine === 'number') {
-                            yard = outcome.yardLine;
+                            // For ALL turnover-type outcomes (INT, fumble,
+                            // turnover-on-downs, missed FG, or any unlabeled
+                            // possession change): negate so B lands on the
+                            // opposite physical side of the field. Per user:
+                            // physical ball stays in same spot, perspective
+                            // swaps, so the signed _._6F flips sign.
+                            yard = -outcome.yardLine;
                         } else {
                             yard = 25;
                         }
+                        yard = Math.round(yard);  // clean int, no float garbage
+                        console.log('[2P apply] type=' + outcome.type +
+                                    ' yardLineIn=' + outcome.yardLine +
+                                    ' yardOut=' + yard +
+                                    ' (v2-NEGATE)');
                         // Clamp to engine's valid range.
                         if (yard < -50) yard = -50;
                         if (yard >  50) yard =  50;
