@@ -1414,9 +1414,11 @@
                     var m = getMatch();
                     if (!m || m._0z == null || m._Sb1 == null) return;
 
-                    // Track score so we can pick TD vs turnover for the forced end.
+                    // Track score so we can pick TD vs FG vs turnover for
+                    // the forced end. Treat score regression as an external
+                    // reset (e.g. new drive setup) — re-baseline lastSb.
                     var myScore = m._Sb1[m._0z];
-                    if (lastSb < 0) lastSb = myScore;
+                    if (lastSb < 0 || myScore < lastSb) lastSb = myScore;
 
                     if (m._Vy !== stuckVy) {
                         stuckVy = m._Vy;
@@ -1428,12 +1430,19 @@
                     if (Date.now() - (window._rb2p_lastApplyTs || 0) < 3000) return;
                     if (window._rb2p_sendInProgress) return;
 
-                    // Score went up since last reset → TD/FG. Otherwise turnover-on-downs.
-                    var scoredRecently = myScore > lastSb;
-                    var endVy = scoredRecently ? 9 : 8;  // 9 = TD, 8 = turnover
+                    // Pick the end-Vy from the score delta so the receiver
+                    // gets the right outcome type:
+                    //   delta ≥ 6 → _Vy = 9  (TD)        → 'TD'  → kickoff (random 25-40)
+                    //   delta ≥ 3 → _Vy = 14 (FG made)   → 'FG'  → kickoff (random 25-40)
+                    //   delta = 0 → _Vy = 8  (turnover)  → 'INT' → spot of downed ball
+                    var scoreDelta = myScore - lastSb;
+                    var endVy;
+                    if      (scoreDelta >= 6) endVy = 9;
+                    else if (scoreDelta >= 3) endVy = 14;
+                    else                       endVy = 8;
                     console.log('[2P] drive stuck at _Vy=' + m._Vy + ' for ' +
                                 (Date.now() - stuckSince) + 'ms — forcing end as Vy=' + endVy +
-                                ' (myScore ' + lastSb + '→' + myScore + ')');
+                                ' (myScore ' + lastSb + '→' + myScore + ', delta ' + scoreDelta + ')');
                     m._Vy = endVy;
                     m._2c1 = endVy;  // _1c1 reads pre._2c1 || pre._Vy via inferType
                     var idx = _Y._OU1.indexOf('gml_Script_s_change_possession');
@@ -1601,18 +1610,22 @@
                         // /_kp, and calls _eb1 to spawn the 22 players + ball.
                         //
                         // Yard-line policy:
-                        //   • TD / FG by the sender → receiver gets a kickoff
-                        //     and conventionally starts at their own 25. The
-                        //     yard line in the outcome (which would be the
-                        //     end-zone position) is ignored.
-                        //   • All other types (PUNT, INT, fumble, turnover-
-                        //     on-downs, etc.) → use outcome.yardLine signed.
-                        //     The sender already mirrored via _1c1's negation,
-                        //     so positive = our half, negative = opp half
-                        //     (we're backed up in our own end zone).
+                        //   • TD / FG by sender → receiver gets a KICKOFF.
+                        //     Engine's natural kickoff (in _Zb1) lands the
+                        //     receiver between own 25 and own 40 (uniform
+                        //     random) — we mirror that exact range here.
+                        //   • PUNT → use outcome.yardLine (signed). The
+                        //     engine's _Dc1 already randomized the punt
+                        //     distance via _hq(45, 70), so this value IS the
+                        //     random landing spot.
+                        //   • INT / fumble / turnover-on-downs / missed FG →
+                        //     use outcome.yardLine (signed). This is the
+                        //     literal spot where the ball was downed.
+                        //   The sign convention: post-_1c1 _._6F is already
+                        //   in the receiver's frame (positive = own half).
                         var yard;
                         if (outcome.type === 'TD' || outcome.type === 'FG') {
-                            yard = 25;
+                            yard = 25 + Math.floor(Math.random() * 16);  // 25..40
                         } else if (typeof outcome.yardLine === 'number') {
                             yard = outcome.yardLine;
                         } else {
