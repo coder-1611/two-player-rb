@@ -1331,48 +1331,73 @@
                         // outcome on the first frame of our own drive.
                         if (Date.now() - (window._rb2p_lastApplyTs || 0) < 2000) return;
 
-                        // === PICK-6 rule ===
-                        // Every INT in this 2P build automatically becomes a
-                        // defensive touchdown (interception returned for TD).
-                        // Effect:
-                        //   • Opponent's score +6
-                        //   • Sender (we) keep the ball — start a new drive at
-                        //     own 25..40 (kickoff-receive position) right away
-                        //   • Receiver gets a 'PICK_6' outcome that only
-                        //     updates the score; their parked-WAITING state
-                        //     stays the same. The next handoff still happens
-                        //     normally when we ACTUALLY lose possession (punt,
-                        //     downs, TD, FG, etc.).
-                        if (prevVy === 8) {
-                            var m6 = getMatch();
-                            if (m6 && m6._0z != null) {
-                                var oppIdx6 = m6._0z ? 0 : 1;
-                                // Local: +6 to opponent.
-                                m6._Sb1[oppIdx6] = (m6._Sb1[oppIdx6] || 0) + 6;
-                                // Build PICK_6 outcome (carries the +6 score).
-                                var pickOutcome = buildOutcome(pre, post, prevVy);
-                                pickOutcome.type = 'PICK_6';
-                                pickOutcome.scoreOpp = (pickOutcome.scoreOpp || 0) + 6;
-                                pickOutcome.message  = 'Pick 6! Returned for a defensive TD.';
-                                window._rb2p_sendInProgress = true;
-                                try { window._twoPlayer.send(pickOutcome); }
-                                catch (e) { console.log('[2P] pick6 send err', e); }
-                                // Stay on offense: flip everything back + new drive.
-                                m6._UD = m6._0z;
-                                var kickYard = -(25 + Math.floor(Math.random() * 16));
-                                if (typeof window._rb2p_forceLocalDrive === 'function') {
-                                    window._rb2p_forceLocalDrive(kickYard);
+                        var outcome = buildOutcome(pre, post, prevVy);
+
+                        // ===== PICK-6 BRANCH =====
+                        // Rule: IF AND ONLY IF an interception is returned for
+                        // a touchdown, B's defense scores +6 AND A keeps the
+                        // ball (kickoff back to A). NOT every INT — only the
+                        // rare ones returned all the way.
+                        //
+                        // The engine's natural INT-return-to-TD path needs
+                        // the AI offense (gutted in this build) to play out
+                        // the defender's return, so it can't naturally reach
+                        // _Vy = 9/16 from an INT. We dice-roll instead: every
+                        // INT has a 10% chance of being a pick-6 (NFL real-
+                        // life rate is closer to 1%, but in a casual 2P game
+                        // 10% is the sweet spot — uncommon but possible).
+                        if (outcome.type === 'INT' && Math.random() < 0.10) {
+                            try {
+                                var matchInst = _6E2._Ue2(MATCH_ID);
+                                if (matchInst) {
+                                    var oppIdx2 = matchInst._0z ? 0 : 1;
+                                    // Defensive TD — B (opp) gets +6.
+                                    matchInst._Sb1[oppIdx2] =
+                                        (matchInst._Sb1[oppIdx2] || 0) + 6;
+                                    // Build a custom PICK6 outcome that
+                                    // tells B "you got +6, but A keeps the
+                                    // ball — DO NOT enter offense state."
+                                    var pickOutcome = {
+                                        type: 'PICK6',
+                                        yardLine: 0,
+                                        ownSide: true,
+                                        scoreUser: matchInst._Sb1[matchInst._0z],
+                                        scoreOpp:  matchInst._Sb1[oppIdx2],
+                                        quarter:   matchInst._Wy,
+                                        minutesLeft: matchInst._r11,
+                                        secondsLeft: matchInst._s11,
+                                        fromTeam: pre._bL ? pre._bL[pre._UD] : '',
+                                        toTeam:   pre._bL ? pre._bL[1 - pre._UD] : '',
+                                        message: 'PICK SIX! Defensive touchdown.',
+                                        ts: Date.now()
+                                    };
+                                    window._twoPlayer.send(pickOutcome);
+                                    console.log('[2P PICK6] sent — A keeps ball, B +6');
                                 }
-                                window._rb2p_waitingForOpponent = false;
-                                window._rb2p_lastApplyTs = Date.now();
-                                window._rb2p_sendInProgress = false;
-                            }
-                            return;
+                                // After the engine cascade unwinds, take the
+                                // ball back for A and start a fresh drive
+                                // (kickoff to receiver = us, own 25..40).
+                                setTimeout(function () {
+                                    try {
+                                        window._rb2p_lastApplyTs        = Date.now();
+                                        window._rb2p_sendInProgress     = false;
+                                        window._rb2p_waitingForOpponent = false;
+                                        var yard = -(25 + Math.floor(Math.random() * 16));
+                                        if (typeof window._rb2p_forceLocalDrive === 'function') {
+                                            window._rb2p_forceLocalDrive(yard);
+                                        }
+                                    } catch (e) {
+                                        console.log('[2P PICK6 kickoff err]', e);
+                                    }
+                                }, 50);
+                            } catch (e) { console.log('[2P PICK6 err]', e); }
+                            return;   // skip the normal INT send
                         }
 
+                        // ===== Normal possession-change SEND =====
                         window._rb2p_sendInProgress = true;
                         window._rb2p_waitingForOpponent = true;
-                        try { window._twoPlayer.send(buildOutcome(pre, post, prevVy)); }
+                        try { window._twoPlayer.send(outcome); }
                         catch (e) { console.log('[2P] send err', e); }
                     };
                     wrapped._p2p_hooked = true;
@@ -1599,35 +1624,34 @@
             // reflect the AI's drive outcome.
             function applyOutcome(outcome) {
                 try {
-                    // PICK_6 special case: sender's defense intercepted us
-                    // (we're the parked side and the opponent is on offense,
-                    // they threw an INT and the engine ruled it a defensive
-                    // TD). We DO NOT take possession — sender keeps the ball
-                    // and starts a new drive on their side. Our job is just
-                    // to mirror the +6 score so our scoreboard is correct.
-                    if (outcome.type === 'PICK_6') {
-                        var mp = getMatch();
-                        if (!mp) return false;
-                        var oppIdxP = mp._0z ? 0 : 1;
-                        if (mp._Sb1) {
-                            if (typeof outcome.scoreUser === 'number') {
-                                mp._Sb1[oppIdxP] = outcome.scoreUser;
-                            }
-                            if (typeof outcome.scoreOpp === 'number') {
-                                mp._Sb1[mp._0z] = outcome.scoreOpp;
-                            }
+                    var m = getMatch();
+                    if (!m) return false;
+
+                    // ===== PICK-6 RECEIVE BRANCH =====
+                    // A threw INT, A's defense (= our offense) returned it
+                    // for a TD. We get +6, but we do NOT take possession —
+                    // A will kick off back to themselves and play a fresh
+                    // drive. So we just update the scoreboard and STAY in
+                    // waiting state.
+                    if (outcome.type === 'PICK6') {
+                        var oppIdxP = m._0z ? 0 : 1;
+                        if (m._Sb1) {
+                            // Sender's "user" = sender's team = our opp
+                            if (typeof outcome.scoreUser === 'number')
+                                m._Sb1[oppIdxP] = outcome.scoreUser;
+                            // Sender's "opp" = our team
+                            if (typeof outcome.scoreOpp === 'number')
+                                m._Sb1[m._0z] = outcome.scoreOpp;
                         }
-                        // Stay parked: don't clear waitingForOpponent,
-                        // don't change _UD, don't spawn. Just refresh the
-                        // overlay text so the +6 shows immediately.
-                        if (window._twoPlayer && window._twoPlayer.refreshWaitDisplay) {
-                            window._twoPlayer.refreshWaitDisplay(
-                                mp._Sb1[mp._0z],     // me
-                                mp._Sb1[oppIdxP],    // opp
-                                null                 // leave clock as-is
-                            );
-                        }
-                        console.log('[2P apply v4] type=PICK_6 — +6 to opp, staying parked');
+                        if (typeof outcome.quarter      === 'number') m._Wy  = outcome.quarter;
+                        if (typeof outcome.minutesLeft  === 'number') m._r11 = outcome.minutesLeft;
+                        if (typeof outcome.secondsLeft  === 'number') m._s11 = outcome.secondsLeft;
+                        m._Yc1 = 0;
+                        // STAY in waiting. UD must remain opp-side so the
+                        // live-sync gate stays open for A's upcoming drive.
+                        window._rb2p_waitingForOpponent = true;
+                        window._rb2p_sendInProgress     = false;
+                        console.log('[2P apply v5] PICK6 — +6 to us, stay parked, A is kicking off');
                         return true;
                     }
 
@@ -1638,8 +1662,6 @@
                     window._rb2p_sendInProgress    = false;
                     window._rb2p_lastApplyTs       = Date.now();
 
-                    var m = getMatch();
-                    if (!m) return false;
                     var oppIdx = m._0z ? 0 : 1;
                     // If the outcome carries absolute scores (the sender's
                     // perspective: their own score, their opponent's score),
