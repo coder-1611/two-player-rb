@@ -1829,39 +1829,59 @@
                                     if (resEl) resEl.textContent = '';
                                     ovModal.style.display = 'block';
                                     var handlePick = function (kind) {
-                                        // Dice rolls match the engine's
-                                        // native rates: 1-PT kick ≈ 87.5%
-                                        // success, 2-PT conversion ≈ 50%.
-                                        var pts = 0;
-                                        if (kind === 1) {
-                                            pts = (Math.random() < 0.875) ? 1 : 0;
-                                        } else {
-                                            pts = (Math.random() < 0.5) ? 2 : 0;
-                                        }
-                                        // Apply locally first.
+                                        // Call the engine's NATIVE PAT
+                                        // handlers (same scripts wired to
+                                        // the engine's own "1 or 2 PT?"
+                                        // modal buttons):
+                                        //   _Y._PU1[367] = btn_response_1pt
+                                        //   _Y._PU1[369] = btn_response_2pt
+                                        // These do the engine's authentic
+                                        // dice roll and increment the
+                                        // scoring team's _Sb1.
                                         var mm = getMatch();
-                                        if (mm && mm._Sb1) mm._Sb1[mm._0z] += pts;
+                                        if (!mm) return;
+                                        // The engine's PAT handlers credit
+                                        // _._UD. Make sure _._UD points to
+                                        // our team (we just scored the
+                                        // defensive TD on the pick-6).
+                                        var udBefore = mm._UD;
+                                        mm._UD = mm._0z;
+                                        var scoreBefore = mm._Sb1[mm._0z];
+                                        try {
+                                            var patIdx = (kind === 1) ? 367 : 369;
+                                            var patFn  = _Y._PU1[patIdx];
+                                            if (typeof patFn === 'function') {
+                                                patFn(mm, _Sc2);
+                                            } else {
+                                                console.log('[2P PICK6 PAT] script ' + patIdx + ' not callable');
+                                            }
+                                        } catch (e) {
+                                            console.log('[2P PICK6 PAT err]', e);
+                                        }
+                                        // Restore UD (engine may not have
+                                        // touched it; we set it just to be
+                                        // safe for the PAT scoring).
+                                        // Stay in waiting state regardless.
+                                        var scoreAfter = mm._Sb1[mm._0z];
+                                        var pts = scoreAfter - scoreBefore;
                                         if (resEl) {
                                             resEl.textContent = (pts > 0)
                                                 ? ('GOOD! +' + pts)
                                                 : 'NO GOOD';
                                         }
                                         // Send PAT_RESULT to A.
-                                        var mmm = getMatch();
-                                        if (mmm) {
-                                            window._twoPlayer.send({
-                                                type: 'PAT_RESULT',
-                                                yardLine: 0,
-                                                scoreUser: mmm._Sb1[mmm._0z],
-                                                scoreOpp:  mmm._Sb1[mmm._0z ? 0 : 1],
-                                                quarter:   mmm._Wy,
-                                                minutesLeft: mmm._r11,
-                                                secondsLeft: mmm._s11,
-                                                patKind: kind,
-                                                patPoints: pts,
-                                                ts: Date.now()
-                                            });
-                                        }
+                                        window._twoPlayer.send({
+                                            type: 'PAT_RESULT',
+                                            yardLine: 0,
+                                            scoreUser: mm._Sb1[mm._0z],
+                                            scoreOpp:  mm._Sb1[mm._0z ? 0 : 1],
+                                            quarter:   mm._Wy,
+                                            minutesLeft: mm._r11,
+                                            secondsLeft: mm._s11,
+                                            patKind: kind,
+                                            patPoints: pts,
+                                            ts: Date.now()
+                                        });
                                         // Hide modal after a beat so user
                                         // sees the result.
                                         setTimeout(function () {
