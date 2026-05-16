@@ -1828,47 +1828,49 @@
                                 if (ovModal && btn1 && btn2) {
                                     if (resEl) resEl.textContent = '';
                                     ovModal.style.display = 'block';
+                                    // patSimulate — isolated plugin per
+                                    // conversions.txt. Uses the engine's
+                                    // EXACT dice rolls:
+                                    //   1 PT: _dq(8)  → 7/8  = 87.5% success
+                                    //   2 PT: _dq(99) → 61/99 ≈ 61.6% success
+                                    // (NOT the played-out _oB/_rB scripts —
+                                    // those start a mini-play with no
+                                    // immediate score update.)
+                                    var patSimulate = function (kind) {
+                                        if (kind === 1) {
+                                            var roll = Math.floor(Math.random() * 8);
+                                            var made = (roll !== 0);
+                                            return { points: made ? 1 : 0,
+                                                     result: made ? 'made' : 'missed',
+                                                     kind: 1, roll: roll, odds: 7/8 };
+                                        }
+                                        var r2 = Math.floor(Math.random() * 99);
+                                        var m2 = (r2 <= 60);
+                                        return { points: m2 ? 2 : 0,
+                                                 result: m2 ? 'made' : 'missed',
+                                                 kind: 2, roll: r2, odds: 61/99 };
+                                    };
                                     var handlePick = function (kind) {
-                                        // Call the engine's NATIVE PAT
-                                        // handlers (same scripts wired to
-                                        // the engine's own "1 or 2 PT?"
-                                        // modal buttons):
-                                        //   _Y._PU1[367] = btn_response_1pt
-                                        //   _Y._PU1[369] = btn_response_2pt
-                                        // These do the engine's authentic
-                                        // dice roll and increment the
-                                        // scoring team's _Sb1.
                                         var mm = getMatch();
                                         if (!mm) return;
-                                        // The engine's PAT handlers credit
-                                        // _._UD. Make sure _._UD points to
-                                        // our team (we just scored the
-                                        // defensive TD on the pick-6).
-                                        var udBefore = mm._UD;
-                                        mm._UD = mm._0z;
-                                        var scoreBefore = mm._Sb1[mm._0z];
-                                        try {
-                                            var patIdx = (kind === 1) ? 367 : 369;
-                                            var patFn  = _Y._PU1[patIdx];
-                                            if (typeof patFn === 'function') {
-                                                patFn(mm, _Sc2);
-                                            } else {
-                                                console.log('[2P PICK6 PAT] script ' + patIdx + ' not callable');
-                                            }
-                                        } catch (e) {
-                                            console.log('[2P PICK6 PAT err]', e);
+                                        var sim = patSimulate(kind);
+                                        // Credit B's team directly. The
+                                        // simulation is team-agnostic; we
+                                        // know B is the scoring team.
+                                        if (mm._Sb1 && sim.points > 0) {
+                                            mm._Sb1[mm._0z] += sim.points;
                                         }
-                                        // Restore UD (engine may not have
-                                        // touched it; we set it just to be
-                                        // safe for the PAT scoring).
-                                        // Stay in waiting state regardless.
-                                        var scoreAfter = mm._Sb1[mm._0z];
-                                        var pts = scoreAfter - scoreBefore;
                                         if (resEl) {
-                                            resEl.textContent = (pts > 0)
-                                                ? ('GOOD! +' + pts)
+                                            resEl.textContent = (sim.points > 0)
+                                                ? ('GOOD! +' + sim.points)
                                                 : 'NO GOOD';
                                         }
+                                        console.log('[2P PICK6 PAT]',
+                                                    'kind=' + sim.kind,
+                                                    'roll=' + sim.roll,
+                                                    'odds=' + sim.odds.toFixed(3),
+                                                    '→', sim.result, '+' + sim.points);
+                                        var pts = sim.points;
                                         // Send PAT_RESULT to A.
                                         window._twoPlayer.send({
                                             type: 'PAT_RESULT',
