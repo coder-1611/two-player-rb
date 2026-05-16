@@ -1362,10 +1362,31 @@
                         var isPick6 = (outcome.type === 'INT' && oppDelta >= 6);
                         if (isPick6) {
                             try {
-                                // Engine has already incremented opp score
-                                // (and applied PAT if the user chose it) by
-                                // the time _1c1 fires. We do NOT add more
-                                // points — just snapshot the final score.
+                                // Engine flow for a defensive TD:
+                                //   _Vy = 9  (TD reached, opp credited +6)
+                                //   _Vy = 11 (PAT setup — shows "1 or 2 PT?"
+                                //              modal to the user)
+                                //   user taps                                //   _Vy = 17 or 18 (PAT/2-pt result, adds 1 or 2
+                                //                   to _._UD = the scoring
+                                //                   team = opp/B's team)
+                                //   _Vy = 1  (kickoff cascade)
+                                //   _Zb1 + _1c1 → A receives the kickoff
+                                //
+                                // We don't intervene. We just suspend the UD
+                                // watchdog so it doesn't clamp _._UD back to
+                                // A's _._0z during PAT processing (which
+                                // would credit A instead of the defensive
+                                // scoring team). Once the engine completes
+                                // the cascade and A is back on offense
+                                // (_._UD === _._0z naturally via the kickoff
+                                // _1c1), we clear the suspend flag.
+                                window._rb2p_pickSixActive = true;
+                                console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
+                                            ') — suspending watchdog, letting engine PAT cascade run');
+                                // Inform B via outcome so their HTML overlay
+                                // can show a "PICK SIX!" message and update
+                                // their scoreboard immediately (live-sync
+                                // also handles this every 500 ms).
                                 if (matchAfter) {
                                     var pickOutcome = {
                                         type: 'PICK6',
@@ -1382,14 +1403,15 @@
                                         ts: Date.now()
                                     };
                                     window._twoPlayer.send(pickOutcome);
-                                    console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
-                                                ') — sending PICK6, A keeps ball');
                                 }
-                                // After the engine cascade unwinds, take the
-                                // ball back for A and start a fresh drive
-                                // (kickoff to receiver = us, own 25..40).
+                                // Hard fallback: if the engine's cascade
+                                // never completes (gutted path), force A's
+                                // new drive after 30 s.
                                 setTimeout(function () {
                                     try {
+                                        if (!window._rb2p_pickSixActive) return;
+                                        console.log('[2P PICK6] 30s fallback — forcing A drive');
+                                        window._rb2p_pickSixActive      = false;
                                         window._rb2p_lastApplyTs        = Date.now();
                                         window._rb2p_sendInProgress     = false;
                                         window._rb2p_waitingForOpponent = false;
@@ -1398,11 +1420,11 @@
                                             window._rb2p_forceLocalDrive(yard);
                                         }
                                     } catch (e) {
-                                        console.log('[2P PICK6 kickoff err]', e);
+                                        console.log('[2P PICK6 fallback err]', e);
                                     }
-                                }, 50);
+                                }, 30000);
                             } catch (e) { console.log('[2P PICK6 err]', e); }
-                            return;   // skip the normal INT send
+                            return;   // skip normal INT-send, do NOT enter waiting
                         }
 
                         // ===== Normal possession-change SEND =====
@@ -1446,11 +1468,9 @@
                     var clamp = function (_, t) {
                         var m = (typeof _6E2 !== 'undefined') ? _6E2._Ue2(MATCH_ID) : null;
                         origIb1.call(this, _, t);
-                        // Bidirectional same-tick clamp (mirrors watchdog).
-                        // Without this, _Ib1 writes _._UD inside its body and
-                        // the engine's NEXT frame draws with the wrong UD —
-                        // closing the live-sync gate before the watchdog's
-                        // 100ms tick can correct it.
+                        // Skip clamp during pick-6 cascade — engine needs
+                        // _._UD on the scoring (opp) team for PAT crediting.
+                        if (window._rb2p_pickSixActive === true) return;
                         if (m && m._0z != null) {
                             if (window._rb2p_waitingForOpponent === true) {
                                 if (m._UD === m._0z) m._UD = m._0z ? 0 : 1;
@@ -1555,6 +1575,11 @@
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
                     var m = getMatch();
                     if (!m || m._0z == null) return;
+                    // SUSPENDED during pick-6 cascade: the engine's PAT
+                    // processing legitimately keeps _._UD on the OPPONENT
+                    // (the defensive scoring team) so the +1 / +2 credits
+                    // the right side. Clamping here would steal the PAT.
+                    if (window._rb2p_pickSixActive === true) return;
                     if (window._rb2p_waitingForOpponent === true) {
                         // Defense: opponent owns the ball in the engine's view.
                         if (m._UD === m._0z) m._UD = m._0z ? 0 : 1;
@@ -1562,8 +1587,37 @@
                         // Offense: user owns the ball.
                         if (m._UD !== m._0z) m._UD = m._0z;
                     }
+                    // Pick-6 cascade complete: the engine's kickoff _1c1 has
+                    // restored _._UD === _._0z naturally. We didn't trigger
+                    // it; just observe. Clearing here lets the watchdog
+                    // resume normal operation for the next play.
                 } catch (e) {}
             }, 100);
+
+            // ===== Pick-6 cascade completion watcher =====
+            // Detects when the engine has finished the PAT + kickoff cascade
+            // after a pick-6 and A is back on offense. Clears the suspend
+            // flag so the UD watchdog and _Ib1 wrapper can resume clamping.
+            setInterval(function () {
+                try {
+                    if (window._rb2p_pickSixActive !== true) return;
+                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
+                    var m = getMatch();
+                    if (!m || m._0z == null) return;
+                    // Cascade is done once we're back in active play
+                    // (_._kp == 2) with possession returned to us.
+                    if (m._UD === m._0z && m._kp === 2) {
+                        window._rb2p_pickSixActive = false;
+                        window._rb2p_lastApplyTs   = Date.now();
+                        // Snapshot fresh drive-start scores so the next
+                        // pick-6 detector has the right baseline.
+                        var oppIdxC = m._0z ? 0 : 1;
+                        window._rb2p_driveStartUserScore = m._Sb1[m._0z] || 0;
+                        window._rb2p_driveStartOppScore  = m._Sb1[oppIdxC] || 0;
+                        console.log('[2P PICK6] cascade complete — A back on offense, watchdog re-engaged');
+                    }
+                } catch (e) {}
+            }, 150);
 
             function getMatch() {
                 try { return _6E2._Ue2(MATCH_ID); } catch (e) { return null; }
