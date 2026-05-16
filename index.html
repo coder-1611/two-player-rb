@@ -798,6 +798,12 @@
                             inst._HL2 = true;
                         }
                     }
+                    // Snapshot scores at drive-start so the _1c1 wrapper can
+                    // diff them to detect pick-6 (opp scored during our
+                    // offensive drive) and PAT-eligibility (user scored 6).
+                    window._rb2p_driveStartUserScore = m._Sb1 ? (m._Sb1[m._0z] || 0) : 0;
+                    window._rb2p_driveStartOppScore  = m._Sb1 ? (m._Sb1[m._0z ? 0 : 1] || 0) : 0;
+
                     // Field state for a fresh 1st & 10.
                     // _._6F is signed: positive = own half (0..50),
                     // negative = opp half (-1..-50, the red zone). Clamp to
@@ -1335,44 +1341,49 @@
 
                         // ===== PICK-6 BRANCH =====
                         // Rule: IF AND ONLY IF an interception is returned for
-                        // a touchdown, B's defense scores +6 AND A keeps the
+                        // a touchdown, B's defense scores 6+ AND A keeps the
                         // ball (kickoff back to A). NOT every INT — only the
-                        // rare ones returned all the way.
+                        // rare ones the engine actually returned to the end
+                        // zone.
                         //
-                        // The engine's natural INT-return-to-TD path needs
-                        // the AI offense (gutted in this build) to play out
-                        // the defender's return, so it can't naturally reach
-                        // _Vy = 9/16 from an INT. We dice-roll instead: every
-                        // INT has a 10% chance of being a pick-6 (NFL real-
-                        // life rate is closer to 1%, but in a casual 2P game
-                        // 10% is the sweet spot — uncommon but possible).
-                        if (outcome.type === 'INT' && Math.random() < 0.10) {
+                        // Detection signal: compare the opponent's score now
+                        // vs at the start of our drive (captured by
+                        // forceLocalDrive in window._rb2p_driveStartOppScore).
+                        // If it went up by 6 or more during this drive, the
+                        // engine processed a defensive TD on us. Engine also
+                        // handles PAT natively, so post-_1c1 the opp score
+                        // already reflects 6 or 7 (or 8 for 2-pt). No PAT
+                        // simulation needed on our side.
+                        var matchAfter = _6E2._Ue2(MATCH_ID);
+                        var oppIdxA = matchAfter && matchAfter._0z ? 0 : 1;
+                        var oppNow = matchAfter ? (matchAfter._Sb1[oppIdxA] || 0) : 0;
+                        var oppStart = window._rb2p_driveStartOppScore || 0;
+                        var oppDelta = oppNow - oppStart;
+                        var isPick6 = (outcome.type === 'INT' && oppDelta >= 6);
+                        if (isPick6) {
                             try {
-                                var matchInst = _6E2._Ue2(MATCH_ID);
-                                if (matchInst) {
-                                    var oppIdx2 = matchInst._0z ? 0 : 1;
-                                    // Defensive TD — B (opp) gets +6.
-                                    matchInst._Sb1[oppIdx2] =
-                                        (matchInst._Sb1[oppIdx2] || 0) + 6;
-                                    // Build a custom PICK6 outcome that
-                                    // tells B "you got +6, but A keeps the
-                                    // ball — DO NOT enter offense state."
+                                // Engine has already incremented opp score
+                                // (and applied PAT if the user chose it) by
+                                // the time _1c1 fires. We do NOT add more
+                                // points — just snapshot the final score.
+                                if (matchAfter) {
                                     var pickOutcome = {
                                         type: 'PICK6',
                                         yardLine: 0,
                                         ownSide: true,
-                                        scoreUser: matchInst._Sb1[matchInst._0z],
-                                        scoreOpp:  matchInst._Sb1[oppIdx2],
-                                        quarter:   matchInst._Wy,
-                                        minutesLeft: matchInst._r11,
-                                        secondsLeft: matchInst._s11,
+                                        scoreUser: matchAfter._Sb1[matchAfter._0z],
+                                        scoreOpp:  matchAfter._Sb1[oppIdxA],
+                                        quarter:   matchAfter._Wy,
+                                        minutesLeft: matchAfter._r11,
+                                        secondsLeft: matchAfter._s11,
                                         fromTeam: pre._bL ? pre._bL[pre._UD] : '',
                                         toTeam:   pre._bL ? pre._bL[1 - pre._UD] : '',
                                         message: 'PICK SIX! Defensive touchdown.',
                                         ts: Date.now()
                                     };
                                     window._twoPlayer.send(pickOutcome);
-                                    console.log('[2P PICK6] sent — A keeps ball, B +6');
+                                    console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
+                                                ') — sending PICK6, A keeps ball');
                                 }
                                 // After the engine cascade unwinds, take the
                                 // ball back for A and start a fresh drive
