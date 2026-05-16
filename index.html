@@ -1309,6 +1309,7 @@
                 if (prevVy === 12 || prevVy === 23) return 'PUNT';
                 if (prevVy === 14)                 return 'FG';     // FG made -> kickoff
                 if (prevVy === 24)                 return 'HALF_END';
+                if (prevVy === 1)                  return 'KICKOFF'; // kickoff cascade fired _1c1
                 return 'OTHER';
             }
             function describeYard(yard, ownSide) {
@@ -1818,8 +1819,49 @@
                         window._rb2p_sendInProgress     = false;
                         console.log('[2P apply v5] PICK6 — +6, stay parked');
 
-                        // Show PAT picker if requested.
+                        // Played-out PAT path (per conversions.txt §6):
+                        // Use the engine's NATIVE PAT modal so the user
+                        // physically plays the 1-PT kick scene or the
+                        // 2-PT goal-line snap. Score comes from the play,
+                        // not a dice roll.
                         if (outcome.needsPAT === true) {
+                            try {
+                                // Suspend the UD watchdog on this device so
+                                // the post-PAT kickoff cascade can flip _UD
+                                // naturally via _1c1 (the wrapper will then
+                                // ship a KICKOFF outcome back to A).
+                                window._rb2p_pickSixActive = true;
+                                // Make sure the engine sees US as the
+                                // possessing team (so _._UD-based scoring
+                                // credits B), and set the PAT-pending
+                                // marker so the 2-PT click routes to a
+                                // proper goal-line snap via _eb1 case 2.
+                                m._UD  = m._0z;
+                                m._t11 = 6;
+                                m._l61 = 2;
+                                m._kp  = 2;
+                                // Pop the engine-native modal exactly as
+                                // _hB case-0 does — but WITHOUT the +6
+                                // credit (A already added it; we mirrored
+                                // via live-sync above).
+                                try {
+                                    var msg  = _Xi(m, _Sc2, "matchmsg_PATor2");
+                                    var lbl1 = _Xi(m, _Sc2, "match_1pt");
+                                    var lbl2 = _Xi(m, _Sc2, "match_2pt");
+                                    _wm(m, _Sc2, "", msg, lbl1, lbl2,
+                                        100367,  // _ne1 = btn_response_1pt
+                                        100369,  // _oe1 = btn_response_2pt
+                                        16777215, 0.7);
+                                    console.log('[2P PICK6] engine-native PAT modal popped for B');
+                                } catch (innerE) {
+                                    console.log('[2P PICK6 modal err]', innerE);
+                                }
+                            } catch (e) { console.log('[2P PICK6 setup err]', e); }
+                            return true;
+                        }
+
+                        // === Legacy HTML-modal path (kept for fallback / non-pick6 PICK6 outcomes) ===
+                        if (false /* HTML modal disabled in favor of engine-native */) {
                             try {
                                 var ovModal = document.getElementById('rb-pick6-pat-modal');
                                 var btn1    = document.getElementById('rb-pick6-1pt');
@@ -1999,14 +2041,20 @@
                         // (we already mirrored the new value above, so the
                         // delta is captured pre-mirror by saving it earlier).
                         // For now, take the absolute jump implied by type:
-                        var isKickoff = (outcome.type === 'TD' ||
-                                         outcome.type === 'FG');
-                        var isPunt    = (outcome.type === 'PUNT');
+                        var isRandomKickoff = (outcome.type === 'TD' ||
+                                               outcome.type === 'FG');
+                        var isEngineKickoff = (outcome.type === 'KICKOFF');
+                        var isPunt          = (outcome.type === 'PUNT');
                         var yard;
-                        if (isKickoff) {
-                            // Receiver's own 25..40 = NEGATIVE _._6F in this
-                            // engine's convention (negative = own side).
+                        if (isRandomKickoff) {
+                            // TD/FG receiver kickoff — pick a fresh random
+                            // own 25..40 (NEGATIVE _._6F in this engine).
                             yard = -(25 + Math.floor(Math.random() * 16));
+                        } else if (isEngineKickoff) {
+                            // The other side already ran _Zb1 + _1c1 with
+                            // engine-randomized landing. outcome.yardLine
+                            // is the receiver's signed value — use as-is.
+                            yard = outcome.yardLine;
                         } else if (isPunt) {
                             yard = outcome.yardLine;     // engine's signed landing spot
                         } else if (typeof outcome.yardLine === 'number') {
@@ -2015,7 +2063,7 @@
                             yard = -25;
                         }
                         yard = Math.round(yard);
-                        console.log('[2P apply v4] type=' + outcome.type +
+                        console.log('[2P apply v5] type=' + outcome.type +
                                     ' yardLineIn=' + outcome.yardLine +
                                     ' yardOut=' + yard);
                         // Clamp to engine's valid range.
