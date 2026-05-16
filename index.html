@@ -301,6 +301,42 @@
         </canvas>
     </div>
 
+    <!-- Pick-6 PAT overlays. Both hidden by default. -->
+    <div id="rb-pick6-pat-modal" style="
+        position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+        padding:28px 56px;background:rgba(0,0,0,0.9);color:#fff;
+        border:4px solid #3cff7a;font-family:monospace;text-align:center;
+        letter-spacing:4px;z-index:2200;display:none;image-rendering:pixelated;">
+        <div style="font-size:22px;font-weight:bold;color:#3cff7a;margin-bottom:12px;">
+            PICK SIX!
+        </div>
+        <div style="font-size:14px;margin-bottom:18px;opacity:0.9;">
+            Choose extra-point attempt:
+        </div>
+        <button id="rb-pick6-1pt" style="
+            font:bold 18px monospace;letter-spacing:3px;
+            background:#3cff7a;color:#0a3a18;border:4px solid #3cff7a;
+            padding:14px 28px;margin:6px;cursor:pointer;min-width:120px;">1 PT</button>
+        <button id="rb-pick6-2pt" style="
+            font:bold 18px monospace;letter-spacing:3px;
+            background:#1a3fd6;color:#fff;border:4px solid #3cff7a;
+            padding:14px 28px;margin:6px;cursor:pointer;min-width:120px;">2 PT</button>
+        <div id="rb-pick6-result" style="font-size:13px;margin-top:14px;
+             opacity:0.85;min-height:18px;letter-spacing:2px;"></div>
+    </div>
+    <div id="rb-pick6-wait" style="
+        position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+        padding:22px 44px;background:rgba(0,0,0,0.9);color:#fff;
+        border:4px solid #ff8c8c;font-family:monospace;text-align:center;
+        letter-spacing:4px;z-index:2200;display:none;image-rendering:pixelated;">
+        <div style="font-size:18px;font-weight:bold;color:#ff8c8c;">
+            PICK SIX ON YOU!
+        </div>
+        <div style="font-size:12px;margin-top:10px;opacity:0.85;">
+            opponent is choosing extra-point…
+        </div>
+    </div>
+
     <button id="credits-btn" class="cheat-btn" title="Set Coaching Credits">CC: ---</button>
     <button id="max-btn" class="cheat-btn" title="Max All Players">MAX</button>
 
@@ -1382,16 +1418,21 @@
                                 // _1c1), we clear the suspend flag.
                                 window._rb2p_pickSixActive = true;
                                 console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
-                                            ') — suspending watchdog, letting engine PAT cascade run');
-                                // Inform B via outcome so their HTML overlay
-                                // can show a "PICK SIX!" message and update
-                                // their scoreboard immediately (live-sync
-                                // also handles this every 500 ms).
+                                            ') — handing PAT control to B over Firebase');
+                                // Show "OPPONENT IS CHOOSING PAT" overlay on A.
+                                try {
+                                    var ovWait = document.getElementById('rb-pick6-wait');
+                                    if (ovWait) ovWait.style.display = 'block';
+                                } catch (e) {}
+                                // Tell B to display the PAT picker for THEIR
+                                // defensive TD. Outcome carries needsPAT=true
+                                // so applyOutcome on B shows the modal.
                                 if (matchAfter) {
                                     var pickOutcome = {
                                         type: 'PICK6',
                                         yardLine: 0,
                                         ownSide: true,
+                                        needsPAT: true,
                                         scoreUser: matchAfter._Sb1[matchAfter._0z],
                                         scoreOpp:  matchAfter._Sb1[oppIdxA],
                                         quarter:   matchAfter._Wy,
@@ -1594,6 +1635,59 @@
                 } catch (e) {}
             }, 100);
 
+            // ===== Suppress engine's NATIVE PAT screen during pick-6 =====
+            // On A's side after pick-6: the engine WANTS to pop "1 or 2 PT?"
+            // on A's canvas (the cascade reaches _Vy = 11). We don't want
+            // that — B is the one picking. So as soon as _Vy = 11 appears
+            // while pickSixActive, advance straight to _Vy = 1 (kickoff
+            // setup). The engine's PAT crediting (case 17/18) never runs;
+            // B's choice will be applied via Firebase PAT_RESULT instead.
+            setInterval(function () {
+                try {
+                    if (window._rb2p_pickSixActive !== true) return;
+                    var m = getMatch();
+                    if (!m) return;
+                    if (m._Vy === 11) {
+                        m._Vy = 1;
+                        console.log('[2P PICK6] skipped engine PAT screen (Vy 11 → 1)');
+                    }
+                } catch (e) {}
+            }, 30);
+
+            // ===== Listen for B's PAT_RESULT outcome (over Firebase) =====
+            // The lobby module wires the outcome listener after match start.
+            // The applyOutcome dispatcher (in this IIFE) already handles all
+            // outcome types — we add a PAT_RESULT branch there. Here we just
+            // expose a helper for the apply step to use.
+            window._rb2p_applyPatResult = function (outcome) {
+                try {
+                    var m = getMatch();
+                    if (!m) return;
+                    var oppIdxR = m._0z ? 0 : 1;
+                    // Outcome.scoreOpp = sender's opp score (= our team's
+                    // score from sender's view). Outcome.scoreUser = sender's
+                    // user score (= our opp's score from sender's view).
+                    if (typeof outcome.scoreUser === 'number')
+                        m._Sb1[oppIdxR] = outcome.scoreUser;
+                    if (typeof outcome.scoreOpp === 'number')
+                        m._Sb1[m._0z] = outcome.scoreOpp;
+                    // Hide the "opponent choosing PAT" overlay.
+                    var ovWait = document.getElementById('rb-pick6-wait');
+                    if (ovWait) ovWait.style.display = 'none';
+                    // Clear pick-6 flag and start A's kickoff drive (random
+                    // own 25..40, NEGATIVE = receiver's own side).
+                    window._rb2p_pickSixActive      = false;
+                    window._rb2p_waitingForOpponent = false;
+                    window._rb2p_sendInProgress     = false;
+                    window._rb2p_lastApplyTs        = Date.now();
+                    var yard = -(25 + Math.floor(Math.random() * 16));
+                    if (typeof window._rb2p_forceLocalDrive === 'function') {
+                        window._rb2p_forceLocalDrive(yard);
+                    }
+                    console.log('[2P PICK6] PAT_RESULT applied — A kicking off');
+                } catch (e) { console.log('[2P PICK6 PAT_RESULT err]', e); }
+            };
+
             // ===== Pick-6 cascade completion watcher =====
             // Detects when the engine has finished the PAT + kickoff cascade
             // after a pick-6 and A is back on offense. Clears the suspend
@@ -1692,19 +1786,27 @@
                     var m = getMatch();
                     if (!m) return false;
 
+                    // ===== PAT_RESULT — B sent us their PAT choice =====
+                    // (A side): apply the PAT score and kick off.
+                    if (outcome.type === 'PAT_RESULT') {
+                        if (typeof window._rb2p_applyPatResult === 'function') {
+                            window._rb2p_applyPatResult(outcome);
+                        }
+                        return true;
+                    }
+
                     // ===== PICK-6 RECEIVE BRANCH =====
                     // A threw INT, A's defense (= our offense) returned it
-                    // for a TD. We get +6, but we do NOT take possession —
-                    // A will kick off back to themselves and play a fresh
-                    // drive. So we just update the scoreboard and STAY in
-                    // waiting state.
+                    // for a TD. We get +6 immediately. If needsPAT is set,
+                    // show the HTML PAT picker so we choose 1 PT or 2 PT —
+                    // the choice rolls dice locally then sends a PAT_RESULT
+                    // back to A who applies the kickoff. We STAY in waiting
+                    // state throughout (we don't take possession).
                     if (outcome.type === 'PICK6') {
                         var oppIdxP = m._0z ? 0 : 1;
                         if (m._Sb1) {
-                            // Sender's "user" = sender's team = our opp
                             if (typeof outcome.scoreUser === 'number')
                                 m._Sb1[oppIdxP] = outcome.scoreUser;
-                            // Sender's "opp" = our team
                             if (typeof outcome.scoreOpp === 'number')
                                 m._Sb1[m._0z] = outcome.scoreOpp;
                         }
@@ -1712,11 +1814,68 @@
                         if (typeof outcome.minutesLeft  === 'number') m._r11 = outcome.minutesLeft;
                         if (typeof outcome.secondsLeft  === 'number') m._s11 = outcome.secondsLeft;
                         m._Yc1 = 0;
-                        // STAY in waiting. UD must remain opp-side so the
-                        // live-sync gate stays open for A's upcoming drive.
                         window._rb2p_waitingForOpponent = true;
                         window._rb2p_sendInProgress     = false;
-                        console.log('[2P apply v5] PICK6 — +6 to us, stay parked, A is kicking off');
+                        console.log('[2P apply v5] PICK6 — +6, stay parked');
+
+                        // Show PAT picker if requested.
+                        if (outcome.needsPAT === true) {
+                            try {
+                                var ovModal = document.getElementById('rb-pick6-pat-modal');
+                                var btn1    = document.getElementById('rb-pick6-1pt');
+                                var btn2    = document.getElementById('rb-pick6-2pt');
+                                var resEl   = document.getElementById('rb-pick6-result');
+                                if (ovModal && btn1 && btn2) {
+                                    if (resEl) resEl.textContent = '';
+                                    ovModal.style.display = 'block';
+                                    var handlePick = function (kind) {
+                                        // Dice rolls match the engine's
+                                        // native rates: 1-PT kick ≈ 87.5%
+                                        // success, 2-PT conversion ≈ 50%.
+                                        var pts = 0;
+                                        if (kind === 1) {
+                                            pts = (Math.random() < 0.875) ? 1 : 0;
+                                        } else {
+                                            pts = (Math.random() < 0.5) ? 2 : 0;
+                                        }
+                                        // Apply locally first.
+                                        var mm = getMatch();
+                                        if (mm && mm._Sb1) mm._Sb1[mm._0z] += pts;
+                                        if (resEl) {
+                                            resEl.textContent = (pts > 0)
+                                                ? ('GOOD! +' + pts)
+                                                : 'NO GOOD';
+                                        }
+                                        // Send PAT_RESULT to A.
+                                        var mmm = getMatch();
+                                        if (mmm) {
+                                            window._twoPlayer.send({
+                                                type: 'PAT_RESULT',
+                                                yardLine: 0,
+                                                scoreUser: mmm._Sb1[mmm._0z],
+                                                scoreOpp:  mmm._Sb1[mmm._0z ? 0 : 1],
+                                                quarter:   mmm._Wy,
+                                                minutesLeft: mmm._r11,
+                                                secondsLeft: mmm._s11,
+                                                patKind: kind,
+                                                patPoints: pts,
+                                                ts: Date.now()
+                                            });
+                                        }
+                                        // Hide modal after a beat so user
+                                        // sees the result.
+                                        setTimeout(function () {
+                                            if (ovModal) ovModal.style.display = 'none';
+                                        }, 900);
+                                        // Detach handlers.
+                                        btn1.onclick = null;
+                                        btn2.onclick = null;
+                                    };
+                                    btn1.onclick = function () { handlePick(1); };
+                                    btn2.onclick = function () { handlePick(2); };
+                                }
+                            } catch (e) { console.log('[2P PICK6 modal err]', e); }
+                        }
                         return true;
                     }
 
