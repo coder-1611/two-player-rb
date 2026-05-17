@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V37</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V38</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1587,6 +1587,7 @@
                                 // arms the frame-tight engine-PAT
                                 // suppressor.
                                 window._rb2p_pickSixPatCascadeActive = true;
+                                window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
                                 console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
                                             ') — A suppressing engine PAT modal; B will play user PAT');
                                 if (engineMatchAfter) {
@@ -1939,9 +1940,24 @@
             }
 
             var popupKillerKills = 0;
+            // V38: stuck-flag safety. If pickSix cascade has been "active" for
+            // more than 30 s without resolution, force-clear it. Better to let
+            // a duplicate engine modal slip through than to permanently freeze
+            // the popup pipeline (which would leave the player with NO PAT
+            // modal at all — the live-play symptom the user reported).
+            var PICK6_CASCADE_MAX_MS = 30000;
             function popupKillerTick() {
                 try {
                     if (window._rb2p_pickSixPatCascadeActive !== true) {
+                        requestAnimationFrame(popupKillerTick);
+                        return;
+                    }
+                    var raisedMs = window._rb2p_pickSixPatCascadeRaisedMs || 0;
+                    if (raisedMs && (Date.now() - raisedMs) > PICK6_CASCADE_MAX_MS) {
+                        console.log('[2P PopupKiller] stuck pickSix cascade > ' +
+                                    PICK6_CASCADE_MAX_MS + 'ms — force-clearing flag');
+                        window._rb2p_pickSixPatCascadeActive = false;
+                        window._rb2p_userPatPopupRefs = null;
                         requestAnimationFrame(popupKillerTick);
                         return;
                     }
@@ -1949,18 +1965,28 @@
                         requestAnimationFrame(popupKillerTick);
                         return;
                     }
+                    // V38: REFUSE to kill when no authorized refs are recorded.
+                    // If _wm's popup-diff failed (popups not on PopUps layer at
+                    // capture time, or _wm reused existing instances), the
+                    // authorized list ends up empty — and killing every popup
+                    // we see would destroy the legit user PAT modal, leaving
+                    // "no PAT at all". Safer to let a duplicate engine modal
+                    // through than to nuke the only modal the player can act
+                    // on.
+                    var authorized = window._rb2p_userPatPopupRefs;
+                    if (!authorized || authorized.length === 0) {
+                        requestAnimationFrame(popupKillerTick);
+                        return;
+                    }
                     var popups = enumeratePopupInstances();
                     if (popups.length > 0) {
-                        var authorized = window._rb2p_userPatPopupRefs || [];
                         for (var i = 0; i < popups.length; i++) {
                             var inst = popups[i];
                             if (authorized.indexOf(inst) !== -1) continue;
                             destroyInstance(inst);
                             popupKillerKills++;
-                            if (window._rb2p_debugPopups) {
-                                console.log('[2P PopupKiller] killed unauthorized popup ' +
-                                            (inst._eE2 && inst._eE2._fE2) + ' (#' + popupKillerKills + ')');
-                            }
+                            console.log('[2P PopupKiller] killed unauthorized popup ' +
+                                        (inst._eE2 && inst._eE2._fE2) + ' (#' + popupKillerKills + ')');
                         }
                     }
                 } catch (e) {}
@@ -2127,6 +2153,7 @@
                                 // (the _1c1 hook will then ship a
                                 // PAT_RESULT outcome back to A).
                                 window._rb2p_pickSixPatCascadeActive = true;
+                                window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
                                 // Make sure the engine sees US (B) as the
                                 // possessing team (so possession-based
                                 // scoring credits B), and set the PAT-
@@ -2170,8 +2197,24 @@
                                         }
                                     }
                                     window._rb2p_userPatPopupRefs = authorizedUserPatPopups;
-                                    console.log('[2P PICK6] user PAT modal popped on B (' +
-                                                authorizedUserPatPopups.length + ' authorized popups)');
+                                    console.log('[2P PICK6] user PAT modal popped on B (before=' +
+                                                popupsBeforeUserPatModal.length + ' after=' +
+                                                popupsAfterUserPatModal.length + ' authorized=' +
+                                                authorizedUserPatPopups.length + ')');
+                                    // V38: if the diff yielded zero authorized
+                                    // refs, _wm didn't spawn PopUps-layer
+                                    // instances synchronously (or the layer
+                                    // lookup is wrong). Falling through with
+                                    // empty refs would make popupKillerTick
+                                    // either bail (V38 safe path) or nuke the
+                                    // legit modal (V37 unsafe path). Either
+                                    // way, log loudly so we can see this in
+                                    // playtest console output.
+                                    if (authorizedUserPatPopups.length === 0) {
+                                        console.warn('[2P PICK6] WARNING: user PAT _wm spawned 0 PopUps-layer ' +
+                                                     'instances — popup-killer cannot identify legit modal. ' +
+                                                     'Killer will run in safe-mode (no kills).');
+                                    }
                                 } catch (innerE) {
                                     console.log('[2P PICK6 modal err]', innerE);
                                 }
