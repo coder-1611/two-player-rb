@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V32</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V36</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -738,6 +738,194 @@
     </script>
 
     <script>
+        // [two-player Retro Bowl] Engine-property accessor (meaningful names).
+        //
+        // The GameMaker HTML5 build obfuscates every engineMatch-instance property
+        // ("_UD" = possession, "_6F" = yardLine, "_Vy" = stage, etc). The 2P
+        // bridge has to read and write dozens of these. Using the raw names
+        // makes the code unreadable; if the build is re-exported the names
+        // change anywhere from one letter to all of them.
+        //
+        // window.RB centralises both concerns. wrap(m) returns an object whose
+        // getters/setters delegate to the obfuscated keys on the engineMatch
+        // singleton. Bridge code uses state.possession / state.yardLine etc.
+        // If a future re-export rotates the property names, only RB.wrap has
+        // to change — the bridge stays the same.
+        //
+        // Naming convention used everywhere downstream:
+        //   engineX  — a property living on the engine's engineMatch singleton
+        //              (the obfuscated GameMaker field). READS/WRITES here
+        //              mutate the engine's authoritative game state.
+        //   userX    — local-device / bridge concept (the human controlling
+        //              THIS browser). "User team" = the team this device
+        //              plays; "user offense" = a drive this device runs.
+        //   opponentX — the remote human on the OTHER device.
+        //   aiX      — vestigial engine "AI offense" code path. In single-
+        //              player Retro Bowl the AI ran the opponent's drives;
+        //              in 2P that path is gutted, so "AI" almost always
+        //              means "the dead code we're replacing with Firebase".
+        //
+        // Property cheat-sheet (obfuscated → meaningful name):
+        //   _UD   enginePossessingTeamIdx — team currently with the ball
+        //         (in the engine's view; the bridge re-clamps this so it
+        //         matches the user's offense/defense role)
+        //   _0z   engineUserTeamIdx        — which team THIS device plays
+        //   _6F   engineYardLineSigned     — +N = own half, -N = opp half
+        //   _Vy   engineDriveFsmStage      — 1=kickoff, 8=turnover, 9=TD,
+        //                                    11=PAT-pick, 12/23=punt,
+        //                                    14=FG made, 24=half end
+        //   _2c1  enginePriorFsmStage      — the stage that triggered the
+        //                                    latest _1c1 call (used by the
+        //                                    bridge to classify drive end)
+        //   _kp   engineControllerState    — obj_controller step state
+        //                                    (2 = "active play" — required
+        //                                    for the ball to respond)
+        //   _t11  engineDownNumber         — 1..4; 6 = PAT-pending marker
+        //   _l61  engineYardsToGo          — yards needed for first down
+        //   _Sb1  engineScoreboard         — [team0Score, team1Score]
+        //   _r11  engineMinutesLeft        — visible clock minutes
+        //   _s11  engineSecondsLeft        — visible clock seconds
+        //   _Yc1  engineTickAllowance      — sub-second counter (invisible)
+        //   _Wy   engineQuarter            — 1..4, 5 = OT
+        //   _5F   engineQuarterLengthMins  — quarter length setting
+        //   _501  engineDriveDirection     — 1 or -1 (which way the offense
+        //                                    is facing this drive)
+        //   _X_   engineActivePlayerInst   — instance ref of the player the
+        //                                    user is currently controlling
+        //   _bL   engineTeamDisplayNames   — [team0Name, team1Name]
+        //   _Fj   engineTeamDataPair       — [team0Data, team1Data]
+        //   _l51  engineTimeouts           — [team0Timeouts, team1Timeouts]
+        //   _Z21  enginePatModeFlag        — 1 during PAT/2-pt scene
+        //   _001  engineDefenseAggression  — per-engineMatch defense AI modifier;
+        //                                    lower = harder defense
+        //   _8c1  engineSkipCommentaryFlag — suppresses commentary FSM tick
+        //   _831  engineSubCommentaryText  — small grey line under the
+        //                                    main commentary banner
+        //
+        // Note: the engine itself still calls these properties by their
+        // obfuscated names — we cannot rename the underlying fields, only
+        // give ourselves a clean façade for reading/writing them.
+        window.RB = (function () {
+            var MATCH_ID   = 71;
+            var STATE_HOME = 14;
+            var STATE_MATCH = 17;
+
+            function getEngineMatchInstance() {
+                try { return (typeof _6E2 !== 'undefined') ? _6E2._Ue2(MATCH_ID) : null; }
+                catch (e) { return null; }
+            }
+            function inMatchRoom() {
+                try { return (typeof _ft !== 'undefined') && _ft._gt() === STATE_MATCH; }
+                catch (e) { return false; }
+            }
+            function inHomeRoom() {
+                try { return (typeof _ft !== 'undefined') && _ft._gt() === STATE_HOME; }
+                catch (e) { return false; }
+            }
+
+            // wrap(m) — façade over the engine's engineMatch singleton.
+            // Every getter/setter is named so a reader can immediately tell
+            // whether a field is engine-owned (the GameMaker authoritative
+            // state) or user-owned (a derived helper for bridge code).
+            function wrap(m) {
+                if (!m) return null;
+                return {
+                    rawEngineMatch: m,
+                    // ---- engine engineMatch fields ----
+                    get enginePossessingTeamIdx()  { return m._UD; },  set enginePossessingTeamIdx(v)  { m._UD  = v; },
+                    get engineUserTeamIdx()        { return m._0z; },  set engineUserTeamIdx(v)        { m._0z  = v; },
+                    get engineOpponentTeamIdx()    { return m._0z ? 0 : 1; },
+                    get engineYardLineSigned()     { return m._6F; },  set engineYardLineSigned(v)     { m._6F  = v; },
+                    get engineDriveFsmStage()      { return m._Vy; },  set engineDriveFsmStage(v)      { m._Vy  = v; },
+                    get enginePriorFsmStage()      { return m._2c1; }, set enginePriorFsmStage(v)      { m._2c1 = v; },
+                    get engineControllerState()    { return m._kp; },  set engineControllerState(v)    { m._kp  = v; },
+                    get engineDownNumber()         { return m._t11; }, set engineDownNumber(v)         { m._t11 = v; },
+                    get engineYardsToGo()          { return m._l61; }, set engineYardsToGo(v)          { m._l61 = v; },
+                    get engineScoreboard()         { return m._Sb1; },
+                    get engineMinutesLeft()        { return m._r11; }, set engineMinutesLeft(v)        { m._r11 = v; },
+                    get engineSecondsLeft()        { return m._s11; }, set engineSecondsLeft(v)        { m._s11 = v; },
+                    get engineTickAllowance()      { return m._Yc1; }, set engineTickAllowance(v)      { m._Yc1 = v; },
+                    get engineQuarter()            { return m._Wy; },  set engineQuarter(v)            { m._Wy  = v; },
+                    get engineQuarterLengthMins()  { return m._5F; },
+                    get engineDriveDirection()     { return m._501; }, set engineDriveDirection(v)     { m._501 = v; },
+                    get engineActivePlayerInst()   { return m._X_; },
+                    get engineTeamDisplayNames()   { return m._bL; },
+                    get engineTeamDataPair()       { return m._Fj; },
+                    get engineDefenseAggression()  { return m._001; }, set engineDefenseAggression(v)  { m._001 = v; },
+                    get engineSkipCommentaryFlag() { return m._8c1; }, set engineSkipCommentaryFlag(v) { m._8c1 = v; },
+                    get engineSubCommentaryText()  { return m._831; }, set engineSubCommentaryText(v)  { m._831 = v; },
+                    // ---- user-perspective helpers (derived from engine state) ----
+                    get userScore()     { return m._Sb1 ? (m._Sb1[m._0z] || 0) : 0; },
+                    get opponentScore() { return m._Sb1 ? (m._Sb1[m._0z ? 0 : 1] || 0) : 0; },
+                    setUserScore:     function (v) { if (m._Sb1) m._Sb1[m._0z] = v; },
+                    setOpponentScore: function (v) { if (m._Sb1) m._Sb1[m._0z ? 0 : 1] = v; }
+                };
+            }
+
+            // engineState() — shortcut: wrap(getEngineMatch()).
+            function engineState() { return wrap(getEngineMatchInstance()); }
+
+            // engineSnapshot() — plain-object copy of a few fields, for
+            // diffing before/after engine script calls (used by the
+            // change-possession hook).
+            function engineSnapshot() {
+                var s = engineState();
+                if (!s) return null;
+                return {
+                    enginePossessingTeamIdx: s.enginePossessingTeamIdx,
+                    engineUserTeamIdx:       s.engineUserTeamIdx,
+                    engineYardLineSigned:    s.engineYardLineSigned,
+                    engineDriveFsmStage:     s.engineDriveFsmStage,
+                    enginePriorFsmStage:     s.enginePriorFsmStage,
+                    engineQuarter:           s.engineQuarter,
+                    engineDownNumber:        s.engineDownNumber,
+                    engineYardsToGo:         s.engineYardsToGo,
+                    engineMinutesLeft:       s.engineMinutesLeft,
+                    engineSecondsLeft:       s.engineSecondsLeft,
+                    engineScoreboard:        s.engineScoreboard
+                        ? [s.engineScoreboard[0], s.engineScoreboard[1]] : [0, 0],
+                    engineTeamDisplayNames:  s.engineTeamDisplayNames
+                        ? [s.engineTeamDisplayNames[0], s.engineTeamDisplayNames[1]] : ['', '']
+                };
+            }
+
+            // Engine-script registry helper. The engine stores all GML
+            // scripts in _Y._PU1 (functions), indexed by _Y._OU1 (names).
+            // Replacing an entry installs a hook seen by every engine call.
+            function findEngineScriptIndex(scriptName) {
+                try {
+                    if (typeof _Y === 'undefined' || !_Y._OU1 || !_Y._PU1) return -1;
+                    return _Y._OU1.indexOf(scriptName);
+                } catch (e) { return -1; }
+            }
+            function getEngineScript(scriptName) {
+                var i = findEngineScriptIndex(scriptName);
+                return i >= 0 ? _Y._PU1[i] : null;
+            }
+            function setEngineScript(scriptName, replacementFn) {
+                var i = findEngineScriptIndex(scriptName);
+                if (i >= 0) _Y._PU1[i] = replacementFn;
+                return i;
+            }
+
+            return {
+                ENGINE_MATCH_INSTANCE_ID: MATCH_ID,
+                ENGINE_STATE_HOME:        STATE_HOME,
+                ENGINE_STATE_MATCH:       STATE_MATCH,
+                getEngineMatch:           getEngineMatchInstance,
+                isEngineInMatchRoom:      inMatchRoom,
+                isEngineInHomeRoom:       inHomeRoom,
+                wrapEngineMatch:          wrap,
+                engineState:              engineState,
+                engineSnapshot:           engineSnapshot,
+                findEngineScriptIndex:    findEngineScriptIndex,
+                getEngineScript:          getEngineScript,
+                setEngineScript:          setEngineScript
+            };
+        })();
+    </script>
+
+    <script>
         // [two-player Retro Bowl] Home-screen UI rework + one-game-vs-KC entry.
         //
         // 1. Hide schedule strip (obj_matchline) and standings table (obj_division)
@@ -751,7 +939,7 @@
         // s_play_one_game_vs_KC — the saved code for playing ONE specific game
         // ------------------------------------------------------------------
         // _gx (line ~49412 in retrobowl.js) is the GameMaker script that sets
-        // up a match: it picks a random opponent uid via _dq(31), looks the
+        // up a engineMatch: it picks a random opponent uid via _dq(31), looks the
         // team up in the master team list (_._Ej), populates _._Fj = [opp,
         // user], and computes all the helmet/shirt/pants color overrides.
         //
@@ -764,7 +952,7 @@
         // jump to rm_match (room id 17). That's it.
         //
         // Reusable: every CONTINUE / PLAY 2P press calls this. After the
-        // match ends and the engine returns to home, the next press starts
+        // engineMatch ends and the engine returns to home, the next press starts
         // another fresh game vs KC. From the player's view, KC is the only
         // opponent that exists.
         // ------------------------------------------------------------------
@@ -777,7 +965,7 @@
 
             function startGameVsKC() { startTwoPlayerMatch('a'); }
 
-            // ---- forceLocalDrive: spawn the offensive snap scene ----
+            // ---- forceUserOffenseDrive: spawn the offensive snap scene ----
             // The original AI-offense case-10 was gutted, which breaks the
             // engine's natural kickoff-to-snap cascade: obj_btn_kickoff sits
             // on screen forever and obj_controller._kp never advances to a
@@ -786,18 +974,18 @@
             // line of scrimmage — without it there's nothing to play.
             //
             // We invoke _eb1 directly with the controller as self. Used at:
-            //   - Player A's match start (their first offensive drive)
-            //   - After applyOutcome on every subsequent received drive
+            //   - Player A's engineMatch start (their first offensive drive)
+            //   - After applyOpponentOutcome on every subsequent received drive
             // Idempotent: if obj_ball already exists, _eb1 is skipped.
-            function forceLocalDrive(yardLine) {
+            function forceUserOffenseDrive(yardLine) {
                 try {
-                    var m = _6E2._Ue2(71);
-                    if (!m) return false;
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch) return false;
                     // Drop any lingering kickoff button — it gates the
                     // controller's step and would re-trigger the dead path.
-                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var i = 0; i < all.length; i++) {
-                        var inst = all[i];
+                    var allInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < allInstances.length; i++) {
+                        var inst = allInstances[i];
                         if (!inst || inst._HL2) continue;
                         if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
                             inst._HL2 = true;
@@ -806,26 +994,27 @@
                     // Snapshot scores at drive-start so the _1c1 wrapper can
                     // diff them to detect pick-6 (opp scored during our
                     // offensive drive) and PAT-eligibility (user scored 6).
-                    window._rb2p_driveStartUserScore = m._Sb1 ? (m._Sb1[m._0z] || 0) : 0;
-                    window._rb2p_driveStartOppScore  = m._Sb1 ? (m._Sb1[m._0z ? 0 : 1] || 0) : 0;
+                    window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
+                    window._rb2p_opponentScoreAtDriveStart  = engineMatch.opponentScore;
 
                     // Field state for a fresh 1st & 10.
-                    // _._6F is signed: positive = own half (0..50),
+                    // yardLine is signed: positive = own half (0..50),
                     // negative = opp half (-1..-50, the red zone). Clamp to
                     // engine's valid range but PRESERVE sign — a turnover in
                     // our own red zone legitimately needs a negative value.
-                    m._UD  = m._0z;
-                    m._t11 = 1;
-                    m._l61 = 10;
-                    m._6F  = (typeof yardLine === 'number') ? yardLine : 25;
-                    if (m._6F < -50) m._6F = -50;
-                    if (m._6F >  50) m._6F =  50;
+                    engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                    engineMatch.engineDownNumber = 1;
+                    engineMatch.engineYardsToGo = 10;
+                    var ydl = (typeof yardLine === 'number') ? yardLine : 25;
+                    if (ydl < -50) ydl = -50;
+                    if (ydl >  50) ydl =  50;
+                    engineMatch.engineYardLineSigned = ydl;
 
                     // Apply local 2P difficulty preference.
-                    // _._001 is the per-match difficulty modifier. Lower =
-                    // harder defense (defenders close gaps faster). The
-                    // engine's defense-aim AI does:
-                    //   G = clamp(_._001, 1, 10) / 10  (aggression multiplier)
+                    // engineMatch.engineDefenseAggression is the per-engineMatch defense aggression
+                    // modifier. Lower = harder (defenders close gaps faster).
+                    // The engine's defense-aim AI does:
+                    //   G = clamp(difficulty, 1, 10) / 10  (aggression mult)
                     // Mapping (matches the engine's _Z6 ladder):
                     //   max:    -5  (G clamps to 0.1, hardest)
                     //   hard:   -5
@@ -836,53 +1025,52 @@
                         var pref = localStorage.getItem('rb2p_difficulty') || 'max';
                         var difTable = { max: -5, hard: -5, medium: 2, easy: 7 };
                         var dif = difTable[pref];
-                        if (typeof dif === 'number') m._001 = dif;
+                        if (typeof dif === 'number') engineMatch.engineDefenseAggression = dif;
                     } catch (e) {}
-                    if (m._501 == null || m._501 === 0) m._501 = 1;
-                    m._Vy  = 2;
-                    // CRITICAL: match._kp = 2 is the "active play" state.
+                    if (engineMatch.engineDriveDirection == null || engineMatch.engineDriveDirection === 0) engineMatch.engineDriveDirection = 1;
+                    engineMatch.engineDriveFsmStage = 2;
+                    // CRITICAL: controllerKp = 2 is the "active play" state.
                     // Verified empirically:
                     //   • obj_ball's step event (_I7) GATES its body on
-                    //     `match._kp == 2`. If match._kp != 2, the ball is
-                    //     inert — _y11 never runs, _q01(1) is never read,
+                    //     controllerKp == 2. If controllerKp != 2, the ball
+                    //     is inert — _y11 never runs, _q01(1) is never read,
                     //     taps do nothing, "GET READY!" stays forever.
-                    //   • obj_controller's step switch maps `_._kp == 2` to
-                    //     the case that calls _eb1 (spawn) + _Ad1 (clock).
-                    // Setting _kp to 0 or 1 here = silent freeze.
-                    m._kp  = 2;
+                    //   • obj_controller's step switch maps controllerKp==2
+                    //     to the case that calls _eb1 (spawn) + _Ad1 (clock).
+                    // Setting controllerKp to 0 or 1 here = silent freeze.
+                    engineMatch.engineControllerState = 2;
 
-                    // Skip _eb1 if ball already on the field (we're mid-drive).
+                    // Skip s_set_up_play if ball already on the field (mid-drive).
                     var ballCount = 0;
-                    for (var j = 0; j < all.length; j++) {
-                        var x = all[j];
+                    for (var j = 0; j < allInstances.length; j++) {
+                        var x = allInstances[j];
                         if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') ballCount++;
                     }
                     if (ballCount > 0) {
-                        m._kp = 2;       // active play state — ball step runs
+                        engineMatch.engineControllerState = 2;
                         return true;
                     }
 
-                    var ebIdx = _Y._OU1.indexOf('gml_Script_s_set_up_play');
-                    var ebFn  = ebIdx >= 0 ? _Y._PU1[ebIdx] : null;
-                    if (typeof ebFn !== 'function') return false;
-                    ebFn(m, _Sc2, 0);
+                    var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
+                    if (typeof setUpPlay !== 'function') return false;
+                    setUpPlay(engineMatch.rawEngineMatch, _Sc2, 0);
 
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
-                    m._kp = 2;
+                    engineMatch.engineControllerState = 2;
                     return true;
                 } catch (e) {
-                    console.log('[2p-rb] forceLocalDrive err:', e);
+                    console.log('[2p-rb] forceUserOffenseDrive err:', e);
                     return false;
                 }
             }
-            window._rb2p_forceLocalDrive = forceLocalDrive;
+            window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
             // Public alias documented in "how the hell can I not do this,
             // actually wait, now I can.md" — call this from devtools to force
             // the user offense at any signed yard line.
-            window.__summonUserOffense  = forceLocalDrive;
+            window.__summonUserOffense  = forceUserOffenseDrive;
 
-            // Generalised: set up a match between BUFF (uid 0) and KC (uid 5)
+            // Generalised: set up a engineMatch between BUFF (uid 0) and KC (uid 5)
             // with the local user's team determined by role. _gx wants the
             // "random" opponent uid via _dq(31) and the user uid via _._Ip.
             // We monkey-patch _dq for the opponent and write _._Ip ourselves.
@@ -890,7 +1078,7 @@
             //   role 'a' -> user = BUFF (0), opponent = KC   (5)
             //   role 'b' -> user = KC   (5), opponent = BUFF (0)
             //
-            // After _Hj(17) lands us in the match, role 'b' is force-parked in
+            // After _Hj(17) lands us in the engineMatch, role 'b' is force-parked in
             // the wait state (UD != 0z, Vy = 10) so player A is the one who
             // gets first possession. The existing wait overlay + receive loop
             // unstalls B when player A's first drive resolves over Firebase.
@@ -926,17 +1114,17 @@
                     _Hj(STATE_MATCH);
 
                     if (role === 'a') {
-                        // Force Player A onto offense at match start.
+                        // Force Player A onto offense at engineMatch start.
                         // The engine's natural opening sequence may award
                         // first possession to either team via a coin-flip;
                         // when it goes to B's team the AI drive simulator
                         // (which has been gutted) would normally run that
                         // possession, so A is stuck staring at a frozen
                         // field with no offense to play. Fix: as soon as
-                        // rm_match is live, slam _UD to A's team and write
-                        // _Vy = 1 so the engine runs case-1 (possession
-                        // start / kickoff init) for A — same path that
-                        // applyOutcome uses on every subsequent turn.
+                        // rm_match is live, slam possession to A's team and
+                        // write vyStage = 1 so the engine runs case-1
+                        // (possession start / kickoff init) for A — same
+                        // path applyOpponentOutcome uses on every subsequent turn.
                         // Sentinels are cleared so the just-installed _1c1
                         // wrapper doesn't see the override as a possession
                         // loss and SEND a phantom outcome.
@@ -944,19 +1132,19 @@
                         var pollA = setInterval(function () {
                             triesA++;
                             try {
-                                if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) {
+                                if (!RB.isEngineInMatchRoom()) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
-                                var m = _6E2._Ue2(71);
-                                if (!m || m._0z == null) {
+                                var engineMatch = RB.engineState();
+                                if (!engineMatch || engineMatch.engineUserTeamIdx == null) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
-                                // forceLocalDrive: kills obj_btn_kickoff,
-                                // sets field state, calls _eb1 to spawn
-                                // 11 offensive + 11 defensive + ball. Without
-                                // this the engine sits forever on the kickoff
+                                // forceUserOffenseDrive: kills obj_btn_kickoff,
+                                // sets field state, calls s_set_up_play to
+                                // spawn 11 OF + 11 DF + ball. Without this
+                                // the engine sits forever on the kickoff
                                 // staging screen and X never triggers.
                                 //
                                 // Opening yard line is randomized 25..40
@@ -964,16 +1152,16 @@
                                 // kickoff math), so A's first drive feels
                                 // like a real game's opening kickoff return
                                 // instead of always starting at own 25.
-                                m._2c1 = m._Vy;
-                                // Receiver's own X = NEGATIVE _._6F.
+                                engineMatch.enginePriorFsmStage = engineMatch.engineDriveFsmStage;
+                                // Receiver's own X = NEGATIVE yardLine.
                                 var openingYard = -(25 + Math.floor(Math.random() * 16));
-                                if (!forceLocalDrive(openingYard)) {
+                                if (!forceUserOffenseDrive(openingYard)) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
-                                window._rb2p_waitingForOpponent = false;
-                                window._rb2p_sendInProgress      = false;
-                                window._rb2p_lastApplyTs         = Date.now();
+                                window._rb2p_userIsWaitingForOpponent = false;
+                                window._rb2p_userOutcomeSendInProgress      = false;
+                                window._rb2p_lastOpponentOutcomeApplyMs         = Date.now();
                                 clearInterval(pollA);
                             } catch (e) {
                                 if (triesA > 400) clearInterval(pollA);
@@ -982,26 +1170,27 @@
                     } else if (role === 'b') {
                         // Bug 4: park B until A's first drive lands.
                         // Old loop bailed at tries > 100 (≈5s) and used
-                        // _Vy = 10 as the wait sentinel; both wrong. Now we
-                        // wait up to 20s for both rm_match AND the match
-                        // singleton to exist, then flip the proper sentinel
-                        // (_rb2p_waitingForOpponent) — the poll loop in the
-                        // bridge IIFE will pick it up and show the overlay.
+                        // vyStage = 10 as the wait sentinel; both wrong.
+                        // Now we wait up to 20s for both rm_match AND the
+                        // engineMatch singleton to exist, then flip the proper
+                        // sentinel (_rb2p_userIsWaitingForOpponent) — the poll
+                        // loop in the bridge IIFE picks it up and shows
+                        // the overlay.
                         var tries = 0;
                         var poll = setInterval(function () {
                             tries++;
                             try {
-                                if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) {
+                                if (!RB.isEngineInMatchRoom()) {
                                     if (tries > 400) clearInterval(poll);
                                     return;
                                 }
-                                var m = _6E2._Ue2(71);
-                                if (!m || m._0z == null) {
+                                var engineMatch = RB.engineState();
+                                if (!engineMatch || engineMatch.engineUserTeamIdx == null) {
                                     if (tries > 400) clearInterval(poll);
                                     return;
                                 }
-                                m._UD = m._0z ? 0 : 1;          // opponent has ball
-                                window._rb2p_waitingForOpponent = true;
+                                engineMatch.enginePossessingTeamIdx = engineMatch.engineOpponentTeamIdx;   // opponent has ball
+                                window._rb2p_userIsWaitingForOpponent = true;
                                 clearInterval(poll);
                             } catch (e) {
                                 if (tries > 400) clearInterval(poll);
@@ -1208,22 +1397,22 @@
         // fake outcome and unstalls the game.
         (function () {
             var STATE_MATCH = 17;
-            var MATCH_ID = 71;   // singleton match instance id
+            var MATCH_ID = 71;   // singleton engineMatch instance id
 
             // ===== Cross-script wait/send sentinels (Bug 2 + Bug 5) =====
-            // _rb2p_waitingForOpponent: TRUE when the local player has lost
+            // _rb2p_userIsWaitingForOpponent: TRUE when the local player has lost
             //   possession and is awaiting an outcome from Firebase. Drives
             //   the WAITING overlay. Replaces the brittle `_Vy === 10` check.
-            // _rb2p_sendInProgress: one-shot guard so the _1c1 wrapper sends
+            // _rb2p_userOutcomeSendInProgress: one-shot guard so the _1c1 wrapper sends
             //   exactly once per drive even though the engine may invoke the
             //   possession-change script multiple times during kickoff/post-
-            //   turnover state walks. Cleared only by applyOutcome.
-            // _rb2p_lastApplyTs: cooldown floor — _1c1 SENDs within 2s of an
-            //   applyOutcome are suppressed (handles kickoff transitions that
+            //   turnover state walks. Cleared only by applyOpponentOutcome.
+            // _rb2p_lastOpponentOutcomeApplyMs: cooldown floor — _1c1 SENDs within 2s of an
+            //   applyOpponentOutcome are suppressed (handles kickoff transitions that
             //   briefly flip _UD around).
-            if (window._rb2p_waitingForOpponent == null) window._rb2p_waitingForOpponent = false;
-            if (window._rb2p_sendInProgress == null)    window._rb2p_sendInProgress    = false;
-            if (window._rb2p_lastApplyTs == null)       window._rb2p_lastApplyTs       = 0;
+            if (window._rb2p_userIsWaitingForOpponent == null) window._rb2p_userIsWaitingForOpponent = false;
+            if (window._rb2p_userOutcomeSendInProgress == null)    window._rb2p_userOutcomeSendInProgress    = false;
+            if (window._rb2p_lastOpponentOutcomeApplyMs == null)       window._rb2p_lastOpponentOutcomeApplyMs       = 0;
 
             // ===== _twoPlayer API surface =====
             window._twoPlayer = {
@@ -1272,7 +1461,7 @@
             // _._2c1 is set by the FSM right before _1c1: it stashes the Vy that
             // led to possession change. See lines 55264 (turnover), 55330
             // (turnover/punt), 55074 (onside success), 55295 (FG scored), etc.
-            function inferType(prevVy) {
+            function inferUserDriveEndType(prevVy) {
                 if (prevVy === 9 || prevVy === 16) return 'TD';     // TD reached -> kickoff
                 if (prevVy === 8)                  return 'INT';    // turnover (INT/fumble bucketed)
                 if (prevVy === 12 || prevVy === 23) return 'PUNT';
@@ -1281,13 +1470,13 @@
                 if (prevVy === 1)                  return 'KICKOFF'; // kickoff cascade fired _1c1
                 return 'OTHER';
             }
-            function describeYard(yard, ownSide) {
+            function describeYardLocation(yard, ownSide) {
                 if (yard === 0)  return 'in the endzone';
                 if (yard >= 45)  return 'midfield';
                 return (ownSide ? 'your ' : 'opponent ') + yard + ' yard line';
             }
-            function messageFor(type, yard, ownSide) {
-                var loc = describeYard(yard, ownSide);
+            function userFacingMessageForType(type, yard, ownSide) {
+                var loc = describeYardLocation(yard, ownSide);
                 switch (type) {
                     case 'TD':       return 'Touchdown by opponent. Kickoff to ' + loc;
                     case 'INT':      return 'Interception. On ' + loc;
@@ -1310,40 +1499,40 @@
             // one-shot guard we'd send several outcomes per drive and the
             // receiver would apply the last one, which is usually a half-
             // initialized state — that's the "drive ends prematurely" report.
-            // _rb2p_sendInProgress gates this: set on first valid send, cleared
-            // only when applyOutcome runs on this side (i.e. our turn).
-            var applyingOutcome = false;
-            var orig1c1 = null;
-            var hooked1c1 = false;
-            var hooked1c1Idx = -1;
-            function hook1c1() {
-                if (hooked1c1) return;
+            // _rb2p_userOutcomeSendInProgress gates this: set on first valid send, cleared
+            // only when applyOpponentOutcome runs on this side (i.e. our turn).
+            var isApplyingOpponentOutcome = false;
+            var originalEngineChangePossession = null;
+            var hookedEngineChangePossession = false;
+            var hookedChangePossessionScriptIdx = -1;
+            function hookEngineChangePossessionScript() {
+                if (hookedEngineChangePossession) return;
                 try {
-                    if (typeof _Y === 'undefined' || !_Y._OU1 || !_Y._PU1) return;
-                    var idx = _Y._OU1.indexOf('gml_Script_s_change_possession');
-                    if (idx < 0) idx = _Y._OU1.indexOf('gml_Script__1c1');
+                    var idx = RB.findEngineScriptIndex('gml_Script_s_change_possession');
+                    if (idx < 0) idx = RB.findEngineScriptIndex('gml_Script__1c1');
                     if (idx < 0) return;
                     var fn = _Y._PU1[idx];
                     if (typeof fn !== 'function') return;
-                    if (fn._p2p_hooked) { hooked1c1 = true; hooked1c1Idx = idx; return; }
-                    orig1c1 = fn;
+                    if (fn._p2p_hooked) { hookedEngineChangePossession = true; hookedChangePossessionScriptIdx = idx; return; }
+                    originalEngineChangePossession = fn;
                     var wrapped = function (_, t) {
-                        var pre = readMatch();
-                        var prevVy = pre ? (pre._2c1 || pre._Vy) : null;
-                        orig1c1.call(this, _, t);
-                        if (applyingOutcome) return;
-                        var post = readMatch();
+                        var pre = snapshotEngineMatch();
+                        var prevVy = pre ? (pre.enginePriorFsmStage || pre.engineDriveFsmStage) : null;
+                        originalEngineChangePossession.call(this, _, t);
+                        if (isApplyingOpponentOutcome) return;
+                        var post = snapshotEngineMatch();
                         if (!pre || !post) return;
                         // Local user must have just lost possession this call.
-                        if (!(pre._UD === pre._0z && post._UD !== post._0z)) return;
+                        if (!(pre.enginePossessingTeamIdx === pre.engineUserTeamIdx &&
+                              post.enginePossessingTeamIdx !== post.engineUserTeamIdx)) return;
                         // One-shot guard: ignore re-entries within the same drive.
-                        if (window._rb2p_sendInProgress) return;
-                        // Cooldown after applyOutcome — kickoff transitions can
-                        // briefly flip _UD and trick us into sending a bogus
-                        // outcome on the first frame of our own drive.
-                        if (Date.now() - (window._rb2p_lastApplyTs || 0) < 2000) return;
+                        if (window._rb2p_userOutcomeSendInProgress) return;
+                        // Cooldown after applyOpponentOutcome — kickoff transitions can
+                        // briefly flip possession and trick us into sending a
+                        // bogus outcome on the first frame of our own drive.
+                        if (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) < 2000) return;
 
-                        var outcome = buildOutcome(pre, post, prevVy);
+                        var outcome = buildUserDriveEndOutcome(pre, post, prevVy);
 
                         // ===== PICK-6 BRANCH =====
                         // Rule: IF AND ONLY IF an interception is returned for
@@ -1354,79 +1543,85 @@
                         //
                         // Detection signal: compare the opponent's score now
                         // vs at the start of our drive (captured by
-                        // forceLocalDrive in window._rb2p_driveStartOppScore).
+                        // forceUserOffenseDrive in window._rb2p_opponentScoreAtDriveStart).
                         // If it went up by 6 or more during this drive, the
                         // engine processed a defensive TD on us. Engine also
                         // handles PAT natively, so post-_1c1 the opp score
                         // already reflects 6 or 7 (or 8 for 2-pt). No PAT
                         // simulation needed on our side.
-                        var matchAfter = _6E2._Ue2(MATCH_ID);
-                        var oppIdxA = matchAfter && matchAfter._0z ? 0 : 1;
-                        var oppNow = matchAfter ? (matchAfter._Sb1[oppIdxA] || 0) : 0;
-                        var oppStart = window._rb2p_driveStartOppScore || 0;
+                        var engineMatchAfter = RB.engineState();
+                        var oppNow = engineMatchAfter ? engineMatchAfter.opponentScore : 0;
+                        var oppStart = window._rb2p_opponentScoreAtDriveStart || 0;
                         var oppDelta = oppNow - oppStart;
                         var isPick6 = (outcome.type === 'INT' && oppDelta >= 6);
                         if (isPick6) {
                             try {
-                                // Engine flow for a defensive TD:
-                                //   _Vy = 9  (TD reached, opp credited +6)
-                                //   _Vy = 11 (PAT setup — shows "1 or 2 PT?"
-                                //              modal to the user)
-                                //   user taps                                //   _Vy = 17 or 18 (PAT/2-pt result, adds 1 or 2
-                                //                   to _._UD = the scoring
-                                //                   team = opp/B's team)
-                                //   _Vy = 1  (kickoff cascade)
-                                //   _Zb1 + _1c1 → A receives the kickoff
+                                // Pick-6 flow (engine→user PAT routing):
+                                //   vyStage = 9  (defensive TD; +6 to
+                                //                 scoring team)
+                                //   vyStage = 11 (engine wants to pop
+                                //                 "1 or 2 PT?" modal on
+                                //                 A's screen — but A is
+                                //                 NOT the scoring team.
+                                //                 The frame-tight
+                                //                 suppressor inside
+                                //                 engineCommentaryScript-
+                                //                 Hook catches this and
+                                //                 jumps to vyStage 1
+                                //                 before the modal can
+                                //                 render.)
+                                //   vyStage = 1  (kickoff cascade) →
+                                //                 _Zb1 + _1c1 → A
+                                //                 receives the kickoff
                                 //
-                                // We don't intervene. We just suspend the UD
-                                // watchdog so it doesn't clamp _._UD back to
-                                // A's _._0z during PAT processing (which
-                                // would credit A instead of the defensive
-                                // scoring team). Once the engine completes
-                                // the cascade and A is back on offense
-                                // (_._UD === _._0z naturally via the kickoff
-                                // _1c1), we clear the suspend flag.
-                                window._rb2p_pickSixActive = true;
+                                // Meanwhile B applies the PICK6 outcome
+                                // we send below; needsPAT=true makes B
+                                // pop the user-played PAT modal (the
+                                // engine-native _wm call) so B picks
+                                // 1PT or 2PT and PLAYS it out. B's
+                                // result comes back to A as PAT_RESULT.
+                                //
+                                // INVARIANT: 2P never has AI offense.
+                                // The pickSixPatCascadeActive flag both
+                                // suspends A's possession watchdog AND
+                                // arms the frame-tight engine-PAT
+                                // suppressor.
+                                window._rb2p_pickSixPatCascadeActive = true;
                                 console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
-                                            ') — handing PAT control to B over Firebase');
-                                // V32: removed "OPPONENT IS CHOOSING PAT"
-                                // overlay so the defender can see the field
-                                // while B picks/plays the PAT.
-                                // Tell B to display the PAT picker for THEIR
-                                // defensive TD. Outcome carries needsPAT=true
-                                // so applyOutcome on B shows the modal.
-                                if (matchAfter) {
+                                            ') — A suppressing engine PAT modal; B will play user PAT');
+                                if (engineMatchAfter) {
                                     var pickOutcome = {
                                         type: 'PICK6',
                                         yardLine: 0,
                                         ownSide: true,
                                         needsPAT: true,
-                                        scoreUser: matchAfter._Sb1[matchAfter._0z],
-                                        scoreOpp:  matchAfter._Sb1[oppIdxA],
-                                        quarter:   matchAfter._Wy,
-                                        minutesLeft: matchAfter._r11,
-                                        secondsLeft: matchAfter._s11,
-                                        fromTeam: pre._bL ? pre._bL[pre._UD] : '',
-                                        toTeam:   pre._bL ? pre._bL[1 - pre._UD] : '',
+                                        scoreUser: engineMatchAfter.userScore,
+                                        scoreOpp:  engineMatchAfter.opponentScore,
+                                        quarter:   engineMatchAfter.engineQuarter,
+                                        minutesLeft: engineMatchAfter.engineMinutesLeft,
+                                        secondsLeft: engineMatchAfter.engineSecondsLeft,
+                                        fromTeam: pre.engineTeamDisplayNames ? pre.engineTeamDisplayNames[pre.enginePossessingTeamIdx] : '',
+                                        toTeam:   pre.engineTeamDisplayNames ? pre.engineTeamDisplayNames[1 - pre.enginePossessingTeamIdx] : '',
                                         message: 'PICK SIX! Defensive touchdown.',
                                         ts: Date.now()
                                     };
                                     window._twoPlayer.send(pickOutcome);
                                 }
-                                // Hard fallback: if the engine's cascade
-                                // never completes (gutted path), force A's
-                                // new drive after 30 s.
+                                // Hard fallback: if the kickoff cascade
+                                // never completes on A's side (gutted AI
+                                // path), force A's new drive after 30 s
+                                // so the game doesn't deadlock.
                                 setTimeout(function () {
                                     try {
-                                        if (!window._rb2p_pickSixActive) return;
+                                        if (!window._rb2p_pickSixPatCascadeActive) return;
                                         console.log('[2P PICK6] 30s fallback — forcing A drive');
-                                        window._rb2p_pickSixActive      = false;
-                                        window._rb2p_lastApplyTs        = Date.now();
-                                        window._rb2p_sendInProgress     = false;
-                                        window._rb2p_waitingForOpponent = false;
+                                        window._rb2p_pickSixPatCascadeActive   = false;
+                                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                                        window._rb2p_userOutcomeSendInProgress  = false;
+                                        window._rb2p_userIsWaitingForOpponent   = false;
                                         var yard = -(25 + Math.floor(Math.random() * 16));
-                                        if (typeof window._rb2p_forceLocalDrive === 'function') {
-                                            window._rb2p_forceLocalDrive(yard);
+                                        if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                                            window._rb2p_forceUserOffenseDrive(yard);
                                         }
                                     } catch (e) {
                                         console.log('[2P PICK6 fallback err]', e);
@@ -1437,15 +1632,15 @@
                         }
 
                         // ===== Normal possession-change SEND =====
-                        window._rb2p_sendInProgress = true;
-                        window._rb2p_waitingForOpponent = true;
+                        window._rb2p_userOutcomeSendInProgress = true;
+                        window._rb2p_userIsWaitingForOpponent = true;
                         try { window._twoPlayer.send(outcome); }
                         catch (e) { console.log('[2P] send err', e); }
                     };
                     wrapped._p2p_hooked = true;
                     _Y._PU1[idx] = wrapped;
-                    hooked1c1 = true;
-                    hooked1c1Idx = idx;
+                    hookedEngineChangePossession = true;
+                    hookedChangePossessionScriptIdx = idx;
                 } catch (e) { /* registry not ready yet */ }
             }
 
@@ -1463,34 +1658,47 @@
             // snap it back BEFORE the next frame's draw uses the wrong team
             // name. This catches the stray writes inside _Ib1 without
             // breaking the FSM transitions it owns.
-            var hookedIb1 = false;
-            function hookIb1Noop() {
-                if (hookedIb1) return;
+            var hookedEngineCommentaryScript = false;
+            function hookEngineCommentaryScript() {
+                if (hookedEngineCommentaryScript) return;
                 try {
-                    if (typeof _Y === 'undefined' || !_Y._OU1 || !_Y._PU1) return;
-                    var idx = _Y._OU1.indexOf('gml_Script_s_update_commentary');
+                    var idx = RB.findEngineScriptIndex('gml_Script_s_update_commentary');
                     if (idx < 0) return;
                     var fn = _Y._PU1[idx];
                     if (typeof fn !== 'function') return;
-                    if (fn._p2p_clamp) { hookedIb1 = true; return; }
+                    if (fn._p2p_clamp) { hookedEngineCommentaryScript = true; return; }
                     var origIb1 = fn;
                     var clamp = function (_, t) {
-                        var m = (typeof _6E2 !== 'undefined') ? _6E2._Ue2(MATCH_ID) : null;
+                        var engineMatch = RB.engineState();
                         origIb1.call(this, _, t);
-                        // Skip clamp during pick-6 cascade — engine needs
-                        // _._UD on the scoring (opp) team for PAT crediting.
-                        if (window._rb2p_pickSixActive === true) return;
-                        if (m && m._0z != null) {
-                            if (window._rb2p_waitingForOpponent === true) {
-                                if (m._UD === m._0z) m._UD = m._0z ? 0 : 1;
+                        // The engine PAT modal is suppressed by the
+                        // popup-killer watchdog further down (it destroys
+                        // any "PopUps"-layer instances spawned during
+                        // pickSixPatCascadeActive that aren't on the
+                        // user-PAT authorized list). We DON'T touch
+                        // engineDriveFsmStage here because the engine
+                        // relies on its natural cascade to fire the
+                        // post-PAT kickoff (which sends PAT_RESULT back).
+                        //
+                        // Skip the possession clamp during pick-6 cascade
+                        // — engine needs possession on the scoring team
+                        // so the PAT scene credits correctly when B taps.
+                        if (window._rb2p_pickSixPatCascadeActive === true) return;
+                        if (engineMatch && engineMatch.engineUserTeamIdx != null) {
+                            if (window._rb2p_userIsWaitingForOpponent === true) {
+                                if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx) {
+                                    engineMatch.enginePossessingTeamIdx = engineMatch.engineOpponentTeamIdx;
+                                }
                             } else {
-                                if (m._UD !== m._0z) m._UD = m._0z;
+                                if (engineMatch.enginePossessingTeamIdx !== engineMatch.engineUserTeamIdx) {
+                                    engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                                }
                             }
                         }
                     };
                     clamp._p2p_clamp = true;
                     _Y._PU1[idx] = clamp;
-                    hookedIb1 = true;
+                    hookedEngineCommentaryScript = true;
                 } catch (e) {}
             }
 
@@ -1515,61 +1723,61 @@
             // directly. The _1c1 wrapper will then send the outcome to the
             // opponent over Firebase, unblocking their handoff.
             //
-            // We pre-set _._Vy = 9 (TD) when a score increase is observed so
-            // inferType returns 'TD' and the receiver gets a proper kickoff
-            // (own 25). Otherwise _Vy = 8 (turnover-on-downs).
-            var deadVy = { 4: true, 10: true, 11: true };
-            var stuckVy = null, stuckSince = 0, lastSb = -1;
+            // We pre-set vyStage = 9 (TD) when a score increase is observed so
+            // inferUserDriveEndType returns 'TD' and the receiver gets a proper kickoff
+            // (own 25). Otherwise vyStage = 8 (turnover-on-downs).
+            var deadEngineFsmStages = { 4: true, 10: true, 11: true };
+            var stuckEngineFsmStage = null, engineFsmStageStuckSinceMs = 0, lastUserScoreObserved = -1;
             setInterval(function () {
                 try {
-                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
-                    if (window._rb2p_waitingForOpponent === true) return;  // already handed off
-                    var m = getMatch();
-                    if (!m || m._0z == null || m._Sb1 == null) return;
+                    if (!RB.isEngineInMatchRoom()) return;
+                    if (window._rb2p_userIsWaitingForOpponent === true) return;  // already handed off
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch || engineMatch.engineUserTeamIdx == null || engineMatch.engineScoreboard == null) return;
 
                     // Track score so we can pick TD vs FG vs turnover for
                     // the forced end. Treat score regression as an external
-                    // reset (e.g. new drive setup) — re-baseline lastSb.
-                    var myScore = m._Sb1[m._0z];
-                    if (lastSb < 0 || myScore < lastSb) lastSb = myScore;
+                    // reset (e.g. new drive setup) — re-baseline lastUserScoreObserved.
+                    var myScore = engineMatch.userScore;
+                    if (lastUserScoreObserved < 0 || myScore < lastUserScoreObserved) lastUserScoreObserved = myScore;
 
-                    if (m._Vy !== stuckVy) {
-                        stuckVy = m._Vy;
-                        stuckSince = Date.now();
+                    if (engineMatch.engineDriveFsmStage !== stuckEngineFsmStage) {
+                        stuckEngineFsmStage = engineMatch.engineDriveFsmStage;
+                        engineFsmStageStuckSinceMs = Date.now();
                         return;
                     }
-                    if (!deadVy[m._Vy]) return;
-                    if (Date.now() - stuckSince < 1500) return;
-                    if (Date.now() - (window._rb2p_lastApplyTs || 0) < 3000) return;
-                    if (window._rb2p_sendInProgress) return;
+                    if (!deadEngineFsmStages[engineMatch.engineDriveFsmStage]) return;
+                    if (Date.now() - engineFsmStageStuckSinceMs < 1500) return;
+                    if (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) < 3000) return;
+                    if (window._rb2p_userOutcomeSendInProgress) return;
 
                     // Pick the end-Vy from the score delta so the receiver
                     // gets the right outcome type:
-                    //   delta ≥ 6 → _Vy = 9  (TD)        → 'TD'  → kickoff (random 25-40)
-                    //   delta ≥ 3 → _Vy = 14 (FG made)   → 'FG'  → kickoff (random 25-40)
-                    //   delta = 0 → _Vy = 8  (turnover)  → 'INT' → spot of downed ball
-                    var scoreDelta = myScore - lastSb;
+                    //   delta ≥ 6 → vyStage = 9  (TD)       → 'TD'  → kickoff (random 25-40)
+                    //   delta ≥ 3 → vyStage = 14 (FG made)  → 'FG'  → kickoff (random 25-40)
+                    //   delta = 0 → vyStage = 8  (turnover) → 'INT' → spot of downed ball
+                    var scoreDelta = myScore - lastUserScoreObserved;
                     var endVy;
                     if      (scoreDelta >= 6) endVy = 9;
                     else if (scoreDelta >= 3) endVy = 14;
                     else                       endVy = 8;
-                    console.log('[2P] drive stuck at _Vy=' + m._Vy + ' for ' +
-                                (Date.now() - stuckSince) + 'ms — forcing end as Vy=' + endVy +
-                                ' (myScore ' + lastSb + '→' + myScore + ', delta ' + scoreDelta + ')');
-                    m._Vy = endVy;
-                    m._2c1 = endVy;  // _1c1 reads pre._2c1 || pre._Vy via inferType
-                    var idx = _Y._OU1.indexOf('gml_Script_s_change_possession');
-                    if (idx >= 0) _Y._PU1[idx](m, _Sc2);
-                    lastSb = myScore;
-                    stuckSince = Date.now();
+                    console.log('[2P] drive stuck at vyStage=' + engineMatch.engineDriveFsmStage + ' for ' +
+                                (Date.now() - engineFsmStageStuckSinceMs) + 'ms — forcing end as Vy=' + endVy +
+                                ' (myScore ' + lastUserScoreObserved + '→' + myScore + ', delta ' + scoreDelta + ')');
+                    engineMatch.engineDriveFsmStage = endVy;
+                    engineMatch.enginePriorFsmStage = endVy;   // _1c1 reads priorVy || vyStage via inferUserDriveEndType
+                    var changePossession = RB.getEngineScript('gml_Script_s_change_possession');
+                    if (typeof changePossession === 'function') changePossession(engineMatch.rawEngineMatch, _Sc2);
+                    lastUserScoreObserved = myScore;
+                    engineFsmStageStuckSinceMs = Date.now();
                 } catch (e) {}
             }, 250);
 
             // ===== Bidirectional UD watchdog =====
             // Rule:
-            //   _rb2p_waitingForOpponent === false → user is on offense.
+            //   _rb2p_userIsWaitingForOpponent === false → user is on offense.
             //     _._UD must === _._0z so the engine runs user-offense logic.
-            //   _rb2p_waitingForOpponent === true  → opponent is on offense.
+            //   _rb2p_userIsWaitingForOpponent === true  → opponent is on offense.
             //     _._UD must !== _._0z so the engine treats us as defense AND
             //     so the live-sync receiver's gate (`m._UD !== m._0z`) stays
             //     OPEN. That gate is what writes incoming scoreboard/clock
@@ -1577,168 +1785,179 @@
             //     in-game scoreboard freezes at its initial values while the
             //     HTML waiting overlay (which has no gate) still updates.
             //
-            // _Ib1 writes _._UD in both directions on its own, so without
-            // this watchdog, every ~100ms _Ib1 can stomp the live-sync gate.
+            // _Ib1 writes possession in both directions on its own, so
+            // without this watchdog every ~100ms _Ib1 can stomp the live-
+            // sync gate.
             setInterval(function () {
                 try {
-                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
-                    var m = getMatch();
-                    if (!m || m._0z == null) return;
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch || engineMatch.engineUserTeamIdx == null) return;
                     // SUSPENDED during pick-6 cascade: the engine's PAT
-                    // processing legitimately keeps _._UD on the OPPONENT
-                    // (the defensive scoring team) so the +1 / +2 credits
-                    // the right side. Clamping here would steal the PAT.
-                    if (window._rb2p_pickSixActive === true) return;
-                    if (window._rb2p_waitingForOpponent === true) {
+                    // processing legitimately keeps possession on the
+                    // OPPONENT (the defensive scoring team) so the +1 / +2
+                    // credits the right side. Clamping would steal the PAT.
+                    if (window._rb2p_pickSixPatCascadeActive === true) return;
+                    if (window._rb2p_userIsWaitingForOpponent === true) {
                         // Defense: opponent owns the ball in the engine's view.
-                        if (m._UD === m._0z) m._UD = m._0z ? 0 : 1;
+                        if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx) {
+                            engineMatch.enginePossessingTeamIdx = engineMatch.engineOpponentTeamIdx;
+                        }
                     } else {
                         // Offense: user owns the ball.
-                        if (m._UD !== m._0z) m._UD = m._0z;
+                        if (engineMatch.enginePossessingTeamIdx !== engineMatch.engineUserTeamIdx) {
+                            engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                        }
                     }
-                    // Pick-6 cascade complete: the engine's kickoff _1c1 has
-                    // restored _._UD === _._0z naturally. We didn't trigger
-                    // it; just observe. Clearing here lets the watchdog
-                    // resume normal operation for the next play.
                 } catch (e) {}
             }, 100);
 
-            // ===== Suppress engine's NATIVE PAT screen during pick-6 =====
-            // On A's side after pick-6: the engine WANTS to pop "1 or 2 PT?"
-            // on A's canvas (the cascade reaches _Vy = 11). We don't want
-            // that — B is the one picking. So as soon as _Vy = 11 appears
-            // while pickSixActive, advance straight to _Vy = 1 (kickoff
-            // setup). The engine's PAT crediting (case 17/18) never runs;
-            // B's choice will be applied via Firebase PAT_RESULT instead.
-            setInterval(function () {
-                try {
-                    if (window._rb2p_pickSixActive !== true) return;
-                    var m = getMatch();
-                    if (!m) return;
-                    if (m._Vy === 11) {
-                        m._Vy = 1;
-                        console.log('[2P PICK6] skipped engine PAT screen (Vy 11 → 1)');
-                    }
-                } catch (e) {}
-            }, 30);
-
-            // ===== Listen for B's PAT_RESULT outcome (over Firebase) =====
-            // The lobby module wires the outcome listener after match start.
-            // The applyOutcome dispatcher (in this IIFE) already handles all
-            // outcome types — we add a PAT_RESULT branch there. Here we just
-            // expose a helper for the apply step to use.
-            window._rb2p_applyPatResult = function (outcome) {
-                try {
-                    var m = getMatch();
-                    if (!m) return;
-                    var oppIdxR = m._0z ? 0 : 1;
-                    // Outcome.scoreOpp = sender's opp score (= our team's
-                    // score from sender's view). Outcome.scoreUser = sender's
-                    // user score (= our opp's score from sender's view).
-                    if (typeof outcome.scoreUser === 'number')
-                        m._Sb1[oppIdxR] = outcome.scoreUser;
-                    if (typeof outcome.scoreOpp === 'number')
-                        m._Sb1[m._0z] = outcome.scoreOpp;
-                    // V32: rb-pick6-wait overlay removed; no-op here.
-                    // Clear pick-6 flag and start A's kickoff drive (random
-                    // own 25..40, NEGATIVE = receiver's own side).
-                    window._rb2p_pickSixActive      = false;
-                    window._rb2p_waitingForOpponent = false;
-                    window._rb2p_sendInProgress     = false;
-                    window._rb2p_lastApplyTs        = Date.now();
-                    var yard = -(25 + Math.floor(Math.random() * 16));
-                    if (typeof window._rb2p_forceLocalDrive === 'function') {
-                        window._rb2p_forceLocalDrive(yard);
-                    }
-                    console.log('[2P PICK6] PAT_RESULT applied — A kicking off');
-                } catch (e) { console.log('[2P PICK6 PAT_RESULT err]', e); }
-            };
-
             // ===== Pick-6 cascade completion watcher =====
-            // Detects when the engine has finished the PAT + kickoff cascade
+            // Detects when the engine has finished the kickoff cascade
             // after a pick-6 and A is back on offense. Clears the suspend
-            // flag so the UD watchdog and _Ib1 wrapper can resume clamping.
+            // flag so the possession watchdog and _Ib1 wrapper can resume
+            // clamping. (The engine-PAT-modal suppressor INSIDE the _Ib1
+            // wrapper is also gated by this flag, and goes inert once
+            // cleared here.)
             setInterval(function () {
                 try {
-                    if (window._rb2p_pickSixActive !== true) return;
-                    if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) return;
-                    var m = getMatch();
-                    if (!m || m._0z == null) return;
+                    if (window._rb2p_pickSixPatCascadeActive !== true) return;
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch || engineMatch.engineUserTeamIdx == null) return;
                     // Cascade is done once we're back in active play
-                    // (_._kp == 2) with possession returned to us.
-                    if (m._UD === m._0z && m._kp === 2) {
-                        window._rb2p_pickSixActive = false;
-                        window._rb2p_lastApplyTs   = Date.now();
+                    // (engineControllerState == 2) with possession returned to us.
+                    if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
+                        engineMatch.engineControllerState === 2) {
+                        window._rb2p_pickSixPatCascadeActive = false;
+                        window._rb2p_lastOpponentOutcomeApplyMs   = Date.now();
                         // Snapshot fresh drive-start scores so the next
                         // pick-6 detector has the right baseline.
-                        var oppIdxC = m._0z ? 0 : 1;
-                        window._rb2p_driveStartUserScore = m._Sb1[m._0z] || 0;
-                        window._rb2p_driveStartOppScore  = m._Sb1[oppIdxC] || 0;
+                        window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
+                        window._rb2p_opponentScoreAtDriveStart  = engineMatch.opponentScore;
                         console.log('[2P PICK6] cascade complete — A back on offense, watchdog re-engaged');
                     }
                 } catch (e) {}
             }, 150);
 
-            function getMatch() {
-                try { return _6E2._Ue2(MATCH_ID); } catch (e) { return null; }
-            }
-            function readMatch() {
+            // ===== B's PAT_RESULT outcome (Firebase) =====
+            // Wired into applyOpponentOutcome's dispatcher below. Helper
+            // here applies B's PAT score on A's side and starts A's next
+            // drive via a fresh kickoff (random own 25..40, negative
+            // yardLine because the receiver's own half is on the negative
+            // side of the engine's signed yardLine convention).
+            window._rb2p_applyOpponentPatResult = function (outcome) {
                 try {
-                    var m = getMatch();
-                    if (!m) return null;
-                    return {
-                        _UD: m._UD, _0z: m._0z, _6F: m._6F,
-                        _Vy: m._Vy, _2c1: m._2c1, _Wy: m._Wy,
-                        _Sb1: m._Sb1 ? [m._Sb1[0], m._Sb1[1]] : [0, 0],
-                        _bL: m._bL ? [m._bL[0], m._bL[1]] : ['', ''],
-                        _t11: m._t11, _l61: m._l61
-                    };
-                } catch (e) { return null; }
-            }
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch) return;
+                    // outcome.scoreOpp  = sender's opp score (= user's team)
+                    // outcome.scoreUser = sender's user score (= user's opp)
+                    if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
+                    if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
+                    window._rb2p_pickSixPatCascadeActive   = false;
+                    window._rb2p_userIsWaitingForOpponent  = false;
+                    window._rb2p_userOutcomeSendInProgress = false;
+                    window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                    window._rb2p_userPatPopupRefs = null;
+                    var yard = -(25 + Math.floor(Math.random() * 16));
+                    if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                        window._rb2p_forceUserOffenseDrive(yard);
+                    }
+                    console.log('[2P PICK6] PAT_RESULT applied — A kicking off');
+                } catch (e) { console.log('[2P PICK6 PAT_RESULT err]', e); }
+            };
 
-            function buildOutcome(pre, post, prevVy) {
-                var userIdx = post._0z;
-                var oppIdx = userIdx ? 0 : 1;
-                var type = inferType(prevVy);
-                // _._6F after _1c1 is already mirrored: the engine does
-                // `_._6F = -_._6F` inside _1c1 (verified by reading the script
-                // body in retrobowl.js). That mirror flips A's perspective
-                // into the new possessor's view, which is the same view B
-                // uses on B's device. So `post._6F` is directly compatible
-                // with B's _._6F — preserve the sign, do NOT take Math.abs.
-                // Math.abs() was the historic bug: it dropped the sign and
-                // left the receiver always in their own half, even when the
-                // turnover happened in their own red zone (where they should
-                // start backed up at -X).
-                var yard = post._6F;
-                var ownSide = yard >= 0;   // kept for message text only
-                // Capture the on-screen clock state. The scoreboard renders
-                // _._r11 (minutes remaining) and _._s11 (seconds remaining)
-                // directly — NOT _._Yc1, which is actually a tick-allowance
-                // counter that the engine decrements alongside _s11 in _Id1.
-                // Syncing _Yc1 instead of r11/s11 was the historic bug — the
-                // receiver would queue N seconds of clock-down and the engine
-                // would visibly count down from there.
-                var minLeft = 0, secLeft = 0;
+            // ===== Engine-PAT-popup KILLER (the actual fix) =====
+            // The engine's natural PAT modal is popped from _Ik1's direct
+            // call to _hB(_, t, 1), which we cannot intercept from outside
+            // the engine's IIFE (no script-registry indirection, function
+            // refs captured in closures, etc.). Both bugs the user is
+            // hitting trace back to this:
+            //   (a) "engine PAT shows on A's screen during pick-6" —
+            //       the engine's natural modal pop on the thrower's
+            //       canvas, which we want gone.
+            //   (b) "user PAT shows twice on B during pick-6" —
+            //       the engine's natural modal pops AGAIN on B (right
+            //       after our explicit _wm), overlaying our user PAT.
+            //
+            // So instead of trying to intercept _hB, we let the engine
+            // create the popup instances and then destroy any unauthorized
+            // ones at frame rate. Authorized popups = the ones our explicit
+            // user-PAT _wm call created on B (tracked in _rb2p_userPatPopupRefs).
+            //
+            // Detection: every popup-layer object has _eE2._51 === "PopUps"
+            // (its definition's layer name). We enumerate _Sc2._GL2._oq2,
+            // filter by that, and mark _HL2 = true on anything not in the
+            // authorized set. Only active during the pick-6 cascade so
+            // normal-TD PAT modals (which we DO want to show) are untouched.
+            function enumeratePopupInstances() {
+                var out = [];
                 try {
-                    var raw = _6E2._Ue2(MATCH_ID);
-                    if (raw) {
-                        if (typeof raw._r11 === 'number') minLeft = raw._r11;
-                        if (typeof raw._s11 === 'number') secLeft = raw._s11;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2) continue;
+                        if (inst._eE2 && inst._eE2._51 === 'PopUps') out.push(inst);
                     }
                 } catch (e) {}
+                return out;
+            }
+            window._rb2p_enumeratePopupInstances = enumeratePopupInstances;
+
+            setInterval(function () {
+                try {
+                    if (window._rb2p_pickSixPatCascadeActive !== true) return;
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var popups = enumeratePopupInstances();
+                    if (popups.length === 0) return;
+                    var authorized = window._rb2p_userPatPopupRefs;
+                    for (var i = 0; i < popups.length; i++) {
+                        var inst = popups[i];
+                        if (authorized && authorized.indexOf(inst) !== -1) continue;
+                        inst._HL2 = true;   // mark destroyed
+                    }
+                } catch (e) {}
+            }, 16);
+
+            function getEngineMatchInstance()  { return RB.getEngineMatch(); }
+            function snapshotEngineMatch() { return RB.engineSnapshot(); }
+
+            function buildUserDriveEndOutcome(pre, post, prevVy) {
+                var type = inferUserDriveEndType(prevVy);
+                // yardLine after _1c1 is already mirrored: the engine does
+                // `yardLine = -yardLine` inside _1c1 (verified by reading
+                // the script body in retrobowl.js). That mirror flips A's
+                // perspective into the new possessor's view, which is the
+                // same view B uses on B's device. So post.engineYardLineSigned is
+                // directly compatible with B's yardLine — preserve the
+                // sign, do NOT take Math.abs. Math.abs() was the historic
+                // bug: it dropped the sign and left the receiver always in
+                // their own half, even when the turnover happened in their
+                // own red zone (where they should start backed up at -X).
+                var yard = post.engineYardLineSigned;
+                var ownSide = yard >= 0;   // kept for message text only
+                // Capture the on-screen clock state. The scoreboard renders
+                // minutesLeft/secondsLeft directly — NOT tickAllowance, which
+                // is a sub-second counter the engine decrements alongside
+                // secondsLeft in _Id1. Syncing tickAllowance instead of
+                // minutes/seconds was the historic bug — the receiver would
+                // queue N seconds of clock-down and the engine would visibly
+                // count down from there.
+                var live = RB.engineState();
+                var minLeft = (live && typeof live.engineMinutesLeft === 'number') ? live.engineMinutesLeft : 0;
+                var secLeft = (live && typeof live.engineSecondsLeft === 'number') ? live.engineSecondsLeft : 0;
                 return {
                     type: type,
                     yardLine: yard,
                     ownSide: ownSide,
-                    scoreUser: post._Sb1[userIdx],
-                    scoreOpp:  post._Sb1[oppIdx],
-                    quarter: post._Wy,
+                    scoreUser: post.engineScoreboard[post.engineUserTeamIdx],
+                    scoreOpp:  post.engineScoreboard[post.engineUserTeamIdx ? 0 : 1],
+                    quarter: post.engineQuarter,
                     minutesLeft: minLeft,
                     secondsLeft: secLeft,
-                    fromTeam: pre._bL[pre._UD],
-                    toTeam:   post._bL[post._UD],
-                    message: messageFor(type, Math.abs(yard), ownSide),
+                    fromTeam: pre.engineTeamDisplayNames[pre.enginePossessingTeamIdx],
+                    toTeam:   post.engineTeamDisplayNames[post.enginePossessingTeamIdx],
+                    message: userFacingMessageForType(type, Math.abs(yard), ownSide),
                     ts: Date.now()
                 };
             }
@@ -1747,146 +1966,165 @@
             // Skip the in-engine ceremony (kickoff animation, ETC.) and jump
             // straight to "user has the ball at yardLine". Scores updated to
             // reflect the AI's drive outcome.
-            function applyOutcome(outcome) {
+            function applyOpponentOutcome(outcome) {
                 try {
-                    var m = getMatch();
-                    if (!m) return false;
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch) return false;
 
-                    // ===== PAT_RESULT — B sent us their PAT choice =====
-                    // (A side): apply the PAT score and kick off.
+                    // ===== PAT_RESULT — B sent its played-out PAT result =====
+                    // (A side): apply the PAT score and start A's kickoff drive.
                     if (outcome.type === 'PAT_RESULT') {
-                        if (typeof window._rb2p_applyPatResult === 'function') {
-                            window._rb2p_applyPatResult(outcome);
+                        if (typeof window._rb2p_applyOpponentPatResult === 'function') {
+                            window._rb2p_applyOpponentPatResult(outcome);
                         }
                         return true;
                     }
 
                     // ===== PICK-6 RECEIVE BRANCH =====
-                    // A threw INT, A's defense (= our offense) returned it
-                    // for a TD. We get +6 immediately. If needsPAT is set,
-                    // show the HTML PAT picker so we choose 1 PT or 2 PT —
-                    // the choice rolls dice locally then sends a PAT_RESULT
-                    // back to A who applies the kickoff. We STAY in waiting
-                    // state throughout (we don't take possession).
+                    // A threw INT; A's defense (= the user-B's offense team
+                    // in B's perspective) returned it for a TD. B mirrors
+                    // the +6 score, then physically plays out the PAT on
+                    // B's own screen via the engine-native PAT modal
+                    // (popped below via _wm). A's screen suppresses its
+                    // natural engine PAT modal via the pre-origIb1
+                    // suppressor in engineCommentaryScriptHook above.
+                    // After B plays the PAT, the engine credits +1/+2 on
+                    // B; the kickoff cascade fires _1c1 which ships a
+                    // PAT_RESULT outcome back to A so A's scoreboard
+                    // catches up and A starts the next drive.
+                    //
+                    // INVARIANT: in 2P there is NEVER an engine-AI
+                    // offense. A's gutted AI-drive path means B MUST
+                    // play the PAT — there's no fallback dice roll.
                     if (outcome.type === 'PICK6') {
-                        var oppIdxP = m._0z ? 0 : 1;
-                        if (m._Sb1) {
-                            if (typeof outcome.scoreUser === 'number')
-                                m._Sb1[oppIdxP] = outcome.scoreUser;
-                            if (typeof outcome.scoreOpp === 'number')
-                                m._Sb1[m._0z] = outcome.scoreOpp;
-                        }
-                        if (typeof outcome.quarter      === 'number') m._Wy  = outcome.quarter;
-                        if (typeof outcome.minutesLeft  === 'number') m._r11 = outcome.minutesLeft;
-                        if (typeof outcome.secondsLeft  === 'number') m._s11 = outcome.secondsLeft;
-                        m._Yc1 = 0;
-                        window._rb2p_waitingForOpponent = true;
-                        window._rb2p_sendInProgress     = false;
-                        console.log('[2P apply v5] PICK6 — +6, stay parked');
+                        if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
+                        if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
+                        if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
+                        if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
+                        if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
+                        engineMatch.engineTickAllowance = 0;
+                        window._rb2p_userIsWaitingForOpponent = true;
+                        window._rb2p_userOutcomeSendInProgress = false;
+                        console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
 
-                        // Played-out PAT path (per conversions.txt §6):
-                        // Use the engine's NATIVE PAT modal so the user
-                        // physically plays the 1-PT kick scene or the
-                        // 2-PT goal-line snap. Score comes from the play,
-                        // not a dice roll.
                         if (outcome.needsPAT === true) {
                             try {
-                                // Suspend the UD watchdog on this device so
-                                // the post-PAT kickoff cascade can flip _UD
-                                // naturally via _1c1 (the wrapper will then
-                                // ship a KICKOFF outcome back to A).
-                                window._rb2p_pickSixActive = true;
-                                // Make sure the engine sees US as the
-                                // possessing team (so _._UD-based scoring
-                                // credits B), and set the PAT-pending
-                                // marker so the 2-PT click routes to a
-                                // proper goal-line snap via _eb1 case 2.
-                                m._UD  = m._0z;
-                                m._t11 = 6;
-                                m._l61 = 2;
-                                m._kp  = 2;
-                                // Pop the engine-native modal exactly as
-                                // _hB case-0 does — but WITHOUT the +6
-                                // credit (A already added it; we mirrored
-                                // via live-sync above).
+                                // Suspend the possession watchdog on this
+                                // device so the post-PAT kickoff cascade
+                                // can flip possession naturally via _1c1
+                                // (the _1c1 hook will then ship a
+                                // PAT_RESULT outcome back to A).
+                                window._rb2p_pickSixPatCascadeActive = true;
+                                // Make sure the engine sees US (B) as the
+                                // possessing team (so possession-based
+                                // scoring credits B), and set the PAT-
+                                // pending marker so the 2-PT click routes
+                                // to a proper goal-line snap via _eb1
+                                // case 2.
+                                engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                                engineMatch.engineDownNumber       = 6;   // PAT-pending marker
+                                engineMatch.engineYardsToGo        = 2;
+                                engineMatch.engineControllerState  = 2;
+                                // Pop the engine-native PAT modal exactly
+                                // the way _hB case-0 does — but WITHOUT
+                                // re-crediting +6 (sender already added
+                                // it; we mirrored above via live-sync).
+                                //
+                                // Snapshot existing popups BEFORE the call
+                                // so we can identify the new instances our
+                                // _wm spawned. The popup-killer watchdog
+                                // (above) reads this set and leaves these
+                                // alone — anything else (the engine's
+                                // duplicate natural PAT modal) gets killed.
                                 try {
-                                    var msg  = _Xi(m, _Sc2, "matchmsg_PATor2");
-                                    var lbl1 = _Xi(m, _Sc2, "match_1pt");
-                                    var lbl2 = _Xi(m, _Sc2, "match_2pt");
-                                    _wm(m, _Sc2, "", msg, lbl1, lbl2,
+                                    var popupsBeforeUserPatModal = window._rb2p_enumeratePopupInstances
+                                        ? window._rb2p_enumeratePopupInstances()
+                                        : [];
+                                    var msg  = _Xi(engineMatch.rawEngineMatch, _Sc2, "matchmsg_PATor2");
+                                    var lbl1 = _Xi(engineMatch.rawEngineMatch, _Sc2, "match_1pt");
+                                    var lbl2 = _Xi(engineMatch.rawEngineMatch, _Sc2, "match_2pt");
+                                    _wm(engineMatch.rawEngineMatch, _Sc2, "", msg, lbl1, lbl2,
                                         100367,  // _ne1 = btn_response_1pt
                                         100369,  // _oe1 = btn_response_2pt
                                         16777215, 0.7);
-                                    console.log('[2P PICK6] engine-native PAT modal popped for B');
+                                    var popupsAfterUserPatModal = window._rb2p_enumeratePopupInstances
+                                        ? window._rb2p_enumeratePopupInstances()
+                                        : [];
+                                    var authorizedUserPatPopups = [];
+                                    for (var pi = 0; pi < popupsAfterUserPatModal.length; pi++) {
+                                        var p = popupsAfterUserPatModal[pi];
+                                        if (popupsBeforeUserPatModal.indexOf(p) === -1) {
+                                            authorizedUserPatPopups.push(p);
+                                        }
+                                    }
+                                    window._rb2p_userPatPopupRefs = authorizedUserPatPopups;
+                                    console.log('[2P PICK6] user PAT modal popped on B (' +
+                                                authorizedUserPatPopups.length + ' authorized popups)');
                                 } catch (innerE) {
                                     console.log('[2P PICK6 modal err]', innerE);
                                 }
                             } catch (e) { console.log('[2P PICK6 setup err]', e); }
                             return true;
                         }
-
-                        // V32: removed the dead HTML PAT-picker block (it
-                        // ran the patSimulate dice-roll path that V31 made
-                        // obsolete). Pick-6 PAT now uses the engine-native
-                        // canvas modal via summonPlayedOutPAT.
                         return true;
                     }
 
-                    // Bug 2/5: clear wait + send sentinels BEFORE any match
+                    // Bug 2/5: clear wait + send sentinels BEFORE any engineMatch
                     // mutation. If something below throws, we still leave the
                     // flags in a sane state and the next outcome can be drained.
-                    window._rb2p_waitingForOpponent = false;
-                    window._rb2p_sendInProgress    = false;
-                    window._rb2p_lastApplyTs       = Date.now();
+                    window._rb2p_userIsWaitingForOpponent = false;
+                    window._rb2p_userOutcomeSendInProgress    = false;
+                    window._rb2p_lastOpponentOutcomeApplyMs       = Date.now();
 
-                    var oppIdx = m._0z ? 0 : 1;
                     // If the outcome carries absolute scores (the sender's
                     // perspective: their own score, their opponent's score),
-                    // mirror them straight into our local Sb1. That avoids
-                    // double-counting alongside the live-state sync — the
-                    // live push and the outcome at drive end converge to the
-                    // same absolute values.
-                    if (m._Sb1) {
+                    // mirror them straight into our local scoreboard. That
+                    // avoids double-counting alongside the live-state sync —
+                    // the live push and the outcome at drive end converge to
+                    // the same absolute values.
+                    if (engineMatch.engineScoreboard) {
                         if (typeof outcome.scoreUser === 'number') {
-                            m._Sb1[oppIdx] = outcome.scoreUser;   // sender's user = my opp
+                            engineMatch.setOpponentScore(outcome.scoreUser);  // sender's user = my opp
                         }
                         if (typeof outcome.scoreOpp === 'number') {
-                            m._Sb1[m._0z] = outcome.scoreOpp;     // sender's opp = me
+                            engineMatch.setUserScore(outcome.scoreOpp);  // sender's opp = me
                         }
                         // Fallback for outcomes missing absolute scores
                         // (e.g. simulate() calls without scoreUser set).
                         if (typeof outcome.scoreUser !== 'number') {
-                            if (outcome.type === 'TD')      m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 7;
-                            else if (outcome.type === 'FG') m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 3;
-                            else if (outcome.type === 'SAFETY') m._Sb1[oppIdx] = (m._Sb1[oppIdx] || 0) + 2;
+                            if (outcome.type === 'TD')          engineMatch.setOpponentScore(engineMatch.opponentScore + 7);
+                            else if (outcome.type === 'FG')     engineMatch.setOpponentScore(engineMatch.opponentScore + 3);
+                            else if (outcome.type === 'SAFETY') engineMatch.setOpponentScore(engineMatch.opponentScore + 2);
                         }
                     }
-                    // Clock + quarter sync. The scoreboard reads _._r11 (min)
-                    // and _._s11 (sec) directly; _._Yc1 is a tick-allowance
+                    // Clock + quarter sync. The scoreboard reads minutesLeft
+                    // and secondsLeft directly; tickAllowance is a sub-second
                     // queue that the engine decrements via _Id1 alongside
-                    // _s11. So we sync r11/s11 (the visible value) and zero
-                    // _Yc1 (no pending ticks) — the engine resumes from this
-                    // exact clock state when B plays.
-                    if (typeof outcome.quarter      === 'number') m._Wy  = outcome.quarter;
-                    if (typeof outcome.minutesLeft  === 'number') m._r11 = outcome.minutesLeft;
-                    if (typeof outcome.secondsLeft  === 'number') m._s11 = outcome.secondsLeft;
-                    m._Yc1 = 0;   // no carryover tick allowance from prior drive
-                    window._rb2p_lastSyncedClock = {
+                    // secondsLeft. So we sync minutes/seconds (the visible
+                    // value) and zero tickAllowance (no pending ticks) — the
+                    // engine resumes from this exact clock state when B
+                    // plays.
+                    if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
+                    if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
+                    if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
+                    engineMatch.engineTickAllowance = 0;
+                    window._rb2p_lastSyncedEngineClock = {
                         Wy: outcome.quarter,
                         r11: outcome.minutesLeft,
                         s11: outcome.secondsLeft
                     };
 
-                    applyingOutcome = true;
+                    isApplyingOpponentOutcome = true;
                     try {
-                        // Stash prior Vy + clear sub-message before the
-                        // forceLocalDrive call (which writes _Vy etc.).
-                        m._2c1 = m._Vy;
-                        m._8c1 = 0;
-                        m._831 = '';
-                        // forceLocalDrive does the heavy lifting: kills any
-                        // residual obj_btn_kickoff, sets _UD/_t11/_l61/_6F/_Vy
-                        // /_kp, and calls _eb1 to spawn the 22 players + ball.
+                        // Stash prior vyStage + clear sub-message before the
+                        // forceUserOffenseDrive call (which writes vyStage etc.).
+                        engineMatch.enginePriorFsmStage    = engineMatch.engineDriveFsmStage;
+                        engineMatch.engineSkipCommentaryFlag   = 0;
+                        engineMatch.engineSubCommentaryText = '';
+                        // forceUserOffenseDrive does the heavy lifting: kills any
+                        // residual obj_btn_kickoff, sets possession/down/
+                        // toGo/yardLine/vyStage/controllerKp, and calls
+                        // s_set_up_play to spawn the 22 players + ball.
                         //
                         // Yard-line policy:
                         //   • TD / FG by sender → receiver gets a KICKOFF.
@@ -1919,17 +2157,7 @@
                         //     outcome.yardLine is already the landing spot in
                         //     the receiver's frame from _1c1's mirror after
                         //     _Dc1 advanced the punt distance.
-                        var oppIdx2 = m._0z ? 0 : 1;
-                        // Compare sender's score (their own team) vs whatever
-                        // we already had for the opponent team (= sender) in
-                        // _Sb1 BEFORE this outcome's score mirror overwrote
-                        // it. We can recover this from outcome.scoreUser
-                        // (post-event) minus the change inferred from the
-                        // outcome type — but simpler: just trust score
-                        // delta = scoreUser - what's now in m._Sb1[oppIdx]
-                        // (we already mirrored the new value above, so the
-                        // delta is captured pre-mirror by saving it earlier).
-                        // For now, take the absolute jump implied by type:
+                        // Type-driven yard-line placement:
                         var isRandomKickoff = (outcome.type === 'TD' ||
                                                outcome.type === 'FG');
                         var isEngineKickoff = (outcome.type === 'KICKOFF');
@@ -1937,7 +2165,7 @@
                         var yard;
                         if (isRandomKickoff) {
                             // TD/FG receiver kickoff — pick a fresh random
-                            // own 25..40 (NEGATIVE _._6F in this engine).
+                            // own 25..40 (NEGATIVE yardLine in this engine).
                             yard = -(25 + Math.floor(Math.random() * 16));
                         } else if (isEngineKickoff) {
                             // The other side already ran _Zb1 + _1c1 with
@@ -1958,22 +2186,22 @@
                         // Clamp to engine's valid range.
                         if (yard < -50) yard = -50;
                         if (yard >  50) yard =  50;
-                        if (typeof window._rb2p_forceLocalDrive === 'function') {
-                            window._rb2p_forceLocalDrive(yard);
+                        if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                            window._rb2p_forceUserOffenseDrive(yard);
                         } else {
-                            m._UD  = m._0z;
-                            m._6F  = yard;
-                            m._t11 = 1;
-                            m._l61 = 10;
-                            m._Vy  = 2;
+                            engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                            engineMatch.engineYardLineSigned   = yard;
+                            engineMatch.engineDownNumber       = 1;
+                            engineMatch.engineYardsToGo       = 10;
+                            engineMatch.engineDriveFsmStage    = 2;
                         }
                     } finally {
-                        applyingOutcome = false;
+                        isApplyingOpponentOutcome = false;
                     }
                     return true;
                 } catch (e) {
-                    console.log('[2P] applyOutcome err', e);
-                    applyingOutcome = false;
+                    console.log('[2P] applyOpponentOutcome err', e);
+                    isApplyingOpponentOutcome = false;
                     return false;
                 }
             }
@@ -2030,18 +2258,18 @@
                         hideWait();
                         return;
                     }
-                    hook1c1();
-                    hookIb1Noop();
-                    var m = getMatch();
-                    if (!m) { hideWait(); return; }
-                    // Bug 2: _rb2p_waitingForOpponent is the single sentinel.
+                    hookEngineChangePossessionScript();
+                    hookEngineCommentaryScript();
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch) { hideWait(); return; }
+                    // Bug 2: _rb2p_userIsWaitingForOpponent is the single sentinel.
                     // It's set by the _1c1 wrapper when we lose possession,
                     // and by startTwoPlayerMatch('b') for the initial park.
                     // _Vy === 10 is unreliable because the engine resets _Vy.
-                    if (window._rb2p_waitingForOpponent === true) {
+                    if (window._rb2p_userIsWaitingForOpponent === true) {
                         if (window._twoPlayer.pending.length > 0) {
                             var o = window._twoPlayer.pending.shift();
-                            if (applyOutcome(o)) hideWait();
+                            if (applyOpponentOutcome(o)) hideWait();
                             else showWait('apply failed — see console');
                         } else {
                             showWait('opponent is on offense');
@@ -2058,7 +2286,7 @@
         // [two-player Retro Bowb] Lobby + Firebase RTDB pairing.
         //
         // Replaces the page's home screen with a fullscreen lobby until both
-        // players in the room toggle READY, then auto-launches the match on
+        // players in the room toggle READY, then auto-launches the engineMatch on
         // both ends with mirrored team perspectives:
         //
         //   Role A (joined first) -> plays as Buffalo, opponent = Kansas City,
@@ -2107,36 +2335,40 @@
         var $leave     = document.getElementById('rb-leave');
         var $diffBtns  = lobby.querySelectorAll('.diff-btn');
 
-        // ---- Difficulty toggle (LOCAL ONLY — affects this device's offense)
+        // ---- User-difficulty toggle (LOCAL ONLY — affects this device's offense)
         // Persisted to localStorage under 'rb2p_difficulty'. Default = 'max'.
-        // forceLocalDrive reads this same key and applies it to _._001 on
-        // every play setup, so changes take effect from the next drive.
-        function getDif() {
+        // forceUserOffenseDrive reads this same key and applies it to
+        // engineDefenseAggression on every play setup, so changes take effect
+        // from the next drive.
+        var USER_DIFFICULTY_TO_ENGINE_AGGRESSION = { max: -5, hard: -5, medium: 2, easy: 7 };
+        function getUserDifficultyPref() {
             try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
             catch (e) { return 'max'; }
         }
-        function setDif(v) {
+        function setUserDifficultyPref(v) {
             try { localStorage.setItem('rb2p_difficulty', v); } catch (e) {}
-            renderDif();
-            // If we're already in a match, apply immediately for the current play.
+            renderUserDifficultyButtons();
+            // If already in a match, apply immediately for the current play.
             try {
-                if (typeof _ft !== 'undefined' && _ft._gt() === 17) {
-                    var m = window._6E2 ? _6E2._Ue2(71) : null;
-                    var t = { max: -5, hard: -5, medium: 2, easy: 7 }[v];
-                    if (m && typeof t === 'number') m._001 = t;
+                if (RB.isEngineInMatchRoom()) {
+                    var engineMatch = RB.engineState();
+                    var aggression = USER_DIFFICULTY_TO_ENGINE_AGGRESSION[v];
+                    if (engineMatch && typeof aggression === 'number') {
+                        engineMatch.engineDefenseAggression = aggression;
+                    }
                 }
             } catch (e) {}
         }
-        function renderDif() {
-            var cur = getDif();
+        function renderUserDifficultyButtons() {
+            var cur = getUserDifficultyPref();
             $diffBtns.forEach(function (b) {
                 b.classList.toggle('selected', b.dataset.dif === cur);
             });
         }
         $diffBtns.forEach(function (b) {
-            b.addEventListener('click', function () { setDif(b.dataset.dif); });
+            b.addEventListener('click', function () { setUserDifficultyPref(b.dataset.dif); });
         });
-        renderDif();
+        renderUserDifficultyButtons();
 
         function showView(name) {
             lobby.dataset.active = name;
@@ -2333,7 +2565,7 @@
 
         // ---- Match start ----
         function startMatch() {
-            // Wire SEND to Firebase BEFORE entering the match. The local
+            // Wire SEND to Firebase BEFORE entering the engineMatch. The local
             // bridge already mutates _twoPlayer.send once installed; we
             // chain on top of whatever's there so simulate()/sentLog still
             // work for debugging.
@@ -2391,7 +2623,7 @@
             // happening on the offensive side in near-realtime.
             //
             // At drive end the SEND outcome carries the same absolute
-            // scores; applyOutcome sets them again (no double-count because
+            // scores; applyOpponentOutcome sets them again (no double-count because
             // it's an assignment, not an increment).
             function qtrName(q) {
                 if (q === 1) return '1ST QTR';
@@ -2413,79 +2645,98 @@
                 return qtrName(q) + ' ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
             }
 
-            var liveSeq = 0;
+            var userLivePushSeq = 0;
             setInterval(function () {
                 try {
-                    if (typeof _ft === 'undefined' || _ft._gt() !== 17) return;
-                    var m = window._6E2 ? _6E2._Ue2(71) : null;
-                    if (!m || m._Sb1 == null || m._0z == null) return;
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch || engineMatch.engineScoreboard == null ||
+                        engineMatch.engineUserTeamIdx == null) return;
                     // Push from both sides. The receive side only mirrors
-                    // when m._UD !== m._0z (defense) so we don't fight over
+                    // when the user is on defense, so we don't fight over
                     // who's authoritative — but during kickoff sequences
-                    // UD swaps around and either side can be "on offense"
-                    // briefly, so we always emit and let the receiver gate.
-                    var data = {
-                        myScore:     Number(m._Sb1[m._0z]) || 0,
-                        oppScore:    Number(m._Sb1[1 - m._0z]) || 0,
+                    // possession swaps around and either side can be "on
+                    // offense" briefly, so we always emit and let the
+                    // receiver gate.
+                    var userLivePayload = {
+                        // Field names "myScore"/"oppScore" are kept in the
+                        // wire payload (SENDER's perspective: my = sender's
+                        // team, opp = remote opponent's team) so that
+                        // existing rooms in Firebase remain compatible.
+                        myScore:     Number(engineMatch.userScore) || 0,
+                        oppScore:    Number(engineMatch.opponentScore) || 0,
                         // Legacy (elapsed/duration) kept for backward compat;
-                        // new field is minutesLeft/secondsLeft straight off
-                        // the engine's display registers.
-                        elapsed:     Number(m._Yc1) || 0,
-                        duration:    ((Number(m._5F) || 2) * 60),
-                        minutesLeft: Number(m._r11),
-                        secondsLeft: Number(m._s11),
-                        quarter:     Number(m._Wy) || 1,
-                        seq: ++liveSeq,
+                        // new fields minutesLeft/secondsLeft come straight
+                        // off the engine's visible display registers.
+                        elapsed:     Number(engineMatch.engineTickAllowance) || 0,
+                        duration:    ((Number(engineMatch.engineQuarterLengthMins) || 2) * 60),
+                        minutesLeft: Number(engineMatch.engineMinutesLeft),
+                        secondsLeft: Number(engineMatch.engineSecondsLeft),
+                        quarter:     Number(engineMatch.engineQuarter) || 1,
+                        seq: ++userLivePushSeq,
                         ts: Date.now()
                     };
-                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/live/' + myRole), data)
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/live/' + myRole), userLivePayload)
                         .catch(function () {});
                 } catch (e) {}
             }, 500);
 
-            // Subscribe to opponent's live state. When it arrives and I'm
-            // on defense (or just not yet on offense), mirror it into my
-            // local match instance and refresh the WAITING overlay.
-            var lastLiveTs = 0;
+            // Subscribe to opponent's live state. When it arrives and the
+            // user is on defense (or just not yet on offense), mirror it
+            // into the local engine match instance and refresh the WAITING
+            // overlay.
+            var lastOpponentLiveTs = 0;
             FB.onValue(
                 FB.ref(db, 'rooms/' + myRoom + '/live/' + otherRole),
                 function (snap) {
-                    var data = snap.val();
-                    if (!data || !data.ts || data.ts <= lastLiveTs) return;
-                    lastLiveTs = data.ts;
-                    var m = window._6E2 ? _6E2._Ue2(71) : null;
-                    if (!m || m._Sb1 == null || m._0z == null) return;
-                    // Sender's myScore = sender's team = my opponent's team
-                    // Sender's oppScore = sender's opp = my team
+                    var opponentLivePayload = snap.val();
+                    if (!opponentLivePayload || !opponentLivePayload.ts ||
+                        opponentLivePayload.ts <= lastOpponentLiveTs) return;
+                    lastOpponentLiveTs = opponentLivePayload.ts;
+                    var engineMatch = RB.engineState();
+                    if (!engineMatch || engineMatch.engineScoreboard == null ||
+                        engineMatch.engineUserTeamIdx == null) return;
+                    // opponentLivePayload.myScore  = sender's team   = user's opponent
+                    // opponentLivePayload.oppScore = sender's opp    = user's team
                     //
-                    // Sync _Sb1 (scoreboard), _r11/_s11 (clock minutes:seconds),
-                    // and _Wy (quarter) into the engine while we're on defense.
-                    // The scoreboard renderer (_qh1) reads _r11/_s11 — those
-                    // are the visible MIN:SEC remaining. _Yc1 is a different
-                    // beast (tick-allowance counter) and writing it just
-                    // queues clock-down ticks; we deliberately set it to 0 so
-                    // the engine doesn't try to drain the clock on our side
-                    // while we're parked.
-                    if (m._UD !== m._0z) {
-                        m._Sb1[1 - m._0z] = data.myScore;
-                        m._Sb1[m._0z]     = data.oppScore;
-                        if (typeof data.minutesLeft === 'number') m._r11 = data.minutesLeft;
-                        if (typeof data.secondsLeft === 'number') m._s11 = data.secondsLeft;
-                        if (typeof data.quarter === 'number') m._Wy = data.quarter;
-                        m._Yc1 = 0;   // stop the local engine from ticking the clock
+                    // Sync engineScoreboard, engineMinutesLeft, engineSecondsLeft,
+                    // and engineQuarter into the engine while the user is on
+                    // defense. The scoreboard renderer (_qh1) reads minutes/
+                    // seconds directly — those are the visible MIN:SEC. The
+                    // engineTickAllowance is a separate sub-second counter;
+                    // we deliberately set it to 0 so the engine doesn't try
+                    // to drain the clock on the user's side while parked.
+                    var userIsOnDefense = engineMatch.enginePossessingTeamIdx !==
+                                          engineMatch.engineUserTeamIdx;
+                    if (userIsOnDefense) {
+                        engineMatch.setOpponentScore(opponentLivePayload.myScore);
+                        engineMatch.setUserScore(opponentLivePayload.oppScore);
+                        if (typeof opponentLivePayload.minutesLeft === 'number')
+                            engineMatch.engineMinutesLeft = opponentLivePayload.minutesLeft;
+                        if (typeof opponentLivePayload.secondsLeft === 'number')
+                            engineMatch.engineSecondsLeft = opponentLivePayload.secondsLeft;
+                        if (typeof opponentLivePayload.quarter === 'number')
+                            engineMatch.engineQuarter = opponentLivePayload.quarter;
+                        engineMatch.engineTickAllowance = 0;
                     }
                     // Always refresh the WAITING overlay text, even if we
-                    // can't safely mutate m (e.g. m doesn't exist yet).
+                    // couldn't safely mutate the engine state (e.g. match
+                    // singleton doesn't exist yet).
                     if (window._twoPlayer && window._twoPlayer.refreshWaitDisplay) {
                         var clockText;
-                        if (typeof data.minutesLeft === 'number' && typeof data.secondsLeft === 'number') {
-                            clockText = formatClockRS(data.quarter, data.minutesLeft, data.secondsLeft);
+                        if (typeof opponentLivePayload.minutesLeft === 'number' &&
+                            typeof opponentLivePayload.secondsLeft === 'number') {
+                            clockText = formatClockRS(opponentLivePayload.quarter,
+                                                      opponentLivePayload.minutesLeft,
+                                                      opponentLivePayload.secondsLeft);
                         } else {
-                            clockText = formatClock(data.quarter, data.elapsed, data.duration);
+                            clockText = formatClock(opponentLivePayload.quarter,
+                                                    opponentLivePayload.elapsed,
+                                                    opponentLivePayload.duration);
                         }
                         window._twoPlayer.refreshWaitDisplay(
-                            data.oppScore,    // me, from sender's perspective
-                            data.myScore,     // opp, from sender's perspective
+                            opponentLivePayload.oppScore,   // user, from sender's perspective
+                            opponentLivePayload.myScore,    // opp,  from sender's perspective
                             clockText
                         );
                     }
