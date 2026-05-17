@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V36</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V37</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1867,57 +1867,169 @@
                 } catch (e) { console.log('[2P PICK6 PAT_RESULT err]', e); }
             };
 
-            // ===== Engine-PAT-popup KILLER (the actual fix) =====
+            // ===== Engine-PAT-popup KILLER v2 (the actual fix) =====
             // The engine's natural PAT modal is popped from _Ik1's direct
-            // call to _hB(_, t, 1), which we cannot intercept from outside
-            // the engine's IIFE (no script-registry indirection, function
-            // refs captured in closures, etc.). Both bugs the user is
-            // hitting trace back to this:
-            //   (a) "engine PAT shows on A's screen during pick-6" —
-            //       the engine's natural modal pop on the thrower's
-            //       canvas, which we want gone.
-            //   (b) "user PAT shows twice on B during pick-6" —
-            //       the engine's natural modal pops AGAIN on B (right
-            //       after our explicit _wm), overlaying our user PAT.
+            // call to _hB(_, t, 1), which cannot be intercepted from outside
+            // the engine IIFE (direct callers bypass _Y._PU1 lookups). So
+            // the strategy is: let the engine create the popup instances,
+            // then destroy any unauthorized ones every animation frame.
             //
-            // So instead of trying to intercept _hB, we let the engine
-            // create the popup instances and then destroy any unauthorized
-            // ones at frame rate. Authorized popups = the ones our explicit
-            // user-PAT _wm call created on B (tracked in _rb2p_userPatPopupRefs).
+            // V36 attempt failed because of two wrong assumptions:
+            //   (1) Popup instances were detected by `inst._eE2._51 ===
+            //       'PopUps'` — but `_51` lives inside `_Ba[0]` on the def,
+            //       not on the def itself, AND it's only the pre-placed
+            //       layer (not what `_dr` uses dynamically). Detection
+            //       missed every popup. ZERO instances killed.
+            //   (2) Destruction used `inst._HL2 = true` alone — but
+            //       popups need `_cr(inst)` to fire their cleanup events
+            //       (_OL2 / _PL2). Without that the instance might still
+            //       draw for the rest of the frame.
             //
-            // Detection: every popup-layer object has _eE2._51 === "PopUps"
-            // (its definition's layer name). We enumerate _Sc2._GL2._oq2,
-            // filter by that, and mark _HL2 = true on anything not in the
-            // authorized set. Only active during the pick-6 cascade so
-            // normal-TD PAT modals (which we DO want to show) are untouched.
+            // V37 fix:
+            //   * Resolve the PopUps layer object once via the same path
+            //     `_dr` uses (`_zM2._AM2(_Sc2, "PopUps")`), cache its
+            //     `_Ca` value (layer depth / identity field), and match
+            //     instances by `inst._Ca === popupsLayerCa`.
+            //   * Destroy via `_cr(inst)` so the cleanup events fire and
+            //     the instance is removed cleanly.
+            //   * Run at `requestAnimationFrame` rate so destruction
+            //     happens within one engine frame of creation.
+            //   * Track ALL kills and authorizations on console for the
+            //     user to validate with the diagnostic commands below.
+            var popupsLayerCa = null;
+            function resolvePopupsLayerCa() {
+                if (popupsLayerCa !== null) return popupsLayerCa;
+                try {
+                    if (typeof _zM2 === 'undefined' || typeof _Sc2 === 'undefined') return null;
+                    var layer = _zM2._AM2(_Sc2, 'PopUps');
+                    if (layer && typeof layer._Ca === 'number') {
+                        popupsLayerCa = layer._Ca;
+                        console.log('[2P PopupKiller] resolved PopUps layer _Ca =', popupsLayerCa);
+                    }
+                } catch (e) {}
+                return popupsLayerCa;
+            }
+
             function enumeratePopupInstances() {
                 var out = [];
                 try {
+                    var ca = resolvePopupsLayerCa();
+                    if (ca === null) return out;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
                         if (!inst || inst._HL2) continue;
-                        if (inst._eE2 && inst._eE2._51 === 'PopUps') out.push(inst);
+                        if (inst._Ca === ca) out.push(inst);
                     }
                 } catch (e) {}
                 return out;
             }
             window._rb2p_enumeratePopupInstances = enumeratePopupInstances;
 
-            setInterval(function () {
+            function destroyInstance(inst) {
                 try {
-                    if (window._rb2p_pickSixPatCascadeActive !== true) return;
-                    if (!RB.isEngineInMatchRoom()) return;
+                    if (typeof _cr === 'function') {
+                        _cr(inst);   // engine's proper instance_destroy (fires _OL2/_PL2)
+                    } else {
+                        inst._HL2 = true;
+                    }
+                } catch (e) {
+                    try { inst._HL2 = true; } catch (e2) {}
+                }
+            }
+
+            var popupKillerKills = 0;
+            function popupKillerTick() {
+                try {
+                    if (window._rb2p_pickSixPatCascadeActive !== true) {
+                        requestAnimationFrame(popupKillerTick);
+                        return;
+                    }
+                    if (!RB.isEngineInMatchRoom()) {
+                        requestAnimationFrame(popupKillerTick);
+                        return;
+                    }
                     var popups = enumeratePopupInstances();
-                    if (popups.length === 0) return;
-                    var authorized = window._rb2p_userPatPopupRefs;
-                    for (var i = 0; i < popups.length; i++) {
-                        var inst = popups[i];
-                        if (authorized && authorized.indexOf(inst) !== -1) continue;
-                        inst._HL2 = true;   // mark destroyed
+                    if (popups.length > 0) {
+                        var authorized = window._rb2p_userPatPopupRefs || [];
+                        for (var i = 0; i < popups.length; i++) {
+                            var inst = popups[i];
+                            if (authorized.indexOf(inst) !== -1) continue;
+                            destroyInstance(inst);
+                            popupKillerKills++;
+                            if (window._rb2p_debugPopups) {
+                                console.log('[2P PopupKiller] killed unauthorized popup ' +
+                                            (inst._eE2 && inst._eE2._fE2) + ' (#' + popupKillerKills + ')');
+                            }
+                        }
                     }
                 } catch (e) {}
-            }, 16);
+                requestAnimationFrame(popupKillerTick);
+            }
+            requestAnimationFrame(popupKillerTick);
+
+            // ===== Console diagnostics (paste in DevTools to validate) =====
+            //
+            //   _rb2p_dumpState()        — pickSix flags + engine FSM state
+            //   _rb2p_dumpAllPopups()    — every popup-layer instance right now
+            //   _rb2p_dumpAllInstances() — every live instance + its type name
+            //                              (use to find popup type names if
+            //                              the PopUps layer lookup fails)
+            //   _rb2p_killAllPopups()    — manual nuke; sanity check that
+            //                              destruction works at all
+            //
+            window._rb2p_dumpState = function () {
+                var s = RB.engineState();
+                var st = {
+                    pickSixPatCascadeActive: window._rb2p_pickSixPatCascadeActive,
+                    userIsWaitingForOpponent: window._rb2p_userIsWaitingForOpponent,
+                    userOutcomeSendInProgress: window._rb2p_userOutcomeSendInProgress,
+                    authorizedUserPatPopups: (window._rb2p_userPatPopupRefs || []).length,
+                    popupsLayerCa: resolvePopupsLayerCa(),
+                    livePopupCount: enumeratePopupInstances().length,
+                    totalPopupsKilledSinceLoad: popupKillerKills,
+                    engineMatch: s ? {
+                        userTeamIdx:           s.engineUserTeamIdx,
+                        possessingTeamIdx:     s.enginePossessingTeamIdx,
+                        driveFsmStage_Vy:      s.engineDriveFsmStage,
+                        priorFsmStage:         s.enginePriorFsmStage,
+                        controllerState_kp:    s.engineControllerState,
+                        downNumber:            s.engineDownNumber,
+                        yardsToGo:             s.engineYardsToGo,
+                        yardLine:              s.engineYardLineSigned,
+                        scoreboard:            s.engineScoreboard ? [s.engineScoreboard[0], s.engineScoreboard[1]] : null
+                    } : 'no match'
+                };
+                console.table(st);
+                return st;
+            };
+            window._rb2p_dumpAllPopups = function () {
+                var ps = enumeratePopupInstances();
+                console.log('[2P] live popup instances (' + ps.length + '):');
+                ps.forEach(function (inst, i) {
+                    console.log('  [' + i + '] type=' + (inst._eE2 && inst._eE2._fE2) +
+                                ' x=' + inst.x + ' y=' + inst.y +
+                                ' authorized=' + ((window._rb2p_userPatPopupRefs || []).indexOf(inst) !== -1));
+                });
+                return ps;
+            };
+            window._rb2p_dumpAllInstances = function () {
+                var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                var live = all.filter(function (i) { return i && !i._HL2; });
+                var byType = {};
+                live.forEach(function (i) {
+                    var n = (i._eE2 && i._eE2._fE2) || '(no type)';
+                    byType[n] = (byType[n] || 0) + 1;
+                });
+                console.table(byType);
+                return byType;
+            };
+            window._rb2p_killAllPopups = function () {
+                var ps = enumeratePopupInstances();
+                ps.forEach(destroyInstance);
+                console.log('[2P] manually destroyed ' + ps.length + ' popup(s)');
+                return ps.length;
+            };
 
             function getEngineMatchInstance()  { return RB.getEngineMatch(); }
             function snapshotEngineMatch() { return RB.engineSnapshot(); }
