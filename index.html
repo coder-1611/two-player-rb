@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V38</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V39</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1826,17 +1826,27 @@
                     if (!RB.isEngineInMatchRoom()) return;
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null) return;
-                    // Cascade is done once we're back in active play
-                    // (engineControllerState == 2) with possession returned to us.
+                    // V39: do NOT clear the flag the instant poss/kp look like
+                    // active play — applyOpponentOutcome's PICK6 branch SETS
+                    // exactly that state to set up the PAT-pending modal, and
+                    // clearing immediately leaves the popup-killer dormant
+                    // before the engine's natural PAT modal arrives ~1-3 s
+                    // later. Hold the flag for at least 6000 ms after raise
+                    // so the killer is armed long enough to catch the engine
+                    // modal regardless of how the engine's cascade times it.
+                    // The user PAT modal is captured into _rb2p_userPatPopupRefs
+                    // before the flag is raised, so it's protected throughout.
+                    var elapsedSinceFlagRaised = Date.now() -
+                        (window._rb2p_pickSixPatCascadeRaisedMs || 0);
+                    if (elapsedSinceFlagRaised < 6000) return;
                     if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
                         engineMatch.engineControllerState === 2) {
                         window._rb2p_pickSixPatCascadeActive = false;
-                        window._rb2p_lastOpponentOutcomeApplyMs   = Date.now();
-                        // Snapshot fresh drive-start scores so the next
-                        // pick-6 detector has the right baseline.
+                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
-                        window._rb2p_opponentScoreAtDriveStart  = engineMatch.opponentScore;
-                        console.log('[2P PICK6] cascade complete — A back on offense, watchdog re-engaged');
+                        window._rb2p_opponentScoreAtDriveStart = engineMatch.opponentScore;
+                        console.log('[2P PICK6] cascade complete after ' +
+                                    elapsedSinceFlagRaised + 'ms — watchdog re-engaged');
                     }
                 } catch (e) {}
             }, 150);
@@ -2055,6 +2065,133 @@
                 ps.forEach(destroyInstance);
                 console.log('[2P] manually destroyed ' + ps.length + ' popup(s)');
                 return ps.length;
+            };
+
+            // ===== V39: Engine-PAT source-suppressor =====
+            //
+            // The engine PAT modal at retrobowl.js:55948 is popped by
+            // _hB(_, t, 1), which is reached only via _Ik1's call:
+            //     _hB(_, t, global._Bk1)
+            // when global._Bk1 == 1. We can't reassign _hB / _Ik1 from
+            // outside the engine IIFE (they're closure-scoped), but
+            // `global` is window.global (retrobowl.js:114375 sets
+            // `global = new _Am4`), so we CAN intercept reads of
+            // global._Bk1 via Object.defineProperty.
+            //
+            // Strategy: when _rb2p_pickSixPatCascadeActive is true,
+            // return 0 from the getter — _Ik1 then routes to
+            // `_eb1(_, t, 0)` instead. _eb1 case-2 (engineDownNumber==6)
+            // sets up the 2-PT goal-line state but does NOT call _wm,
+            // so no engine PAT modal spawns. Normal TDs are unaffected
+            // because the cascade flag is only set during pick-6.
+            //
+            // This is a SOURCE-LEVEL kill (no popup-killer race) — the
+            // engine modal literally cannot exist while the flag is on.
+            var engineBk1SuppressorInstalled = false;
+            var engineBk1Stored = 0;
+            window._rb2p_engineBk1ReadCount = 0;        // every read during cascade
+            window._rb2p_engineBk1SuppressCount = 0;    // reads that returned 0 instead of stored
+            function installEngineBk1Suppressor() {
+                if (engineBk1SuppressorInstalled) return true;
+                if (typeof window.global !== 'object' || !window.global) return false;
+                try {
+                    if (typeof window.global._Bk1 === 'number') {
+                        engineBk1Stored = window.global._Bk1;
+                    }
+                    Object.defineProperty(window.global, '_Bk1', {
+                        configurable: true,
+                        enumerable: true,
+                        get: function () {
+                            window._rb2p_engineBk1ReadCount++;
+                            if (window._rb2p_pickSixPatCascadeActive === true) {
+                                window._rb2p_engineBk1SuppressCount++;
+                                return 0;
+                            }
+                            return engineBk1Stored;
+                        },
+                        set: function (v) { engineBk1Stored = v; }
+                    });
+                    engineBk1SuppressorInstalled = true;
+                    console.log('[2P EngineBk1] suppressor installed; initial _Bk1 =', engineBk1Stored);
+                    return true;
+                } catch (e) {
+                    console.error('[2P EngineBk1] install failed:', e);
+                    return false;
+                }
+            }
+            // Engine globals init runs partway through retrobowl.js load.
+            // Retry every 100 ms until we can hook _Bk1.
+            (function tryInstallBk1() {
+                if (!installEngineBk1Suppressor()) setTimeout(tryInstallBk1, 100);
+            })();
+
+            // ===== V39: 10x self-test for engine-PAT suppression =====
+            //
+            // Paste in console: await _rb2p_testEnginePatSuppression()
+            // Runs 10 simulated PICK6 cascades back-to-back. For each
+            // iteration: raises the cascade flag, simulates engine reads
+            // of global._Bk1 (mimicking _Ik1's read), and verifies the
+            // suppressor returns 0. Reports pass/fail count.
+            window._rb2p_testEnginePatSuppression = async function (iterations) {
+                iterations = iterations || 10;
+                if (!engineBk1SuppressorInstalled) {
+                    console.warn('[2P TEST] Bk1 suppressor not installed yet; aborting');
+                    return { ok: false, reason: 'suppressor-not-installed' };
+                }
+                var results = [];
+                for (var i = 1; i <= iterations; i++) {
+                    var beforeSuppressed = window._rb2p_engineBk1SuppressCount;
+                    var beforeRead = window._rb2p_engineBk1ReadCount;
+                    // Simulate _Ak1 setting global._Bk1 = 1 (normal TD path)
+                    window.global._Bk1 = 1;
+                    var readWithoutCascade = window.global._Bk1;  // should be 1
+                    // Raise the cascade flag (as applyOpponentOutcome's PICK6
+                    // branch would on B's device, or hookEngineChangePossessionScript
+                    // on A's device).
+                    window._rb2p_pickSixPatCascadeActive = true;
+                    window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
+                    // Simulate _Ik1's read of global._Bk1 — should now be 0.
+                    var readWithCascade1 = window.global._Bk1;
+                    var readWithCascade2 = window.global._Bk1;  // a second read
+                    var readWithCascade3 = window.global._Bk1;  // and a third
+                    // Lower the cascade
+                    window._rb2p_pickSixPatCascadeActive = false;
+                    // Reads after cascade should return the stored value (1)
+                    var readAfterCascade = window.global._Bk1;
+                    var afterSuppressed = window._rb2p_engineBk1SuppressCount;
+                    var afterRead = window._rb2p_engineBk1ReadCount;
+                    var pass = (
+                        readWithoutCascade === 1 &&
+                        readWithCascade1 === 0 &&
+                        readWithCascade2 === 0 &&
+                        readWithCascade3 === 0 &&
+                        readAfterCascade === 1 &&
+                        (afterSuppressed - beforeSuppressed) === 3 &&
+                        (afterRead - beforeRead) === 5
+                    );
+                    results.push({
+                        iteration: i,
+                        pass: pass,
+                        readWithoutCascade: readWithoutCascade,
+                        readWithCascade1: readWithCascade1,
+                        readWithCascade2: readWithCascade2,
+                        readWithCascade3: readWithCascade3,
+                        readAfterCascade: readAfterCascade,
+                        suppressDelta: afterSuppressed - beforeSuppressed,
+                        readDelta: afterRead - beforeRead
+                    });
+                    await new Promise(function (r) { setTimeout(r, 50); });
+                }
+                var passCount = results.filter(function (r) { return r.pass; }).length;
+                console.table(results);
+                var summary = {
+                    iterations: iterations,
+                    passed: passCount,
+                    failed: iterations - passCount,
+                    ok: passCount === iterations
+                };
+                console.log('[2P TEST] engine-PAT suppression: ' + passCount + '/' + iterations + ' passed');
+                return summary;
             };
 
             function getEngineMatchInstance()  { return RB.getEngineMatch(); }
