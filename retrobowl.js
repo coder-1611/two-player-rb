@@ -55438,7 +55438,7 @@ function _Ib1(_, t) {
                 _l41(_, t);
             break;
         case 18:
-            yyGetBool(_dq(8)) ? (_.__b1 = _Xi(_, t, "comm_stage_PAT2_Scored"),
+            yyGetBool(0) ? (_.__b1 = _Xi(_, t, "comm_stage_PAT2_Scored"),
                 _U21(_, t),
                 _Dt(29723141),
                 _._Sb1 = _Ft(_._Sb1, 4137727317),
