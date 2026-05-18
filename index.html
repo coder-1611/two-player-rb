@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V41</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V42</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1950,59 +1950,68 @@
             }
 
             var popupKillerKills = 0;
-            // V38: stuck-flag safety. If pickSix cascade has been "active" for
-            // more than 30 s without resolution, force-clear it. Better to let
-            // a duplicate engine modal slip through than to permanently freeze
-            // the popup pipeline (which would leave the player with NO PAT
-            // modal at all — the live-play symptom the user reported).
             var PICK6_CASCADE_MAX_MS = 30000;
+            // V42: known good user PAT modal popup count snapshot. Set when
+            // applyOpponentOutcome's _wm fires; tells the singleton watchdog
+            // how many popups belong to the legit modal vs the duplicate.
+            window._rb2p_userPatModalAuthorizedCount = 0;
+            // V42: monotone "modal turn" counter — incremented every time we
+            // authorize a user PAT modal during one cascade. Used to detect
+            // an unwanted re-spawn (counter would have to increment AGAIN
+            // within the same cascade, which is the bug we're killing).
+            window._rb2p_userPatModalTurn = 0;
+            function popupKillerCommon(label) {
+                if (window._rb2p_pickSixPatCascadeActive !== true) return;
+                var raisedMs = window._rb2p_pickSixPatCascadeRaisedMs || 0;
+                if (raisedMs && (Date.now() - raisedMs) > PICK6_CASCADE_MAX_MS) {
+                    console.log('[2P PopupKiller/' + label + '] stuck cascade > ' +
+                                PICK6_CASCADE_MAX_MS + 'ms — force-clearing');
+                    window._rb2p_pickSixPatCascadeActive = false;
+                    window._rb2p_userPatPopupRefs = null;
+                    window._rb2p_userPatModalAuthorizedCount = 0;
+                    return;
+                }
+                if (!RB.isEngineInMatchRoom()) return;
+                var authorized = window._rb2p_userPatPopupRefs || [];
+                var popups = enumeratePopupInstances();
+                // V42: even when our authorized list is empty (the _wm diff
+                // failed to capture refs), DO still kill once we're sure the
+                // popup count exceeds the known-good user PAT modal count.
+                // Engine's modal is 5 popup instances; if we see >5 alive
+                // during cascade, something duplicated.
+                var aliveAuthorized = 0;
+                for (var i = 0; i < authorized.length; i++) {
+                    if (authorized[i] && authorized[i]._HL2 !== true) aliveAuthorized++;
+                }
+                var unauthorizedCount = 0;
+                for (var j = 0; j < popups.length; j++) {
+                    if (authorized.indexOf(popups[j]) === -1) unauthorizedCount++;
+                }
+                if (unauthorizedCount > 0 && authorized.length > 0) {
+                    // We have a known modal; anything else is a duplicate.
+                    for (var k = 0; k < popups.length; k++) {
+                        var inst = popups[k];
+                        if (authorized.indexOf(inst) !== -1) continue;
+                        destroyInstance(inst);
+                        popupKillerKills++;
+                        console.log('[2P PopupKiller/' + label + '] killed dup popup ' +
+                                    (inst._eE2 && inst._eE2._fE2) +
+                                    ' (#' + popupKillerKills + ')');
+                    }
+                }
+            }
             function popupKillerTick() {
-                try {
-                    if (window._rb2p_pickSixPatCascadeActive !== true) {
-                        requestAnimationFrame(popupKillerTick);
-                        return;
-                    }
-                    var raisedMs = window._rb2p_pickSixPatCascadeRaisedMs || 0;
-                    if (raisedMs && (Date.now() - raisedMs) > PICK6_CASCADE_MAX_MS) {
-                        console.log('[2P PopupKiller] stuck pickSix cascade > ' +
-                                    PICK6_CASCADE_MAX_MS + 'ms — force-clearing flag');
-                        window._rb2p_pickSixPatCascadeActive = false;
-                        window._rb2p_userPatPopupRefs = null;
-                        requestAnimationFrame(popupKillerTick);
-                        return;
-                    }
-                    if (!RB.isEngineInMatchRoom()) {
-                        requestAnimationFrame(popupKillerTick);
-                        return;
-                    }
-                    // V38: REFUSE to kill when no authorized refs are recorded.
-                    // If _wm's popup-diff failed (popups not on PopUps layer at
-                    // capture time, or _wm reused existing instances), the
-                    // authorized list ends up empty — and killing every popup
-                    // we see would destroy the legit user PAT modal, leaving
-                    // "no PAT at all". Safer to let a duplicate engine modal
-                    // through than to nuke the only modal the player can act
-                    // on.
-                    var authorized = window._rb2p_userPatPopupRefs;
-                    if (!authorized || authorized.length === 0) {
-                        requestAnimationFrame(popupKillerTick);
-                        return;
-                    }
-                    var popups = enumeratePopupInstances();
-                    if (popups.length > 0) {
-                        for (var i = 0; i < popups.length; i++) {
-                            var inst = popups[i];
-                            if (authorized.indexOf(inst) !== -1) continue;
-                            destroyInstance(inst);
-                            popupKillerKills++;
-                            console.log('[2P PopupKiller] killed unauthorized popup ' +
-                                        (inst._eE2 && inst._eE2._fE2) + ' (#' + popupKillerKills + ')');
-                        }
-                    }
-                } catch (e) {}
+                try { popupKillerCommon('rAF'); } catch (e) {}
                 requestAnimationFrame(popupKillerTick);
             }
             requestAnimationFrame(popupKillerTick);
+            // V42: redundant 30ms-interval killer. The rAF version pauses when
+            // the tab is backgrounded; this one runs regardless. Both share
+            // the same kill logic — duplicate kills are safe (an already-
+            // destroyed instance just gets _HL2 again).
+            setInterval(function () {
+                try { popupKillerCommon('interval'); } catch (e) {}
+            }, 30);
 
             // ===== Console diagnostics (paste in DevTools to validate) =====
             //
@@ -2313,6 +2322,26 @@
                                 // alone — anything else (the engine's
                                 // duplicate natural PAT modal) gets killed.
                                 try {
+                                    // V42: idempotency — skip the _wm call
+                                    // if we already authorized a live user
+                                    // PAT modal for this cascade. Without
+                                    // this, two PICK6 receives back-to-back
+                                    // (e.g. Firebase replay, listener race)
+                                    // would spawn two modals on the same
+                                    // device, letting the user click both
+                                    // and double-credit the PAT.
+                                    var existingRefs = window._rb2p_userPatPopupRefs || [];
+                                    var anyAlive = false;
+                                    for (var ei = 0; ei < existingRefs.length; ei++) {
+                                        if (existingRefs[ei] && existingRefs[ei]._HL2 !== true) {
+                                            anyAlive = true; break;
+                                        }
+                                    }
+                                    if (anyAlive) {
+                                        console.warn('[2P PICK6] user PAT modal already live — skipping ' +
+                                                     'duplicate _wm call (idempotency guard)');
+                                        return true;
+                                    }
                                     var popupsBeforeUserPatModal = window._rb2p_enumeratePopupInstances
                                         ? window._rb2p_enumeratePopupInstances()
                                         : [];
@@ -2323,6 +2352,8 @@
                                         100367,  // _ne1 = btn_response_1pt
                                         100369,  // _oe1 = btn_response_2pt
                                         16777215, 0.7);
+                                    window._rb2p_userPatModalTurn =
+                                        (window._rb2p_userPatModalTurn || 0) + 1;
                                     var popupsAfterUserPatModal = window._rb2p_enumeratePopupInstances
                                         ? window._rb2p_enumeratePopupInstances()
                                         : [];
