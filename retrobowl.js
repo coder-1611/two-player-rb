@@ -55961,7 +55961,7 @@ function _hB(_, t, i) {
                         n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 6),
                         n._Vy = 17) : yyfgreaterequal(n._t11, 6) ? (_Dt(30378501),
                             n._Sb1 = _Ft(n._Sb1, 968186802),
-                            n._Sb1[_Gt(yyGetBool(n._UD) ? 0 : 1)] = yyfplus(n._Sb1[_Gt(yyGetBool(n._UD) ? 0 : 1)], 2),
+                            n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 2),
                             n._Vy = 1) : (_1c1(n, _),
                                 _Dt(30378501),
                                 n._Sb1 = _Ft(n._Sb1, 968186802),
