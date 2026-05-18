@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V49</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V50</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1826,19 +1826,36 @@
                     if (!RB.isEngineInMatchRoom()) return;
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null) return;
-                    // V48: hold cascade for 30 s. A 2-PT scene can take 10-15 s
-                    // (modal, click, snap, run); after that the engine starts
-                    // the kickoff cascade which takes another ~5 s. Clearing
-                    // the cascade flag before then re-engages the setInterval
-                    // possession clamp at line 1795 which forces _UD to the
-                    // opponent (because _rb2p_userIsWaitingForOpponent is true
-                    // from applyOpponentOutcome's PICK6 branch). That breaks
-                    // 1-PT crediting too. Also keeps the V39 global._Bk1
-                    // intercept armed long enough to suppress the second
-                    // engine PAT modal that pops late in the cascade.
                     var elapsedSinceFlagRaised = Date.now() -
                         (window._rb2p_pickSixPatCascadeRaisedMs || 0);
-                    if (elapsedSinceFlagRaised < 30000) return;
+                    // V50: minimum hold of 3 s to avoid clearing right after the
+                    // PICK6 setup mutations (which on B make conditions
+                    // immediately look like "active play"). After that, event-
+                    // driven clear:
+                    //   - On the PAT-PLAYING device (engineDownNumber === 6):
+                    //     wait until the PAT-pending marker clears. _1c1 sets
+                    //     engineDownNumber back to 1 after the post-PAT kickoff,
+                    //     so this fires once the PAT is genuinely complete and
+                    //     possession has flipped — not on a hard-coded timer.
+                    //   - On the WAITING device (engineDownNumber !== 6 the
+                    //     whole time, because V39's _Bk1 suppressor prevents
+                    //     _hB case 0 from ever setting _._t11 = 6 on A): wait
+                    //     until user is back on offense (the old condition).
+                    // Hard fallback of 60 s catches stuck states (backgrounded
+                    // tabs, etc.).
+                    if (elapsedSinceFlagRaised < 3000) return;
+                    if (elapsedSinceFlagRaised >= 60000) {
+                        window._rb2p_pickSixPatCascadeActive = false;
+                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                        window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
+                        window._rb2p_opponentScoreAtDriveStart = engineMatch.opponentScore;
+                        console.log('[2P PICK6] cascade force-cleared after 60s hard timeout');
+                        return;
+                    }
+                    // PAT-playing device: hold until PAT-pending marker clears
+                    if (engineMatch.engineDownNumber === 6) return;
+                    // PAT done on this device (or never started locally). Old
+                    // condition: wait for user-back-on-offense signal.
                     if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
                         engineMatch.engineControllerState === 2) {
                         window._rb2p_pickSixPatCascadeActive = false;
@@ -1846,7 +1863,7 @@
                         window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
                         window._rb2p_opponentScoreAtDriveStart = engineMatch.opponentScore;
                         console.log('[2P PICK6] cascade complete after ' +
-                                    elapsedSinceFlagRaised + 'ms — watchdog re-engaged');
+                                    elapsedSinceFlagRaised + 'ms (event-driven) — watchdog re-engaged');
                     }
                 } catch (e) {}
             }, 150);
@@ -3128,7 +3145,32 @@
                     // to drain the clock on the user's side while parked.
                     var userIsOnDefense = engineMatch.enginePossessingTeamIdx !==
                                           engineMatch.engineUserTeamIdx;
-                    if (userIsOnDefense) {
+                    // V50 Checkpoint 3 fix: while we're actively playing the
+                    // pick-6 PAT scene (cascade flag is true AND engineDownNumber
+                    // is the PAT-pending marker 6), OUR local engine is the
+                    // authoritative score source. Suppress the live-sync
+                    // overwrite so a stale push from the opponent (whose view
+                    // doesn't yet include our PAT credit) cannot wipe the
+                    // just-credited +1 or +2. The cascade flag clears
+                    // event-driven once _._t11 transitions out of 6 (the post-
+                    // PAT kickoff runs _1c1 which resets it to 1).
+                    var localPlayingPatScene =
+                        window._rb2p_pickSixPatCascadeActive === true &&
+                        engineMatch.engineDownNumber === 6;
+                    // V50 Checkpoint 3 monotonic insurance: scores never
+                    // decrease in football. If the incoming push would reduce
+                    // either team's score below our current local view, the
+                    // push is stale (from before our just-applied credit) and
+                    // we reject it. Without this, the ~500 ms window between
+                    // our local _1c1 firing (which flips _UD and opens the
+                    // gate above) and the opponent receiving our drive-end
+                    // outcome would let a stale push wipe our credit.
+                    var pushWouldRegressScore =
+                        (typeof opponentLivePayload.oppScore === 'number' &&
+                         opponentLivePayload.oppScore < engineMatch.userScore) ||
+                        (typeof opponentLivePayload.myScore === 'number' &&
+                         opponentLivePayload.myScore < engineMatch.opponentScore);
+                    if (userIsOnDefense && !localPlayingPatScene && !pushWouldRegressScore) {
                         engineMatch.setOpponentScore(opponentLivePayload.myScore);
                         engineMatch.setUserScore(opponentLivePayload.oppScore);
                         if (typeof opponentLivePayload.minutesLeft === 'number')
