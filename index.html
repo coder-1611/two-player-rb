@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V44</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V45</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2073,6 +2073,40 @@
                 requestAnimationFrame(patModalDedupTick);
             }
             requestAnimationFrame(patModalDedupTick);
+
+            // ===== V45: PAT scoring-team watchdog =====
+            //
+            // The PAT +1 in retrobowl.js:55989 is `_Sb1[_UD] += 1` — it
+            // credits whichever team _UD (enginePossessingTeamIdx) points
+            // at when _hB case 4 fires. If _UD has been flipped to the
+            // OTHER team by some intervening engine state change before
+            // the played-out kick scene resolves, the +1 lands on the
+            // wrong team. Symptom: score appears on opponent for ~half a
+            // second, then live-sync/state corrections wipe it out — net
+            // result, neither team gets credit.
+            //
+            // Fix: while the local user is on offense (not in WAIT) and
+            // in PAT-pending state (engineDownNumber === 6), force
+            // _UD = engineUserTeamIdx every frame. The scoring team IS
+            // the local user during a local PAT scene, by definition.
+            // This protects against any engine-side _UD flip happening
+            // during the brief window between TD-score and PAT-credit.
+            function patScoringTeamWatchdog() {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var m = RB.engineState();
+                    if (!m || m.engineUserTeamIdx == null) return;
+                    if (window._rb2p_userIsWaitingForOpponent === true) return;
+                    if (m.engineDownNumber !== 6) return;
+                    if (m.enginePossessingTeamIdx !== m.engineUserTeamIdx) {
+                        console.log('[2P PatScoring] _UD was ' + m.enginePossessingTeamIdx +
+                                    ', forcing to userTeamIdx ' + m.engineUserTeamIdx +
+                                    ' to credit the right team');
+                        m.enginePossessingTeamIdx = m.engineUserTeamIdx;
+                    }
+                } catch (e) {}
+            }
+            setInterval(patScoringTeamWatchdog, 100);
 
             // ===== Console diagnostics (paste in DevTools to validate) =====
             //
