@@ -55557,7 +55557,7 @@ function _Ib1(_, t) {
                 _._Vy = 16;
             break;
         case 23:
-            yyfgreater(_dq(99), 60) ? (_.__b1 = _Xi(_, t, "comm_stage_2pt_missed"),
+            yyfgreater(99, 60) ? (_.__b1 = _Xi(_, t, "comm_stage_2pt_missed"),
                 _._231 = -1) : (_.__b1 = _Xi(_, t, "comm_stage_2pt_scored"),
                     _Dt(29723141),
                     _._Sb1 = _Ft(_._Sb1, 4137727317),

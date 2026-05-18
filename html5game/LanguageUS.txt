@@ -125,9 +125,9 @@ comm_stage_end_quarter3	End of 3rd quarter
 comm_stage_end_quarter4	Game over
 comm_stage_overtime	Overtime!
 comm_stage_overtime_over	Game over
-comm_stage_2pt_attempt	They go for 2 points...
-comm_stage_2pt_missed	But get stopped!
-comm_stage_2pt_scored	And score!
+comm_stage_2pt_attempt	
+comm_stage_2pt_missed	
+comm_stage_2pt_scored	
 comm_stage_Turnover_Tackle1	[$pos] $playername makes a great tackle!
 comm_stage_Turnover_Tackle2	[$pos] $playername makes the tackle!
 comm_stage_Turnover_Fumble1	[$pos] $playername forces a fumble!
