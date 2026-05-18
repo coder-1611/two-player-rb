@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V43</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V44</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2003,6 +2003,76 @@
                 requestAnimationFrame(popupKillerTick);
             }
             requestAnimationFrame(popupKillerTick);
+
+            // ===== V44: PAT-modal dedup watchdog =====
+            //
+            // The engine pops a "1 PT / 2 PT" modal via _hB case 0, which
+            // spawns 5 popup instances on the PopUps layer. Two of those
+            // popups carry the PAT button click-handler IDs in their _0G
+            // field: 100367 (1pt) and 100369 (2pt). A second engine pass
+            // (or a stray applyOpponentOutcome retrigger) can spawn the
+            // whole 5-popup set a second time, producing a duplicate modal
+            // visible on top of the first.
+            //
+            // Detection: if MORE than one popup has _0G === 100367 (or
+            // 100369), there are at least two PAT modals alive. Resolution:
+            // destroy the newer set — popups with the higher instance IDs
+            // (GameMaker assigns IDs monotonically, so later spawn = higher
+            // id). We keep the earliest 100367 + 100369 buttons and any
+            // popups with lower IDs (the modal background/title/labels
+            // spawned alongside them).
+            var patDedupKills = 0;
+            window._rb2p_patDedupKills = 0;
+            function patModalDedupTick() {
+                try {
+                    if (!RB.isEngineInMatchRoom()) {
+                        requestAnimationFrame(patModalDedupTick);
+                        return;
+                    }
+                    var popups = enumeratePopupInstances();
+                    // Find PAT button popups
+                    var btn1pt = [], btn2pt = [];
+                    for (var i = 0; i < popups.length; i++) {
+                        var p = popups[i];
+                        if (p && p._0G === 100367) btn1pt.push(p);
+                        else if (p && p._0G === 100369) btn2pt.push(p);
+                    }
+                    if (btn1pt.length <= 1 && btn2pt.length <= 1) {
+                        requestAnimationFrame(patModalDedupTick);
+                        return;
+                    }
+                    // Duplicate detected. Identify the surviving set:
+                    // keep the earliest-created 1pt + 2pt buttons (lowest
+                    // id instance ID) and every popup whose id is
+                    // strictly less than the highest-surviving cutoff
+                    // (i.e. the modal frame spawned at the same time as
+                    // those buttons). Destroy everything else.
+                    function byPa(a, b) { return (a.id || 0) - (b.id || 0); }
+                    btn1pt.sort(byPa);
+                    btn2pt.sort(byPa);
+                    var keepBtn1 = btn1pt[0];
+                    var keepBtn2 = btn2pt[0];
+                    // Cutoff: any popup with id <= max(keepBtn1.id, keepBtn2.id)
+                    // belongs to the surviving first modal set.
+                    var cutoff = Math.max(keepBtn1 ? (keepBtn1.id || 0) : 0,
+                                          keepBtn2 ? (keepBtn2.id || 0) : 0);
+                    for (var j = 0; j < popups.length; j++) {
+                        var q = popups[j];
+                        if (!q) continue;
+                        var qPa = q.id || 0;
+                        if (qPa > cutoff) {
+                            destroyInstance(q);
+                            patDedupKills++;
+                            window._rb2p_patDedupKills = patDedupKills;
+                            console.log('[2P PatDedup] killed duplicate PAT modal popup ' +
+                                        (q._eE2 && q._eE2._fE2) + ' id=' + qPa +
+                                        ' _0G=' + q._0G + ' (#' + patDedupKills + ')');
+                        }
+                    }
+                } catch (e) {}
+                requestAnimationFrame(patModalDedupTick);
+            }
+            requestAnimationFrame(patModalDedupTick);
 
             // ===== Console diagnostics (paste in DevTools to validate) =====
             //
