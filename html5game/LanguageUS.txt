@@ -113,9 +113,9 @@ comm_stage_TurnoverHuman	$teamname turn it over
 comm_stage_TurnoverHuman4th	$teamname turn it over on 4th down
 comm_stage_Touchdown	$teamname score!
 comm_stage_Punt	$teamname punt
-comm_stage_PAT1
-comm_stage_PAT2_Missed	Missed!
-comm_stage_PAT2_Scored	Scored!
+comm_stage_PAT1	
+comm_stage_PAT2_Missed	
+comm_stage_PAT2_Scored	
 comm_stage_FieldGoal1	$teamname with a $num yard field goal...
 comm_stage_FieldGoal2_Missed	Missed!
 comm_stage_FieldGoal2_Scored	Scored!
