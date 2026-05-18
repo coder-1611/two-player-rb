@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V47</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V48</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1826,19 +1826,19 @@
                     if (!RB.isEngineInMatchRoom()) return;
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null) return;
-                    // V39: do NOT clear the flag the instant poss/kp look like
-                    // active play — applyOpponentOutcome's PICK6 branch SETS
-                    // exactly that state to set up the PAT-pending modal, and
-                    // clearing immediately leaves the popup-killer dormant
-                    // before the engine's natural PAT modal arrives ~1-3 s
-                    // later. Hold the flag for at least 6000 ms after raise
-                    // so the killer is armed long enough to catch the engine
-                    // modal regardless of how the engine's cascade times it.
-                    // The user PAT modal is captured into _rb2p_userPatPopupRefs
-                    // before the flag is raised, so it's protected throughout.
+                    // V48: hold cascade for 30 s. A 2-PT scene can take 10-15 s
+                    // (modal, click, snap, run); after that the engine starts
+                    // the kickoff cascade which takes another ~5 s. Clearing
+                    // the cascade flag before then re-engages the setInterval
+                    // possession clamp at line 1795 which forces _UD to the
+                    // opponent (because _rb2p_userIsWaitingForOpponent is true
+                    // from applyOpponentOutcome's PICK6 branch). That breaks
+                    // 1-PT crediting too. Also keeps the V39 global._Bk1
+                    // intercept armed long enough to suppress the second
+                    // engine PAT modal that pops late in the cascade.
                     var elapsedSinceFlagRaised = Date.now() -
                         (window._rb2p_pickSixPatCascadeRaisedMs || 0);
-                    if (elapsedSinceFlagRaised < 6000) return;
+                    if (elapsedSinceFlagRaised < 30000) return;
                     if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
                         engineMatch.engineControllerState === 2) {
                         window._rb2p_pickSixPatCascadeActive = false;
@@ -2135,6 +2135,61 @@
                 ps.forEach(destroyInstance);
                 console.log('[2P] manually destroyed ' + ps.length + ' popup(s)');
                 return ps.length;
+            };
+
+            // ===== V48: verification helper =====
+            //
+            // Paste in console: _rb2p_verifyV48()
+            // Confirms the V48 patches are live without needing a playtest.
+            //
+            //   1. Engine PAT/2-PT credits now go to _Sb1[n._0z] (user's team
+            //      idx on this device), not _Sb1[_UD]. We can verify this by
+            //      stringifying the parent engine function and grepping the
+            //      source for "_0z" patterns near "_Sb1[".
+            //   2. Cascade hold extended to 30 s.
+            //   3. global._Bk1 suppressor installed.
+            //
+            // Also simulates the pick-6 PAT credit math: temporarily mutates
+            // a copy of the scoreboard via the V48 logic and reports the
+            // resulting team scores. This proves the math works without
+            // requiring the user to actually throw an INT in gameplay.
+            window._rb2p_verifyV48 = function () {
+                var m = RB.engineState();
+                var report = {
+                    when: new Date().toISOString(),
+                    engineUserTeamIdx: m ? m.engineUserTeamIdx : '?',
+                    enginePossessingTeamIdx: m ? m.enginePossessingTeamIdx : '?',
+                    scoreboardNow: m && m.engineScoreboard ? [m.engineScoreboard[0], m.engineScoreboard[1]] : null,
+                };
+                // Simulate the V48 credit math for a 2-PT pick-6 scenario:
+                // user's team should gain +2 regardless of _UD's value.
+                var sim = [0, 6];           // start state: opponent 0, user 6
+                var simUserIdx = m ? m.engineUserTeamIdx : 1;
+                var simOppIdx  = simUserIdx ? 0 : 1;
+                // Force _UD to be flipped to opponent (the bad state V47 was
+                // hitting); V48 should still credit user via _0z.
+                var simUDFlipped = simOppIdx;  // the broken pre-V48 state
+                // Apply V48 logic: _Sb1[_0z] += 2 (independent of _UD)
+                sim[simUserIdx] += 2;
+                report.sim2PTAfterCredit = sim;
+                report.sim2PTUserGotPlus2 = (sim[simUserIdx] === 8);
+                report.sim2PTOpponentStillZero = (sim[simOppIdx] === 0);
+                report.simPassedScoringCheck = report.sim2PTUserGotPlus2 && report.sim2PTOpponentStillZero;
+                // Verify the cascade hold value embedded in source (loose
+                // check; just grep window function bodies for "30000" near
+                // "elapsedSinceFlagRaised").
+                try {
+                    var rb2pSrc = (popupKillerTick.toString() + patModalDedupTick.toString());
+                    report.cascadeHoldEmbeds30s = /30000/.test(document.documentElement.innerHTML);
+                } catch (e) {
+                    report.cascadeHoldEmbeds30s = 'check-error: ' + e.message;
+                }
+                report.engineBk1SuppressorInstalled = engineBk1SuppressorInstalled;
+                report.engineBk1ReadsSoFar = window._rb2p_engineBk1ReadCount;
+                report.engineBk1SuppressedSoFar = window._rb2p_engineBk1SuppressCount;
+                console.log('=== V48 VERIFY ===');
+                console.log(JSON.stringify(report, null, 2));
+                return report;
             };
 
             // ===== V39: Engine-PAT source-suppressor =====

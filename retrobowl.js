@@ -55961,7 +55961,7 @@ function _hB(_, t, i) {
                         n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 6),
                         n._Vy = 17) : yyfgreaterequal(n._t11, 6) ? (_Dt(30378501),
                             n._Sb1 = _Ft(n._Sb1, 968186802),
-                            n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 2),
+                            n._Sb1[_Gt(n._0z)] = yyfplus(n._Sb1[_Gt(n._0z)], 2),
                             n._Vy = 1) : (_1c1(n, _),
                                 _Dt(30378501),
                                 n._Sb1 = _Ft(n._Sb1, 968186802),
@@ -55986,8 +55986,8 @@ function _hB(_, t, i) {
                     _re1(n, _),
                         _Dt(30378501),
                         n._Sb1 = _Ft(n._Sb1, 968186802),
-                        n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 1),
-                        yyGetBool(n._Z21) || (n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 2)),
+                        n._Sb1[_Gt(n._0z)] = yyfplus(n._Sb1[_Gt(n._0z)], 1),
+                        yyGetBool(n._Z21) || (n._Sb1[_Gt(n._0z)] = yyfplus(n._Sb1[_Gt(n._0z)], 2)),
                         yyGetBool(yyfequal(n._Wy, 5)) && yyGetBool(yyfgreater(n._Nb1, 1)) && yyGetBool(yyfnotequal(n._Sb1[_7v(n._UD, n._Sb1)], n._Sb1[_7v(yyGetBool(n._UD) ? 0 : 1, n._Sb1)])) ? (_1j(n, _, "winning here 1"),
                             n._Vy = 17) : n._Vy = 1;
                     break;
