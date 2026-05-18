@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V39</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V40</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2381,13 +2381,16 @@
                         if (typeof outcome.scoreOpp === 'number') {
                             engineMatch.setUserScore(outcome.scoreOpp);  // sender's opp = me
                         }
-                        // Fallback for outcomes missing absolute scores
-                        // (e.g. simulate() calls without scoreUser set).
-                        if (typeof outcome.scoreUser !== 'number') {
-                            if (outcome.type === 'TD')          engineMatch.setOpponentScore(engineMatch.opponentScore + 7);
-                            else if (outcome.type === 'FG')     engineMatch.setOpponentScore(engineMatch.opponentScore + 3);
-                            else if (outcome.type === 'SAFETY') engineMatch.setOpponentScore(engineMatch.opponentScore + 2);
-                        }
+                        // V40: removed the TD/FG/SAFETY auto-credit fallback.
+                        // The TD branch added +7 (6 TD + 1 auto-PAT) without a
+                        // played-out PAT scene — that's the "engine PAT" rule
+                        // violation: opponent's score ticks up by 1 for the
+                        // PAT with no human input. Real-play outcomes always
+                        // carry scoreUser/scoreOpp explicitly (see drive-end
+                        // outcome builders), so this fallback only ever fired
+                        // for simulate()-style test calls. Removing it makes
+                        // an absent scoreUser a hard no-op instead of a silent
+                        // auto-credit.
                     }
                     // Clock + quarter sync. The scoreboard reads minutesLeft
                     // and secondsLeft directly; tickAllowance is a sub-second
