@@ -192,3 +192,105 @@ Bridge (`index.html`):
 - If a future V-bump changes any line number or patch listed in section E, update this skill BEFORE merging the change.
 - If a new pick-6 sub-scenario appears (defensive fumble return, kickoff return, etc.), add it to PAT.md first, then add a section here referencing it.
 - This skill is project-local (`.claude/skills/pick-six-research/`). It does not load outside this repo. That's intentional — the analysis depends on file paths and line numbers specific to this project.
+
+---
+
+## Failure analysis (added at user request after V50 didn't fix the bug)
+
+See [`/Users/sohamsthitpragya/Retro Bowl/two-player rb/my stupid mistake.md`](../../../my%20stupid%20mistake.md) for the full post-mortem. Summary of what every prior session missed:
+
+### Why ~20 versions of patches have failed
+
+The most likely root cause is **pick-6 detection at [index.html:1556](../../../index.html#L1556) silently never fires in real gameplay**. The check is:
+
+```js
+var isPick6 = (outcome.type === 'INT' && oppDelta >= 6);
+```
+
+- `outcome.type` comes from `inferUserDriveEndType(prevVy)` at [index.html:1464-1472](../../../index.html#L1464).
+- `prevVy` comes from `pre.enginePriorFsmStage || pre.engineDriveFsmStage` at [index.html:1520](../../../index.html#L1520).
+- `enginePriorFsmStage` is `m._2c1`. The engine's `_1c1` at [retrobowl.js:56457](../../../retrobowl.js#L56457) sets `a._2c1 = a._Vy` — but by the time `_1c1` fires for the post-defensive-TD kickoff, `_._Vy` has already advanced from `8` (INT) or `9` (TD) through `10`/`11` to `1` (kickoff).
+- So `prevVy` at hook time is likely `1`, not `8`. `inferUserDriveEndType(1)` returns `'KICKOFF'`. `outcome.type !== 'INT'`. `isPick6 === false`.
+
+Consequence: the entire pick-6 cascade machinery (V39 `_Bk1` suppressor, popup-killer, dedup, V48 score patches, V50 live-sync gate) **never activates in actual play**. Every fix from V39 onward has been patching code paths the user is not hitting.
+
+What the user actually sees:
+1. The engine's natural PAT modal pops on **A's screen** (the thrower, the wrong device) because no suppression armed.
+2. A interacts with it. The PAT scene plays on A's device. Engine credits the +1 or +2 — but A is the thrower, so the credit lands on A's team. **Wrong team gets the points.**
+3. Live-sync streams this state to B.
+4. Multiple modals may appear due to engine cascade re-entry, `_Ak1(_, t, 1)` being called more than once, popup-killer being dormant.
+
+### What every prior V-bump assumed but never verified
+
+| Assumption | Real status |
+| --- | --- |
+| Pick-6 detection at line 1556 fires reliably | UNVERIFIED. Very likely fails because `_._2c1` reads as `1` (kickoff), not `8` (INT). |
+| `_rb2p_pickSixPatCascadeActive` actually goes `true` during real play | UNVERIFIED. There is no console-log, no test, no telemetry confirming this. |
+| The V48 patches at `retrobowl.js:55964/55989/55990` get executed during the real PAT flow | UNVERIFIED. If the bridge never pops the modal on B, B never plays the PAT through those code paths. The credits happen via the engine's natural flow on A — different code paths. |
+| The V50 live-sync gate's cascade check protects the score | UNVERIFIED. If the cascade flag is never `true`, the protection is a no-op. The monotonic check (`pushWouldRegressScore`) is the only V50 piece that runs unconditionally. |
+| CLAUDE.md's "frame-tight engine-PAT suppressor inside `engineCommentaryScriptHook`" exists | FALSE. Stale doc. No such suppressor in the code. Actual suppression is V39 `_Bk1` getter, which depends on the cascade flag being set. |
+
+### Anti-patterns the next session should NOT repeat
+
+- Patching a downstream consequence (credit, modal, gate) without first proving the upstream gate (detection) fires.
+- Trusting the prior commit's mental model. The model has been wrong for 20 commits — re-derive from code.
+- Asking the user to playtest before adding instrumentation. Instrument first, then ask.
+- Treating CLAUDE.md and old commit messages as authoritative. Verify from source.
+- Running `verify` against the embedded analysis when the embedded analysis itself has unverified preconditions.
+
+---
+
+## **PROMPT TO FIX THIS** (copy-paste to next session)
+
+```
+The 2P pick-6 PAT bug is still broken after V50. Read PAT.md and my stupid mistake.md
+before doing anything. Then:
+
+1. Add instrumentation at index.html:1535 (immediately after the call to
+   buildUserDriveEndOutcome and before the isPick6 check):
+
+       console.log('[2P DETECT]',
+           'pre._Vy=' + pre.engineDriveFsmStage,
+           'pre._2c1=' + pre.enginePriorFsmStage,
+           'prevVy=' + prevVy,
+           'outcome.type=' + outcome.type,
+           'oppStart=' + window._rb2p_opponentScoreAtDriveStart,
+           'oppNow=' + (RB.engineState() ? RB.engineState().opponentScore : '?'),
+           'oppDelta=' + ((RB.engineState() ? RB.engineState().opponentScore : 0) -
+                          (window._rb2p_opponentScoreAtDriveStart || 0)),
+           'isPick6=' + (outcome.type === 'INT' &&
+                         ((RB.engineState() ? RB.engineState().opponentScore : 0) -
+                          (window._rb2p_opponentScoreAtDriveStart || 0)) >= 6));
+
+   Commit + push as V51. Do not change any other code.
+
+2. Ask me to play a pick-6 (throw an INT that gets returned for a TD) in the
+   deployed Vercel build. Have me paste the [2P DETECT] console line back.
+
+3. If outcome.type !== 'INT' (most likely outcome):
+   - Pick-6 detection is the actual root cause of every symptom I've reported.
+   - The fix is to hook _Ak1(_, t, 1) at retrobowl.js:57499 instead of _1c1.
+     Capture the moment _Ak1(_, t, 1) fires AND the scoring team is the
+     opponent (_._UD !== _._0z at the moment of the +6 credit at line 55369).
+     That is a verified-engine-event signal, not a heuristic inference.
+   - Implement the _Ak1 hook in index.html. Before committing, write a Node
+     simulation _rb2p_testPickSixDetection() that exercises the hook with
+     synthetic input and verifies it sets _rb2p_pickSixPatCascadeActive = true.
+     Run the simulation. Paste the output.
+   - Only after the simulation passes, push as V52.
+
+4. If outcome.type === 'INT' (less likely):
+   - Detection logic is correct, but some downstream gate is failing.
+   - Check the cooldown at index.html:1533 and the _userOutcomeSendInProgress
+     guard at line 1529 — they may be returning early before the PICK6 branch.
+   - Trace what does fire.
+
+5. Do NOT patch retrobowl.js, the live-sync gate, the popup-killer, or any
+   other downstream code until detection is proven working in real gameplay.
+   No more guessing.
+
+Show your work at each step. Don't summarize — paste the actual console output,
+the actual diff, the actual simulation result.
+```
+
+End of skill. The post-mortem in `my stupid mistake.md` is the full story.
