@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V52</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V53</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1502,6 +1502,74 @@
             // _rb2p_userOutcomeSendInProgress gates this: set on first valid send, cleared
             // only when applyOpponentOutcome runs on this side (i.e. our turn).
             var isApplyingOpponentOutcome = false;
+            // ===== V53: _Ak1 hook for verified pick-6 detection =====
+            //
+            // Per my stupid mistake.md and the Node simulation in
+            // test_detection.js, the prior pick-6 detection at
+            // hookEngineChangePossessionScript (which inferred pick-6 from
+            // outcome.type === 'INT' via inferUserDriveEndType(prevVy)) does
+            // not fire reliably in real play. The reason: prevVy is read from
+            // pre.enginePriorFsmStage which is _._2c1, and that value is
+            // STALE — set by a prior _1c1 call (the INT-flip moment) to a
+            // value (typically 2 = active-play) that inferUserDriveEndType
+            // maps to "OTHER", not "INT". So isPick6 evaluates false and the
+            // cascade never activates.
+            //
+            // Fix: hook _Ak1 (the engine's TD-replay-start function) instead.
+            // _Ak1(_, t, 1) fires EXACTLY when the engine processes a TD.
+            // Capture the timestamp + the team that just scored. Then in the
+            // _1c1 hook below, the pick-6 check becomes:
+            //   - Did _Ak1(_, t, 1) fire recently (within 8 s)?
+            //   - Was the scoring team the OPPONENT (not user)?
+            // That's a verified engine event, not a state-inference heuristic.
+            //
+            // Reference: STEP 3 simulation results in test_detection.js — 5/5 pass.
+            var hookedAk1 = false;
+            var originalAk1 = null;
+            function hookEngineAk1Script() {
+                if (hookedAk1) return;
+                try {
+                    var idx = RB.findEngineScriptIndex('gml_Script__Ak1');
+                    if (idx < 0) idx = RB.findEngineScriptIndex('gml_Script_s_start_replay');
+                    if (idx < 0) idx = RB.findEngineScriptIndex('gml_GlobalScript__Ak1');
+                    if (idx < 0) idx = RB.findEngineScriptIndex('gml_GlobalScript_s_start_replay');
+                    if (idx < 0) {
+                        console.warn('[2P AK1] could not locate _Ak1 in script registry; pick-6 detection disabled');
+                        return;
+                    }
+                    var fn = _Y._PU1[idx];
+                    if (typeof fn !== 'function') return;
+                    if (fn._p2p_hooked_ak1) { hookedAk1 = true; return; }
+                    originalAk1 = fn;
+                    var wrapped = function (_, t, i) {
+                        // Capture state BEFORE the engine mutates anything.
+                        // _Ak1's body sets global._Bk1 = arguments[2] and
+                        // _._kp = 3, but does not flip _._UD. So
+                        // enginePossessingTeamIdx is still the team that
+                        // just scored at this moment.
+                        try {
+                            if (arguments[2] === 1) {
+                                var em = RB.engineState();
+                                if (em) {
+                                    window._rb2p_lastTdReplayMs        = Date.now();
+                                    window._rb2p_lastTdScoringTeamIdx  = em.enginePossessingTeamIdx;
+                                    window._rb2p_lastTdUserTeamIdx     = em.engineUserTeamIdx;
+                                    console.log('[2P AK1] _Ak1(_, t, 1) fired ' +
+                                                '— scoringTeamIdx=' + em.enginePossessingTeamIdx +
+                                                ' userTeamIdx='     + em.engineUserTeamIdx +
+                                                ' isOpponent='      + (em.enginePossessingTeamIdx !== em.engineUserTeamIdx));
+                                }
+                            }
+                        } catch (e) { console.log('[2P AK1 capture err]', e); }
+                        return originalAk1.apply(this, arguments);
+                    };
+                    wrapped._p2p_hooked_ak1 = true;
+                    _Y._PU1[idx] = wrapped;
+                    hookedAk1 = true;
+                    console.log('[2P AK1] _Ak1 hook installed at script index ' + idx);
+                } catch (e) { console.log('[2P AK1 hook err]', e); }
+            }
+
             var originalEngineChangePossession = null;
             var hookedEngineChangePossession = false;
             var hookedChangePossessionScriptIdx = -1;
@@ -1553,7 +1621,41 @@
                         var oppNow = engineMatchAfter ? engineMatchAfter.opponentScore : 0;
                         var oppStart = window._rb2p_opponentScoreAtDriveStart || 0;
                         var oppDelta = oppNow - oppStart;
-                        var isPick6 = (outcome.type === 'INT' && oppDelta >= 6);
+                        // V53: replaced the heuristic
+                        //   (outcome.type === 'INT' && oppDelta >= 6)
+                        // with a verified-engine-event signal: did _Ak1(_, t, 1)
+                        // fire within the last 8 s, AND was the team scoring
+                        // (captured at _Ak1 time) the OPPONENT, not the user?
+                        // The heuristic failed because outcome.type came from
+                        // inferUserDriveEndType(prevVy), and prevVy was read
+                        // from pre._2c1 which is stale (set by a prior _1c1
+                        // call, not the play-ending _Vy). Detection silently
+                        // returned false for actual pick-6s — every V39-V50
+                        // patch was dormant in real play. See PAT.md and
+                        // my stupid mistake.md for the full post-mortem and
+                        // test_detection.js for the Node simulation that
+                        // confirmed both the failure (STEP 1) and the fix
+                        // (STEP 3, 5/5 pass).
+                        var ak1FiredRecently = window._rb2p_lastTdReplayMs &&
+                                               (Date.now() - window._rb2p_lastTdReplayMs) < 8000;
+                        var ak1ScoringTeamWasOpp = window._rb2p_lastTdScoringTeamIdx !== undefined &&
+                                                   window._rb2p_lastTdScoringTeamIdx !== pre.engineUserTeamIdx;
+                        var isPick6 = !!(ak1FiredRecently && ak1ScoringTeamWasOpp);
+                        if (isPick6) {
+                            // Clear the _Ak1 marker so a subsequent _1c1 call
+                            // in the same cascade (post-PAT kickoff) doesn't
+                            // re-trigger detection.
+                            window._rb2p_lastTdReplayMs = 0;
+                            window._rb2p_lastTdScoringTeamIdx = undefined;
+                        }
+                        // Legacy diagnostic — still log oppDelta so console
+                        // history is interpretable when diagnosing future
+                        // edge cases.
+                        console.log('[2P DETECT V53] outcome.type=' + outcome.type +
+                                    ' oppDelta=' + oppDelta +
+                                    ' ak1FiredRecently=' + !!ak1FiredRecently +
+                                    ' ak1ScoringTeamWasOpp=' + !!ak1ScoringTeamWasOpp +
+                                    ' isPick6=' + isPick6);
                         if (isPick6) {
                             try {
                                 // Pick-6 flow (engine→user PAT routing):
@@ -2697,6 +2799,7 @@
                     }
                     hookEngineChangePossessionScript();
                     hookEngineCommentaryScript();
+                    hookEngineAk1Script();
                     var engineMatch = RB.engineState();
                     if (!engineMatch) { hideWait(); return; }
                     // Bug 2: _rb2p_userIsWaitingForOpponent is the single sentinel.
