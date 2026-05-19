@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V54</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V55</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1621,40 +1621,36 @@
                         var oppNow = engineMatchAfter ? engineMatchAfter.opponentScore : 0;
                         var oppStart = window._rb2p_opponentScoreAtDriveStart || 0;
                         var oppDelta = oppNow - oppStart;
-                        // V53: replaced the heuristic
-                        //   (outcome.type === 'INT' && oppDelta >= 6)
-                        // with a verified-engine-event signal: did _Ak1(_, t, 1)
-                        // fire within the last 8 s, AND was the team scoring
-                        // (captured at _Ak1 time) the OPPONENT, not the user?
-                        // The heuristic failed because outcome.type came from
-                        // inferUserDriveEndType(prevVy), and prevVy was read
-                        // from pre._2c1 which is stale (set by a prior _1c1
-                        // call, not the play-ending _Vy). Detection silently
-                        // returned false for actual pick-6s — every V39-V50
-                        // patch was dormant in real play. See PAT.md and
-                        // my stupid mistake.md for the full post-mortem and
-                        // test_detection.js for the Node simulation that
-                        // confirmed both the failure (STEP 1) and the fix
-                        // (STEP 3, 5/5 pass).
+                        // V55: hybrid detection (union of three signals).
+                        //
+                        // V53 replaced the old (outcome.type==='INT' && oppDelta>=6)
+                        // heuristic with an _Ak1-only signal, but that REGRESSED
+                        // the "no-holder TD" path (retrobowl.js:66228 conditional
+                        // takes the _hB(_, t, 2) branch instead of _Ak1(_, t, 1)
+                        // when the ball carrier ref is null — typical for some
+                        // fumble-recovery or scoop-and-score sequences). V53's
+                        // hook never fires in that case, so isPick6 was false
+                        // even though oppDelta was 6 (the user threw an INT and
+                        // the opponent's team gained 6 points during the drive).
+                        //
+                        // Restore the original heuristic AS A FALLBACK and OR it
+                        // with V53's _Ak1 signal. Either signal alone is enough
+                        // to declare pick-6.
                         var ak1FiredRecently = window._rb2p_lastTdReplayMs &&
                                                (Date.now() - window._rb2p_lastTdReplayMs) < 8000;
                         var ak1ScoringTeamWasOpp = window._rb2p_lastTdScoringTeamIdx !== undefined &&
                                                    window._rb2p_lastTdScoringTeamIdx !== pre.engineUserTeamIdx;
-                        var isPick6 = !!(ak1FiredRecently && ak1ScoringTeamWasOpp);
+                        var ak1Signal = !!(ak1FiredRecently && ak1ScoringTeamWasOpp);
+                        var heuristicSignal = (outcome.type === 'INT' && oppDelta >= 6);
+                        var isPick6 = ak1Signal || heuristicSignal;
                         if (isPick6) {
-                            // Clear the _Ak1 marker so a subsequent _1c1 call
-                            // in the same cascade (post-PAT kickoff) doesn't
-                            // re-trigger detection.
                             window._rb2p_lastTdReplayMs = 0;
                             window._rb2p_lastTdScoringTeamIdx = undefined;
                         }
-                        // Legacy diagnostic — still log oppDelta so console
-                        // history is interpretable when diagnosing future
-                        // edge cases.
-                        console.log('[2P DETECT V53] outcome.type=' + outcome.type +
+                        console.log('[2P DETECT V55] outcome.type=' + outcome.type +
                                     ' oppDelta=' + oppDelta +
-                                    ' ak1FiredRecently=' + !!ak1FiredRecently +
-                                    ' ak1ScoringTeamWasOpp=' + !!ak1ScoringTeamWasOpp +
+                                    ' ak1Signal=' + ak1Signal +
+                                    ' heuristicSignal=' + heuristicSignal +
                                     ' isPick6=' + isPick6);
                         if (isPick6) {
                             try {
@@ -2462,15 +2458,40 @@
                 }, 30000);
             }
 
-            // Auto-launcher: watch for cascade flag transition.
+            // Auto-launcher: TWO independent triggers (either fires the test).
+            //  1. Cascade flag transitions false → true (the "happy path"
+            //     when detection works).
+            //  2. A new PAT modal popup appears on the PopUps layer
+            //     (popup with _0G in {100367, 100369}) — fires the test
+            //     EVEN IF detection failed and the cascade flag never went
+            //     true. This catches the "no test ran because detection
+            //     failed" failure mode from V53 playtest. (V55+)
+            var _rb2p_seenPatModalIds_global = {};
             setInterval(function () {
                 try {
                     var cur = window._rb2p_pickSixPatCascadeActive === true;
                     if (cur && !_rb2p_lastCascadeState) {
-                        console.log('[2P AUTOTEST V54] cascade flag transitioned false→true — launching auto-test');
+                        console.log('[2P AUTOTEST V55] cascade flag false→true — launching auto-test (trigger=cascade)');
                         _rb2p_startPickSixAutoTest();
                     }
                     _rb2p_lastCascadeState = cur;
+                    // PAT-modal trigger
+                    var popups = (typeof enumeratePopupInstances === 'function')
+                        ? enumeratePopupInstances() : [];
+                    for (var i = 0; i < popups.length; i++) {
+                        var p = popups[i];
+                        if (!p) continue;
+                        if ((p._0G === 100367 || p._0G === 100369) &&
+                            !_rb2p_seenPatModalIds_global[p.id]) {
+                            _rb2p_seenPatModalIds_global[p.id] = true;
+                            if (!_rb2p_autoTestRunning) {
+                                console.log('[2P AUTOTEST V55] PAT modal popup id=' + p.id +
+                                            ' (_0G=' + p._0G + ') appeared — launching auto-test ' +
+                                            '(trigger=pat-modal)');
+                                _rb2p_startPickSixAutoTest();
+                            }
+                        }
+                    }
                 } catch (e) {}
             }, 100);
 
