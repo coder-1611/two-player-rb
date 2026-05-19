@@ -242,55 +242,179 @@ What the user actually sees:
 
 ## **PROMPT TO FIX THIS** (copy-paste to next session)
 
+This prompt is designed to drive a full fix end-to-end without asking the user to playtest before the fix lands. Detection failure is verified via Node simulation against the engine source, the fix is implemented and Node-verified, then pushed. The user only playtests at the END to confirm the deployed build behaves correctly.
+
 ```
-The 2P pick-6 PAT bug is still broken after V50. Read PAT.md and my stupid mistake.md
-before doing anything. Then:
+You are fixing the 2P Retro Bowl pick-6 PAT bug that has been broken across
+V39–V50. Before touching anything, read these in order:
 
-1. Add instrumentation at index.html:1535 (immediately after the call to
-   buildUserDriveEndOutcome and before the isPick6 check):
+  1. /Users/sohamsthitpragya/Retro Bowl/two-player rb/PAT.md
+  2. /Users/sohamsthitpragya/Retro Bowl/two-player rb/my stupid mistake.md
+  3. /Users/sohamsthitpragya/Retro Bowl/two-player rb/.claude/skills/pick-six-research/SKILL.md
 
-       console.log('[2P DETECT]',
-           'pre._Vy=' + pre.engineDriveFsmStage,
-           'pre._2c1=' + pre.enginePriorFsmStage,
-           'prevVy=' + prevVy,
-           'outcome.type=' + outcome.type,
-           'oppStart=' + window._rb2p_opponentScoreAtDriveStart,
-           'oppNow=' + (RB.engineState() ? RB.engineState().opponentScore : '?'),
-           'oppDelta=' + ((RB.engineState() ? RB.engineState().opponentScore : 0) -
-                          (window._rb2p_opponentScoreAtDriveStart || 0)),
-           'isPick6=' + (outcome.type === 'INT' &&
-                         ((RB.engineState() ? RB.engineState().opponentScore : 0) -
-                          (window._rb2p_opponentScoreAtDriveStart || 0)) >= 6));
+Hypothesis to test first: pick-6 detection at index.html:1556 never fires
+because pre._2c1 reads as 1 (kickoff) or 2 (setup), not 8 (INT), by the time
+_1c1's wrapper runs. If true, the cascade flag never goes true and every
+downstream V-patch is dormant.
 
-   Commit + push as V51. Do not change any other code.
+================================================================================
+STEP 1 — VERIFY HYPOTHESIS WITH NODE SIMULATION (no playtest needed)
+================================================================================
 
-2. Ask me to play a pick-6 (throw an INT that gets returned for a TD) in the
-   deployed Vercel build. Have me paste the [2P DETECT] console line back.
+Write /Users/sohamsthitpragya/Retro Bowl/two-player rb/test_detection.js as a
+standalone Node script that:
 
-3. If outcome.type !== 'INT' (most likely outcome):
-   - Pick-6 detection is the actual root cause of every symptom I've reported.
-   - The fix is to hook _Ak1(_, t, 1) at retrobowl.js:57499 instead of _1c1.
-     Capture the moment _Ak1(_, t, 1) fires AND the scoring team is the
-     opponent (_._UD !== _._0z at the moment of the +6 credit at line 55369).
-     That is a verified-engine-event signal, not a heuristic inference.
-   - Implement the _Ak1 hook in index.html. Before committing, write a Node
-     simulation _rb2p_testPickSixDetection() that exercises the hook with
-     synthetic input and verifies it sets _rb2p_pickSixPatCascadeActive = true.
-     Run the simulation. Paste the output.
-   - Only after the simulation passes, push as V52.
+  a. Reads retrobowl.js line-by-line and finds every assignment to _._Vy in
+     the defensive-TD path (search around lines 55363–55400 for "case 16",
+     and around 56446–56463 for _1c1).
+  b. Reconstructs the FSM transition sequence the engine walks through for a
+     defensive INT-return-TD: list each _Vy value in order, with the line that
+     sets it.
+  c. Identifies which _Vy value is current at the moment _1c1 fires for the
+     post-defensive-TD kickoff.
+  d. Reads index.html's inferUserDriveEndType (around line 1464) and maps
+     that _Vy value to the resulting outcome.type string.
+  e. Reads index.html's pick-6 check (around line 1556) and evaluates
+     `outcome.type === 'INT' && oppDelta >= 6` for the predicted state.
+  f. Prints a verdict: "DETECTION_PROBABLY_FIRES" or "DETECTION_PROBABLY_FAILS"
+     with a one-line reason.
 
-4. If outcome.type === 'INT' (less likely):
-   - Detection logic is correct, but some downstream gate is failing.
-   - Check the cooldown at index.html:1533 and the _userOutcomeSendInProgress
-     guard at line 1529 — they may be returning early before the PICK6 branch.
-   - Trace what does fire.
+Run the script with `node test_detection.js`. Paste the verdict line in your
+response.
 
-5. Do NOT patch retrobowl.js, the live-sync gate, the popup-killer, or any
-   other downstream code until detection is proven working in real gameplay.
-   No more guessing.
+If verdict is DETECTION_PROBABLY_FIRES, jump to STEP 5 (downstream investigation).
+If verdict is DETECTION_PROBABLY_FAILS, continue to STEP 2.
 
-Show your work at each step. Don't summarize — paste the actual console output,
-the actual diff, the actual simulation result.
+================================================================================
+STEP 2 — IMPLEMENT THE FIX (_Ak1 hook instead of _1c1 inference)
+================================================================================
+
+The reliable detection signal is the engine event _Ak1(_, t, 1) firing AND the
+scoring team being the opponent. _Ak1 sets global._Bk1 = 1 ONLY when a TD has
+just been scored; combined with the team-identity check, it is a verified
+engine event, not a state-inference heuristic.
+
+Implementation:
+
+  a. Hook _Ak1 via the script registry. The bridge already has the pattern in
+     hookEngineChangePossessionScript at index.html:1508. Mirror it for _Ak1:
+     find the script index for _Ak1 (gml_Script__Ak1 or similar — use
+     RB.findEngineScriptIndex with multiple name guesses), wrap the function,
+     and on every call where arguments[2] === 1, record:
+
+         window._rb2p_lastTdReplayMs = Date.now();
+         window._rb2p_lastTdScoringTeamIdx = engineMatch.enginePossessingTeamIdx;
+
+     (capture the team idx BEFORE the wrapped call mutates state — _Ak1's
+     own body sets global._Bk1 = arguments[2] but does not flip _UD).
+
+  b. In the existing _1c1 hook at index.html ~1556, REPLACE the isPick6
+     heuristic with:
+
+         var isPick6 = (
+             window._rb2p_lastTdReplayMs &&
+             (Date.now() - window._rb2p_lastTdReplayMs) < 8000 &&
+             window._rb2p_lastTdScoringTeamIdx !== undefined &&
+             window._rb2p_lastTdScoringTeamIdx !== pre.engineUserTeamIdx
+         );
+
+     This means: within the last 8s, _Ak1(_, t, 1) fired AND the team in
+     possession at that moment was the OPPONENT (i.e. defensive TD by our
+     opponent's team — pick-6). The heuristic-INT check and oppDelta>=6 check
+     are removed.
+
+  c. Keep the V39 _Bk1 suppressor, popup-killer, dedup, V48 score patches,
+     and V50 live-sync gate. They become reachable now that detection works.
+
+  d. After applying isPick6, clear window._rb2p_lastTdReplayMs to prevent the
+     same _Ak1 firing from re-triggering detection on a subsequent _1c1 call
+     in the same cascade.
+
+================================================================================
+STEP 3 — VERIFY THE FIX WITH NODE SIMULATION
+================================================================================
+
+Append to test_detection.js a second test:
+
+  a. Stub a minimal mock for window, RB.engineState, snapshotEngineMatch.
+  b. Simulate the sequence:
+       - call the _Ak1 wrapper with arguments[2] = 1, and a mock engineState
+         where enginePossessingTeamIdx = 0 (opponent), engineUserTeamIdx = 1.
+       - immediately call the _1c1 wrapper with pre.enginePossessingTeamIdx = 1
+         (user just lost possession), post.enginePossessingTeamIdx = 0.
+       - assert isPick6 === true.
+  c. Run a negative case: same simulation, but enginePossessingTeamIdx = 1
+     (user's own team scored the TD — normal user TD, not pick-6).
+       - assert isPick6 === false.
+  d. Run a stale case: _Ak1 fired 20s ago, then _1c1 now. assert isPick6 === false.
+
+Run `node test_detection.js`. Paste BOTH the original verdict AND the new
+positive/negative/stale test results. All three must pass before proceeding.
+
+================================================================================
+STEP 4 — PUSH AS V52
+================================================================================
+
+  a. Apply the index.html changes from STEP 2.
+  b. Bump the V-label in the lobby prompt per CLAUDE.md (V51 → V52).
+  c. Syntax-check via the same Node script you've used in prior commits.
+  d. git add index.html test_detection.js .claude/skills/pick-six-research/SKILL.md
+  e. git commit with a message describing: "V52: hook _Ak1 for verified pick-6
+     detection; remove _2c1-inference heuristic; Node simulation 3/3 pass."
+  f. git push origin main.
+  g. State the commit hash and that Vercel will deploy in ~30s.
+
+================================================================================
+STEP 5 — DOWNSTREAM INVESTIGATION (only if STEP 1 said DETECTION_PROBABLY_FIRES)
+================================================================================
+
+If the Node simulation in STEP 1 said detection should work, the bug is
+elsewhere. In that case:
+
+  a. Add temporary console.log instrumentation as described in the V51
+     instructions in my stupid mistake.md (the [2P DETECT] block).
+  b. Push as V52 with ONLY the instrumentation.
+  c. Ask the user to throw a real pick-6 and paste the [2P DETECT] line.
+  d. Diagnose based on which guard is returning early (_userOutcomeSendInProgress,
+     lastOpponentOutcomeApplyMs cooldown, etc.).
+  e. Fix the specific guard, push as V53.
+
+================================================================================
+STEP 6 — USER PLAYTEST CONFIRMATION (after fix is pushed)
+================================================================================
+
+Once V52 is pushed and Vercel deployed:
+
+  a. Tell the user: "V52 deployed. Throw a pick-6 and try the 2-PT. Paste
+     `_rb2p_dumpState()` from the console after the PAT scene completes."
+  b. Verify:
+       - flags.pickSixPatCascadeActive cycle: should go true during PAT, then
+         clear when engineDownNumber transitions out of 6.
+       - engineMatch.scoreboard: the scoring team (user on the device that
+         played the PAT) should have +1 or +2.
+       - patDedupKills counter: should be 0 or 1 (not 2+).
+       - No console errors.
+  c. If anything is wrong, do not patch blindly — re-run /pick-six-research
+     verify, find drift, and only THEN patch. No more whack-a-mole.
+
+================================================================================
+RULES — DO NOT VIOLATE
+================================================================================
+
+- Do not edit retrobowl.js in STEP 2 or STEP 4 — the fix is bridge-only.
+- Do not skip the Node simulation in STEP 3. The whole point of this prompt is
+  to verify the fix before the user has to playtest.
+- Do not assume anything from the V42–V50 patches works in real play until the
+  cascade flag has been observed going `true` (the Node simulation in STEP 3
+  proves the flag transition; the playtest in STEP 6 confirms it in real
+  gameplay).
+- If the Node simulation fails, debug the simulation and the fix together.
+  Do not push code whose simulation didn't pass.
+- After V52 is pushed, update PAT.md § 3.5 and this skill's § E patch checklist
+  to reflect the new _Ak1-based detection. Stale docs caused half the prior
+  failures.
+
+End of prompt. Execute steps in order. Show your work at each step.
 ```
 
-End of skill. The post-mortem in `my stupid mistake.md` is the full story.
+End of skill. The post-mortem in `my stupid mistake.md` is the full story; this prompt is the operational fix path.
