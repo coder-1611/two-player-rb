@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V53</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V54</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2272,6 +2272,211 @@
             // a copy of the scoreboard via the V48 logic and reports the
             // resulting team scores. This proves the math works without
             // requiring the user to actually throw an INT in gameplay.
+
+            // ===== V54: pick-6 auto-detector + auto-test =====
+            //
+            // Detects when a pick-6 PAT cascade STARTS on this device (the
+            // moment _rb2p_pickSixPatCascadeActive transitions false → true)
+            // and immediately launches a 30-second self-test that:
+            //   - counts PAT modal spawns (popups with _0G in {100367, 100369})
+            //   - records every scoreboard change with delta, team, _UD,
+            //     _0z, downNumber at the moment of change
+            //   - identifies who got credit and how many modals appeared
+            // After 30 s, prints a structured verdict to the console and
+            // stashes the report at window._rb2p_lastPickSixAutoTestReport.
+            // No user paste needed — the test reports on its own.
+            var _rb2p_lastCascadeState = false;
+            var _rb2p_autoTestRunning = false;
+
+            function _rb2p_startPickSixAutoTest() {
+                if (_rb2p_autoTestRunning) return;
+                _rb2p_autoTestRunning = true;
+                var startMs = Date.now();
+                var s0 = RB.engineState();
+                var startScoreboard = s0 && s0.engineScoreboard
+                    ? [s0.engineScoreboard[0], s0.engineScoreboard[1]]
+                    : [0, 0];
+                var startUserTeamIdx = s0 ? s0.engineUserTeamIdx : null;
+                var startOppTeamIdx  = (startUserTeamIdx === 0 || startUserTeamIdx === 1)
+                    ? (startUserTeamIdx ? 0 : 1)
+                    : null;
+                var report = {
+                    version: 'V54',
+                    startedAt: new Date().toISOString(),
+                    startScoreboard: startScoreboard,
+                    startUserTeamIdx: startUserTeamIdx,
+                    startOppTeamIdx:  startOppTeamIdx,
+                    startUD: s0 ? s0.enginePossessingTeamIdx : null,
+                    patModalSpawns: 0,
+                    distinctPatButtonInstanceIds: [],
+                    scoreChanges: [],
+                    cascadeFlagHistory: [],
+                    finalScoreboard: null,
+                    durationMs: 0,
+                    verdict: null,
+                };
+                var lastSb0 = startScoreboard[0];
+                var lastSb1 = startScoreboard[1];
+                var seen1ptIds = {};
+                var seen2ptIds = {};
+                var lastCascade = window._rb2p_pickSixPatCascadeActive === true;
+                report.cascadeFlagHistory.push({ ts: 0, active: lastCascade });
+
+                console.log('[2P AUTOTEST V54] starting — startScoreboard=' +
+                            JSON.stringify(startScoreboard) +
+                            ' userTeamIdx=' + startUserTeamIdx +
+                            ' oppTeamIdx='  + startOppTeamIdx +
+                            ' _UD=' + report.startUD);
+
+                var tick = setInterval(function () {
+                    try {
+                        var sNow = RB.engineState();
+                        if (!sNow || !sNow.engineScoreboard) return;
+                        var sb0 = sNow.engineScoreboard[0];
+                        var sb1 = sNow.engineScoreboard[1];
+                        var now = Date.now() - startMs;
+                        if (sb0 !== lastSb0) {
+                            report.scoreChanges.push({
+                                ts: now, team: 0, delta: sb0 - lastSb0,
+                                from: lastSb0, to: sb0,
+                                _UD: sNow.enginePossessingTeamIdx,
+                                _0z: sNow.engineUserTeamIdx,
+                                downNumber: sNow.engineDownNumber,
+                                driveFsmStage: sNow.engineDriveFsmStage,
+                                cascadeActive: window._rb2p_pickSixPatCascadeActive,
+                            });
+                            lastSb0 = sb0;
+                        }
+                        if (sb1 !== lastSb1) {
+                            report.scoreChanges.push({
+                                ts: now, team: 1, delta: sb1 - lastSb1,
+                                from: lastSb1, to: sb1,
+                                _UD: sNow.enginePossessingTeamIdx,
+                                _0z: sNow.engineUserTeamIdx,
+                                downNumber: sNow.engineDownNumber,
+                                driveFsmStage: sNow.engineDriveFsmStage,
+                                cascadeActive: window._rb2p_pickSixPatCascadeActive,
+                            });
+                            lastSb1 = sb1;
+                        }
+                        // Cascade flag transitions
+                        var curCascade = window._rb2p_pickSixPatCascadeActive === true;
+                        if (curCascade !== lastCascade) {
+                            report.cascadeFlagHistory.push({ ts: now, active: curCascade });
+                            lastCascade = curCascade;
+                        }
+                        // PAT modal spawn detection by _0G script-id
+                        var popups = (typeof enumeratePopupInstances === 'function')
+                            ? enumeratePopupInstances()
+                            : [];
+                        for (var i = 0; i < popups.length; i++) {
+                            var p = popups[i];
+                            if (!p) continue;
+                            if (p._0G === 100367 && !seen1ptIds[p.id]) {
+                                seen1ptIds[p.id] = now;
+                                report.patModalSpawns++;
+                                report.distinctPatButtonInstanceIds.push({
+                                    id: p.id, kind: '1pt', ts: now,
+                                });
+                                console.log('[2P AUTOTEST V54] new PAT modal #' +
+                                            report.patModalSpawns + ' (1pt button id=' + p.id + ' @ t+' + now + 'ms)');
+                            }
+                            if (p._0G === 100369 && !seen2ptIds[p.id]) {
+                                seen2ptIds[p.id] = now;
+                                report.distinctPatButtonInstanceIds.push({
+                                    id: p.id, kind: '2pt', ts: now,
+                                });
+                            }
+                        }
+                    } catch (e) {}
+                }, 100);
+
+                setTimeout(function () {
+                    try {
+                        clearInterval(tick);
+                        var sFinal = RB.engineState();
+                        report.finalScoreboard = sFinal && sFinal.engineScoreboard
+                            ? [sFinal.engineScoreboard[0], sFinal.engineScoreboard[1]]
+                            : null;
+                        report.durationMs = Date.now() - startMs;
+
+                        // Build verdict
+                        var userIdx = startUserTeamIdx;
+                        var oppIdx  = startOppTeamIdx;
+                        var userDelta = (report.finalScoreboard && userIdx !== null)
+                            ? report.finalScoreboard[userIdx] - startScoreboard[userIdx]
+                            : 0;
+                        var oppDelta = (report.finalScoreboard && oppIdx !== null)
+                            ? report.finalScoreboard[oppIdx] - startScoreboard[oppIdx]
+                            : 0;
+                        var modalCount = report.patModalSpawns;
+
+                        var verdict;
+                        // Two scenarios — A (thrower) device: oppDelta should be 6,7,8
+                        // (TD + PAT credit lands on opponent). userDelta should be 0.
+                        // B (scorer) device: userDelta should be 7 or 8. oppDelta should be 0.
+                        if (modalCount === 0) {
+                            verdict = 'FAIL — no PAT modal observed during test window';
+                        } else if (modalCount > 1) {
+                            verdict = 'FAIL — ' + modalCount + ' PAT modals spawned (expected exactly 1)';
+                        } else if (userIdx === report.startUD) {
+                            // We were the scorer (or set up as such by PICK6 branch).
+                            // Expect userDelta >= 7 (TD already credited via mirror, +1 or +2 from PAT).
+                            if (userDelta >= 7 && oppDelta === 0) {
+                                verdict = 'PASS — single modal, user team correctly credited +' + userDelta;
+                            } else if (userDelta >= 6 && userDelta < 7) {
+                                verdict = 'FAIL — user got +6 (TD only) but PAT credit missing';
+                            } else if (oppDelta > 0) {
+                                verdict = 'FAIL — opponent got +' + oppDelta + ' during user PAT (wrong team credited)';
+                            } else {
+                                verdict = 'INCONCLUSIVE — userDelta=' + userDelta + ' oppDelta=' + oppDelta;
+                            }
+                        } else {
+                            // We were the thrower (A's device).
+                            // Expect oppDelta = 6, 7, or 8 (defender's TD + PAT mirrored back from B).
+                            if (oppDelta >= 7 && userDelta === 0) {
+                                verdict = 'PASS — single modal (on B), opponent correctly credited +' + oppDelta;
+                            } else if (oppDelta === 6) {
+                                verdict = 'INCONCLUSIVE — opponent got +6 (TD only). PAT_RESULT may not have arrived yet.';
+                            } else if (userDelta > 0) {
+                                verdict = 'FAIL — user got +' + userDelta + ' on a pick-6 against them';
+                            } else {
+                                verdict = 'INCONCLUSIVE — userDelta=' + userDelta + ' oppDelta=' + oppDelta;
+                            }
+                        }
+                        report.verdict = verdict;
+
+                        console.log('================================================================');
+                        console.log('PICK-6 AUTO-TEST REPORT (V54)');
+                        console.log('================================================================');
+                        console.log(JSON.stringify(report, null, 2));
+                        console.log('================================================================');
+                        console.log('VERDICT: ' + verdict);
+                        console.log('================================================================');
+                        window._rb2p_lastPickSixAutoTestReport = report;
+                    } catch (e) {
+                        console.log('[2P AUTOTEST V54] finalize err', e);
+                    } finally {
+                        _rb2p_autoTestRunning = false;
+                    }
+                }, 30000);
+            }
+
+            // Auto-launcher: watch for cascade flag transition.
+            setInterval(function () {
+                try {
+                    var cur = window._rb2p_pickSixPatCascadeActive === true;
+                    if (cur && !_rb2p_lastCascadeState) {
+                        console.log('[2P AUTOTEST V54] cascade flag transitioned false→true — launching auto-test');
+                        _rb2p_startPickSixAutoTest();
+                    }
+                    _rb2p_lastCascadeState = cur;
+                } catch (e) {}
+            }, 100);
+
+            // Manual trigger for diagnostic / simulation runs from console.
+            window._rb2p_runPickSixAutoTestNow = _rb2p_startPickSixAutoTest;
+
             window._rb2p_verifyV48 = function () {
                 var m = RB.engineState();
                 var report = {
