@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V55</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V56</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1643,98 +1643,74 @@
                         var ak1Signal = !!(ak1FiredRecently && ak1ScoringTeamWasOpp);
                         var heuristicSignal = (outcome.type === 'INT' && oppDelta >= 6);
                         var isPick6 = ak1Signal || heuristicSignal;
-                        if (isPick6) {
-                            window._rb2p_lastTdReplayMs = 0;
-                            window._rb2p_lastTdScoringTeamIdx = undefined;
-                        }
-                        console.log('[2P DETECT V55] outcome.type=' + outcome.type +
+                        console.log('[2P DETECT V56] outcome.type=' + outcome.type +
                                     ' oppDelta=' + oppDelta +
                                     ' ak1Signal=' + ak1Signal +
                                     ' heuristicSignal=' + heuristicSignal +
                                     ' isPick6=' + isPick6);
                         if (isPick6) {
-                            try {
-                                // Pick-6 flow (engine→user PAT routing):
-                                //   vyStage = 9  (defensive TD; +6 to
-                                //                 scoring team)
-                                //   vyStage = 11 (engine wants to pop
-                                //                 "1 or 2 PT?" modal on
-                                //                 A's screen — but A is
-                                //                 NOT the scoring team.
-                                //                 The frame-tight
-                                //                 suppressor inside
-                                //                 engineCommentaryScript-
-                                //                 Hook catches this and
-                                //                 jumps to vyStage 1
-                                //                 before the modal can
-                                //                 render.)
-                                //   vyStage = 1  (kickoff cascade) →
-                                //                 _Zb1 + _1c1 → A
-                                //                 receives the kickoff
-                                //
-                                // Meanwhile B applies the PICK6 outcome
-                                // we send below; needsPAT=true makes B
-                                // pop the user-played PAT modal (the
-                                // engine-native _wm call) so B picks
-                                // 1PT or 2PT and PLAYS it out. B's
-                                // result comes back to A as PAT_RESULT.
-                                //
-                                // INVARIANT: 2P never has AI offense.
-                                // The pickSixPatCascadeActive flag both
-                                // suspends A's possession watchdog AND
-                                // arms the frame-tight engine-PAT
-                                // suppressor.
-                                window._rb2p_pickSixPatCascadeActive = true;
-                                window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
-                                console.log('[2P PICK6] detected (oppDelta=' + oppDelta +
-                                            ') — A suppressing engine PAT modal; B will play user PAT');
-                                if (engineMatchAfter) {
-                                    var pickOutcome = {
-                                        type: 'PICK6',
-                                        yardLine: 0,
-                                        ownSide: true,
-                                        needsPAT: true,
-                                        scoreUser: engineMatchAfter.userScore,
-                                        scoreOpp:  engineMatchAfter.opponentScore,
-                                        quarter:   engineMatchAfter.engineQuarter,
-                                        minutesLeft: engineMatchAfter.engineMinutesLeft,
-                                        secondsLeft: engineMatchAfter.engineSecondsLeft,
-                                        fromTeam: pre.engineTeamDisplayNames ? pre.engineTeamDisplayNames[pre.enginePossessingTeamIdx] : '',
-                                        toTeam:   pre.engineTeamDisplayNames ? pre.engineTeamDisplayNames[1 - pre.enginePossessingTeamIdx] : '',
-                                        message: 'PICK SIX! Defensive touchdown.',
-                                        ts: Date.now()
-                                    };
-                                    window._twoPlayer.send(pickOutcome);
-                                }
-                                // Hard fallback: if the kickoff cascade
-                                // never completes on A's side (gutted AI
-                                // path), force A's new drive after 30 s
-                                // so the game doesn't deadlock.
-                                setTimeout(function () {
-                                    try {
-                                        if (!window._rb2p_pickSixPatCascadeActive) return;
-                                        console.log('[2P PICK6] 30s fallback — forcing A drive');
-                                        window._rb2p_pickSixPatCascadeActive   = false;
-                                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                                        window._rb2p_userOutcomeSendInProgress  = false;
-                                        window._rb2p_userIsWaitingForOpponent   = false;
-                                        var yard = -(25 + Math.floor(Math.random() * 16));
-                                        if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
-                                            window._rb2p_forceUserOffenseDrive(yard);
-                                        }
-                                    } catch (e) {
-                                        console.log('[2P PICK6 fallback err]', e);
-                                    }
-                                }, 30000);
-                            } catch (e) { console.log('[2P PICK6 err]', e); }
+                            // V56: all pick-6 entry routes through the shared,
+                            // idempotent cascade-entry function (defined below
+                            // alongside the score-jump watcher, which is the
+                            // PRIMARY detector — this in-hook path is now just
+                            // the early-bird secondary).
+                            window._rb2p_enterPickSixCascade('1c1-hook(ak1=' + ak1Signal +
+                                                             ',heur=' + heuristicSignal + ')');
                             return;   // skip normal INT-send, do NOT enter waiting
+                        }
+
+                        // ===== V56: B's post-PAT send becomes PAT_RESULT =====
+                        // On the device that just PLAYED the pick-6 PAT (the
+                        // defender/scorer), the post-PAT kickoff _1c1 lands
+                        // here with the cascade flag still up and the PAT-
+                        // pending marker (engineDownNumber === 6) captured in
+                        // the pre-snapshot. Re-type the outcome so A's
+                        // dedicated PAT_RESULT applier (which clears A's
+                        // cascade and force-starts A's drive) actually runs.
+                        // Before V56 this shipped as 'KICKOFF' and A recovered
+                        // only by accident via the completion watcher.
+                        if (window._rb2p_pickSixPatCascadeActive === true &&
+                            pre.engineDownNumber === 6) {
+                            outcome.type = 'PAT_RESULT';
+                            outcome.message = 'PAT result';
+                            window._rb2p_userOutcomeSendInProgress = true;
+                            window._rb2p_userIsWaitingForOpponent = true;
+                            try { window._twoPlayer.send(outcome); }
+                            catch (e) { console.log('[2P] send err', e); }
+                            console.log('[2P PICK6] PAT played out here — sent PAT_RESULT ' +
+                                        '(scoreUser=' + outcome.scoreUser +
+                                        ' scoreOpp=' + outcome.scoreOpp + ')');
+                            return;
                         }
 
                         // ===== Normal possession-change SEND =====
                         window._rb2p_userOutcomeSendInProgress = true;
                         window._rb2p_userIsWaitingForOpponent = true;
-                        try { window._twoPlayer.send(outcome); }
-                        catch (e) { console.log('[2P] send err', e); }
+                        // V56: turnover-type outcomes are HELD briefly before
+                        // sending. If this _1c1 was the INT-flip of a pick-6
+                        // (the engine flips possession BEFORE the return-TD
+                        // resolves, so neither detection signal is ready yet),
+                        // the score-jump watcher fires within the hold window
+                        // and UPGRADES the send to PICK6 via
+                        // enterPickSixCascade (which cancels this timer). The
+                        // receiver is parked on the WAIT overlay, so the extra
+                        // latency on plain turnovers is invisible.
+                        if (outcome.type === 'INT' || outcome.type === 'OTHER') {
+                            window._rb2p_pendingTurnoverOutcome = outcome;
+                            window._rb2p_pendingTurnoverSendTimer = setTimeout(function () {
+                                window._rb2p_pendingTurnoverSendTimer = null;
+                                var pending = window._rb2p_pendingTurnoverOutcome;
+                                window._rb2p_pendingTurnoverOutcome = null;
+                                if (!pending) return;
+                                try { window._twoPlayer.send(pending); }
+                                catch (e) { console.log('[2P] send err', e); }
+                            }, 4000);
+                            console.log('[2P] turnover outcome (' + outcome.type +
+                                        ') held 4000ms for possible pick-6 upgrade');
+                        } else {
+                            try { window._twoPlayer.send(outcome); }
+                            catch (e) { console.log('[2P] send err', e); }
+                        }
                     };
                     wrapped._p2p_hooked = true;
                     _Y._PU1[idx] = wrapped;
@@ -1742,6 +1718,144 @@
                     hookedChangePossessionScriptIdx = idx;
                 } catch (e) { /* registry not ready yet */ }
             }
+
+            // ===== V56: shared pick-6 cascade entry (idempotent) =====
+            //
+            // EVERY pick-6 detection route funnels through here: the _1c1
+            // in-hook signals (ak1/heuristic) AND the score-jump watcher
+            // below. Idempotency means duplicate firings within one cascade
+            // (multiple _1c1 calls, _Ak1 re-entry, watcher + hook both
+            // seeing the same TD) collapse into exactly ONE flag-raise and
+            // ONE PICK6 send.
+            window._rb2p_enterPickSixCascade = function (source) {
+                try {
+                    if (window._rb2p_pickSixPatCascadeActive === true) {
+                        console.log('[2P PICK6] enter(' + source + ') ignored — cascade already active');
+                        return false;
+                    }
+                    // If a plain turnover send is being held (the INT-flip
+                    // _1c1 fired before the return-TD resolved), cancel it.
+                    // The opponent must see ONLY the PICK6 outcome, not an
+                    // INT followed by a PICK6.
+                    if (window._rb2p_pendingTurnoverSendTimer) {
+                        clearTimeout(window._rb2p_pendingTurnoverSendTimer);
+                        window._rb2p_pendingTurnoverSendTimer = null;
+                        window._rb2p_pendingTurnoverOutcome = null;
+                        console.log('[2P PICK6] cancelled held turnover send — upgraded to PICK6');
+                    }
+                    // Consume the _Ak1 latch so the same TD replay cannot
+                    // re-trigger detection on a later _1c1 in this cascade.
+                    window._rb2p_lastTdReplayMs = 0;
+                    window._rb2p_lastTdScoringTeamIdx = undefined;
+                    // This device DETECTED the pick-6 locally, so this device
+                    // is the THROWER: it must never show a PAT modal during
+                    // the cascade. The popup-killer's thrower-mode keys off
+                    // this flag to kill the engine's natural modal even when
+                    // the _Bk1 suppressor armed too late.
+                    window._rb2p_pickSixThisDeviceIsThrower = true;
+                    window._rb2p_pickSixPatCascadeActive = true;
+                    window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
+                    window._rb2p_userOutcomeSendInProgress = true;
+                    window._rb2p_userIsWaitingForOpponent = true;
+                    var em = RB.engineState();
+                    console.log('[2P PICK6] cascade entered via ' + source +
+                                ' — suppressing engine PAT here; opponent plays the user PAT');
+                    if (em) {
+                        var userIdx = em.engineUserTeamIdx;
+                        var names = em.engineTeamDisplayNames || ['', ''];
+                        window._twoPlayer.send({
+                            type: 'PICK6',
+                            yardLine: 0,
+                            ownSide: true,
+                            needsPAT: true,
+                            scoreUser: em.userScore,
+                            scoreOpp:  em.opponentScore,
+                            quarter:   em.engineQuarter,
+                            minutesLeft: em.engineMinutesLeft,
+                            secondsLeft: em.engineSecondsLeft,
+                            fromTeam: names[userIdx] || '',
+                            toTeam:   names[userIdx ? 0 : 1] || '',
+                            message: 'PICK SIX! Defensive touchdown.',
+                            ts: Date.now()
+                        });
+                    }
+                    // Hard fallback: if the kickoff cascade never completes
+                    // on this side (gutted AI path) and no PAT_RESULT comes
+                    // back, force the next drive after 30 s so the game
+                    // doesn't deadlock.
+                    setTimeout(function () {
+                        try {
+                            if (!window._rb2p_pickSixPatCascadeActive) return;
+                            console.log('[2P PICK6] 30s fallback — forcing thrower drive');
+                            window._rb2p_pickSixPatCascadeActive    = false;
+                            window._rb2p_pickSixThisDeviceIsThrower = false;
+                            window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                            window._rb2p_userOutcomeSendInProgress  = false;
+                            window._rb2p_userIsWaitingForOpponent   = false;
+                            var yard = -(25 + Math.floor(Math.random() * 16));
+                            if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                                window._rb2p_forceUserOffenseDrive(yard);
+                            }
+                        } catch (e) {
+                            console.log('[2P PICK6 fallback err]', e);
+                        }
+                    }, 30000);
+                    return true;
+                } catch (e) { console.log('[2P PICK6 enter err]', e); return false; }
+            };
+
+            // ===== V56: score-jump watcher — PRIMARY pick-6 detector =====
+            //
+            // Ground truth: in 2P there is NO AI offense, so the LOCAL engine
+            // can only ever credit the opponent's scoreboard index for a
+            // defensive score against the user (pick-6 / scoop-and-score /
+            // safety). Every BRIDGE-initiated score write (outcome mirrors,
+            // PAT_RESULT, live-sync) re-baselines via
+            // _rb2p_notePick6BaselineSync() right after writing — so any
+            // residual opponent-score jump the watcher observes is ENGINE-
+            // EARNED. A single engine-earned jump >= 6 is a defensive TD,
+            // full stop. This does not depend on _1c1/_Ak1 firing order,
+            // which is what made every detection attempt from V39 to V55
+            // intermittent.
+            var pick6WatchBaselineOppScore = null;
+            window._rb2p_notePick6BaselineSync = function () {
+                try {
+                    var em = RB.engineState();
+                    if (em && em.engineScoreboard) pick6WatchBaselineOppScore = em.opponentScore;
+                } catch (e) {}
+            };
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { pick6WatchBaselineOppScore = null; return; }
+                    var em = RB.engineState();
+                    if (!em || !em.engineScoreboard || em.engineUserTeamIdx == null) return;
+                    var cur = em.opponentScore;
+                    if (pick6WatchBaselineOppScore == null || cur < pick6WatchBaselineOppScore) {
+                        pick6WatchBaselineOppScore = cur;   // first sample / reset
+                        return;
+                    }
+                    var jump = cur - pick6WatchBaselineOppScore;
+                    if (jump === 0) return;
+                    pick6WatchBaselineOppScore = cur;
+                    if (jump < 6) return;   // safety (+2) / PAT-sized credits are not a defensive TD
+                    // Only treat as pick-6 in OUR drive context: we're on
+                    // offense, or we JUST handed off this drive's outcome
+                    // (the held INT-flip send). When the opponent scores
+                    // legitimately during THEIR drive, we're waiting with no
+                    // send in flight — and those points arrive via bridge
+                    // mirrors (already re-baselined) anyway.
+                    var ourDriveContext = (window._rb2p_userIsWaitingForOpponent !== true) ||
+                                          (window._rb2p_userOutcomeSendInProgress === true);
+                    if (!ourDriveContext) {
+                        console.log('[2P PICK6 WATCH] opp +' + jump +
+                                    ' outside our drive context — ignoring');
+                        return;
+                    }
+                    console.log('[2P PICK6 WATCH] engine-earned opponent jump +' + jump +
+                                ' — defensive TD against us detected');
+                    window._rb2p_enterPickSixCascade('score-watcher(+' + jump + ')');
+                } catch (e) {}
+            }, 100);
 
             // ===== Hook _Ib1 (s_update_commentary): RUN it, then re-clamp UD =====
             // Earlier fix made _Ib1 a full no-op to stop it flipping _._UD.
@@ -1944,6 +2058,7 @@
                     if (elapsedSinceFlagRaised < 3000) return;
                     if (elapsedSinceFlagRaised >= 60000) {
                         window._rb2p_pickSixPatCascadeActive = false;
+                        window._rb2p_pickSixThisDeviceIsThrower = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
                         window._rb2p_opponentScoreAtDriveStart = engineMatch.opponentScore;
@@ -1957,6 +2072,7 @@
                     if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
                         engineMatch.engineControllerState === 2) {
                         window._rb2p_pickSixPatCascadeActive = false;
+                        window._rb2p_pickSixThisDeviceIsThrower = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
                         window._rb2p_opponentScoreAtDriveStart = engineMatch.opponentScore;
@@ -1980,7 +2096,9 @@
                     // outcome.scoreUser = sender's user score (= user's opp)
                     if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
                     if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
-                    window._rb2p_pickSixPatCascadeActive   = false;
+                    if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                    window._rb2p_pickSixPatCascadeActive    = false;
+                    window._rb2p_pickSixThisDeviceIsThrower = false;
                     window._rb2p_userIsWaitingForOpponent  = false;
                     window._rb2p_userOutcomeSendInProgress = false;
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
@@ -2082,11 +2200,43 @@
                         console.log('[2P PopupKiller] stuck pickSix cascade > ' +
                                     PICK6_CASCADE_MAX_MS + 'ms — force-clearing flag');
                         window._rb2p_pickSixPatCascadeActive = false;
+                        window._rb2p_pickSixThisDeviceIsThrower = false;
                         window._rb2p_userPatPopupRefs = null;
                         requestAnimationFrame(popupKillerTick);
                         return;
                     }
                     if (!RB.isEngineInMatchRoom()) {
+                        requestAnimationFrame(popupKillerTick);
+                        return;
+                    }
+                    // V56: thrower-device mode. On the device that DETECTED
+                    // the pick-6 (the thrower), there is NEVER a legitimate
+                    // PAT modal during the cascade — the defender plays the
+                    // PAT on the other device. If the engine's natural modal
+                    // slipped past the _Bk1 suppressor (cascade flag rose
+                    // after _Ik1 already routed), kill the whole popup set on
+                    // sight. No authorized-refs needed: authorized refs only
+                    // ever exist on the DEFENDER's device, so before V56 the
+                    // killer sat permanently in safe-mode on the thrower —
+                    // the exact device where the wrongful modal appears.
+                    if (window._rb2p_pickSixThisDeviceIsThrower === true) {
+                        var thrPopups = enumeratePopupInstances();
+                        var hasPatButton = false;
+                        for (var ti = 0; ti < thrPopups.length; ti++) {
+                            var tp = thrPopups[ti];
+                            if (tp && (tp._0G === 100367 || tp._0G === 100369)) {
+                                hasPatButton = true;
+                                break;
+                            }
+                        }
+                        if (hasPatButton) {
+                            for (var tj = 0; tj < thrPopups.length; tj++) {
+                                destroyInstance(thrPopups[tj]);
+                                popupKillerKills++;
+                            }
+                            console.log('[2P PopupKiller] thrower-mode: killed engine PAT modal set (' +
+                                        thrPopups.length + ' popups, total #' + popupKillerKills + ')');
+                        }
                         requestAnimationFrame(popupKillerTick);
                         return;
                     }
@@ -2716,6 +2866,18 @@
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
 
+                    // V56: an inbound outcome supersedes any turnover send we
+                    // were holding for a pick-6 upgrade — firing it later
+                    // would ship a stale drive-end and knock the opponent out
+                    // of whatever state this outcome puts them in.
+                    if (window._rb2p_pendingTurnoverSendTimer) {
+                        clearTimeout(window._rb2p_pendingTurnoverSendTimer);
+                        window._rb2p_pendingTurnoverSendTimer = null;
+                        window._rb2p_pendingTurnoverOutcome = null;
+                        console.log('[2P] dropped held turnover send — inbound ' +
+                                    outcome.type + ' outcome supersedes it');
+                    }
+
                     // ===== PAT_RESULT — B sent its played-out PAT result =====
                     // (A side): apply the PAT score and start A's kickoff drive.
                     if (outcome.type === 'PAT_RESULT') {
@@ -2744,10 +2906,15 @@
                     if (outcome.type === 'PICK6') {
                         if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
                         if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
+                        if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
                         if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
                         if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
                         if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
                         engineMatch.engineTickAllowance = 0;
+                        // V56: this device is the DEFENDER/scorer — its PAT
+                        // modal (popped below) is legitimate. Make sure
+                        // thrower-mode killing can never engage here.
+                        window._rb2p_pickSixThisDeviceIsThrower = false;
                         window._rb2p_userIsWaitingForOpponent = true;
                         window._rb2p_userOutcomeSendInProgress = false;
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
@@ -2861,6 +3028,7 @@
                         // for simulate()-style test calls. Removing it makes
                         // an absent scoreUser a hard no-op instead of a silent
                         // auto-credit.
+                        if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
                     }
                     // Clock + quarter sync. The scoreboard reads minutesLeft
                     // and secondsLeft directly; tickAllowance is a sub-second
@@ -3502,6 +3670,7 @@
                     if (userIsOnDefense && !localPlayingPatScene && !pushWouldRegressScore) {
                         engineMatch.setOpponentScore(opponentLivePayload.myScore);
                         engineMatch.setUserScore(opponentLivePayload.oppScore);
+                        if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
                         if (typeof opponentLivePayload.minutesLeft === 'number')
                             engineMatch.engineMinutesLeft = opponentLivePayload.minutesLeft;
                         if (typeof opponentLivePayload.secondsLeft === 'number')

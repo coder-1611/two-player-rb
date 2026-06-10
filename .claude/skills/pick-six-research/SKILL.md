@@ -418,3 +418,63 @@ End of prompt. Execute steps in order. Show your work at each step.
 ```
 
 End of skill. The post-mortem in `my stupid mistake.md` is the full story; this prompt is the operational fix path.
+
+---
+
+## V56 UPDATE (2026-06-10) — ordering-independent detection. SUPERSEDES the V52 prompt above.
+
+The V52 prompt's _Ak1-hook fix landed as V53 and was hybridized in V55 — and the
+bug stayed INTERMITTENT. Root cause, verified against engine source in V56:
+
+**The engine's case 15 (turnover resolution, `retrobowl.js:55350-55355`, the INT
+branch) calls `_1c1` AT THE INT MOMENT.** That is the only `_1c1` firing that
+matches the bridge gate (`pre.possessing == user && post != user`) — and it can
+run BEFORE case 16 credits the +6 (`retrobowl.js:55369`) and before `_Ak1` fires
+(`retrobowl.js:66228`). At that instant BOTH detection signals are false, a plain
+INT outcome ships, `_userOutcomeSendInProgress` goes true, and the later post-TD
+`_1c1` calls (55958/55965/55997) flip possession OPP→USER, which the gate
+rejects. Whether the signals happen to be ready at the gate-matching instant
+depends on intra-frame event batching — that is the intermittency.
+
+### V56 architecture (all in `index.html`, bridge-only)
+
+1. **Score-jump watcher (PRIMARY detector, 100 ms).** Every bridge-initiated
+   score write (outcome mirrors, PICK6 apply, PAT_RESULT apply, live-sync apply)
+   calls `window._rb2p_notePick6BaselineSync()` immediately after writing. Any
+   residual opponent-score jump ≥ 6 the watcher observes is therefore
+   ENGINE-EARNED — and since 2P has no AI offense, that can only be a defensive
+   TD against the local user. Independent of `_1c1`/`_Ak1` firing order. Gated
+   on drive context: `(!waiting) || sendInProgress`.
+2. **`window._rb2p_enterPickSixCascade(source)`** — shared, idempotent cascade
+   entry used by the watcher AND the in-hook (ak1/heuristic) signals. N
+   detections collapse to one flag-raise + one PICK6 send. Sets
+   `_rb2p_pickSixThisDeviceIsThrower = true`.
+3. **Held turnover sends.** `INT`/`OTHER` outcomes are held 4000 ms before
+   sending; pick-6 entry cancels the held send (the INT upgrades to PICK6, so B
+   never sees both). An inbound outcome also drops a held send.
+4. **Thrower-mode popup-killer.** On the detecting (thrower) device a PAT modal
+   is NEVER legitimate during the cascade; the killer destroys the engine's
+   modal set on sight, without authorized refs (which only ever exist on the
+   defender's device — pre-V56 the killer sat permanently in safe-mode on the
+   thrower, the exact device with the wrongful modal).
+5. **`PAT_RESULT` is now actually produced** (fragility 4 / W1 closed): on the
+   defender device, the post-PAT `_1c1` (cascade active + `pre.engineDownNumber
+   === 6`) re-types its outcome to `PAT_RESULT`, so A's dedicated applier
+   (clears cascade, force-starts A's drive) runs deterministically instead of A
+   recovering by accident via the completion watcher.
+
+### Verification
+
+`node test_detection.js` — V56 suite: all 6 orderings of {INT-flip `_1c1`,
+`_Ak1`, +6 credit} produce exactly 1 PICK6 and no leaked INT send; slow pick-6
+(credit after the 4 s hold) upgrades late (OTHER then PICK6); guard-race
+(sendInProgress swallows the `_1c1`) is caught by the watcher; own-TD / stale /
+mirror-write negatives hold; B-side ships PAT_RESULT. 73/73 across 5 repeated
+in-process runs, repeated across multiple invocations. Static checks assert the
+real `index.html` contains every construct the simulation models.
+
+### Status of the section-E patch checklist
+
+V42/V43/V48 engine patches unchanged and still required. The V53 `_Ak1` hook and
+V55 hybrid check remain in place as the secondary (early-bird) signal; the
+`[2P DETECT]` log line is now tagged `V56`. The lobby label is `V56`.

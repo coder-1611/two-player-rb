@@ -281,9 +281,376 @@ console.log('STEP 3 SUMMARY: ' + passed + '/' + results.length + ' passed.');
 console.log();
 
 if (failed > 0) {
-    console.log('FAIL — Fix logic does not pass all cases. Do not push.');
+    console.log('FAIL — V53 fix logic does not pass all cases.');
     process.exit(1);
-} else {
-    console.log('OK — Fix logic passes all cases. Safe to apply to index.html.');
-    process.exit(0);
 }
+console.log('OK — V53-era logic passes its (insufficient) cases. Continuing to V56 suite.');
+console.log();
+console.log();
+
+// ============================================================================
+// V56 SUITE — ordering-independent detection
+// ============================================================================
+//
+// WHY V53/V55 STILL MISSED (verified against engine source):
+//   retrobowl.js case 15 (turnover resolution, the INT branch at ~55350-55355)
+//   calls _1c1 AT THE INT MOMENT — i.e. the only _1c1 firing that matches the
+//   bridge gate (pre.possessing==user && post.possessing!=user) can run BEFORE
+//   case 16 credits the +6 (line 55369) and before _Ak1 fires (line 66228).
+//   At that instant ak1Signal AND heuristicSignal are both false, a plain INT
+//   outcome ships, _userOutcomeSendInProgress goes true, and the later post-TD
+//   _1c1 calls (lines 55958/55965/55997) flip possession OPP→USER, which the
+//   gate rejects. Detection misses. Whether the signals happen to be ready at
+//   the gate-matching instant depends on intra-frame event batching — which is
+//   exactly why the bug is INTERMITTENT.
+//
+// V56 design under test (mirrors index.html):
+//   1. Score-jump watcher (100ms): bridge-initiated score writes re-baseline;
+//      any residual opponent-score jump >= 6 is engine-earned = defensive TD.
+//      Independent of _1c1/_Ak1 ordering.
+//   2. Turnover-type sends held 4000ms; pick-6 entry cancels them (upgrade).
+//   3. enterPickSixCascade is idempotent: N detections -> 1 flag-raise, 1 send.
+//   4. B's post-PAT _1c1 re-types its outcome to PAT_RESULT.
+//
+// The harness below is a behavioral model of the index.html logic with fake
+// timers; static source checks at the end assert the real code contains the
+// constructs being modeled.
+
+console.log('================================================================');
+console.log('V56 SUITE: ordering-independent pick-6 detection');
+console.log('================================================================');
+console.log();
+
+function makeHarness() {
+    var H = {
+        now: 1000000,
+        timers: [],
+        timerId: 0,
+        sent: [],            // [{type, at}]
+        cascadeEntries: 0,
+        // engine state (user is team 1, opponent is team 0 — matches B-role)
+        sb: [0, 0],
+        userIdx: 1,
+        possIdx: 1,
+        downNumber: 1,
+        // bridge flags
+        waiting: false,
+        sendInProgress: false,
+        cascadeActive: false,
+        thrower: false,
+        isApplying: false,
+        lastApplyMs: 0,
+        oppScoreAtDriveStart: 0,
+        latchMs: 0,
+        latchTeam: undefined,
+        pendingOutcome: null,
+        pendingTimer: null,
+        baseline: null
+    };
+    H.oppIdx = H.userIdx ? 0 : 1;
+
+    H.setT = function (fn, ms) {
+        var t = { at: H.now + ms, fn: fn, id: ++H.timerId };
+        H.timers.push(t);
+        return t.id;
+    };
+    H.clearT = function (id) {
+        H.timers = H.timers.filter(function (t) { return t.id !== id; });
+    };
+    // Advance fake time; run due timers in order; watcher ticks every 100ms.
+    H.advance = function (ms) {
+        var target = H.now + ms;
+        while (H.now < target) {
+            H.now = Math.min(H.now + 50, target);
+            var due = H.timers.filter(function (t) { return t.at <= H.now; })
+                              .sort(function (a, b) { return a.at - b.at; });
+            H.timers = H.timers.filter(function (t) { return t.at > H.now; });
+            due.forEach(function (t) { t.fn(); });
+            if (H.now % 100 === 0) H.watcherTick();
+        }
+    };
+
+    H.send = function (o) { H.sent.push({ type: o.type, at: H.now }); };
+    H.sentOf = function (type) {
+        return H.sent.filter(function (s) { return s.type === type; }).length;
+    };
+
+    H.noteBaseline = function () { H.baseline = H.sb[H.oppIdx]; };
+
+    H.enterPickSixCascade = function (source) {
+        if (H.cascadeActive) return false;
+        if (H.pendingTimer != null) {
+            H.clearT(H.pendingTimer);
+            H.pendingTimer = null;
+            H.pendingOutcome = null;
+        }
+        H.latchMs = 0;
+        H.latchTeam = undefined;
+        H.thrower = true;
+        H.cascadeActive = true;
+        H.sendInProgress = true;
+        H.waiting = true;
+        H.cascadeEntries++;
+        H.send({ type: 'PICK6' });
+        H.setT(function () {   // 30s deadlock fallback
+            if (!H.cascadeActive) return;
+            H.cascadeActive = false;
+            H.thrower = false;
+            H.sendInProgress = false;
+            H.waiting = false;
+        }, 30000);
+        return true;
+    };
+
+    H.watcherTick = function () {
+        var cur = H.sb[H.oppIdx];
+        if (H.baseline == null || cur < H.baseline) { H.baseline = cur; return; }
+        var jump = cur - H.baseline;
+        if (jump === 0) return;
+        H.baseline = cur;
+        if (jump < 6) return;
+        var ourDriveContext = (!H.waiting) || H.sendInProgress;
+        if (!ourDriveContext) return;
+        H.enterPickSixCascade('score-watcher(+' + jump + ')');
+    };
+
+    function infer(prevVy) {
+        if (prevVy === 9 || prevVy === 16) return 'TD';
+        if (prevVy === 8) return 'INT';
+        if (prevVy === 12 || prevVy === 23) return 'PUNT';
+        if (prevVy === 14) return 'FG';
+        if (prevVy === 24) return 'HALF_END';
+        if (prevVy === 1) return 'KICKOFF';
+        return 'OTHER';
+    }
+
+    // Mirrors the _1c1 hook (guards + V56 detection/send flow).
+    H.fire1c1 = function (pre, post, prevVy) {
+        if (H.isApplying) return;
+        if (!(pre.possIdx === pre.userIdx && post.possIdx !== post.userIdx)) return;
+        if (H.sendInProgress) return;
+        if (H.now - H.lastApplyMs < 2000) return;
+        var outcome = { type: infer(prevVy) };
+        var oppDelta = H.sb[H.oppIdx] - H.oppScoreAtDriveStart;
+        var ak1FiredRecently = H.latchMs && (H.now - H.latchMs) < 8000;
+        var ak1ScoringTeamWasOpp = H.latchTeam !== undefined && H.latchTeam !== pre.userIdx;
+        var ak1Signal = !!(ak1FiredRecently && ak1ScoringTeamWasOpp);
+        var heuristicSignal = (outcome.type === 'INT' && oppDelta >= 6);
+        if (ak1Signal || heuristicSignal) {
+            H.enterPickSixCascade('1c1-hook');
+            return;
+        }
+        if (H.cascadeActive && pre.downNumber === 6) {
+            outcome.type = 'PAT_RESULT';
+            H.sendInProgress = true;
+            H.waiting = true;
+            H.send(outcome);
+            return;
+        }
+        H.sendInProgress = true;
+        H.waiting = true;
+        if (outcome.type === 'INT' || outcome.type === 'OTHER') {
+            H.pendingOutcome = outcome;
+            H.pendingTimer = H.setT(function () {
+                H.pendingTimer = null;
+                var p = H.pendingOutcome;
+                H.pendingOutcome = null;
+                if (p) H.send(p);
+            }, 4000);
+        } else {
+            H.send(outcome);
+        }
+    };
+
+    H.fireAk1 = function () {       // capture team in possession at this instant
+        H.latchMs = H.now;
+        H.latchTeam = H.possIdx;
+    };
+    H.creditOppTd = function () {   // engine credits +6 to opponent index
+        H.sb[H.oppIdx] += 6;
+    };
+    H.flip = function (prevVy) {    // the gate-matching INT-flip _1c1
+        var pre  = { possIdx: H.possIdx, userIdx: H.userIdx, downNumber: H.downNumber };
+        H.possIdx = H.oppIdx;       // _1c1 flips possession
+        var post = { possIdx: H.possIdx, userIdx: H.userIdx };
+        H.fire1c1(pre, post, prevVy);
+    };
+    return H;
+}
+
+var v56Results = [];
+function check(name, cond, detail) {
+    v56Results.push({ name: name, pass: !!cond, detail: detail || '' });
+}
+
+function runV56Suite(iteration) {
+    // --- (a)+(d)+(f-fast): all 6 orderings of {flip, ak1, credit}, 50ms apart.
+    // Every ordering must yield exactly 1 PICK6, 1 cascade entry, 0 INT/OTHER
+    // sends (held send always cancelled inside the 4s window).
+    var orderings = [
+        ['flip', 'ak1', 'credit'], ['flip', 'credit', 'ak1'],
+        ['ak1', 'flip', 'credit'], ['ak1', 'credit', 'flip'],
+        ['credit', 'flip', 'ak1'], ['credit', 'ak1', 'flip']
+    ];
+    orderings.forEach(function (ord) {
+        var H = makeHarness();
+        H.advance(200);  // settle baseline
+        ord.forEach(function (ev) {
+            if (ev === 'flip')   H.flip(2);          // prevVy stale => 'OTHER'
+            if (ev === 'ak1')    H.fireAk1();
+            if (ev === 'credit') H.creditOppTd();
+            H.advance(50);
+        });
+        H.advance(8000);  // let any held send / watcher tick settle
+        var ok = H.sentOf('PICK6') === 1 && H.cascadeEntries === 1 &&
+                 H.sentOf('OTHER') === 0 && H.sentOf('INT') === 0;
+        check('ORDERING [' + ord.join(',') + '] -> 1 PICK6, no leaked turnover send', ok,
+              'PICK6=' + H.sentOf('PICK6') + ' entries=' + H.cascadeEntries +
+              ' OTHER=' + H.sentOf('OTHER'));
+    });
+
+    // --- (f-slow): credit lands 6s after flip (held send already fired).
+    // PICK6 must still ship (late upgrade); INT/OTHER went out first.
+    (function () {
+        var H = makeHarness();
+        H.advance(200);
+        H.flip(2);
+        H.advance(6000);     // held OTHER fires at +4000
+        H.creditOppTd();
+        H.advance(500);
+        var ok = H.sentOf('OTHER') === 1 && H.sentOf('PICK6') === 1 &&
+                 H.sent[0].type === 'OTHER' && H.sent[1].type === 'PICK6';
+        check('SLOW pick-6 (+6 lands after 4s hold) -> OTHER then PICK6 upgrade', ok,
+              JSON.stringify(H.sent));
+    })();
+
+    // --- (e) GUARD-RACE: sendInProgress already true when everything fires
+    // (in-hook detection unreachable). Watcher must still catch the +6.
+    (function () {
+        var H = makeHarness();
+        H.advance(200);
+        H.sendInProgress = true;   // a prior send is in flight
+        H.waiting = true;
+        H.fireAk1();
+        H.flip(8);                 // guard swallows this _1c1 entirely
+        H.creditOppTd();
+        H.advance(300);
+        var ok = H.cascadeEntries === 1 && H.sentOf('PICK6') === 1;
+        check('GUARD-RACE (sendInProgress=true swallows _1c1) -> watcher catches', ok,
+              'entries=' + H.cascadeEntries);
+    })();
+
+    // --- (b) NEGATIVE: user's own TD — user index credited, opp untouched.
+    (function () {
+        var H = makeHarness();
+        H.advance(200);
+        H.fireAk1();               // own TD replay; latchTeam = user
+        H.sb[H.userIdx] += 6;      // credit lands on USER index
+        H.advance(500);
+        var ok = H.cascadeEntries === 0 && H.sentOf('PICK6') === 0;
+        check('NEGATIVE (own TD) -> no cascade', ok, 'entries=' + H.cascadeEntries);
+    })();
+
+    // --- (c) STALE: _Ak1 fired 20s ago, no credit -> plain turnover send only.
+    (function () {
+        var H = makeHarness();
+        H.advance(200);
+        H.fireAk1();
+        H.advance(20000);
+        H.flip(2);
+        H.advance(5000);
+        var ok = H.cascadeEntries === 0 && H.sentOf('PICK6') === 0 && H.sentOf('OTHER') === 1;
+        check('STALE (_Ak1 20s old, no defensive TD) -> plain send, no cascade', ok,
+              JSON.stringify(H.sent));
+    })();
+
+    // --- (g) MIRROR-WRITE: opponent scores legitimately during THEIR drive.
+    // Bridge mirror writes +7 and re-baselines -> no false PICK6. Also the
+    // unbaselined raw-write variant must be gated by drive context.
+    (function () {
+        var H = makeHarness();
+        H.advance(200);
+        H.waiting = true; H.sendInProgress = false;   // we're parked on WAIT
+        H.sb[H.oppIdx] += 7;       // mirror write...
+        H.noteBaseline();          // ...with the V56 note call
+        H.advance(500);
+        var ok1 = H.cascadeEntries === 0;
+        var H2 = makeHarness();
+        H2.advance(200);
+        H2.waiting = true; H2.sendInProgress = false;
+        H2.sb[H2.oppIdx] += 7;     // raw write, note call missed
+        H2.advance(500);
+        var ok2 = H2.cascadeEntries === 0;
+        check('MIRROR (opp legit TD while waiting) -> no false PICK6 (noted + unnoted)',
+              ok1 && ok2, 'noted=' + (H ? H.cascadeEntries : '?') + ' unnoted=' + H2.cascadeEntries);
+    })();
+
+    // --- (h) B-SIDE: PICK6 applied here (defender), PAT played, post-PAT _1c1
+    // with pre.downNumber === 6 -> PAT_RESULT shipped (not KICKOFF/OTHER).
+    (function () {
+        var H = makeHarness();
+        H.advance(200);
+        // simulate applyOpponentOutcome PICK6 branch state on B:
+        H.cascadeActive = true; H.thrower = false;
+        H.waiting = true; H.sendInProgress = false;
+        H.downNumber = 6;
+        H.sb[H.userIdx] += 1;      // engine credits B's 1-PT on USER index
+        H.oppScoreAtDriveStart = H.sb[H.oppIdx];
+        H.advance(100);
+        H.flip(2);                 // post-PAT kickoff _1c1
+        H.advance(100);
+        var ok = H.sentOf('PAT_RESULT') === 1 && H.sentOf('OTHER') === 0 &&
+                 H.sentOf('PICK6') === 0;
+        check('B-SIDE post-PAT _1c1 -> PAT_RESULT shipped', ok, JSON.stringify(H.sent));
+    })();
+
+    // --- IDEMPOTENCY: direct double-entry.
+    (function () {
+        var H = makeHarness();
+        var r1 = H.enterPickSixCascade('x');
+        var r2 = H.enterPickSixCascade('y');
+        var ok = r1 === true && r2 === false && H.sentOf('PICK6') === 1;
+        check('IDEMPOTENT enterPickSixCascade (second call no-ops)', ok,
+              'r1=' + r1 + ' r2=' + r2);
+    })();
+}
+
+// The failure is intermittent in real play -> run the whole suite repeatedly;
+// order-dependent cases must pass on EVERY iteration, not just once.
+var V56_RUNS = 5;
+for (var run = 1; run <= V56_RUNS; run++) runV56Suite(run);
+
+// --- Static source checks: index.html actually contains what we modeled.
+var staticChecks = [
+    ['enterPickSixCascade defined',      /window\._rb2p_enterPickSixCascade = function/],
+    ['score-jump watcher present',       /score-jump watcher — PRIMARY pick-6 detector/],
+    ['held turnover send (4000ms)',      /held 4000ms for possible pick-6 upgrade/],
+    ['thrower-mode popup kill',          /thrower-mode: killed engine PAT modal set/],
+    ['PAT_RESULT now produced',          /outcome\.type = 'PAT_RESULT';/],
+    ['PICK6 branch clears thrower flag', /_rb2p_pickSixThisDeviceIsThrower = false;\n\s*window\._rb2p_userIsWaitingForOpponent = true;/],
+    ['V56 lobby label',                  /ENTER A 4-CHAR ROOM CODE — V56/]
+];
+// re-read (file changed since module load)
+BRIDGE = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+staticChecks.forEach(function (sc) {
+    check('STATIC: ' + sc[0], sc[1].test(BRIDGE));
+});
+var noteCalls = (BRIDGE.match(/_rb2p_notePick6BaselineSync\(\)/g) || []).length;
+check('STATIC: baseline note called at every bridge score write (>= 4 call sites)',
+      noteCalls >= 4, 'found ' + noteCalls);
+
+var v56Pass = 0, v56Fail = 0;
+v56Results.forEach(function (r) {
+    console.log((r.pass ? 'PASS' : 'FAIL') + ' — ' + r.name + (r.pass ? '' : ' — ' + r.detail));
+    if (r.pass) v56Pass++; else v56Fail++;
+});
+console.log();
+console.log('V56 SUITE SUMMARY: ' + v56Pass + '/' + (v56Pass + v56Fail) +
+            ' passed across ' + V56_RUNS + ' repeated runs.');
+console.log();
+if (v56Fail > 0) {
+    console.log('FAIL — V56 logic does not pass all cases. Do not push.');
+    process.exit(1);
+}
+console.log('OK — V56 ordering-independent detection passes all cases on every run.');
+process.exit(0);

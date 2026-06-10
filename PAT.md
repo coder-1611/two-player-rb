@@ -535,3 +535,40 @@ Don't write new diagnostics — these already exist. Paste into DevTools console
 ---
 
 *Last updated for V48 (`eeb5bcd`). If line numbers drift, run `/pick-six-research verify` to see what moved.*
+
+---
+
+## 7. V56 addendum (2026-06-10) — why detection was intermittent, and the fix
+
+V53's `_Ak1` hook and V55's hybrid signal still missed intermittently. Verified
+root cause: **the engine's case 15 (turnover resolution, the INT branch at
+`retrobowl.js:55350-55355`) calls `_1c1` at the INT moment** — the only `_1c1`
+firing that matches the bridge's possession gate (user → opponent) — and it can
+run *before* case 16 credits the +6 (`retrobowl.js:55369`) and before `_Ak1`
+fires (`retrobowl.js:66228`). At that instant both detection signals are false,
+a plain INT outcome ships, and the one-shot send guard then swallows every later
+`_1c1` in the cascade (which flip possession the other way anyway). Whether the
+signals are ready at the gate-matching instant depends on intra-frame batching —
+hence "sometimes works, sometimes doesn't."
+
+V56 makes detection ordering-independent (see the skill's V56 UPDATE section for
+the full design):
+
+1. **Score-jump watcher (primary).** Bridge-initiated score writes re-baseline
+   via `_rb2p_notePick6BaselineSync()`; any residual opponent-score jump ≥ 6 is
+   engine-earned = defensive TD (2P has no AI offense). 100 ms interval.
+2. **Idempotent `_rb2p_enterPickSixCascade(source)`** shared by all detection
+   routes — one flag-raise, one PICK6 send, no matter how many signals fire.
+3. **INT/OTHER outcomes held 4000 ms** before sending so a late-resolving pick-6
+   can cancel and upgrade the send to PICK6.
+4. **Thrower-mode popup-killer**: on the detecting device, any PAT modal during
+   the cascade is killed on sight (fixes the killer's permanent safe-mode on the
+   thrower, where the wrongful modal appears).
+5. **Fragility 4 / W1 closed**: the defender's post-PAT `_1c1` (cascade active
+   and `pre.engineDownNumber === 6`) ships a real `PAT_RESULT`, so the thrower's
+   dedicated applier runs instead of recovery-by-accident.
+
+Verified by `node test_detection.js` (V56 suite): all 6 orderings of
+{INT-flip, `_Ak1`, +6 credit} → exactly one PICK6, no leaked INT; slow-credit
+upgrade; guard-race caught by watcher; own-TD/stale/mirror negatives hold;
+PAT_RESULT produced. 73/73 across 5 repeated runs per invocation.
