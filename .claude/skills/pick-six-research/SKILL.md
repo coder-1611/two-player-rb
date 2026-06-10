@@ -478,3 +478,84 @@ real `index.html` contains every construct the simulation models.
 V42/V43/V48 engine patches unchanged and still required. The V53 `_Ak1` hook and
 V55 hybrid check remain in place as the secondary (early-bird) signal; the
 `[2P DETECT]` log line is now tagged `V56`. The lobby label is `V56`.
+
+---
+
+## V57 UPDATE (2026-06-10) — V56 post-mortem + the real engine facts
+
+V56 failed in live play (modal ×3 on 2-pt, 1-pt followed by a phantom 2-pt,
+points to the wrong team). Root causes, all verified in `retrobowl.js`:
+
+1. **`pre.engineDownNumber === 6` was dead code.** `s_action_result` (`_hB`,
+   registry name `gml_Script_s_action_result`, fn `_hB` at retrobowl.js:55923)
+   has an epilogue (:56012-56014) that resets `_t11 = 1` on EVERY response
+   except the modal-popping TD path (which early-returns at :55949). The
+   post-PAT kickoff `_1c1` therefore never sees `_t11 == 6`, so B never sent
+   `PAT_RESULT`. The Node sim passed 73/73 because its engine model wrongly
+   kept `_t11` at 6 — the sim's engine model, not the bridge logic, was the
+   thing that was wrong.
+2. **The V39 `_Bk1` suppressor deleted the TD points.** When detection won the
+   race against the replay end, the suppressor made `_Ik1` skip
+   `_hB(_, t, 1)` — which skips the **+6 credit**, not just the modal. The
+   PICK6 outcome then carried pre-TD scores and the 6 points existed on
+   neither device. Intermittent because the race winner varies. V57 makes the
+   suppressor a pass-through; the thrower's modal is killed by the
+   popup-killer's thrower-mode instead, and `enterPickSixCascade` DEFERS the
+   PICK6 send until the +6 lands locally (8 s cap, `pick6Plus6Missing` flag
+   as the emergency fallback, honored by B's applier).
+3. **The fresh-TD landmine.** `_hB` case 1 (:55958-55971): a 2-pt result with
+   `_t11 < 6` is treated as a fresh TD — it calls `_1c1` (flipping
+   possession), credits +6 to the FLIPPED `_UD` (wrong team), sets `_Vy=10`,
+   and the cascade re-pops the PAT modal. Anything that resets `_t11` mid-PAT
+   arms this. V57 adds a 100 ms **PAT guardian** on the scorer device:
+   re-asserts `_t11 = 6` while pending, undoes a wrongful opponent +6,
+   resolves made (+1/+2 user delta) / missed (`_Vy` 1 or 22, delta 0), and
+   ships a synthetic `PAT_RESULT` if the kickoff `_1c1` never fires within
+   5 s of resolution.
+4. **The misroute `_1c1` masquerades as the post-PAT kickoff.** The `_1c1`
+   fired from INSIDE case 1's fresh-TD path passes the hook's
+   possession-flip gate while `patPlayPending` is up. V56-style logic would
+   send a premature `PAT_RESULT` and tear the cascade down, disarming the
+   guardian before the wrong-team +6 lands — reproduced in simulation as the
+   exact live symptom (modal ping-pong across devices). V57's hook
+   discriminates: `PAT_RESULT` only when the PAT is settled
+   (`patPlayResolved`, user delta 1/2, or `pre._Vy === 1`); otherwise the
+   `_1c1` is swallowed and the guardian repairs.
+5. Misc: PICK6 apply sets `lastOpponentOutcomeApplyMs`; held INT sends extend
+   1 s at a time (12 s cap) while an opponent-TD replay is in flight (`_Ak1`
+   latch), closing the stale-INT race for replays longer than the 4 s hold;
+   thrower fallback drive moved 30 s → 75 s; `PAT_RESULT` applier syncs
+   clock and only force-starts the drive if the cascade was still up;
+   cascade hard-timeouts (30 s popup-killer, 60 s watcher) skip while
+   `patPlayPending`/`patPlayResolved` (guardian owns a 120 s cap).
+
+### Engine reference (verified 2026-06-10)
+
+- `_t11` is the DOWN NUMBER; PAT-pending is encoded as down 6.
+- PAT buttons: popup `_0G` 100367 → `_Y._PU1[367]` = `_oB` (1-pt: calls
+  `_lB(_, t, 1)` = `s_set_up_fieldgoal` with `_Z21=1`), 100369 → `_rB`
+  (2-pt: just closes the popup; the FSM routes the snap off `_t11 == 6`).
+- Made kick = `_hB(_, t, 6)` → case 4: `+1` to `_Sb1[_0z]`. 2-pt success =
+  `_hB(_, t, 2)` → case 1 (`_t11 >= 6`): `+2` to `_Sb1[_0z]`. Both credit
+  the LOCAL USER index — correct on the defender's device.
+- `gml_Script_s_action_result` is callable through the registry for tests.
+
+### Always-on diagnostics (V57)
+
+- **Monitor**: arms automatically on BOTH devices at cascade start
+  (`THROWER` via `enterPickSixCascade`, `SCORER` via the PICK6 applier).
+  Prints a `console.table` at arm time and a ✅/❌ verdict table + timeline
+  at cascade end. `_rb2p_pick6MonitorReport()` re-prints the last report.
+- **Live test**: `await _rb2p_testPick6Live()` (modes `'1pt'`, `'2pt'`,
+  `'clobber'`) — drives the REAL engine (`s_action_result`, real popups,
+  real kickoff `_1c1`) with Firebase stubbed; restores state afterwards.
+  This is the authoritative test.
+- **Sequencing sim**: `node test_v57.js 1000 <seed>` — discrete-event sim
+  with the corrected engine model (line-cited transcription), randomized
+  replay delays / latencies / PAT choices / injected `_t11` clobbers
+  including the guardian's 100 ms blind window. 13,000/13,000 across 13
+  seeds at V57; the blind-window clobber reproduces V56's live failure
+  exactly when the misroute discriminator is removed.
+
+`test_detection.js` is RETIRED as authority (wrong engine model); kept for
+history. The lobby label is `V57`.

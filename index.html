@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V56</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V57</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1659,24 +1659,62 @@
                             return;   // skip normal INT-send, do NOT enter waiting
                         }
 
-                        // ===== V56: B's post-PAT send becomes PAT_RESULT =====
-                        // On the device that just PLAYED the pick-6 PAT (the
-                        // defender/scorer), the post-PAT kickoff _1c1 lands
-                        // here with the cascade flag still up and the PAT-
-                        // pending marker (engineDownNumber === 6) captured in
-                        // the pre-snapshot. Re-type the outcome so A's
-                        // dedicated PAT_RESULT applier (which clears A's
-                        // cascade and force-starts A's drive) actually runs.
-                        // Before V56 this shipped as 'KICKOFF' and A recovered
-                        // only by accident via the completion watcher.
+                        // ===== V57: B's post-PAT send becomes PAT_RESULT =====
+                        // V56 keyed this off pre.engineDownNumber === 6 — DEAD
+                        // CODE on the real engine: s_action_result (_hB)'s
+                        // epilogue (retrobowl.js:56014) resets _t11 to 1 on
+                        // every response (made kick, miss, 2-pt result)
+                        // BEFORE the FSM reaches the post-PAT kickoff's _1c1,
+                        // so the pre-snapshot never shows 6 here. V57 keys off
+                        // the bridge-side sticky flags set by the PICK6
+                        // applier / PAT guardian instead — engine writes
+                        // cannot clobber them.
                         if (window._rb2p_pickSixPatCascadeActive === true &&
-                            pre.engineDownNumber === 6) {
+                            (window._rb2p_patPlayPending === true ||
+                             window._rb2p_patPlayResolved === true ||
+                             pre.engineDownNumber === 6)) {
+                            // Discriminate the REAL post-PAT kickoff from the
+                            // _1c1 that fires INSIDE s_action_result's
+                            // fresh-TD misroute (2-pt result processed with a
+                            // clobbered _t11). The real kickoff arrives with
+                            // the PAT already settled: guardian resolved it,
+                            // or the user score moved +1/+2, or the FSM was
+                            // in kickoff stage (_Vy 1, the miss path). The
+                            // misroute arrives mid-play with none of those.
+                            var patDelta = post.engineScoreboard[post.engineUserTeamIdx] -
+                                           (window._rb2p_patUserScoreAtStart || 0);
+                            var isPostPatKickoff =
+                                window._rb2p_patPlayResolved === true ||
+                                patDelta === 1 || patDelta === 2 ||
+                                pre.engineDriveFsmStage === 1;
+                            if (!isPostPatKickoff) {
+                                // Swallow: possession just flipped and a
+                                // wrong-team +6 is about to land. The PAT
+                                // guardian repairs score/possession within
+                                // 100 ms and the engine then re-resolves the
+                                // PAT correctly (the +2 branch of _hB case 0).
+                                console.warn('[2P PICK6] swallowed mid-PAT misroute _1c1 (no PAT_RESULT yet)');
+                                if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('misroute _1c1 swallowed');
+                                return;
+                            }
                             outcome.type = 'PAT_RESULT';
                             outcome.message = 'PAT result';
                             window._rb2p_userOutcomeSendInProgress = true;
                             window._rb2p_userIsWaitingForOpponent = true;
                             try { window._twoPlayer.send(outcome); }
                             catch (e) { console.log('[2P] send err', e); }
+                            window._rb2p_patResultSentMs = Date.now();
+                            // B's side of the cascade is finished the moment
+                            // the result ships — tear it down so the
+                            // watchdogs re-engage for normal play.
+                            window._rb2p_patPlayPending  = false;
+                            window._rb2p_patPlayResolved = false;
+                            window._rb2p_pickSixPatCascadeActive    = false;
+                            window._rb2p_pickSixThisDeviceIsThrower = false;
+                            window._rb2p_userPatPopupRefs = null;
+                            if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                                'PAT_RESULT sent (scoreUser=' + outcome.scoreUser +
+                                ' scoreOpp=' + outcome.scoreOpp + ')');
                             console.log('[2P PICK6] PAT played out here — sent PAT_RESULT ' +
                                         '(scoreUser=' + outcome.scoreUser +
                                         ' scoreOpp=' + outcome.scoreOpp + ')');
@@ -1697,14 +1735,29 @@
                         // latency on plain turnovers is invisible.
                         if (outcome.type === 'INT' || outcome.type === 'OTHER') {
                             window._rb2p_pendingTurnoverOutcome = outcome;
-                            window._rb2p_pendingTurnoverSendTimer = setTimeout(function () {
+                            var holdStartMs = Date.now();
+                            var fireHeldSend = function () {
                                 window._rb2p_pendingTurnoverSendTimer = null;
                                 var pending = window._rb2p_pendingTurnoverOutcome;
-                                window._rb2p_pendingTurnoverOutcome = null;
                                 if (!pending) return;
+                                // V57: if a TD replay crediting the OPPONENT
+                                // is in flight (_Ak1 latch), the +6 hasn't
+                                // landed yet but a pick-6 upgrade is likely —
+                                // keep holding (cap 12 s) instead of shipping
+                                // a stale INT the PICK6 would then chase.
+                                var ak1Ms  = window._rb2p_lastTdReplayMs || 0;
+                                var ak1Opp = window._rb2p_lastTdScoringTeamIdx !== undefined &&
+                                             window._rb2p_lastTdScoringTeamIdx !== window._rb2p_lastTdUserTeamIdx;
+                                if (ak1Ms && ak1Opp && (Date.now() - holdStartMs) < 12000) {
+                                    window._rb2p_pendingTurnoverSendTimer = setTimeout(fireHeldSend, 1000);
+                                    console.log('[2P] turnover hold extended — opponent TD replay in flight');
+                                    return;
+                                }
+                                window._rb2p_pendingTurnoverOutcome = null;
                                 try { window._twoPlayer.send(pending); }
                                 catch (e) { console.log('[2P] send err', e); }
-                            }, 4000);
+                            };
+                            window._rb2p_pendingTurnoverSendTimer = setTimeout(fireHeldSend, 4000);
                             console.log('[2P] turnover outcome (' + outcome.type +
                                         ') held 4000ms for possible pick-6 upgrade');
                         } else {
@@ -1757,36 +1810,75 @@
                     window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
                     window._rb2p_userOutcomeSendInProgress = true;
                     window._rb2p_userIsWaitingForOpponent = true;
-                    var em = RB.engineState();
-                    console.log('[2P PICK6] cascade entered via ' + source +
-                                ' — suppressing engine PAT here; opponent plays the user PAT');
-                    if (em) {
-                        var userIdx = em.engineUserTeamIdx;
-                        var names = em.engineTeamDisplayNames || ['', ''];
-                        window._twoPlayer.send({
-                            type: 'PICK6',
-                            yardLine: 0,
-                            ownSide: true,
-                            needsPAT: true,
-                            scoreUser: em.userScore,
-                            scoreOpp:  em.opponentScore,
-                            quarter:   em.engineQuarter,
-                            minutesLeft: em.engineMinutesLeft,
-                            secondsLeft: em.engineSecondsLeft,
-                            fromTeam: names[userIdx] || '',
-                            toTeam:   names[userIdx ? 0 : 1] || '',
-                            message: 'PICK SIX! Defensive touchdown.',
-                            ts: Date.now()
-                        });
-                    }
-                    // Hard fallback: if the kickoff cascade never completes
-                    // on this side (gutted AI path) and no PAT_RESULT comes
-                    // back, force the next drive after 30 s so the game
-                    // doesn't deadlock.
+                    console.log('[2P PICK6] cascade entered via ' + source);
+                    if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('THROWER', source);
+                    // ===== V57: deferred PICK6 send =====
+                    // The engine credits the pick-6 +6 in s_action_result
+                    // (_hB case 0) at TD-replay end — often AFTER detection
+                    // fires. V56 sent PICK6 immediately, so whenever
+                    // detection won that race the outcome carried scores
+                    // WITHOUT the +6, and the V39 _Bk1 suppressor then
+                    // blocked the credit from ever landing — the 6 points
+                    // were silently lost on BOTH devices (the wrong-score
+                    // symptom, intermittent because the race winner varies).
+                    // V57: the suppressor is inert (thrower-mode popup killer
+                    // owns modal suppression), so the +6 always lands
+                    // locally; poll for it and only then ship PICK6 with
+                    // correct absolute scores.
+                    var sendDeadline = Date.now() + 8000;
+                    var oppAtDriveStart = window._rb2p_opponentScoreAtDriveStart || 0;
+                    var pick6SendPoll = setInterval(function () {
+                        try {
+                            var em2 = RB.engineState();
+                            if (!em2) return;
+                            var plus6Landed = (em2.opponentScore - oppAtDriveStart) >= 6;
+                            var timedOut = Date.now() > sendDeadline;
+                            if (!plus6Landed && !timedOut) return;
+                            clearInterval(pick6SendPoll);
+                            // Park the thrower's engine OUT of PAT-pending:
+                            // _hB(_, t, 1) already ran here (credit + modal,
+                            // modal killed by thrower-mode) and left
+                            // _t11 = 6 via its early return. A stray
+                            // s_action_result re-entry with _t11 >= 6 would
+                            // auto-credit +2 with no played scene — forbidden.
+                            try {
+                                em2.engineDownNumber = 1;
+                                em2.engineYardsToGo = 10;
+                                em2.enginePossessingTeamIdx = em2.engineOpponentTeamIdx;
+                            } catch (ePark) {}
+                            var names = em2.engineTeamDisplayNames || ['', ''];
+                            var userIdx = em2.engineUserTeamIdx;
+                            window._twoPlayer.send({
+                                type: 'PICK6',
+                                yardLine: 0,
+                                ownSide: true,
+                                needsPAT: true,
+                                pick6Plus6Missing: !plus6Landed,
+                                scoreUser: em2.userScore,
+                                scoreOpp:  em2.opponentScore,
+                                quarter:   em2.engineQuarter,
+                                minutesLeft: em2.engineMinutesLeft,
+                                secondsLeft: em2.engineSecondsLeft,
+                                fromTeam: names[userIdx] || '',
+                                toTeam:   names[userIdx ? 0 : 1] || '',
+                                message: 'PICK SIX! Defensive touchdown.',
+                                ts: Date.now()
+                            });
+                            console.log('[2P PICK6] PICK6 sent (plus6Landed=' + plus6Landed +
+                                        ' scoreUser=' + em2.userScore +
+                                        ' scoreOpp=' + em2.opponentScore + ')');
+                            if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                                'PICK6 sent, +6 landed locally: ' + plus6Landed);
+                        } catch (eP) { console.log('[2P PICK6 send-poll err]', eP); }
+                    }, 100);
+                    // Hard fallback: if no PAT_RESULT ever comes back, force
+                    // the next drive after 75 s so the game doesn't deadlock.
+                    // (75 s, not 30: the opponent legitimately needs time to
+                    // see the modal, pick 1-pt/2-pt, and play the scene.)
                     setTimeout(function () {
                         try {
                             if (!window._rb2p_pickSixPatCascadeActive) return;
-                            console.log('[2P PICK6] 30s fallback — forcing thrower drive');
+                            console.log('[2P PICK6] 75s fallback — forcing thrower drive');
                             window._rb2p_pickSixPatCascadeActive    = false;
                             window._rb2p_pickSixThisDeviceIsThrower = false;
                             window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
@@ -1799,7 +1891,7 @@
                         } catch (e) {
                             console.log('[2P PICK6 fallback err]', e);
                         }
-                    }, 30000);
+                    }, 75000);
                     return true;
                 } catch (e) { console.log('[2P PICK6 enter err]', e); return false; }
             };
@@ -2056,6 +2148,11 @@
                     // Hard fallback of 60 s catches stuck states (backgrounded
                     // tabs, etc.).
                     if (elapsedSinceFlagRaised < 3000) return;
+                    // V57: never hard-timeout while the PAT play is live on
+                    // this device — the guardian owns that state and has its
+                    // own 120 s cap.
+                    if (window._rb2p_patPlayPending === true ||
+                        window._rb2p_patPlayResolved === true) return;
                     if (elapsedSinceFlagRaised >= 60000) {
                         window._rb2p_pickSixPatCascadeActive = false;
                         window._rb2p_pickSixThisDeviceIsThrower = false;
@@ -2092,24 +2189,325 @@
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return;
+                    // If the 75s fallback already force-started our drive,
+                    // only sync scores — restarting the drive mid-play would
+                    // wipe the user's progress.
+                    var wasInCascade = window._rb2p_pickSixPatCascadeActive === true;
                     // outcome.scoreOpp  = sender's opp score (= user's team)
                     // outcome.scoreUser = sender's user score (= user's opp)
                     if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
                     if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
                     if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                    if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
+                    if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
+                    if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
+                    engineMatch.engineTickAllowance = 0;
                     window._rb2p_pickSixPatCascadeActive    = false;
                     window._rb2p_pickSixThisDeviceIsThrower = false;
+                    window._rb2p_patPlayPending  = false;
+                    window._rb2p_patPlayResolved = false;
                     window._rb2p_userIsWaitingForOpponent  = false;
                     window._rb2p_userOutcomeSendInProgress = false;
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                     window._rb2p_userPatPopupRefs = null;
-                    var yard = -(25 + Math.floor(Math.random() * 16));
-                    if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
-                        window._rb2p_forceUserOffenseDrive(yard);
+                    if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                        'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
+                        ' scoreOpp=' + outcome.scoreOpp + ')');
+                    if (wasInCascade) {
+                        var yard = -(25 + Math.floor(Math.random() * 16));
+                        if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                            window._rb2p_forceUserOffenseDrive(yard);
+                        }
+                        console.log('[2P PICK6] PAT_RESULT applied — A kicking off');
+                    } else {
+                        console.log('[2P PICK6] PAT_RESULT applied (scores only — drive already running)');
                     }
-                    console.log('[2P PICK6] PAT_RESULT applied — A kicking off');
                 } catch (e) { console.log('[2P PICK6 PAT_RESULT err]', e); }
             };
+
+            // ===== V57: PAT guardian (SCORER device) =====
+            // Engine fact (retrobowl.js s_action_result): a 2-pt snap result
+            // arriving with _t11 < 6 is treated as a FRESH touchdown — the
+            // engine calls _1c1 (flipping possession), credits +6 to the
+            // FLIPPED side (the wrong team), and re-pops the PAT modal,
+            // looping the whole sequence. Anything that resets _t11 mid-PAT
+            // arms that landmine; this was the "modal three times, points to
+            // the wrong team" symptom. The guardian:
+            //   1. re-asserts _t11 = 6 every 100 ms until the PAT resolves;
+            //   2. detects resolution bridge-side (made → user score +1/+2;
+            //      miss → FSM reached kickoff stage with no score change);
+            //   3. undoes a wrongful +6 to the opponent if one slips through;
+            //   4. guarantees the PAT_RESULT send: if the post-PAT kickoff
+            //      _1c1 never fires within 5 s of resolution, ships a
+            //      synthetic PAT_RESULT built from live state.
+            window._rb2p_patPlayPending  = false;
+            window._rb2p_patPlayResolved = false;
+            setInterval(function () {
+                try {
+                    if (window._rb2p_patPlayPending !== true &&
+                        window._rb2p_patPlayResolved !== true) return;
+                    // Cascade torn down elsewhere (timeout paths) → stand down.
+                    if (window._rb2p_pickSixPatCascadeActive !== true) {
+                        window._rb2p_patPlayPending  = false;
+                        window._rb2p_patPlayResolved = false;
+                        return;
+                    }
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    if (window._rb2p_patPlayPending === true) {
+                        // Hard cap: a PAT cannot take 2 minutes. Resolve as
+                        // miss so the synthetic send below unblocks the game.
+                        if (Date.now() - (window._rb2p_patPlayStartMs || 0) > 120000) {
+                            window._rb2p_patPlayPending  = false;
+                            window._rb2p_patPlayResolved = true;
+                            window._rb2p_patResolvedMs   = 0;   // forces immediate synthetic send
+                            console.warn('[2P PAT GUARD] 120s cap hit — resolving as miss');
+                            return;
+                        }
+                        var userDelta = em.userScore - (window._rb2p_patUserScoreAtStart || 0);
+                        var oppDelta  = em.opponentScore - (window._rb2p_patOppScoreAtStart || 0);
+                        // Wrongful fresh-TD repair: the engine credited the
+                        // OPPONENT during OUR PAT (the _t11<6 misroute).
+                        if (oppDelta >= 6) {
+                            em.setOpponentScore(window._rb2p_patOppScoreAtStart || 0);
+                            em.enginePossessingTeamIdx = em.engineUserTeamIdx;
+                            em.engineDownNumber = 6;
+                            em.engineYardsToGo  = 2;
+                            if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                            console.warn('[2P PAT GUARD] engine credited +' + oppDelta +
+                                         ' to OPPONENT mid-PAT (fresh-TD misroute) — undone, PAT state restored');
+                            if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('WRONG-TEAM +' + oppDelta + ' repaired');
+                            return;
+                        }
+                        if (userDelta === 1 || userDelta === 2) {
+                            window._rb2p_patPlayPending  = false;
+                            window._rb2p_patPlayResolved = true;
+                            window._rb2p_patResolvedMs   = Date.now();
+                            window._rb2p_patResultPoints = userDelta;
+                            console.log('[2P PAT GUARD] PAT resolved: +' + userDelta + ' (made)');
+                            if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('PAT made: +' + userDelta);
+                            return;
+                        }
+                        // Miss detection: _Vy 1 = the normal kickoff-after-
+                        // miss path; _Vy 22 = the dead end s_action_result's
+                        // case 2 takes when a 2-pt miss is processed with a
+                        // clobbered _t11 (< 6) — also a miss, but the FSM
+                        // won't reach kickoff on its own.
+                        if ((em.engineDriveFsmStage === 1 ||
+                             em.engineDriveFsmStage === 22) && userDelta === 0) {
+                            window._rb2p_patPlayPending  = false;
+                            window._rb2p_patPlayResolved = true;
+                            window._rb2p_patResolvedMs   = Date.now();
+                            window._rb2p_patResultPoints = 0;
+                            console.log('[2P PAT GUARD] PAT resolved: missed (Vy=' +
+                                        em.engineDriveFsmStage + ')');
+                            if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                                'PAT missed (Vy=' + em.engineDriveFsmStage + ')');
+                            return;
+                        }
+                        // Still pending: hold the engine in PAT state.
+                        if (em.engineDownNumber !== 6) {
+                            em.engineDownNumber = 6;
+                            em.engineYardsToGo  = 2;
+                            console.warn('[2P PAT GUARD] _t11 clobbered mid-PAT — re-asserted 6');
+                            if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('_t11 clobber re-asserted');
+                        }
+                        return;
+                    }
+                    // patPlayResolved: waiting for the kickoff _1c1 to ship
+                    // PAT_RESULT (the _1c1 hook clears these flags when it
+                    // does). If it never fires, send synthetically.
+                    if (Date.now() - (window._rb2p_patResolvedMs || 0) > 5000) {
+                        console.warn('[2P PAT GUARD] kickoff _1c1 never fired — sending synthetic PAT_RESULT');
+                        var names = em.engineTeamDisplayNames || ['', ''];
+                        try {
+                            window._twoPlayer.send({
+                                type: 'PAT_RESULT',
+                                yardLine: 0,
+                                ownSide: true,
+                                scoreUser: em.userScore,
+                                scoreOpp:  em.opponentScore,
+                                quarter:   em.engineQuarter,
+                                minutesLeft: em.engineMinutesLeft,
+                                secondsLeft: em.engineSecondsLeft,
+                                fromTeam: names[em.engineUserTeamIdx] || '',
+                                toTeam:   names[em.engineUserTeamIdx ? 0 : 1] || '',
+                                message: 'PAT result',
+                                ts: Date.now()
+                            });
+                        } catch (eS) { console.log('[2P] send err', eS); }
+                        window._rb2p_patResultSentMs = Date.now();
+                        window._rb2p_patPlayPending  = false;
+                        window._rb2p_patPlayResolved = false;
+                        window._rb2p_pickSixPatCascadeActive    = false;
+                        window._rb2p_pickSixThisDeviceIsThrower = false;
+                        window._rb2p_userPatPopupRefs = null;
+                        window._rb2p_userOutcomeSendInProgress = true;
+                        window._rb2p_userIsWaitingForOpponent  = true;
+                        if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('synthetic PAT_RESULT sent');
+                    }
+                } catch (e) {}
+            }, 100);
+
+            // ===== V57: always-on pick-6 monitor =====
+            // Arms automatically on BOTH devices whenever a pick-6 cascade
+            // starts (enterPickSixCascade on the thrower, the PICK6 applier
+            // on the scorer). Samples engine + bridge state at 100 ms, logs
+            // every transition as [2P MON] lines, and prints a ✅/❌ verdict
+            // report when the cascade ends. Re-read the last report any time
+            // with: _rb2p_pick6MonitorReport()
+            var pick6Mon = null;
+            window._rb2p_pick6MonitorLastReport = null;
+            window._rb2p_pick6MonitorReport = function () {
+                console.log(window._rb2p_pick6MonitorLastReport ?
+                    window._rb2p_pick6MonitorLastReport.text :
+                    '[2P MON] no pick-6 has been monitored yet this session');
+                return window._rb2p_pick6MonitorLastReport;
+            };
+            window._rb2p_pick6MonitorDisarm = function () { pick6Mon = null; };
+            window._rb2p_pick6MonitorNote = function (msg) {
+                if (!pick6Mon) return;
+                pick6Mon.notes.push(((Date.now() - pick6Mon.t0) / 1000).toFixed(1) + 's: ' + msg);
+            };
+            window._rb2p_pick6MonitorArm = function (role, source) {
+                if (pick6Mon) return;   // already armed for this cascade
+                var em = RB.engineState();
+                pick6Mon = {
+                    role: role, source: source, t0: Date.now(),
+                    notes: [], modalPops: 0, modalConsec: 0, modalMaxConsec: 0,
+                    startUser: em ? em.userScore : null,
+                    startOpp:  em ? em.opponentScore : null,
+                    driveStartOpp: window._rb2p_opponentScoreAtDriveStart,
+                    prev: null, doneLingerMs: 0
+                };
+                console.log('[2P MON] ===== pick-6 monitor ARMED (' + role + ') via ' + source + ' =====');
+                try {
+                    console.table([{
+                        role: role,
+                        trigger: source,
+                        yourScore: pick6Mon.startUser,
+                        oppScore: pick6Mon.startOpp,
+                        down_t11: em ? em.engineDownNumber : null,
+                        fsm_Vy:   em ? em.engineDriveFsmStage : null,
+                        possession: em ? (em.enginePossessingTeamIdx === em.engineUserTeamIdx ? 'YOU' : 'OPPONENT') : null,
+                        expectation: role === 'SCORER'
+                            ? 'PAT modal pops ONCE here; +1/+2 to YOU; PAT_RESULT sent'
+                            : 'no modal here; opponent +6..8; PAT_RESULT arrives; your drive restarts'
+                    }]);
+                } catch (eT) {}
+            };
+            function pick6MonFinish(reason) {
+                var m = pick6Mon;
+                pick6Mon = null;
+                if (!m) return;
+                var em = RB.engineState();
+                var endUser = em ? em.userScore : null;
+                var endOpp  = em ? em.opponentScore : null;
+                var lines = [];
+                var rows  = [];   // console.table rows — the per-device diagnostics table
+                var allOk = true;
+                function verdict(cond, good, bad) {
+                    lines.push((cond ? '✅ ' : '❌ ') + (cond ? good : bad));
+                    rows.push({ status: cond ? '✅ PASS' : '❌ FAIL', check: cond ? good : bad });
+                    if (!cond) allOk = false;
+                }
+                if (m.role === 'SCORER') {
+                    verdict(m.modalPops === 1,
+                        'PAT modal appeared exactly once',
+                        'PAT modal appeared ' + m.modalPops + ' times (expected 1) — engine re-entered the TD/PAT path');
+                    var ud = endUser - m.startUser;
+                    verdict(ud >= 0 && ud <= 2,
+                        'your team gained +' + ud + ' from the PAT (correct team)',
+                        'your team changed by ' + ud + ' across the PAT (expected 0, +1 or +2)');
+                    verdict(endOpp === m.startOpp,
+                        'opponent score untouched during your PAT',
+                        'opponent score changed by ' + (endOpp - m.startOpp) + ' during YOUR PAT — wrong-team credit');
+                    verdict(!!window._rb2p_patResultSentMs && window._rb2p_patResultSentMs >= m.t0,
+                        'PAT_RESULT sent back to the opponent',
+                        'PAT_RESULT was never sent — the opponent will stall until the 75s fallback');
+                } else {
+                    var base = (typeof m.driveStartOpp === 'number') ? m.driveStartOpp : m.startOpp;
+                    var od = endOpp - base;
+                    verdict(od >= 6 && od <= 8,
+                        'opponent (the scorer) gained +' + od + ' total (TD + PAT)',
+                        'opponent gained ' + od + ' across the pick-6 (expected 6-8) — points lost or misrouted');
+                    verdict(endUser === m.startUser,
+                        'your score untouched (you threw the pick)',
+                        'YOUR score changed by ' + (endUser - m.startUser) + ' — points went to the wrong team');
+                    verdict(m.modalMaxConsec <= 2,
+                        'no interactable PAT modal on your device',
+                        'a PAT modal stayed visible ~' + (m.modalMaxConsec * 100) + 'ms on the THROWER device — it belongs on the scorer\'s');
+                }
+                var header = '===== PICK-6 MONITOR REPORT (' + m.role + ', ended: ' + reason + ') =====';
+                var text = header + '\n' + lines.join('\n') +
+                    (m.notes.length ? '\n--- timeline ---\n' + m.notes.join('\n') : '') +
+                    '\n' + (allOk ? 'RESULT: ALL CHECKS PASSED ✅' : 'RESULT: FAILURES DETECTED ❌') +
+                    '\n' + Array(header.length + 1).join('=');
+                console.log(text);
+                // The diagnostics table — renders on BOTH devices' consoles
+                // (offense/thrower and defense/scorer each run their own
+                // monitor and print their own role's table).
+                try {
+                    console.table(rows);
+                    if (m.notes.length) {
+                        console.table(m.notes.map(function (n) {
+                            var ix = n.indexOf(': ');
+                            return { time: n.slice(0, ix), event: n.slice(ix + 2) };
+                        }));
+                    }
+                } catch (eT) {}
+                window._rb2p_pick6MonitorLastReport = {
+                    role: m.role, reason: reason, pass: allOk, lines: lines, rows: rows, notes: m.notes, text: text
+                };
+            }
+            setInterval(function () {
+                if (!pick6Mon) return;
+                try {
+                    var em = RB.engineState();
+                    var popups = window._rb2p_enumeratePopupInstances ? window._rb2p_enumeratePopupInstances() : [];
+                    var patBtns = 0;
+                    for (var i = 0; i < popups.length; i++) {
+                        if (popups[i] && (popups[i]._0G === 100367 || popups[i]._0G === 100369)) patBtns++;
+                    }
+                    var snap = {
+                        t11: em ? em.engineDownNumber : null,
+                        Vy:  em ? em.engineDriveFsmStage : null,
+                        kp:  em ? em.engineControllerState : null,
+                        UD:  em ? em.enginePossessingTeamIdx : null,
+                        u:   em ? em.userScore : null,
+                        o:   em ? em.opponentScore : null,
+                        modal:   patBtns > 0,
+                        cascade: window._rb2p_pickSixPatCascadeActive === true,
+                        pending: window._rb2p_patPlayPending === true
+                    };
+                    var p = pick6Mon.prev;
+                    if (p) {
+                        var diffs = [];
+                        for (var k in snap) {
+                            if (snap[k] !== p[k]) diffs.push(k + ':' + p[k] + '→' + snap[k]);
+                        }
+                        if (diffs.length) {
+                            console.log('[2P MON] ' + ((Date.now() - pick6Mon.t0) / 1000).toFixed(1) +
+                                        's  ' + diffs.join('  '));
+                        }
+                    }
+                    if (snap.modal) {
+                        if (!(p && p.modal)) pick6Mon.modalPops++;
+                        pick6Mon.modalConsec++;
+                        if (pick6Mon.modalConsec > pick6Mon.modalMaxConsec) pick6Mon.modalMaxConsec = pick6Mon.modalConsec;
+                    } else {
+                        pick6Mon.modalConsec = 0;
+                    }
+                    pick6Mon.prev = snap;
+                    if (!snap.cascade && !snap.pending) {
+                        pick6Mon.doneLingerMs += 100;
+                        if (pick6Mon.doneLingerMs >= 3000) { pick6MonFinish('cascade ended'); return; }
+                    } else {
+                        pick6Mon.doneLingerMs = 0;
+                    }
+                    if (Date.now() - pick6Mon.t0 > 90000) pick6MonFinish('90s timeout');
+                } catch (e) {}
+            }, 100);
 
             // ===== Engine-PAT-popup KILLER v2 (the actual fix) =====
             // The engine's natural PAT modal is popped from _Ik1's direct
@@ -2196,7 +2594,14 @@
                         return;
                     }
                     var raisedMs = window._rb2p_pickSixPatCascadeRaisedMs || 0;
-                    if (raisedMs && (Date.now() - raisedMs) > PICK6_CASCADE_MAX_MS) {
+                    // V57: while the PAT is genuinely being played (sticky
+                    // bridge flag), the cascade is LEGITIMATELY long — the
+                    // human needs time to pick 1-pt/2-pt and play the scene.
+                    // Force-clearing mid-PAT was a _t11-clobber source (the
+                    // guardian stands down when the cascade flag drops).
+                    if (raisedMs && (Date.now() - raisedMs) > PICK6_CASCADE_MAX_MS &&
+                        window._rb2p_patPlayPending !== true &&
+                        window._rb2p_patPlayResolved !== true) {
                         console.log('[2P PopupKiller] stuck pickSix cascade > ' +
                                     PICK6_CASCADE_MAX_MS + 'ms — force-clearing flag');
                         window._rb2p_pickSixPatCascadeActive = false;
@@ -2723,10 +3128,15 @@
                         enumerable: true,
                         get: function () {
                             window._rb2p_engineBk1ReadCount++;
-                            if (window._rb2p_pickSixPatCascadeActive === true) {
-                                window._rb2p_engineBk1SuppressCount++;
-                                return 0;
-                            }
+                            // V57: suppression DISABLED. Returning 0 made
+                            // _Ik1 skip _hB(_, t, 1) — which not only skips
+                            // the modal but ALSO skips the pick-6 +6 score
+                            // credit. Whenever detection won the race against
+                            // the replay end, the TD's points were silently
+                            // deleted on both devices. The thrower's modal is
+                            // killed by popupKillerTick's thrower-mode
+                            // instead; the credit must always land so PICK6
+                            // ships correct absolute scores.
                             return engineBk1Stored;
                         },
                         set: function (v) { engineBk1Stored = v; }
@@ -2780,13 +3190,16 @@
                     var readAfterCascade = window.global._Bk1;
                     var afterSuppressed = window._rb2p_engineBk1SuppressCount;
                     var afterRead = window._rb2p_engineBk1ReadCount;
+                    // V57: the suppressor is intentionally INERT — reads
+                    // must pass through even mid-cascade (see the getter for
+                    // why). This test now verifies the pass-through.
                     var pass = (
                         readWithoutCascade === 1 &&
-                        readWithCascade1 === 0 &&
-                        readWithCascade2 === 0 &&
-                        readWithCascade3 === 0 &&
+                        readWithCascade1 === 1 &&
+                        readWithCascade2 === 1 &&
+                        readWithCascade3 === 1 &&
                         readAfterCascade === 1 &&
-                        (afterSuppressed - beforeSuppressed) === 3 &&
+                        (afterSuppressed - beforeSuppressed) === 0 &&
                         (afterRead - beforeRead) === 5
                     );
                     results.push({
@@ -2812,6 +3225,209 @@
                 };
                 console.log('[2P TEST] engine-PAT suppression: ' + passCount + '/' + iterations + ' passed');
                 return summary;
+            };
+
+            // ===== V57: live in-engine pick-6 test =====
+            //
+            // Paste in console DURING A MATCH:
+            //   await _rb2p_testPick6Live()           // 1pt + 2pt + clobber
+            //   await _rb2p_testPick6Live('1pt')      // single mode
+            //   await _rb2p_testPick6Live('2pt')
+            //   await _rb2p_testPick6Live('clobber')  // the V56 regression
+            //
+            // Unlike test_detection.js (a Node mock whose engine model was
+            // wrong in exactly the way that mattered — it assumed _t11 stays
+            // 6 until the post-PAT kickoff, when s_action_result's epilogue
+            // actually resets it first), this drives the REAL engine: the
+            // real s_action_result credit paths, the real _t11 epilogue, the
+            // real popup spawns, the real kickoff _1c1 → send chain.
+            // Firebase sends are stubbed + captured; all engine and bridge
+            // state is restored afterwards.
+            window._rb2p_testPick6Live = async function (mode) {
+                var modes = mode ? [mode] : ['1pt', '2pt', 'clobber'];
+                if (!RB.isEngineInMatchRoom()) {
+                    console.error('[2P TEST] not in a match room — start a match first');
+                    return { ok: false, reason: 'not-in-match' };
+                }
+                var em = RB.engineState();
+                if (!em || em.engineUserTeamIdx == null) {
+                    console.error('[2P TEST] engine match state not readable');
+                    return { ok: false, reason: 'no-engine-state' };
+                }
+                var raw = em.rawEngineMatch;
+                var actionResultIdx = RB.findEngineScriptIndex('gml_Script_s_action_result');
+                var hBfn = actionResultIdx >= 0 ? _Y._PU1[actionResultIdx] : null;
+                if (typeof hBfn !== 'function') {
+                    console.error('[2P TEST] cannot locate s_action_result in script registry');
+                    return { ok: false, reason: 'no-action-result' };
+                }
+                var results = [];
+                var curMode = '(setup)';
+                function check(name, cond, detail) {
+                    results.push({ mode: curMode, check: name,
+                                   status: cond ? '✅ PASS' : '❌ FAIL',
+                                   detail: detail == null ? '' : String(detail) });
+                    if (!cond) console.error('[2P TEST] ❌ ' + curMode + ': ' + name +
+                                             (detail ? ' — ' + detail : ''));
+                }
+                function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+                function killAllPatPopups() {
+                    var pops = window._rb2p_enumeratePopupInstances ? window._rb2p_enumeratePopupInstances() : [];
+                    for (var i = 0; i < pops.length; i++) {
+                        try { if (typeof _cr === 'function') _cr(pops[i]); else pops[i]._HL2 = true; } catch (e) {}
+                    }
+                }
+                // Stub the sender so the real opponent sees nothing.
+                var realSend = window._twoPlayer.send;
+                var captured = [];
+                window._twoPlayer.send = function (o) {
+                    captured.push(o);
+                    console.log('[2P TEST] captured send: ' + o.type +
+                                ' (scoreUser=' + o.scoreUser + ' scoreOpp=' + o.scoreOpp + ')');
+                };
+                // Full snapshot for restore.
+                var snap = {
+                    user: em.userScore, opp: em.opponentScore,
+                    t11: em.engineDownNumber, Vy: em.engineDriveFsmStage,
+                    kp: em.engineControllerState, UD: em.enginePossessingTeamIdx,
+                    toGo: em.engineYardsToGo, q: em.engineQuarter,
+                    min: em.engineMinutesLeft, sec: em.engineSecondsLeft,
+                    flags: {
+                        cascade:  window._rb2p_pickSixPatCascadeActive,
+                        thrower:  window._rb2p_pickSixThisDeviceIsThrower,
+                        waiting:  window._rb2p_userIsWaitingForOpponent,
+                        sending:  window._rb2p_userOutcomeSendInProgress,
+                        pending:  window._rb2p_patPlayPending,
+                        resolved: window._rb2p_patPlayResolved,
+                        applyMs:  window._rb2p_lastOpponentOutcomeApplyMs
+                    }
+                };
+                function restore() {
+                    try {
+                        em.setUserScore(snap.user); em.setOpponentScore(snap.opp);
+                        em.engineDownNumber = snap.t11; em.engineDriveFsmStage = snap.Vy;
+                        em.engineControllerState = snap.kp; em.enginePossessingTeamIdx = snap.UD;
+                        em.engineYardsToGo = snap.toGo; em.engineQuarter = snap.q;
+                        em.engineMinutesLeft = snap.min; em.engineSecondsLeft = snap.sec;
+                        window._rb2p_pickSixPatCascadeActive    = snap.flags.cascade;
+                        window._rb2p_pickSixThisDeviceIsThrower = snap.flags.thrower;
+                        window._rb2p_userIsWaitingForOpponent   = snap.flags.waiting;
+                        window._rb2p_userOutcomeSendInProgress  = snap.flags.sending;
+                        window._rb2p_patPlayPending  = snap.flags.pending;
+                        window._rb2p_patPlayResolved = snap.flags.resolved;
+                        window._rb2p_lastOpponentOutcomeApplyMs = snap.flags.applyMs;
+                        window._rb2p_userPatPopupRefs = null;
+                        killAllPatPopups();
+                        if (window._rb2p_pick6MonitorDisarm) window._rb2p_pick6MonitorDisarm();
+                        if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                    } catch (eR) { console.log('[2P TEST] restore err', eR); }
+                }
+                try {
+                    for (var mi = 0; mi < modes.length; mi++) {
+                        curMode = modes[mi];
+                        console.log('[2P TEST] ===== mode: ' + curMode + ' =====');
+                        captured.length = 0;
+                        if (window._rb2p_pick6MonitorDisarm) window._rb2p_pick6MonitorDisarm();
+                        var u0 = snap.user, o0 = snap.opp;
+                        em.setUserScore(u0); em.setOpponentScore(o0);
+                        if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                        // --- phase 1: simulate RECEIVING a PICK6 (scorer role).
+                        // Sender perspective: scoreUser = thrower's own score
+                        // (our opponent, unchanged), scoreOpp = thrower's
+                        // opponent = US, already including the +6.
+                        window._rb2p_applyOpponentOutcome({
+                            type: 'PICK6', yardLine: 0, ownSide: true, needsPAT: true,
+                            scoreUser: o0, scoreOpp: u0 + 6,
+                            quarter: snap.q, minutesLeft: snap.min, secondsLeft: snap.sec,
+                            fromTeam: '', toTeam: '', message: 'PICK SIX! (test)', ts: Date.now()
+                        });
+                        await sleep(250);
+                        check('+6 credited to scorer (us)', em.userScore === u0 + 6,
+                              'user=' + em.userScore + ' expected ' + (u0 + 6));
+                        check('opponent score unchanged', em.opponentScore === o0,
+                              'opp=' + em.opponentScore + ' expected ' + o0);
+                        check('PAT-pending marker set (_t11=6)', em.engineDownNumber === 6,
+                              '_t11=' + em.engineDownNumber);
+                        check('possession given to scorer', em.enginePossessingTeamIdx === em.engineUserTeamIdx,
+                              'UD=' + em.enginePossessingTeamIdx);
+                        var pops = window._rb2p_enumeratePopupInstances();
+                        var btns = 0;
+                        for (var bi = 0; bi < pops.length; bi++) {
+                            if (pops[bi]._0G === 100367 || pops[bi]._0G === 100369) btns++;
+                        }
+                        check('PAT modal popped (1pt + 2pt buttons)', btns === 2, btns + ' PAT buttons found');
+                        check('patPlayPending armed', window._rb2p_patPlayPending === true, '');
+                        if (curMode === 'clobber') {
+                            // The V56 killer: something resets _t11 mid-PAT →
+                            // s_action_result then treats the 2-pt result as
+                            // a fresh TD (wrong-team +6 + modal re-pop loop).
+                            // The guardian must re-assert within ~100 ms.
+                            em.engineDownNumber = 1;
+                            await sleep(400);
+                            check('guardian re-asserted _t11=6 after clobber',
+                                  em.engineDownNumber === 6, '_t11=' + em.engineDownNumber);
+                        }
+                        // Close the modal the way a button click would.
+                        killAllPatPopups();
+                        await sleep(50);
+                        // --- phase 2: feed the REAL engine the PAT result.
+                        var expUser;
+                        if (curMode === '1pt') {
+                            hBfn(raw, _Sc2, 6);   // s_action_result: made kick (+1 via _0z)
+                            expUser = u0 + 7;
+                            await sleep(150);
+                            check('made 1-pt credited +1 to scorer', em.userScore === expUser,
+                                  'user=' + em.userScore + ' expected ' + expUser);
+                        } else {
+                            hBfn(raw, _Sc2, 2);   // s_action_result: TD-type → 2-pt path when _t11>=6
+                            expUser = u0 + 8;
+                            await sleep(150);
+                            check('2-pt credited +2 to scorer (not +6 to opponent)', em.userScore === expUser,
+                                  'user=' + em.userScore + ' expected ' + expUser);
+                        }
+                        check('opponent still unchanged after PAT', em.opponentScore === o0,
+                              'opp=' + em.opponentScore + ' expected ' + o0);
+                        check('engine epilogue reset _t11 (no PAT re-entry)', em.engineDownNumber !== 6,
+                              '_t11=' + em.engineDownNumber);
+                        // --- phase 3: PAT_RESULT must ship (kickoff _1c1, or
+                        // the guardian's synthetic send within 5 s).
+                        var deadline = Date.now() + 9000;
+                        var patResult = null;
+                        while (Date.now() < deadline && !patResult) {
+                            for (var ci = 0; ci < captured.length; ci++) {
+                                if (captured[ci].type === 'PAT_RESULT') { patResult = captured[ci]; break; }
+                            }
+                            if (!patResult) await sleep(200);
+                        }
+                        check('PAT_RESULT sent to opponent', !!patResult,
+                              patResult ? '' : 'nothing sent within 9s');
+                        if (patResult) {
+                            check('PAT_RESULT carries correct scores',
+                                  patResult.scoreUser === expUser && patResult.scoreOpp === o0,
+                                  'got ' + patResult.scoreUser + '/' + patResult.scoreOpp +
+                                  ' expected ' + expUser + '/' + o0);
+                        }
+                        check('cascade cleared after send', window._rb2p_pickSixPatCascadeActive !== true, '');
+                        restore();
+                        await sleep(300);
+                    }
+                } catch (e) {
+                    console.error('[2P TEST] exception:', e);
+                    results.push({ mode: curMode, check: 'no exception thrown',
+                                   status: '❌ FAIL', detail: String(e) });
+                } finally {
+                    restore();
+                    window._twoPlayer.send = realSend;
+                }
+                var passed = 0;
+                for (var ri = 0; ri < results.length; ri++) {
+                    if (results[ri].status.indexOf('PASS') !== -1) passed++;
+                }
+                console.table(results);
+                var verdict = passed === results.length;
+                console.log('[2P TEST] pick-6 live test: ' + passed + '/' + results.length +
+                            (verdict ? ' — ALL PASS ✅' : ' — FAILURES ❌'));
+                return { ok: verdict, passed: passed, total: results.length, results: results };
             };
 
             function getEngineMatchInstance()  { return RB.getEngineMatch(); }
@@ -2905,7 +3521,15 @@
                     // play the PAT — there's no fallback dice roll.
                     if (outcome.type === 'PICK6') {
                         if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
-                        if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
+                        // V57: the sender defers PICK6 until its engine
+                        // credits the +6. If that credit never landed there
+                        // (pick6Plus6Missing), the TD's points exist nowhere
+                        // yet — add them here so the played-out interception
+                        // return is worth its 6 points to us, the scorer.
+                        if (typeof outcome.scoreOpp  === 'number') {
+                            engineMatch.setUserScore(outcome.scoreOpp +
+                                (outcome.pick6Plus6Missing === true ? 6 : 0));
+                        }
                         if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
                         if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
                         if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
@@ -2917,6 +3541,7 @@
                         window._rb2p_pickSixThisDeviceIsThrower = false;
                         window._rb2p_userIsWaitingForOpponent = true;
                         window._rb2p_userOutcomeSendInProgress = false;
+                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
 
                         if (outcome.needsPAT === true) {
@@ -2938,6 +3563,18 @@
                                 engineMatch.engineDownNumber       = 6;   // PAT-pending marker
                                 engineMatch.engineYardsToGo        = 2;
                                 engineMatch.engineControllerState  = 2;
+                                // V57: bridge-side sticky PAT state. The
+                                // engine's own marker (_t11) gets reset by
+                                // s_action_result's epilogue and can be
+                                // clobbered by stray writes; these flags
+                                // drive the PAT guardian + the PAT_RESULT
+                                // send and only the bridge clears them.
+                                window._rb2p_patPlayPending      = true;
+                                window._rb2p_patPlayResolved     = false;
+                                window._rb2p_patPlayStartMs      = Date.now();
+                                window._rb2p_patUserScoreAtStart = engineMatch.userScore;
+                                window._rb2p_patOppScoreAtStart  = engineMatch.opponentScore;
+                                if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('SCORER', 'PICK6 received');
                                 // Pop the engine-native PAT modal exactly
                                 // the way _hB case-0 does — but WITHOUT
                                 // re-crediting +6 (sender already added
@@ -3004,6 +3641,23 @@
                     window._rb2p_userIsWaitingForOpponent = false;
                     window._rb2p_userOutcomeSendInProgress    = false;
                     window._rb2p_lastOpponentOutcomeApplyMs       = Date.now();
+
+                    // V57: a generic outcome arriving while a pick-6 cascade
+                    // is still up means the flow went off-script (expected:
+                    // PICK6 → PAT_RESULT, both handled above). Tear the
+                    // cascade down so the watchdogs re-engage, and record it
+                    // in the monitor so it shows in the diagnostics table.
+                    if (window._rb2p_pickSixPatCascadeActive === true) {
+                        console.warn('[2P PICK6] generic ' + outcome.type +
+                                     ' outcome arrived during cascade — tearing cascade down');
+                        if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                            'OFF-SCRIPT: generic ' + outcome.type + ' arrived during cascade');
+                        window._rb2p_pickSixPatCascadeActive    = false;
+                        window._rb2p_pickSixThisDeviceIsThrower = false;
+                        window._rb2p_patPlayPending  = false;
+                        window._rb2p_patPlayResolved = false;
+                        window._rb2p_userPatPopupRefs = null;
+                    }
 
                     // If the outcome carries absolute scores (the sender's
                     // perspective: their own score, their opponent's score),
@@ -3138,6 +3792,9 @@
                     return false;
                 }
             }
+            // Exposed for the in-engine live test (_rb2p_testPick6Live),
+            // which simulates RECEIVING a PICK6 without touching Firebase.
+            window._rb2p_applyOpponentOutcome = applyOpponentOutcome;
 
             // ===== WAITING overlay =====
             var wait = document.createElement('div');
