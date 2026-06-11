@@ -127,6 +127,13 @@
             top: 38px;
             right: 10px;
         }
+        #rb-leave-game {
+            top: 38px;
+            left: 10px;
+            display: none;   /* shown only during a match */
+            color: #ffd23c;
+            border-color: #ffd23c;
+        }
 
         /* ============ 2-Player Lobby ============ */
         #rb-lobby {
@@ -308,6 +315,7 @@
 
     <button id="credits-btn" class="cheat-btn" title="Set Coaching Credits">CC: ---</button>
     <button id="max-btn" class="cheat-btn" title="Max All Players">MAX</button>
+    <button id="rb-leave-game" class="cheat-btn" title="Leave the game and return to the lobby">LEAVE</button>
 
     <!-- Capture-phase keyboard shield. GameMaker's HTML5 runner binds global
          keydown/keyup listeners and preventDefault()s most keys to stop the
@@ -358,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V68</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V69</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4324,6 +4332,7 @@
                   '</div>' +
                 '</div>';
             finalOverlay.style.display = 'block';
+            if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
             var lv = document.getElementById('rb-final-leave');
             if (lv) lv.addEventListener('click', function () {
                 finalOverlay.style.display = 'none';
@@ -4514,14 +4523,30 @@
             });
         }
 
+        var $leaveGame = document.getElementById('rb-leave-game');
+        function showLeaveGameBtn(on) { if ($leaveGame) $leaveGame.style.display = on ? 'block' : 'none'; }
+        if ($leaveGame) {
+            $leaveGame.addEventListener('click', async function () {
+                if (!window.confirm('Leave the game and return to the lobby?')) return;
+                var room = myRoom;
+                try { await leaveRoom(); } catch (e) {}
+                try {
+                    sessionStorage.removeItem('rb_room');
+                    if (room) sessionStorage.removeItem('rb_role_' + room);
+                } catch (e) {}
+                location.reload();   // fresh page → entry screen, no resume
+            });
+        }
+
         function showView(name) {
             lobby.dataset.active = name;
             lobby.style.display = 'flex';
+            showLeaveGameBtn(false);   // in the lobby, not the game
             if (name === 'entry') {
                 setTimeout(function () { try { $input.focus(); $input.select(); } catch (e) {} }, 50);
             }
         }
-        function hideLobby() { lobby.style.display = 'none'; }
+        function hideLobby() { lobby.style.display = 'none'; showLeaveGameBtn(true); }
 
         // ---- Lobby state ----
         var myRoom = null;
