@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V67</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V68</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1122,6 +1122,10 @@
 
                     var st = _6E2._Ue2(64);
                     if (st) st._Ip = userUid;   // local user identity
+                    console.log('[2P TEAMS] startTwoPlayerMatch role=' + role +
+                                ' userUid=' + userUid + ' oppUid=' + oppUid +
+                                ' (globals my=' + window._rb2p_myTeamUid +
+                                ' opp=' + window._rb2p_oppTeamUid + ', st=' + (!!st) + ')');
 
                     // ===== V60: shared quarter length =====
                     // Object 64's _Ws (op_matchlength) sets the quarter clock:
@@ -5072,14 +5076,19 @@
             // startTwoPlayerMatch reads the final synced value (both devices
             // converged on the same rooms/{code}/config/quarterMins).
             window._rb2p_quarterMins = currentQuarterMins;
-            // V66: lock in the agreed teams too (authoritative, no race) so
+            // V66/V68: lock in the agreed teams (authoritative, no race) so
             // the engine builds the match — and the jerseys — from the
-            // selected UIDs rather than any stale/default value.
-            updateTeamUI();
+            // selected UIDs rather than any stale/default value. Set the
+            // globals DIRECTLY (not via updateTeamUI) so a null myRole or DOM
+            // issue can't silently leave them unset.
+            window._rb2p_myTeamUid  = teamByRole[myRole];
+            window._rb2p_oppTeamUid = teamByRole[myRole === 'a' ? 'b' : 'a'];
+            console.log('[2P TEAMS] startMatch myRole=' + myRole +
+                        ' teamByRole=' + JSON.stringify(teamByRole) +
+                        ' → myTeamUid=' + window._rb2p_myTeamUid +
+                        ' oppTeamUid=' + window._rb2p_oppTeamUid);
             hideLobby();
             window.s_play_two_player_match(myRole);
-            console.log('[lobby] match started as', myRole, '— quarter', currentQuarterMins,
-                        'min — teams a=' + teamByRole.a + ' b=' + teamByRole.b);
         }
     </script>
 
