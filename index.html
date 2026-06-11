@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V64</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V65</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1143,6 +1143,48 @@
 
                     if (st) st._fx = 0;
                     _Hj(STATE_MATCH);
+
+                    // ===== V65: reload resume =====
+                    // If this launch is a resume (the player reloaded mid-
+                    // game), skip the role-based opening init and instead
+                    // restore the synced score/clock and route possession from
+                    // the opponent's last live state. The exact ball position
+                    // can't be recovered, so the resumed side gets a fresh
+                    // drive (or WAIT) — but the score/clock/quarter carry over
+                    // instead of resetting to 0-0.
+                    if (window._rb2p_resumeState) {
+                        var rs = window._rb2p_resumeState;
+                        window._rb2p_resumeState = null;
+                        var triesR = 0;
+                        var pollR = setInterval(function () {
+                            triesR++;
+                            try {
+                                if (!RB.isEngineInMatchRoom()) { if (triesR > 400) clearInterval(pollR); return; }
+                                var em = RB.engineState();
+                                if (!em || em.engineUserTeamIdx == null) { if (triesR > 400) clearInterval(pollR); return; }
+                                if (typeof rs.myScore === 'number') em.setUserScore(rs.myScore);
+                                if (typeof rs.oppScore === 'number') em.setOpponentScore(rs.oppScore);
+                                if (typeof rs.quarter === 'number') em.engineQuarter = rs.quarter;
+                                if (typeof rs.minutes === 'number') em.engineMinutesLeft = rs.minutes;
+                                if (typeof rs.seconds === 'number') em.engineSecondsLeft = rs.seconds;
+                                em.engineTickAllowance = 0;
+                                if (rs.iHaveBall) {
+                                    window._rb2p_userIsWaitingForOpponent = false;
+                                    window._rb2p_userOutcomeSendInProgress = false;
+                                    window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                                    forceUserOffenseDrive(-(25 + Math.floor(Math.random() * 16)));
+                                } else {
+                                    em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
+                                    window._rb2p_userIsWaitingForOpponent = true;
+                                }
+                                console.log('[2P RESUME] restored ' + rs.myScore + '-' + rs.oppScore +
+                                            ' Q' + rs.quarter + ' ' + rs.minutes + ':' + rs.seconds +
+                                            ' iHaveBall=' + rs.iHaveBall);
+                                clearInterval(pollR);
+                            } catch (e) { if (triesR > 400) clearInterval(pollR); }
+                        }, 50);
+                        return;
+                    }
 
                     if (role === 'a') {
                         // Force Player A onto offense at engineMatch start.
@@ -4436,6 +4478,30 @@
 
         showView('entry');
 
+        // ---- Resume an in-progress match after a reload ----
+        // Relaunch the engine and restore the synced score/clock/quarter +
+        // possession from the opponent's last live state, instead of
+        // restarting from 0-0. Field position is unrecoverable (a fresh drive
+        // is spawned / WAIT shown), but the game state carries over.
+        function resumeMatch(role, oppLive) {
+            gameStarted = true;   // block the players-subscription from restarting
+            window._rb2p_gameOverReported = false;
+            window._rb2p_resumeState = {
+                myScore:  Number(oppLive.oppScore) || 0,   // opp's "oppScore" = MY score
+                oppScore: Number(oppLive.myScore) || 0,    // opp's "myScore"  = opp's score
+                quarter:  Number(oppLive.quarter) || 1,
+                minutes:  Number(oppLive.minutesLeft) || 0,
+                seconds:  Number(oppLive.secondsLeft) || 0,
+                // If the opponent has the ball, I must wait; otherwise I take
+                // over on offense. Missing flag (old payload) → take the ball
+                // (avoids both sides waiting → deadlock).
+                iHaveBall: !(oppLive.iHaveBall === true)
+            };
+            hideLobby();
+            console.log('[2P RESUME] resuming match as ' + role);
+            window.s_play_two_player_match(role);
+        }
+
         // ---- Restore session if a refresh happened ----
         // We only restore if the slot in the DB still matches our session.
         // Otherwise (slot taken, or DB cleared), drop back to entry cleanly.
@@ -4445,15 +4511,37 @@
             var savedRole = sessionStorage.getItem('rb_role_' + savedRoom);
             if (!savedRole) return;
             try {
+                var oppRole = savedRole === 'a' ? 'b' : 'a';
+                // Is a match in progress? The opponent pushes live state every
+                // 500ms; a recent payload means the game is live. Check this
+                // BEFORE entering the room so the players subscription can't
+                // fire a fresh startMatch underneath us.
+                var oppLiveSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/live/' + oppRole));
+                var oppLive = oppLiveSnap.val();
+                var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
+                var inProgress = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
+
+                // Make sure our slot exists (re-claim if onDisconnect cleared it).
                 var snap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole));
-                if (snap.exists()) {
-                    enterRoom(savedRoom, savedRole, /*restoring=*/true);
-                } else {
-                    // Slot was released. Try to re-claim quietly.
+                if (!snap.exists()) {
                     await FB.set(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole),
-                                 { ts: Date.now(), ready: false });
-                    enterRoom(savedRoom, savedRole, /*restoring=*/true);
+                                 { ts: Date.now(), ready: inProgress ? true : false });
                 }
+
+                if (inProgress && !finalSnap.exists()) {
+                    // Pull the shared quarter length before launch so _Ws is right.
+                    try {
+                        var cfgSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/config/quarterMins'));
+                        var cfg = cfgSnap.val();
+                        if (cfg === 1 || cfg === 2 || cfg === 3) applyLengthLocal(cfg);
+                    } catch (e) {}
+                    gameStarted = true;   // set before enterRoom subscribes
+                    enterRoom(savedRoom, savedRole, /*restoring=*/true);
+                    resumeMatch(savedRole, oppLive);
+                    return;
+                }
+
+                enterRoom(savedRoom, savedRole, /*restoring=*/true);
             } catch (e) {
                 sessionStorage.removeItem('rb_room');
                 sessionStorage.removeItem('rb_role_' + savedRoom);
@@ -4783,6 +4871,10 @@
                         minutesLeft: Number(engineMatch.engineMinutesLeft),
                         secondsLeft: Number(engineMatch.engineSecondsLeft),
                         quarter:     Number(engineMatch.engineQuarter) || 1,
+                        // V65: possession flag so a reloading opponent can
+                        // resume on the correct side (if I have the ball, the
+                        // opponent who just reloaded must wait, and vice versa).
+                        iHaveBall:   window._rb2p_userIsWaitingForOpponent !== true,
                         seq: ++userLivePushSeq,
                         ts: Date.now()
                     };
