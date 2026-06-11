@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V58</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V59</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -854,6 +854,7 @@
                     get engineDefenseAggression()  { return m._001; }, set engineDefenseAggression(v)  { m._001 = v; },
                     get engineSkipCommentaryFlag() { return m._8c1; }, set engineSkipCommentaryFlag(v) { m._8c1 = v; },
                     get engineSubCommentaryText()  { return m._831; }, set engineSubCommentaryText(v)  { m._831 = v; },
+                    get engineMainCommentaryText() { return m.__b1; }, set engineMainCommentaryText(v) { m.__b1 = v; },
                     // ---- user-perspective helpers (derived from engine state) ----
                     get userScore()     { return m._Sb1 ? (m._Sb1[m._0z] || 0) : 0; },
                     get opponentScore() { return m._Sb1 ? (m._Sb1[m._0z ? 0 : 1] || 0) : 0; },
@@ -1005,6 +1006,14 @@
                     engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
                     engineMatch.engineDownNumber = 1;
                     engineMatch.engineYardsToGo = 10;
+                    // V59: wipe any leftover commentary from the prior
+                    // possession (e.g. the engine's "$teamname turn it over"
+                    // built from the OLD possessing team) so the fresh drive
+                    // doesn't open under a reversed banner.
+                    try {
+                        engineMatch.engineMainCommentaryText = '';
+                        engineMatch.engineSubCommentaryText  = '';
+                    } catch (eC) {}
                     var ydl = (typeof yardLine === 'number') ? yardLine : 25;
                     if (ydl < -50) ydl = -50;
                     if (ydl >  50) ydl =  50;
@@ -2052,7 +2061,12 @@
                         return;
                     }
                     if (!deadEngineFsmStages[engineMatch.engineDriveFsmStage]) return;
-                    if (Date.now() - engineFsmStageStuckSinceMs < 1500) return;
+                    // V59: 800ms (was 1500) — these stages are genuinely dead
+                    // (AI offense is gutted), so a shorter dwell just makes
+                    // the handoff to the WAIT cover snappier. Still 3+ poll
+                    // cycles above the 250ms tick, and the apply-cooldown /
+                    // sendInProgress guards below prevent premature ends.
+                    if (Date.now() - engineFsmStageStuckSinceMs < 800) return;
                     if (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) < 3000) return;
                     if (window._rb2p_userOutcomeSendInProgress) return;
 
@@ -3824,33 +3838,41 @@
             window._rb2p_applyOpponentOutcome = applyOpponentOutcome;
 
             // ===== WAITING overlay =====
+            // V59: full-screen cover (was a small centered box). A full
+            // backdrop gives a clean cut on possession change, hides the
+            // engine's wrong-perspective commentary banner during the
+            // opponent's drive, and intercepts stray field clicks so the
+            // user can't poke the stalled engine canvas underneath.
             var wait = document.createElement('div');
             wait.id = 'rb-waiting';
             wait.style.cssText =
-                'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
-                'padding:22px 44px;background:rgba(0,0,0,0.88);color:#fff;' +
-                'border:4px solid #fff;font-family:monospace;text-align:center;' +
-                'letter-spacing:4px;z-index:1500;display:none;image-rendering:pixelated;';
+                'position:fixed;inset:0;z-index:1500;display:none;' +
+                'align-items:center;justify-content:center;' +
+                'background:rgba(8,12,20,0.97);' +
+                'font-family:monospace;color:#fff;text-align:center;' +
+                'image-rendering:pixelated;';
             wait.innerHTML =
-                '<div style="font-size:24px;font-weight:bold;">WAITING FOR OPPONENT</div>' +
-                '<div style="margin:14px 0 6px 0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:14px;letter-spacing:3px;">' +
-                    '<span style="opacity:0.7;">YOU</span>' +
-                    '<span id="rb-wait-myscore" style="font-size:30px;font-weight:bold;color:#3cff7a;letter-spacing:0;">0</span>' +
-                    '<span style="opacity:0.5;">—</span>' +
-                    '<span id="rb-wait-oppscore" style="font-size:30px;font-weight:bold;color:#ff8c8c;letter-spacing:0;">0</span>' +
-                    '<span style="opacity:0.7;">OPP</span>' +
-                '</div>' +
-                '<div id="rb-wait-clock" style="font-size:14px;letter-spacing:3px;opacity:0.85;">1ST QTR 2:00</div>' +
-                '<div id="rb-waiting-sub" style="font-size:11px;margin-top:10px;opacity:0.55;letter-spacing:2px;">opponent is on offense</div>';
+                '<div style="padding:26px 52px;border:4px solid #fff;background:rgba(0,0,0,0.55);letter-spacing:4px;">' +
+                    '<div style="font-size:24px;font-weight:bold;">WAITING FOR OPPONENT</div>' +
+                    '<div style="margin:16px 0 6px 0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:14px;letter-spacing:3px;">' +
+                        '<span style="opacity:0.7;">YOU</span>' +
+                        '<span id="rb-wait-myscore" style="font-size:30px;font-weight:bold;color:#3cff7a;letter-spacing:0;">0</span>' +
+                        '<span style="opacity:0.5;">—</span>' +
+                        '<span id="rb-wait-oppscore" style="font-size:30px;font-weight:bold;color:#ff8c8c;letter-spacing:0;">0</span>' +
+                        '<span style="opacity:0.7;">OPP</span>' +
+                    '</div>' +
+                    '<div id="rb-wait-clock" style="font-size:14px;letter-spacing:3px;opacity:0.85;">1ST QTR 2:00</div>' +
+                    '<div id="rb-waiting-sub" style="font-size:11px;margin-top:10px;opacity:0.55;letter-spacing:2px;">opponent is on offense</div>' +
+                '</div>';
             document.body.appendChild(wait);
             var waitSub = wait.querySelector('#rb-waiting-sub');
-            // V32: WAITING overlay temporarily disabled so the defender can
-            // see what's happening on the field while the opponent is on
-            // offense. The HTML overlay still updates internally for the
-            // live-sync mirror (refreshWaitDisplay still runs) — only the
-            // visual display is suppressed.
+            // V59: overlay re-enabled (V32 had hidden it for an opponent-AI
+            // design that no longer exists — there is no AI drive to watch,
+            // so without the cover the user just sees the stalled engine and
+            // its reversed commentary). `flex` because the container centers
+            // the card via align/justify.
             function showWait(msg) {
-                // wait.style.display = 'block';   // disabled in V32
+                wait.style.display = 'flex';
                 if (msg) waitSub.textContent = msg;
             }
             function hideWait() { wait.style.display = 'none'; }
@@ -3884,12 +3906,27 @@
                     // It's set by the _1c1 wrapper when we lose possession,
                     // and by startTwoPlayerMatch('b') for the initial park.
                     // _Vy === 10 is unreliable because the engine resets _Vy.
-                    if (window._rb2p_userIsWaitingForOpponent === true) {
+                    // V59: the scorer device during a pick-6 PAT is flagged
+                    // "waiting" (its outcome send is in flight) but must SEE
+                    // the field to play the PAT scene. Only the thrower (and
+                    // every normal turnover/TD) gets the cover.
+                    var scorerPlayingPat =
+                        window._rb2p_pickSixPatCascadeActive === true &&
+                        window._rb2p_pickSixThisDeviceIsThrower !== true;
+                    if (window._rb2p_userIsWaitingForOpponent === true && !scorerPlayingPat) {
                         if (window._twoPlayer.pending.length > 0) {
                             var o = window._twoPlayer.pending.shift();
                             if (applyOpponentOutcome(o)) hideWait();
                             else showWait('apply failed — see console');
                         } else {
+                            // Clear the engine's frozen wrong-perspective
+                            // commentary ("$teamname turn it over" built from
+                            // the pre-flip _UD) so nothing wrong is left on
+                            // the canvas under/around the cover.
+                            try {
+                                engineMatch.engineMainCommentaryText = '';
+                                engineMatch.engineSubCommentaryText  = '';
+                            } catch (eC) {}
                             showWait('opponent is on offense');
                         }
                     } else {
