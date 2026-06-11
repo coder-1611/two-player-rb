@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V61</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V62</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4067,9 +4067,23 @@
                         window._rb2p_gameOverReported = false;
                     }
                     if (window._rb2p_gameOverReported) return;
+                    // V62: NEVER end on a tie — a tie goes to overtime. So
+                    // every game-over signal requires the score to differ:
+                    //   • stageOver: engine reached the game-over display
+                    //     stage (only persists for a non-tie; on a tie the
+                    //     engine resets _Vy to 1 for the OT kickoff).
+                    //   • regulationOver: Q4 clock at 0:00, non-tied.
+                    //   • otSuddenDeath: in OT (Q5+), the instant the score
+                    //     stops being tied, the game is won.
+                    if (u === o) return;
                     var stageOver = em.engineDriveFsmStage === 13;
-                    var clockOver = (q >= 4 && mn === 0 && sc === 0 && u !== o);
-                    if (!stageOver && !clockOver) return;
+                    // Clock-based fallback: require the play to have ended
+                    // (controller not in active-play state 2) so a last-second
+                    // game-winning play isn't cut off before it resolves.
+                    var regulationOver = (q === 4 && mn === 0 && sc === 0 &&
+                                          em.engineControllerState !== 2);
+                    var otSuddenDeath = (q >= 5);
+                    if (!stageOver && !regulationOver && !otSuddenDeath) return;
                     window._rb2p_gameOverReported = true;
                     var report = window._rb2p_collectBoxScore();
                     console.log('[2P FINAL] game over — ' + report.team + ' ' + report.score +
@@ -4079,6 +4093,64 @@
                     }
                 } catch (e) {}
             }, 300);
+
+            // ===== V62: overtime =====
+            // When regulation ends tied the engine tries to start OT, but it
+            // computes the OT possession as `_UD = _0z ? 0 : 1` — relative to
+            // each device's own team — so the two devices DISAGREE about who
+            // received (each thinks the opponent did) and the drive hangs.
+            // Fix: a shared coin flip over Firebase decides the receiver, and
+            // this device routes possession the same way the opening kickoff
+            // does (forceUserOffenseDrive for the receiver, WAIT for the
+            // other). After that, normal 2P send/receive carries OT, and the
+            // sudden-death branch above ends it on the first score.
+            var otInitedPeriod = -1;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var q = Number(em.engineQuarter) || 1;
+                    // Reset the per-period guard when a fresh match starts.
+                    if (q <= 1) { otInitedPeriod = -1; return; }
+                    if (q < 5) return;                       // regulation
+                    if (em.userScore !== em.opponentScore) return;  // someone leads → sudden death handles it
+                    if (otInitedPeriod === q) return;        // already requested this OT period
+                    otInitedPeriod = q;
+                    console.log('[2P OT] tied entering OT period ' + q + ' — requesting shared kickoff');
+                    if (typeof window._rb2p_requestOtKickoff === 'function') {
+                        window._rb2p_requestOtKickoff(q);
+                    }
+                } catch (e) {}
+            }, 300);
+
+            // Apply the shared OT coin flip on THIS device. receiverRole is
+            // 'a'/'b'; map to team index (a=Buffalo=0, b=Kansas City=1).
+            window._rb2p_applyOtKickoff = function (receiverRole) {
+                try {
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var myRoleByTeam = (em.engineUserTeamIdx === 0) ? 'a' : 'b';
+                    window._rb2p_pickSixPatCascadeActive = false;
+                    window._rb2p_pickSixThisDeviceIsThrower = false;
+                    if (myRoleByTeam === receiverRole) {
+                        // I receive the OT kickoff → I'm on offense.
+                        window._rb2p_userIsWaitingForOpponent = false;
+                        window._rb2p_userOutcomeSendInProgress = false;
+                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                        var yard = -(25 + Math.floor(Math.random() * 16));
+                        if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                            window._rb2p_forceUserOffenseDrive(yard);
+                        }
+                        console.log('[2P OT] received kickoff — on offense at ' + yard);
+                    } else {
+                        // Opponent receives → I wait on defense.
+                        em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
+                        window._rb2p_userIsWaitingForOpponent = true;
+                        console.log('[2P OT] opponent received kickoff — waiting');
+                    }
+                } catch (e) { console.log('[2P OT apply err]', e); }
+            };
         })();
     </script>
 
@@ -4204,6 +4276,37 @@
         }
         function hideFinal() { finalOverlay.style.display = 'none'; }
 
+        // ===== V62: overtime coordination =====
+        // The bridge detects a regulation tie and calls requestOtKickoff. The
+        // host (A) writes a shared coin flip to rooms/{code}/ot/p{period};
+        // both devices read it (subscription in enterRoom) and route OT
+        // possession via the bridge's _rb2p_applyOtKickoff. A short OVERTIME
+        // banner shows on both screens.
+        window._rb2p_requestOtKickoff = function (period) {
+            if (!myRoom || myRole !== 'a') return;   // only the host seeds
+            var ref = FB.ref(db, 'rooms/' + myRoom + '/ot/p' + period);
+            FB.get(ref).then(function (snap) {
+                if (!snap.exists()) {
+                    FB.set(ref, { receiver: Math.random() < 0.5 ? 'a' : 'b',
+                                  period: period, ts: Date.now() }).catch(function () {});
+                }
+            }).catch(function () {});
+        };
+        function showOtBanner(receiverRole) {
+            var amReceiver = (receiverRole === myRole);
+            var b = document.createElement('div');
+            b.style.cssText =
+                'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:2100;' +
+                'background:#ffd23c;color:#0a1018;font-family:monospace;font-weight:bold;' +
+                'letter-spacing:4px;font-size:20px;padding:14px 28px;border:4px solid #0a1018;' +
+                'text-align:center;image-rendering:pixelated;';
+            b.innerHTML = 'OVERTIME<div style="font-size:11px;letter-spacing:2px;margin-top:6px;">' +
+                          (amReceiver ? 'YOU GET THE BALL' : 'OPPONENT GETS THE BALL') +
+                          ' — SUDDEN DEATH</div>';
+            document.body.appendChild(b);
+            setTimeout(function () { try { b.remove(); } catch (e) {} }, 3500);
+        }
+
         // Called by the bridge when this device detects game over.
         window._rb2p_reportGameOver = function (report) {
             localFinalReport = report || {};
@@ -4325,6 +4428,8 @@
         var unsubscribeOutcomes = null;
         var unsubscribeConfig = null;
         var unsubscribeFinal = null;
+        var unsubscribeOt = null;
+        var otAppliedPeriods = {};
         var gameStarted = false;
 
         showView('entry');
@@ -4464,6 +4569,26 @@
                 }
             );
 
+            // V62: shared OT coin flip. Each p{period} entry names the
+            // receiver; both devices apply it once via the bridge.
+            unsubscribeOt = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/ot'),
+                function (snap) {
+                    var ot = snap.val() || {};
+                    Object.keys(ot).forEach(function (key) {
+                        var entry = ot[key];
+                        if (!entry || (entry.receiver !== 'a' && entry.receiver !== 'b')) return;
+                        if (otAppliedPeriods[key]) return;
+                        otAppliedPeriods[key] = true;
+                        console.log('[2P OT] applying ' + key + ' — receiver=' + entry.receiver);
+                        showOtBanner(entry.receiver);
+                        if (typeof window._rb2p_applyOtKickoff === 'function') {
+                            window._rb2p_applyOtKickoff(entry.receiver);
+                        }
+                    });
+                }
+            );
+
             // Release slot on tab close so the room frees up
             FB.onDisconnect(FB.ref(db, 'rooms/' + code + '/players/' + role)).remove();
 
@@ -4525,6 +4650,7 @@
             if (unsubscribeOutcomes) { unsubscribeOutcomes(); unsubscribeOutcomes = null; }
             if (unsubscribeConfig) { unsubscribeConfig(); unsubscribeConfig = null; }
             if (unsubscribeFinal) { unsubscribeFinal(); unsubscribeFinal = null; }
+            if (unsubscribeOt) { unsubscribeOt(); unsubscribeOt = null; }
             try {
                 if (myRoom && myRole) {
                     await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
@@ -4758,6 +4884,10 @@
             window._rb2p_gameOverReported = false;
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
+            // V62: clear any prior overtime coin flips so a rematch's OT
+            // re-coordinates from scratch.
+            otAppliedPeriods = {};
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/ot')).catch(function () {});
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
