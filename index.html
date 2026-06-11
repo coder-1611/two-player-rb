@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V62</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V63</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3968,15 +3968,17 @@
             var POS_LABELS = { 1:'QB', 2:'RB', 3:'TE', 4:'WR', 5:'OL',
                                6:'DL', 7:'LB', 8:'DB', 9:'DB', 10:'K', 11:'KP' };
             function statNum(s, key) {
-                try { return Number(_Ai(s, key)) || 0; } catch (e) { return 0; }
+                // V63: round to the nearest whole number — the engine stores
+                // some stats (e.g. yards) as fractional accumulators.
+                try { return Math.round(Number(_Ai(s, key)) || 0); } catch (e) { return 0; }
             }
             window._rb2p_collectBoxScore = function () {
                 var report = { team: '', score: 0, oppScore: 0, players: [] };
                 try {
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return report;
-                    report.score    = Number(em.userScore) || 0;
-                    report.oppScore = Number(em.opponentScore) || 0;
+                    report.score    = Math.round(Number(em.userScore) || 0);
+                    report.oppScore = Math.round(Number(em.opponentScore) || 0);
                     var names = em.engineTeamDisplayNames;
                     if (names) {
                         report.team    = String(names[em.engineUserTeamIdx] || 'YOU');
