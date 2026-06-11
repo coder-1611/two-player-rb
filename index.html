@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V66</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V67</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5072,9 +5072,14 @@
             // startTwoPlayerMatch reads the final synced value (both devices
             // converged on the same rooms/{code}/config/quarterMins).
             window._rb2p_quarterMins = currentQuarterMins;
+            // V66: lock in the agreed teams too (authoritative, no race) so
+            // the engine builds the match — and the jerseys — from the
+            // selected UIDs rather than any stale/default value.
+            updateTeamUI();
             hideLobby();
             window.s_play_two_player_match(myRole);
-            console.log('[lobby] match started as', myRole, '— quarter', currentQuarterMins, 'min');
+            console.log('[lobby] match started as', myRole, '— quarter', currentQuarterMins,
+                        'min — teams a=' + teamByRole.a + ' b=' + teamByRole.b);
         }
     </script>
 
