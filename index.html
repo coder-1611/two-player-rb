@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V70</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V71</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1166,6 +1166,49 @@
                                 ' shirt#' + us + ', opp uid=' + oppUid + ' shirt#' + os);
                 } catch (e) { console.log('[2P TEAMS] jersey hardcode err', e); }
             }
+
+            // ===== V71: paint every player instance directly =====
+            // The object-64 color arrays weren't enough (the engine's per-
+            // player coloring didn't reflect them). This forces each on-field
+            // player's shader colors every frame, sourced from the team the
+            // engine ACTUALLY loaded (_Fj, the same data that drives the
+            // scoreboard name) — so the jersey can never mismatch the team on
+            // screen. obj_playerOF = the offense (this device's user team),
+            // obj_playerDF = the defense (the opponent's team); in this 2P
+            // fork the local user is always on offense, so that mapping holds.
+            function teamUidFromFj(o64, idx) {
+                try { return Number(_Ai(o64._Fj[idx], 'uid')); } catch (e) { return -1; }
+            }
+            function paintPlayer(inst, hHex, sHex, pHex) {
+                inst._nQ = writeRGB(null, hHex, 256); inst._VQ = writeRGB(null, hHex, 300);
+                inst._oQ = writeRGB(null, sHex, 256); inst._WQ = writeRGB(null, sHex, 300);
+                inst._pQ = writeRGB(null, pHex, 256); inst._XQ = writeRGB(null, pHex, 300);
+            }
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var ctrl = _si(64), o64 = null;
+                    for (var k in ctrl) { if (ctrl.hasOwnProperty(k)) { o64 = ctrl[k]; break; } }
+                    if (!o64 || !o64._Fj) return;
+                    var userUid = teamUidFromFj(o64, 1);   // _Fj[1] = user (5Q=1)
+                    var oppUid  = teamUidFromFj(o64, 0);   // _Fj[0] = opponent
+                    var U = TEAM_COLORS[userUid], O = TEAM_COLORS[oppUid];
+                    if (!U || !O) return;
+                    var uh = U[0], us = U[1], up = U[2];
+                    var oh = O[0], os = O[1], op = O[2];
+                    if (oh === uh) oh = os;   // clash-avoid opponent vs user
+                    if (os === us) os = op;
+                    if (op === up) op = oh;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2) continue;
+                        var nm = inst._eE2._fE2;
+                        if (nm === 'obj_playerOF') paintPlayer(inst, uh, us, up);
+                        else if (nm === 'obj_playerDF') paintPlayer(inst, oh, os, op);
+                    }
+                } catch (e) {}
+            }, 120);
 
             function startTwoPlayerMatch(role) {
                 try {
