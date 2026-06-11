@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V71</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V72</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5026,10 +5026,25 @@
                 'background:rgba(0,0,0,0.78);color:#3cff7a;' +
                 'font:bold 11px monospace;z-index:9999;border-radius:4px;' +
                 'letter-spacing:2px;border:1px solid #3cff7a;';
-            badge.textContent =
-                'RM:' + myRoom + ' • YOU:' + myRole.toUpperCase() +
-                ' (' + (myRole === 'a' ? 'BUF' : 'KC') + ')';
             document.body.appendChild(badge);
+            // V72: show the REAL team the engine loaded (was hardcoded
+            // BUF/KC, which lied once teams became selectable). Reads the
+            // live team name so it always matches the scoreboard/jersey.
+            function updateBadge() {
+                var label = 'RM:' + myRoom + ' • YOU:' + (myRole ? myRole.toUpperCase() : '?');
+                try {
+                    if (window.RB && window.RB.isEngineInMatchRoom && window.RB.isEngineInMatchRoom()) {
+                        var em = window.RB.engineState();
+                        if (em && em.engineTeamDisplayNames && em.engineUserTeamIdx != null) {
+                            var nm = em.engineTeamDisplayNames[em.engineUserTeamIdx];
+                            if (nm) label += ' — ' + String(nm).toUpperCase();
+                        }
+                    }
+                } catch (e) {}
+                badge.textContent = label;
+            }
+            updateBadge();
+            setInterval(updateBadge, 500);
 
             // ---- Live state sync ----
             // While I'm on offense, push my local score + clock every 500ms
