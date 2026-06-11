@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V65</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V66</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -382,6 +382,10 @@
             </div>
             <p class="you-are">YOU ARE: <b id="rb-you-role">—</b></p>
             <p class="status" id="rb-status">Waiting for opponent…</p>
+            <div class="diff-row">
+                <span class="diff-label">YOUR TEAM:</span>
+                <select id="rb-team-select" class="diff-btn" style="min-width:160px;cursor:pointer;"></select>
+            </div>
             <div class="diff-row">
                 <span class="diff-label">DEFENSE:</span>
                 <button class="diff-btn" data-dif="easy">EASY</button>
@@ -1108,9 +1112,13 @@
                     }
                     if (!anyInst) return;
 
-                    var BUFF_UID = 0;
-                    var userUid = role === 'a' ? BUFF_UID : KC_UID;
-                    var oppUid  = role === 'a' ? KC_UID   : BUFF_UID;
+                    // V66: teams are player-selected (UIDs 0-31) and shared
+                    // over Firebase; the lobby sets these globals before
+                    // launch. Falls back to the old Buffalo/KC defaults.
+                    var userUid = Number(window._rb2p_myTeamUid);
+                    var oppUid  = Number(window._rb2p_oppTeamUid);
+                    if (!(userUid >= 0 && userUid <= 31)) userUid = (role === 'a' ? 0 : KC_UID);
+                    if (!(oppUid  >= 0 && oppUid  <= 31)) oppUid  = (role === 'a' ? KC_UID : 0);
 
                     var st = _6E2._Ue2(64);
                     if (st) st._Ip = userUid;   // local user identity
@@ -4455,6 +4463,53 @@
         });
         renderLengthButtons();
 
+        // ---- Team selection (V66) ----
+        // Each player picks their own NFL team (UID 0-31, Teams.txt order).
+        // Picks are shared via rooms/{code}/teams/{role}; both devices need
+        // both picks (my UID = engine user team, opp UID = engine opponent
+        // team). Defaults: A=Buffalo(0), B=Kansas City(5).
+        var NFL_TEAMS = ['Buffalo', 'Miami', 'New England', 'New York J', 'Denver',
+            'Kansas City', 'Los Angeles C', 'Las Vegas', 'Baltimore', 'Cincinnati',
+            'Cleveland', 'Pittsburgh', 'Houston', 'Indianapolis', 'Jacksonville',
+            'Tennessee', 'Dallas', 'New York G', 'Philadelphia', 'Washington',
+            'Arizona', 'Los Angeles R', 'San Francisco', 'Seattle', 'Chicago',
+            'Detroit', 'Green Bay', 'Minnesota', 'Atlanta', 'Carolina',
+            'New Orleans', 'Tampa Bay'];
+        var teamByRole = { a: 0, b: 5 };
+        var $teamSelect = document.getElementById('rb-team-select');
+        NFL_TEAMS.forEach(function (name, uid) {
+            var opt = document.createElement('option');
+            opt.value = String(uid);
+            opt.textContent = name;
+            $teamSelect.appendChild(opt);
+        });
+        function updateTeamUI() {
+            var oppRole = myRole === 'a' ? 'b' : 'a';
+            var myUid = teamByRole[myRole];
+            var oppUid = teamByRole[oppRole];
+            window._rb2p_myTeamUid = myUid;
+            window._rb2p_oppTeamUid = oppUid;
+            if ($teamSelect && myUid != null) $teamSelect.value = String(myUid);
+            try {
+                $slotA.querySelector('.team').textContent =
+                    (NFL_TEAMS[teamByRole.a] || 'Buffalo').toUpperCase();
+                $slotB.querySelector('.team').textContent =
+                    (NFL_TEAMS[teamByRole.b] || 'Kansas City').toUpperCase();
+            } catch (e) {}
+        }
+        if ($teamSelect) {
+            $teamSelect.addEventListener('change', function () {
+                var uid = parseInt($teamSelect.value, 10);
+                if (!(uid >= 0 && uid <= 31)) return;
+                teamByRole[myRole] = uid;
+                updateTeamUI();
+                if (myRoom && myRole) {
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/teams/' + myRole), uid)
+                      .catch(function () {});
+                }
+            });
+        }
+
         function showView(name) {
             lobby.dataset.active = name;
             lobby.style.display = 'flex';
@@ -4473,6 +4528,7 @@
         var unsubscribeConfig = null;
         var unsubscribeFinal = null;
         var unsubscribeOt = null;
+        var unsubscribeTeams = null;
         var otAppliedPeriods = {};
         var gameStarted = false;
 
@@ -4534,6 +4590,16 @@
                         var cfgSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/config/quarterMins'));
                         var cfg = cfgSnap.val();
                         if (cfg === 1 || cfg === 2 || cfg === 3) applyLengthLocal(cfg);
+                    } catch (e) {}
+                    // Pull the shared team picks before launch so the engine
+                    // rebuilds the match with the right teams on resume.
+                    try {
+                        var teamsSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/teams'));
+                        var ts = teamsSnap.val() || {};
+                        if (ts.a >= 0 && ts.a <= 31) teamByRole.a = ts.a;
+                        if (ts.b >= 0 && ts.b <= 31) teamByRole.b = ts.b;
+                        myRole = savedRole;   // updateTeamUI reads myRole
+                        updateTeamUI();
                     } catch (e) {}
                     gameStarted = true;   // set before enterRoom subscribes
                     enterRoom(savedRoom, savedRole, /*restoring=*/true);
@@ -4659,6 +4725,24 @@
                 }
             );
 
+            // V66: team picks. Seed this device's default if unset, then
+            // mirror both picks into the UI and the engine-launch globals.
+            updateTeamUI();
+            unsubscribeTeams = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/teams'),
+                function (snap) {
+                    var t = snap.val() || {};
+                    if (t.a === 0 || (t.a >= 0 && t.a <= 31)) teamByRole.a = t.a;
+                    if (t.b === 0 || (t.b >= 0 && t.b <= 31)) teamByRole.b = t.b;
+                    // Seed my default into the room if I haven't picked yet.
+                    if (t[role] == null) {
+                        FB.set(FB.ref(db, 'rooms/' + code + '/teams/' + role),
+                               teamByRole[role]).catch(function () {});
+                    }
+                    updateTeamUI();
+                }
+            );
+
             // V62: shared OT coin flip. Each p{period} entry names the
             // receiver; both devices apply it once via the bridge.
             unsubscribeOt = FB.onValue(
@@ -4741,6 +4825,7 @@
             if (unsubscribeConfig) { unsubscribeConfig(); unsubscribeConfig = null; }
             if (unsubscribeFinal) { unsubscribeFinal(); unsubscribeFinal = null; }
             if (unsubscribeOt) { unsubscribeOt(); unsubscribeOt = null; }
+            if (unsubscribeTeams) { unsubscribeTeams(); unsubscribeTeams = null; }
             try {
                 if (myRoom && myRole) {
                     await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
