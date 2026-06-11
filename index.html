@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V59</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V60</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -388,6 +388,13 @@
                 <button class="diff-btn" data-dif="medium">MED</button>
                 <button class="diff-btn" data-dif="hard">HARD</button>
                 <button class="diff-btn" data-dif="max">MAX</button>
+            </div>
+            <div class="diff-row">
+                <span class="diff-label">QUARTER:</span>
+                <button class="diff-btn len-btn" data-len="1">1 MIN</button>
+                <button class="diff-btn len-btn" data-len="2">2 MIN</button>
+                <button class="diff-btn len-btn" data-len="3">3 MIN</button>
+                <span class="diff-label" style="margin-left:8px;opacity:0.5;font-size:10px;">(shared)</span>
             </div>
             <div>
                 <button id="rb-ready" disabled>READY</button>
@@ -1107,6 +1114,21 @@
 
                     var st = _6E2._Ue2(64);
                     if (st) st._Ip = userUid;   // local user identity
+
+                    // ===== V60: shared quarter length =====
+                    // Object 64's _Ws (op_matchlength) sets the quarter clock:
+                    // the engine computes minutes = 2 + _Ws at every quarter
+                    // start (retrobowl.js:55509, 66062), so _Ws ∈ {-1,0,1}
+                    // gives 1/2/3-minute quarters. Set it BEFORE _gx (match
+                    // init) so the opening clock already uses it, and because
+                    // it lives on the persistent settings object every later
+                    // quarter inherits it too. The value is agreed in the
+                    // lobby and mirrored over Firebase, so both devices run
+                    // the same clock (critical — the clock is cross-synced).
+                    var qMins = Number(window._rb2p_quarterMins);
+                    if (!(qMins === 1 || qMins === 2 || qMins === 3)) qMins = 2;
+                    if (st) st._Ws = qMins - 2;   // 1→-1, 2→0, 3→+1
+                    console.log('[2p-rb] quarter length = ' + qMins + ' min (_Ws=' + (qMins - 2) + ')');
 
                     var origDq = window._dq;
                     window._dq = function (n) {
@@ -3988,7 +4010,8 @@
         var $status    = document.getElementById('rb-status');
         var $ready     = document.getElementById('rb-ready');
         var $leave     = document.getElementById('rb-leave');
-        var $diffBtns  = lobby.querySelectorAll('.diff-btn');
+        var $diffBtns  = lobby.querySelectorAll('.diff-btn:not(.len-btn)');
+        var $lenBtns   = lobby.querySelectorAll('.len-btn');
 
         // ---- User-difficulty toggle (LOCAL ONLY — affects this device's offense)
         // Persisted to localStorage under 'rb2p_difficulty'. Default = 'max'.
@@ -4025,6 +4048,49 @@
         });
         renderUserDifficultyButtons();
 
+        // ---- Game length (SHARED — both devices must run the same quarter
+        // clock or the cross-synced timer drifts). The chosen value lives at
+        // rooms/{code}/config/quarterMins; either player can set it and it
+        // mirrors to both via the config subscription in enterRoom. Applied
+        // at match start by startTwoPlayerMatch (sets object 64's _Ws).
+        // localStorage just remembers the last pick for the next room.
+        var currentQuarterMins = 2;
+        (function () {
+            try {
+                var saved = parseInt(localStorage.getItem('rb2p_quarter_mins'), 10);
+                if (saved === 1 || saved === 2 || saved === 3) currentQuarterMins = saved;
+            } catch (e) {}
+        })();
+        window._rb2p_quarterMins = currentQuarterMins;
+        function renderLengthButtons() {
+            $lenBtns.forEach(function (b) {
+                b.classList.toggle('selected', parseInt(b.dataset.len, 10) === currentQuarterMins);
+            });
+        }
+        // Apply a length value locally (UI + globals + storage). Does NOT
+        // write to Firebase — callers decide that (clicks do; the config
+        // subscription does not, to avoid an echo loop).
+        function applyLengthLocal(mins) {
+            if (!(mins === 1 || mins === 2 || mins === 3)) mins = 2;
+            currentQuarterMins = mins;
+            window._rb2p_quarterMins = mins;
+            try { localStorage.setItem('rb2p_quarter_mins', String(mins)); } catch (e) {}
+            renderLengthButtons();
+        }
+        $lenBtns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                var mins = parseInt(b.dataset.len, 10);
+                applyLengthLocal(mins);
+                // Share with the opponent (best-effort; the subscription
+                // reflects it back on both devices).
+                if (myRoom) {
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/config/quarterMins'), mins)
+                      .catch(function () {});
+                }
+            });
+        });
+        renderLengthButtons();
+
         function showView(name) {
             lobby.dataset.active = name;
             lobby.style.display = 'flex';
@@ -4040,6 +4106,7 @@
         var myReady = false;
         var unsubscribePlayers = null;
         var unsubscribeOutcomes = null;
+        var unsubscribeConfig = null;
         var gameStarted = false;
 
         showView('entry');
@@ -4143,6 +4210,26 @@
                 }
             );
 
+            // V60: subscribe to the shared game-length config. Whoever set it
+            // last wins; both devices reflect the same value. If nobody has
+            // set it yet (config absent), seed it from this device's last
+            // local pick so the room opens with a sensible shared default.
+            unsubscribeConfig = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/config/quarterMins'),
+                function (snap) {
+                    var v = snap.val();
+                    if (v === 1 || v === 2 || v === 3) {
+                        applyLengthLocal(v);
+                    } else if (role === 'a') {
+                        // No shared value yet — the host (A) seeds the room
+                        // with its local pick so B inherits it. Only A seeds,
+                        // so the two devices don't write competing defaults.
+                        FB.set(FB.ref(db, 'rooms/' + code + '/config/quarterMins'),
+                               currentQuarterMins).catch(function () {});
+                    }
+                }
+            );
+
             // Release slot on tab close so the room frees up
             FB.onDisconnect(FB.ref(db, 'rooms/' + code + '/players/' + role)).remove();
 
@@ -4202,6 +4289,7 @@
         async function leaveRoom() {
             if (unsubscribePlayers) { unsubscribePlayers(); unsubscribePlayers = null; }
             if (unsubscribeOutcomes) { unsubscribeOutcomes(); unsubscribeOutcomes = null; }
+            if (unsubscribeConfig) { unsubscribeConfig(); unsubscribeConfig = null; }
             try {
                 if (myRoom && myRole) {
                     await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
@@ -4324,7 +4412,11 @@
                         // new fields minutesLeft/secondsLeft come straight
                         // off the engine's visible display registers.
                         elapsed:     Number(engineMatch.engineTickAllowance) || 0,
-                        duration:    ((Number(engineMatch.engineQuarterLengthMins) || 2) * 60),
+                        // V60: quarter length in seconds. The old code used
+                        // engineQuarterLengthMins (which maps to _5F = the
+                        // TIMEOUTS field, not quarter length) — a latent bug.
+                        // Use the shared chosen length instead.
+                        duration:    ((Number(window._rb2p_quarterMins) || 2) * 60),
                         minutesLeft: Number(engineMatch.engineMinutesLeft),
                         secondsLeft: Number(engineMatch.engineSecondsLeft),
                         quarter:     Number(engineMatch.engineQuarter) || 1,
@@ -4424,9 +4516,13 @@
                 }
             );
 
+            // V60: lock in the agreed quarter length right before launch so
+            // startTwoPlayerMatch reads the final synced value (both devices
+            // converged on the same rooms/{code}/config/quarterMins).
+            window._rb2p_quarterMins = currentQuarterMins;
             hideLobby();
             window.s_play_two_player_match(myRole);
-            console.log('[lobby] match started as', myRole);
+            console.log('[lobby] match started as', myRole, '— quarter', currentQuarterMins, 'min');
         }
     </script>
 
