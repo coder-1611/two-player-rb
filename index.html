@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V73</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V74</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1125,7 +1125,7 @@
                 16: ['a6b8c3', 'ffffff', '87c6eb'], 17: ['1933d1', '001cc8', 'FFFFFF'],
                 18: ['153020', '264933', 'ffffff'], 19: ['4f0f0f', '641313', 'FFFFFF'],
                 20: ['ffffff', 'a20000', 'ffffff'], 21: ['0000FA', '0000FA', 'FFD100'],
-                22: ['ada94b', 'a60303', 'ada94b'], 23: ['1b2145', '283166', '1b2145'],
+                22: ['ada94b', 'c8102e', 'ada94b'], 23: ['1b2145', '283166', '1b2145'],
                 24: ['0B162A', '0B162A', 'ffffff'], 25: ['B0B7BC', '3147CD', 'B0B7BC'],
                 26: ['f3d202', '385022', 'f3d202'], 27: ['4f1068', '731995', 'ffffff'],
                 28: ['000000', '000000', '000000'], 29: ['bab9b9', '101820', '101820'],
@@ -1189,34 +1189,37 @@
                 inst._oQ = writeRGB(null, sHex, 256); inst._WQ = writeRGB(null, sHex, 300);
                 inst._pQ = writeRGB(null, pHex, 256); inst._XQ = writeRGB(null, pHex, 300);
             }
-            function rb2pPaintJerseys() {
+            function rb2pPaintJerseysOnce() {
                 try {
-                    if (!RB.isEngineInMatchRoom()) { requestAnimationFrame(rb2pPaintJerseys); return; }
+                    if (!RB.isEngineInMatchRoom()) return;
                     var ctrl = _si(64), o64 = null;
                     for (var k in ctrl) { if (ctrl.hasOwnProperty(k)) { o64 = ctrl[k]; break; } }
-                    if (!o64 || !o64._Fj) { requestAnimationFrame(rb2pPaintJerseys); return; }
+                    if (!o64 || !o64._Fj) return;
                     var userUid = teamUidFromFj(o64, 1);   // _Fj[1] = local user
                     var oppUid  = teamUidFromFj(o64, 0);   // _Fj[0] = opponent
                     var U = TEAM_COLORS[userUid], O = TEAM_COLORS[oppUid];
-                    if (U && O) {
-                        var uh = U[0], us = U[1], up = U[2];
-                        var oh = O[0], os = O[1], op = O[2];
-                        if (oh === uh) oh = os;   // clash-avoid opponent vs user
-                        if (os === us) os = op;
-                        if (op === up) op = oh;
-                        var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                        for (var i = 0; i < all.length; i++) {
-                            var inst = all[i];
-                            if (!inst || inst._HL2 || !inst._eE2) continue;
-                            var nm = inst._eE2._fE2;
-                            if (nm === 'obj_playerDF') paintPlayer(inst, uh, us, up);       // local user team
-                            else if (nm === 'obj_playerOF') paintPlayer(inst, oh, os, op);  // opponent team
-                        }
+                    if (!U || !O) return;
+                    var uh = U[0], us = U[1], up = U[2];
+                    var oh = O[0], os = O[1], op = O[2];
+                    if (oh === uh) oh = os;   // clash-avoid opponent vs user
+                    if (os === us) os = op;
+                    if (op === up) op = oh;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2) continue;
+                        var nm = inst._eE2._fE2;
+                        if (nm === 'obj_playerDF') paintPlayer(inst, uh, us, up);       // local user team
+                        else if (nm === 'obj_playerOF') paintPlayer(inst, oh, os, op);  // opponent team
                     }
                 } catch (e) {}
-                requestAnimationFrame(rb2pPaintJerseys);
             }
-            requestAnimationFrame(rb2pPaintJerseys);
+            // Run on BOTH rAF (before paint) AND a fast interval (after the
+            // engine's step/draw), so we win the race against the engine's
+            // per-frame default recolor regardless of callback ordering.
+            function rb2pRafLoop() { rb2pPaintJerseysOnce(); requestAnimationFrame(rb2pRafLoop); }
+            requestAnimationFrame(rb2pRafLoop);
+            setInterval(rb2pPaintJerseysOnce, 16);
 
             function startTwoPlayerMatch(role) {
                 try {
