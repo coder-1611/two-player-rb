@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V63</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V64</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1039,7 +1039,7 @@
                     // Default is 'max' if the user hasn't picked anything.
                     try {
                         var pref = localStorage.getItem('rb2p_difficulty') || 'max';
-                        var difTable = { max: -5, hard: -5, medium: 2, easy: 7 };
+                        var difTable = { max: -15, hard: -5, medium: 2, easy: 7 };
                         var dif = difTable[pref];
                         if (typeof dif === 'number') engineMatch.engineDefenseAggression = dif;
                     } catch (e) {}
@@ -4340,7 +4340,7 @@
         // forceUserOffenseDrive reads this same key and applies it to
         // engineDefenseAggression on every play setup, so changes take effect
         // from the next drive.
-        var USER_DIFFICULTY_TO_ENGINE_AGGRESSION = { max: -5, hard: -5, medium: 2, easy: 7 };
+        var USER_DIFFICULTY_TO_ENGINE_AGGRESSION = { max: -15, hard: -5, medium: 2, easy: 7 };
         function getUserDifficultyPref() {
             try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
             catch (e) { return 'max'; }
