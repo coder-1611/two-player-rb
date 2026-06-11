@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V69</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V70</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1110,6 +1110,63 @@
             // the wait state (UD != 0z, Vy = 10) so player A is the one who
             // gets first possession. The existing wait overlay + receive loop
             // unstalls B when player A's first drive resolves over Firebase.
+
+            // ===== V70: hardcoded jersey colors (from html5game/Teams.txt) =====
+            // [helmet, shirt, pants] hex per team UID (Teams.txt order).
+            var TEAM_COLORS = {
+                0:  ['ffffff', '0202d9', 'ffffff'], 1:  ['ffffff', '008E97', 'ffffff'],
+                2:  ['B0B7BC', '002244', '002244'], 3:  ['125740', '125740', 'ffffff'],
+                4:  ['1b1f62', 'e66e00', 'ffffff'], 5:  ['c30214', 'dc0015', 'ffffff'],
+                6:  ['ffffff', '3289f7', 'ffffff'], 7:  ['aaaaaa', '000000', 'aaaaaa'],
+                8:  ['161616', '361d7d', 'ffffff'], 9:  ['fb4f14', '1a1a1a', 'ffffff'],
+                10: ['d44200', '4f3531', 'FFFFFF'], 11: ['000000', '222121', 'f8e400'],
+                12: ['101843', '17205b', 'ffffff'], 13: ['ffffff', '202e82', 'ffffff'],
+                14: ['1b1b1b', '292929', '1b1b1b'], 15: ['23255d', '181a40', '181A40'],
+                16: ['a6b8c3', 'ffffff', '87c6eb'], 17: ['1933d1', '001cc8', 'FFFFFF'],
+                18: ['153020', '264933', 'ffffff'], 19: ['4f0f0f', '641313', 'FFFFFF'],
+                20: ['ffffff', 'a20000', 'ffffff'], 21: ['0000FA', '0000FA', 'FFD100'],
+                22: ['ada94b', 'a60303', 'ada94b'], 23: ['1b2145', '283166', '1b2145'],
+                24: ['0B162A', '0B162A', 'ffffff'], 25: ['B0B7BC', '3147CD', 'B0B7BC'],
+                26: ['f3d202', '385022', 'f3d202'], 27: ['4f1068', '731995', 'ffffff'],
+                28: ['000000', '000000', '000000'], 29: ['bab9b9', '101820', '101820'],
+                30: ['aba537', '000000', '000000'], 31: ['434044', 'bd0101', '434044']
+            };
+            function writeRGB(arr, hex, div) {
+                var n = parseInt(hex, 16); if (isNaN(n)) n = 0;
+                var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+                if (!arr) return [r / div, g / div, b / div];
+                arr[0] = r / div; arr[1] = g / div; arr[2] = b / div;
+                return arr;
+            }
+            function applyHardcodedJerseys(m, userUid, oppUid) {
+                try {
+                    if (!m) return;
+                    var U = TEAM_COLORS[userUid], O = TEAM_COLORS[oppUid];
+                    if (!U || !O) return;
+                    var uh = U[0], us = U[1], up = U[2];
+                    var oh = O[0], os = O[1], op = O[2];
+                    // _gx clash-avoidance: nudge opponent colors that exactly
+                    // match the user's so the teams remain distinguishable.
+                    if (oh === uh) oh = os;
+                    if (os === us) os = op;
+                    if (op === up) op = oh;
+                    // User: _It=helmet, _Kt/_Lt=shirt, _Mt/_Nt=pants.
+                    m._It = writeRGB(m._It, uh, 256);
+                    m._Kt = writeRGB(m._Kt, us, 256);
+                    m._Lt = writeRGB(m._Lt, us, 300);
+                    m._Mt = writeRGB(m._Mt, up, 256);
+                    m._Nt = writeRGB(m._Nt, up, 300);
+                    // Opponent: _St=helmet, _Ut/_Vt=shirt, _Wt/_Xt=pants.
+                    m._St = writeRGB(m._St, oh, 256);
+                    m._Ut = writeRGB(m._Ut, os, 256);
+                    m._Vt = writeRGB(m._Vt, os, 300);
+                    m._Wt = writeRGB(m._Wt, op, 256);
+                    m._Xt = writeRGB(m._Xt, op, 300);
+                    console.log('[2P TEAMS] hardcoded jerseys — user uid=' + userUid +
+                                ' shirt#' + us + ', opp uid=' + oppUid + ' shirt#' + os);
+                } catch (e) { console.log('[2P TEAMS] jersey hardcode err', e); }
+            }
+
             function startTwoPlayerMatch(role) {
                 try {
                     var anyInst = null;
@@ -1160,6 +1217,18 @@
                     } finally {
                         window._dq = origDq;
                     }
+
+                    // ===== V70: hardcode jersey colors from Teams.txt =====
+                    // _gx's computed colors came out wrong, so overwrite
+                    // object 64's color arrays directly from the known
+                    // Teams.txt values for the two selected teams. This is
+                    // exactly what _gx writes (R/G/B ÷256, and ÷300 for the
+                    // dark variants) — _It/_Kt/_Mt = user helmet/shirt/pants,
+                    // _St/_Ut/_Wt = opponent's — just sourced from a table we
+                    // control. The opponent set gets the same clash-avoidance
+                    // _gx applies (swap to the next color if it exactly
+                    // matches the user's), so the two teams stay distinct.
+                    applyHardcodedJerseys(st, userUid, oppUid);
 
                     if (st) st._fx = 0;
                     _Hj(STATE_MATCH);
