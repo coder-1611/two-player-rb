@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V57</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V58</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2279,7 +2279,19 @@
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('WRONG-TEAM +' + oppDelta + ' repaired');
                             return;
                         }
-                        if (userDelta === 1 || userDelta === 2) {
+                        if (userDelta >= 1) {
+                            // +1 (kick) and +2 (conversion) are the expected
+                            // results. Anything else (+3 = the engine took
+                            // the FG branch because _Z21 wasn't set, etc.) is
+                            // an anomaly — but the PAT is settled either way;
+                            // staying "pending" forever would freeze the
+                            // cascade, which is worse. Resolve and report.
+                            if (userDelta > 2) {
+                                console.warn('[2P PAT GUARD] anomalous PAT credit +' + userDelta +
+                                             ' (expected 1 or 2) — resolving anyway');
+                                if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                                    'ANOMALY: PAT credited +' + userDelta);
+                            }
                             window._rb2p_patPlayPending  = false;
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
@@ -3320,6 +3332,15 @@
                         killAllPatPopups();
                         if (window._rb2p_pick6MonitorDisarm) window._rb2p_pick6MonitorDisarm();
                         if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                        // The real s_action_result calls can tear down the
+                        // field objects (s_reset paths). If it was OUR drive,
+                        // respawn the play so the match is playable after the
+                        // test (idempotent — skipped when the ball exists).
+                        if (snap.UD === em.engineUserTeamIdx &&
+                            typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                            window._rb2p_forceUserOffenseDrive(
+                                typeof em.engineYardLineSigned === 'number' ? em.engineYardLineSigned : -25);
+                        }
                     } catch (eR) { console.log('[2P TEST] restore err', eR); }
                 }
                 try {
@@ -3373,6 +3394,12 @@
                         // --- phase 2: feed the REAL engine the PAT result.
                         var expUser;
                         if (curMode === '1pt') {
+                            // s_action_result case 4 credits +1 ONLY when
+                            // _Z21 (PAT-kick flag, normally set by
+                            // s_set_up_fieldgoal on the 1PT click) is truthy;
+                            // otherwise it takes the FG branch (+3). Set it
+                            // the way the real click path would.
+                            try { raw._Z21 = 1; } catch (eZ) {}
                             hBfn(raw, _Sc2, 6);   // s_action_result: made kick (+1 via _0z)
                             expUser = u0 + 7;
                             await sleep(150);
