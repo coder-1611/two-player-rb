@@ -358,7 +358,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V60</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V61</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3956,6 +3956,129 @@
                     }
                 } catch (e) {}
             }, 200);
+
+            // ===== V61: end-of-game box score =====
+            // This fork only simulates THIS device's own offense, so each
+            // device only accumulates its OWN team's player stats. The
+            // overlay (built in the lobby module) merges both devices' reports
+            // over Firebase. collectBoxScore reads this device's roster
+            // (object 64's _Ln) the same way the engine's own team-stats
+            // screen does (retrobowl.js:50248+): _zi(_Ln, i) for each player,
+            // _Ai(player, "stat_*") for the accumulated game stats.
+            var POS_LABELS = { 1:'QB', 2:'RB', 3:'TE', 4:'WR', 5:'OL',
+                               6:'DL', 7:'LB', 8:'DB', 9:'DB', 10:'K', 11:'KP' };
+            function statNum(s, key) {
+                try { return Number(_Ai(s, key)) || 0; } catch (e) { return 0; }
+            }
+            window._rb2p_collectBoxScore = function () {
+                var report = { team: '', score: 0, oppScore: 0, players: [] };
+                try {
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return report;
+                    report.score    = Number(em.userScore) || 0;
+                    report.oppScore = Number(em.opponentScore) || 0;
+                    var names = em.engineTeamDisplayNames;
+                    if (names) {
+                        report.team    = String(names[em.engineUserTeamIdx] || 'YOU');
+                        report.oppTeam = String(names[em.engineUserTeamIdx ? 0 : 1] || 'OPP');
+                    }
+                    var ctrl = _si(64);
+                    var teamObj = null;
+                    for (var k in ctrl) { if (ctrl.hasOwnProperty(k)) { teamObj = ctrl[k]; break; } }
+                    if (!teamObj || !teamObj._Ln) return report;
+                    var roster = teamObj._Ln;
+                    var n = _wi(roster);
+                    for (var i = 0; i < n; i++) {
+                        var s = _zi(roster, i);
+                        if (!s) continue;
+                        var pos = Number(_Ai(s, 'position')) || 0;
+                        var passYds = statNum(s, 'stat_yards');       // QB pass / receiver rec yards
+                        var rushYds = statNum(s, 'stat_rush_yards');
+                        var passTd  = statNum(s, 'stat_touchdowns');
+                        var rushTd  = statNum(s, 'stat_rush_touchdowns');
+                        var cmp = statNum(s, 'stat_complete');
+                        var att = statNum(s, 'stat_attempts');
+                        var rec = statNum(s, 'stat_receive');
+                        var tck = statNum(s, 'stat_tackles');
+                        var sck = statNum(s, 'stat_sacks');
+                        var intc = statNum(s, 'stat_int');
+                        var fum = statNum(s, 'stat_fumbles');
+                        var fgm = statNum(s, 'stat_fgm');
+                        var fga = statNum(s, 'stat_fga');
+                        var yds = passYds + rushYds, td = passTd + rushTd;
+                        var activity = yds + td + cmp + att + rec + tck + sck + intc + fum + fgm + fga;
+                        if (activity <= 0) continue;
+                        // Build a compact stat line, position-appropriate.
+                        var parts = [];
+                        if (pos === 1) {            // QB
+                            if (att > 0) parts.push(cmp + '/' + att);
+                            if (yds) parts.push(yds + ' YDS');
+                            if (td) parts.push(td + ' TD');
+                            if (intc) parts.push(intc + ' INT');
+                        } else if (pos >= 2 && pos <= 4) {   // RB/TE/WR
+                            if (yds) parts.push(yds + ' YDS');
+                            if (td) parts.push(td + ' TD');
+                            if (rec) parts.push(rec + ' REC');
+                        } else if (pos >= 6 && pos <= 9) {   // defense
+                            if (tck) parts.push(tck + ' TCK');
+                            if (sck) parts.push(sck + ' SCK');
+                            if (intc) parts.push(intc + ' INT');
+                        } else if (pos === 10 || pos === 11) { // kicker
+                            if (fga > 0) parts.push(fgm + '/' + fga + ' FG');
+                            if (td) parts.push(td + ' TD');
+                        } else {
+                            if (yds) parts.push(yds + ' YDS');
+                            if (td) parts.push(td + ' TD');
+                            if (tck) parts.push(tck + ' TCK');
+                        }
+                        if (fum) parts.push(fum + ' FUM');
+                        if (!parts.length) continue;
+                        var fname = '', lname = '';
+                        try { fname = String(_Ai(s, 'fname') || ''); } catch (e) {}
+                        try { lname = String(_Ai(s, 'lname') || ''); } catch (e) {}
+                        var nm = (fname ? fname.charAt(0) + '. ' : '') + lname;
+                        report.players.push({
+                            name: nm || 'Player', pos: POS_LABELS[pos] || '?',
+                            line: parts.join(' · '), sort: yds + td * 100 + (tck + sck + intc) * 10
+                        });
+                    }
+                    report.players.sort(function (a, b) { return b.sort - a.sort; });
+                } catch (e) { console.log('[2P FINAL] collect err', e); }
+                return report;
+            };
+
+            // Game-over detector. Primary signal: engine FSM stage 13 (the
+            // game-over display stage the engine enters from _Ib1 case 19).
+            // Fallback: Q4+ with the clock at 0:00 and a non-tied score.
+            // One-shot per match; reset when a fresh match starts (score 0-0,
+            // Q1) so a rematch re-arms it.
+            window._rb2p_gameOverReported = false;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var q = Number(em.engineQuarter) || 1;
+                    var mn = Number(em.engineMinutesLeft);
+                    var sc = Number(em.engineSecondsLeft);
+                    var u = Number(em.userScore) || 0, o = Number(em.opponentScore) || 0;
+                    // Re-arm on a clearly-fresh match.
+                    if (window._rb2p_gameOverReported && q <= 1 && u === 0 && o === 0) {
+                        window._rb2p_gameOverReported = false;
+                    }
+                    if (window._rb2p_gameOverReported) return;
+                    var stageOver = em.engineDriveFsmStage === 13;
+                    var clockOver = (q >= 4 && mn === 0 && sc === 0 && u !== o);
+                    if (!stageOver && !clockOver) return;
+                    window._rb2p_gameOverReported = true;
+                    var report = window._rb2p_collectBoxScore();
+                    console.log('[2P FINAL] game over — ' + report.team + ' ' + report.score +
+                                ', ' + report.players.length + ' players with stats');
+                    if (typeof window._rb2p_reportGameOver === 'function') {
+                        window._rb2p_reportGameOver(report);
+                    }
+                } catch (e) {}
+            }, 300);
         })();
     </script>
 
@@ -3997,6 +4120,100 @@
             projectId: 'realretrobowl2p'
         });
         var db = FB.getDatabase(app);
+
+        // ===== V61: end-of-game FINAL stats screen =====
+        // The bridge (other script) detects game over and calls
+        // window._rb2p_reportGameOver(localReport) with THIS device's team
+        // box score. We publish it to rooms/{code}/final/{role} and subscribe
+        // to both slots, so each device renders the full two-team box score
+        // even though each only computed its own side.
+        var finalOverlay = document.createElement('div');
+        finalOverlay.id = 'rb-final';
+        finalOverlay.style.cssText =
+            'position:fixed;inset:0;z-index:2000;display:none;overflow:auto;' +
+            'background:rgba(6,10,16,0.98);color:#fff;font-family:monospace;' +
+            'image-rendering:pixelated;padding:24px 16px;box-sizing:border-box;';
+        document.body.appendChild(finalOverlay);
+
+        var localFinalReport = null;
+        var oppFinalReport = null;
+
+        function teamColumnHtml(rep, accent) {
+            if (!rep) {
+                return '<div style="flex:1;min-width:240px;opacity:0.5;text-align:center;padding:20px;">' +
+                       'waiting for opponent’s stats…</div>';
+            }
+            var rows = (rep.players || []).map(function (p) {
+                return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;' +
+                       'border-bottom:1px solid rgba(255,255,255,0.08);">' +
+                       '<span style="white-space:nowrap;"><b>' + esc(p.pos) + '</b> ' + esc(p.name) + '</span>' +
+                       '<span style="opacity:0.85;text-align:right;">' + esc(p.line) + '</span></div>';
+            }).join('');
+            if (!rows) rows = '<div style="opacity:0.5;padding:8px 0;">no recorded stats</div>';
+            return '<div style="flex:1;min-width:240px;max-width:440px;">' +
+                   '<div style="font-size:18px;font-weight:bold;letter-spacing:2px;color:' + accent + ';' +
+                   'border-bottom:3px solid ' + accent + ';padding-bottom:6px;margin-bottom:8px;">' +
+                   esc(rep.team || 'TEAM') + ' — ' + (rep.score != null ? rep.score : 0) + '</div>' +
+                   rows + '</div>';
+        }
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+                return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c];
+            });
+        }
+        function renderFinal() {
+            var me = localFinalReport;
+            var opp = oppFinalReport;
+            var myScore  = me ? me.score : 0;
+            var oppScore = me ? me.oppScore : (opp ? opp.score : 0);
+            var myTeam   = me ? me.team : 'YOU';
+            var oppTeam  = me ? (me.oppTeam || (opp ? opp.team : 'OPP')) : (opp ? opp.team : 'OPP');
+            var verdict = myScore > oppScore ? 'YOU WIN'
+                        : myScore < oppScore ? 'YOU LOSE' : 'TIE GAME';
+            var vColor  = myScore > oppScore ? '#3cff7a'
+                        : myScore < oppScore ? '#ff8c8c' : '#ffd23c';
+            finalOverlay.innerHTML =
+                '<div style="max-width:920px;margin:0 auto;">' +
+                  '<div style="text-align:center;font-size:13px;letter-spacing:6px;opacity:0.6;">FINAL</div>' +
+                  '<div style="text-align:center;font-size:22px;font-weight:bold;letter-spacing:3px;' +
+                       'color:' + vColor + ';margin:4px 0 14px 0;">' + verdict + '</div>' +
+                  '<div style="display:flex;align-items:center;justify-content:center;gap:22px;' +
+                       'font-size:20px;letter-spacing:2px;margin-bottom:22px;">' +
+                    '<span>' + esc(myTeam) + '</span>' +
+                    '<span style="font-size:40px;font-weight:bold;color:#3cff7a;">' + myScore + '</span>' +
+                    '<span style="opacity:0.5;">–</span>' +
+                    '<span style="font-size:40px;font-weight:bold;color:#ff8c8c;">' + oppScore + '</span>' +
+                    '<span>' + esc(oppTeam) + '</span>' +
+                  '</div>' +
+                  '<div style="display:flex;flex-wrap:wrap;gap:28px;justify-content:center;">' +
+                    teamColumnHtml(me, '#3cff7a') +
+                    teamColumnHtml(opp, '#ff8c8c') +
+                  '</div>' +
+                  '<div style="text-align:center;margin-top:26px;">' +
+                    '<button id="rb-final-leave" style="font-family:monospace;font-weight:bold;' +
+                       'letter-spacing:2px;font-size:14px;background:#fff;color:#0a1018;border:none;' +
+                       'padding:10px 22px;cursor:pointer;">BACK TO LOBBY</button>' +
+                  '</div>' +
+                '</div>';
+            finalOverlay.style.display = 'block';
+            var lv = document.getElementById('rb-final-leave');
+            if (lv) lv.addEventListener('click', function () {
+                finalOverlay.style.display = 'none';
+                try { location.reload(); } catch (e) {}
+            });
+        }
+        function hideFinal() { finalOverlay.style.display = 'none'; }
+
+        // Called by the bridge when this device detects game over.
+        window._rb2p_reportGameOver = function (report) {
+            localFinalReport = report || {};
+            renderFinal();
+            // Publish our half so the opponent can show our players too.
+            if (myRoom && myRole) {
+                FB.set(FB.ref(db, 'rooms/' + myRoom + '/final/' + myRole), localFinalReport)
+                  .catch(function () {});
+            }
+        };
 
         // ---- DOM ----
         var lobby      = document.getElementById('rb-lobby');
@@ -4107,6 +4324,7 @@
         var unsubscribePlayers = null;
         var unsubscribeOutcomes = null;
         var unsubscribeConfig = null;
+        var unsubscribeFinal = null;
         var gameStarted = false;
 
         showView('entry');
@@ -4230,6 +4448,22 @@
                 }
             );
 
+            // V61: opponent's end-of-game box score. When it arrives (and we
+            // already have our own / the game is over), merge it into the
+            // FINAL screen so both teams' players show on this device.
+            var oppRole = role === 'a' ? 'b' : 'a';
+            unsubscribeFinal = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/final/' + oppRole),
+                function (snap) {
+                    var rep = snap.val();
+                    if (!rep) { oppFinalReport = null; return; }
+                    oppFinalReport = rep;
+                    // Only (re)render if our side has already ended — avoids a
+                    // stale report flashing the screen mid-game.
+                    if (localFinalReport) renderFinal();
+                }
+            );
+
             // Release slot on tab close so the room frees up
             FB.onDisconnect(FB.ref(db, 'rooms/' + code + '/players/' + role)).remove();
 
@@ -4290,6 +4524,7 @@
             if (unsubscribePlayers) { unsubscribePlayers(); unsubscribePlayers = null; }
             if (unsubscribeOutcomes) { unsubscribeOutcomes(); unsubscribeOutcomes = null; }
             if (unsubscribeConfig) { unsubscribeConfig(); unsubscribeConfig = null; }
+            if (unsubscribeFinal) { unsubscribeFinal(); unsubscribeFinal = null; }
             try {
                 if (myRoom && myRole) {
                     await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
@@ -4515,6 +4750,14 @@
                     }
                 }
             );
+
+            // V61: clear any prior game's box score so the FINAL screen for
+            // this match starts blank (the room is reused across rematches).
+            localFinalReport = null;
+            oppFinalReport = null;
+            window._rb2p_gameOverReported = false;
+            hideFinal();
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
