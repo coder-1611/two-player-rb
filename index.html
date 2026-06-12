@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V84</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V85</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1220,6 +1220,54 @@
             };
             // Exposed for the lobby's read-only roster preview (V82).
             window._rb2p_TEAM_ROSTERS = TEAM_ROSTERS;
+            // Write one spec onto an existing player struct (in place).
+            function writeRosterPlayer(p, s, i) {
+                _Yi(p, 'fname', s.fn);  _Yi(p, 'lname', s.ln);
+                _Yi(p, 'position', s.pos);
+                // Distinct jersey number per slot (cloned players would
+                // otherwise all inherit the template's randnum).
+                _Yi(p, 'randnum', ((i * 13 + 7) % 98) + 1);
+                _Yi(p, 'skill', s.sk);  _Yi(p, 'strength', s.st);
+                _Yi(p, 'speed', s.sp);  _Yi(p, 'stamina', s.sa);
+                _Yi(p, 'max_skill', 10);    _Yi(p, 'max_strength', 10);
+                _Yi(p, 'max_speed', 10);    _Yi(p, 'max_stamina', 10);
+                _Yi(p, 'skin', s.skin);
+                _Yi(p, 'face_x', s.fx);  _Yi(p, 'face_y', s.fy);
+                var age = s.age || 26;
+                _Yi(p, 'age', age);
+                _Yi(p, 'condition', 100);  _Yi(p, 'attitude', 99);
+                _Yi(p, 'resting', 0);      _Yi(p, 'injury_week', 0);
+                _Yi(p, 'hof', 0);
+                // Made-up career flavor for the profile page (V82):
+                // salary scales with overall, contract 2-3y, veteran
+                // XP level from age. The engine derives the rest
+                // (VALUE/round pick, GREAT condition, stars) itself.
+                var avg = (s.sk + s.st + s.sp + s.sa) / 4;
+                _Yi(p, 'salary', avg >= 9 ? 28 : avg >= 8 ? 20 : avg >= 7 ? 14 : 8);
+                _Yi(p, 'contract', 2 + ((s.ln.length + i) % 2));
+                _Yi(p, 'xp', 99);
+                _Yi(p, 'xp_level', Math.max(1, Math.min(9, age - 21)));
+            }
+            // V85: build a NEW valid player struct by cloning an existing one.
+            // The engine's roster list (_Ln) ships with only the offense
+            // skill players (~5) in this fork — the defense/K never existed
+            // to overwrite. Rather than hand-build a struct (~70 fields the
+            // card/profile renderers read), we clone a known-good player's
+            // underlying object so every engine-expected field is present,
+            // then overwrite. Returns the new struct id, already appended.
+            function appendClonedPlayer(st, templateIdx) {
+                var srcId = _zi(st._Ln, templateIdx);
+                var srcObj = _fg2._Ue2(srcId);
+                if (!srcObj) return null;
+                var newId = _du();
+                var dst = _fg2._Ue2(newId);
+                if (!dst) return null;
+                for (var key in srcObj) {
+                    if (Object.prototype.hasOwnProperty.call(srcObj, key)) dst[key] = srcObj[key];
+                }
+                _8j(st._Ln, newId);   // teamid is cloned from the template — leave it
+                return newId;
+            }
             function applyCustomRoster(st, uid) {
                 try {
                     if (!st || st._Ln == null) return;
@@ -1229,38 +1277,25 @@
                         return;
                     }
                     var n = _wi(st._Ln);
-                    var count = Math.min(n, specs.length);
-                    if (n < specs.length) {
-                        console.warn('[2P ROSTER] roster has only ' + n + ' slots — installing first ' + count);
+                    if (n === 0) {
+                        console.warn('[2P ROSTER] empty roster list — cannot install (no template to clone)');
+                        return;
                     }
-                    for (var i = 0; i < count; i++) {
-                        var p = _zi(st._Ln, i);
-                        var s = specs[i];
+                    var installed = 0, appended = 0;
+                    for (var i = 0; i < specs.length; i++) {
+                        var p;
+                        if (i < _wi(st._Ln)) {
+                            p = _zi(st._Ln, i);          // overwrite existing slot
+                        } else {
+                            p = appendClonedPlayer(st, 0); // clone player 0 as template
+                            if (p != null) appended++;
+                        }
                         if (p == null) continue;
-                        _Yi(p, 'fname', s.fn);  _Yi(p, 'lname', s.ln);
-                        _Yi(p, 'position', s.pos);
-                        _Yi(p, 'skill', s.sk);  _Yi(p, 'strength', s.st);
-                        _Yi(p, 'speed', s.sp);  _Yi(p, 'stamina', s.sa);
-                        _Yi(p, 'max_skill', 10);    _Yi(p, 'max_strength', 10);
-                        _Yi(p, 'max_speed', 10);    _Yi(p, 'max_stamina', 10);
-                        _Yi(p, 'skin', s.skin);
-                        _Yi(p, 'face_x', s.fx);  _Yi(p, 'face_y', s.fy);
-                        var age = s.age || 26;
-                        _Yi(p, 'age', age);
-                        _Yi(p, 'condition', 100);  _Yi(p, 'attitude', 99);
-                        _Yi(p, 'resting', 0);      _Yi(p, 'injury_week', 0);
-                        _Yi(p, 'hof', 0);
-                        // Made-up career flavor for the profile page (V82):
-                        // salary scales with overall, contract 2-3y, veteran
-                        // XP level from age. The engine derives the rest
-                        // (VALUE/round pick, GREAT condition, stars) itself.
-                        var avg = (s.sk + s.st + s.sp + s.sa) / 4;
-                        _Yi(p, 'salary', avg >= 9 ? 28 : avg >= 8 ? 20 : avg >= 7 ? 14 : 8);
-                        _Yi(p, 'contract', 2 + ((s.ln.length + i) % 2));
-                        _Yi(p, 'xp', 99);
-                        _Yi(p, 'xp_level', Math.max(1, Math.min(9, age - 21)));
+                        writeRosterPlayer(p, specs[i], i);
+                        installed++;
                     }
-                    console.log('[2P ROSTER] installed ' + count + ' custom players for uid ' + uid);
+                    console.log('[2P ROSTER] installed ' + installed + ' custom players for uid '
+                        + uid + ' (' + appended + ' appended)');
                 } catch (e) { console.log('[2P ROSTER] err', e); }
             }
             // Console verification: dump the live roster as a table.
