@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V78</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V79</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1125,17 +1125,26 @@
                 16: ['a6b8c3', 'ffffff', '87c6eb'], 17: ['1933d1', '001cc8', 'FFFFFF'],
                 18: ['153020', '264933', 'ffffff'], 19: ['4f0f0f', '641313', 'FFFFFF'],
                 20: ['ffffff', 'a20000', 'ffffff'], 21: ['0000FA', '0000FA', 'FFD100'],
-                22: ['ada94b', 'ff2030', 'ada94b'], 23: ['1b2145', '283166', '1b2145'],
+                22: ['ada94b', 'a60303', 'ada94b'], 23: ['1b2145', '283166', '1b2145'],
                 24: ['0B162A', '0B162A', 'ffffff'], 25: ['B0B7BC', '3147CD', 'B0B7BC'],
                 26: ['f3d202', '385022', 'f3d202'], 27: ['4f1068', '731995', 'ffffff'],
                 28: ['000000', '000000', '000000'], 29: ['bab9b9', '101820', '101820'],
                 30: ['aba537', '000000', '000000'], 31: ['434044', 'bd0101', '434044']
             };
             function writeRGB(arr, hex, div) {
+                // V79 ROOT CAUSE FIX: GameMaker stores colors BLUE-FIRST
+                // ($BBGGRR — c_red is $0000FF). The jersey shader reads
+                // slot [0] as BLUE. Writing web-style [R,G,B] here made
+                // every team render as its channel-mirror: SF red ff2030 →
+                // 3020ff (the blue jerseys), gold ada94b → teal (the
+                // helmets), Baltimore purple 361d7d → maroon (the defense).
+                // Verified by decoding the on-screen pixels of all five
+                // body-part colors against the values this code sent.
+                // So: store [B, G, R].
                 var n = parseInt(hex, 16); if (isNaN(n)) n = 0;
                 var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-                if (!arr) return [r / div, g / div, b / div];
-                arr[0] = r / div; arr[1] = g / div; arr[2] = b / div;
+                if (!arr) return [b / div, g / div, r / div];
+                arr[0] = b / div; arr[1] = g / div; arr[2] = r / div;
                 return arr;
             }
             function applyHardcodedJerseys(m, userUid, oppUid) {
@@ -1185,9 +1194,14 @@
                 try { return Number(_Ai(o64._Fj[idx], 'uid')); } catch (e) { return -1; }
             }
             function paintPlayer(inst, hHex, sHex, pHex) {
-                inst._nQ = writeRGB(null, hHex, 256); inst._VQ = writeRGB(null, hHex, 300);
-                inst._oQ = writeRGB(null, sHex, 256); inst._WQ = writeRGB(null, sHex, 300);
-                inst._pQ = writeRGB(null, pHex, 256); inst._XQ = writeRGB(null, pHex, 300);
+                // V79 slot map (decoded from on-screen pixels): _nQ drives
+                // the LIMBS/PANTS, _oQ the TORSO/JERSEY, _pQ the HELMET.
+                // (The old map fed helmet→_nQ and pants→_pQ, which is why
+                // the defense wore a WHITE helmet — Baltimore's white PANTS
+                // value landing on the helmet slot.)
+                inst._nQ = writeRGB(null, pHex, 256); inst._VQ = writeRGB(null, pHex, 300);   // pants → limbs
+                inst._oQ = writeRGB(null, sHex, 256); inst._WQ = writeRGB(null, sHex, 300);   // shirt → torso
+                inst._pQ = writeRGB(null, hHex, 256); inst._XQ = writeRGB(null, hHex, 300);   // helmet → helmet
             }
             // Overwrite one of object 64's color arrays in place (the engine's
             // per-draw color SOURCE). Same [R/div, G/div, B/div] format _gx uses.
@@ -1223,10 +1237,15 @@
                     //   _It/_Kt/_Mt = USER helmet/shirt/pants (drives obj_playerOF)
                     //   _St/_Ut/_Wt = OPPONENT helmet/shirt/pants (drives obj_playerDF)
                     //   _Lt/_Nt, _Vt/_Xt = the darker /300 shade variants
-                    setO64(o64, '_It', uh, 256); setO64(o64, '_Kt', us, 256); setO64(o64, '_Lt', us, 300);
-                    setO64(o64, '_Mt', up, 256); setO64(o64, '_Nt', up, 300);
-                    setO64(o64, '_St', oh, 256); setO64(o64, '_Ut', os, 256); setO64(o64, '_Vt', os, 300);
-                    setO64(o64, '_Wt', op, 256); setO64(o64, '_Xt', op, 300);
+                    // V79: slot-aligned — _It feeds _nQ (limbs/pants), _Kt
+                    // feeds _oQ (torso/shirt), _Mt feeds _pQ (helmet); same
+                    // for the opponent's _St/_Ut/_Wt.
+                    setO64(o64, '_It', up, 256); setO64(o64, '_Jt', up, 300);
+                    setO64(o64, '_Kt', us, 256); setO64(o64, '_Lt', us, 300);
+                    setO64(o64, '_Mt', uh, 256); setO64(o64, '_Nt', uh, 300);
+                    setO64(o64, '_St', op, 256); setO64(o64, '_Tt', op, 300);
+                    setO64(o64, '_Ut', os, 256); setO64(o64, '_Vt', os, 300);
+                    setO64(o64, '_Wt', oh, 256); setO64(o64, '_Xt', oh, 300);
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
