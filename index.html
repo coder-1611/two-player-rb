@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V85</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V87</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1384,7 +1384,16 @@
                 'letter-spacing:2px;cursor:pointer;';
             document.body.appendChild(previewBackBtn);
             previewBackBtn.addEventListener('click', function () {
-                window._rb2p_exitRosterPreview();
+                // V86: BACK is room-aware. From a player's profile page
+                // (opened by tapping a card) it returns to the roster grid,
+                // staying in preview. Only from the roster grid does it exit
+                // all the way out to the lobby.
+                var room = (typeof _ft !== 'undefined' && _ft._gt) ? _ft._gt() : -1;
+                if (room === PROFILE_ROOM) {
+                    try { _Hj(ROSTER_ROOM); } catch (e) {}
+                } else {
+                    window._rb2p_exitRosterPreview();
+                }
             });
             window._rb2p_previewRoster = function (uid) {
                 try {
