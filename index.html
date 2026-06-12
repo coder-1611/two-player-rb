@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V88</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V89</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4511,6 +4511,28 @@
                     }
                 } catch (e) {}
             }
+            // V89: collect the OPPONENT's defensive stats this (offense) device
+            // measured. INTs are credited by the engine itself onto the
+            // intercepting on-field defender's _7j (= our star struct, see
+            // retrobowl.js:52847), so a starred defender's pick lands here and a
+            // non-starred defender's (_7j=-4) counts for nobody — exactly the
+            // required rule. These structs ARE the per-game accumulators.
+            window._rb2p_collectOppDefStats = function () {
+                var out = [];
+                try {
+                    if (!rb2pOppStars) return out;
+                    for (var i = 0; i < rb2pOppStars.length; i++) {
+                        var s = rb2pOppStars[i];
+                        out.push({
+                            fn: s.fn, ln: s.ln, pos: s.pos,
+                            int: Math.round(Number(_Ai(s.id, 'stat_int')) || 0),
+                            sck: Math.round(Number(_Ai(s.id, 'stat_sacks')) || 0),
+                            tck: Math.round(Number(_Ai(s.id, 'stat_tackles')) || 0)
+                        });
+                    }
+                } catch (e) {}
+                return out;
+            };
 
             // ===== Poll loop: detect stall + drain pending =====
             setInterval(function () {
@@ -4823,6 +4845,34 @@
 
         var localFinalReport = null;
         var oppFinalReport = null;
+        var myDefStats = null;   // V89: my D's stats, measured on the opponent's device
+
+        // V89: merge my defense's synced stats into my FINAL report. The engine
+        // credits the OPPONENT device's star structs (it measures my D while it
+        // is on offense), so my own roster's D rows read 0 here — we add the
+        // synced rows. Keyed/replaced by player name so re-arrival is idempotent.
+        var DEF_POS_LABEL = { 6: 'DL', 7: 'LB', 8: 'DB', 9: 'DB' };
+        function mergeMyDefStats(defStats) {
+            if (!localFinalReport || !defStats || !defStats.length) return;
+            if (!localFinalReport.players) localFinalReport.players = [];
+            defStats.forEach(function (d) {
+                var tck = Math.round(d.tck || 0), sck = Math.round(d.sck || 0), intc = Math.round(d.int || 0);
+                if (tck + sck + intc <= 0) return;
+                var parts = [];
+                if (tck) parts.push(tck + ' TCK');
+                if (sck) parts.push(sck + ' SCK');
+                if (intc) parts.push(intc + ' INT');
+                var nm = (d.fn ? d.fn.charAt(0) + '. ' : '') + d.ln;
+                var line = parts.join(' · '), sort = intc * 100 + sck * 10 + tck;
+                var existing = null;
+                for (var i = 0; i < localFinalReport.players.length; i++) {
+                    if (localFinalReport.players[i].name === nm) { existing = localFinalReport.players[i]; break; }
+                }
+                if (existing) { existing.line = line; existing.pos = DEF_POS_LABEL[d.pos] || 'DB'; existing.sort = sort; }
+                else localFinalReport.players.push({ name: nm, pos: DEF_POS_LABEL[d.pos] || 'DB', line: line, sort: sort });
+            });
+            localFinalReport.players.sort(function (a, b) { return (b.sort || 0) - (a.sort || 0); });
+        }
 
         function teamColumnHtml(rep, accent) {
             if (!rep) {
@@ -4925,11 +4975,21 @@
         // Called by the bridge when this device detects game over.
         window._rb2p_reportGameOver = function (report) {
             localFinalReport = report || {};
+            if (myDefStats) mergeMyDefStats(myDefStats);   // V89: fold in my D's synced stats
             renderFinal();
             // Publish our half so the opponent can show our players too.
             if (myRoom && myRole) {
                 FB.set(FB.ref(db, 'rooms/' + myRoom + '/final/' + myRole), localFinalReport)
                   .catch(function () {});
+                // V89: publish the OPPONENT's defensive stats we measured while
+                // on offense (their D faced us). Keyed by THEIR role so they read
+                // their own D's box score.
+                try {
+                    var oppR = myRole === 'a' ? 'b' : 'a';
+                    var ods = (typeof window._rb2p_collectOppDefStats === 'function')
+                        ? window._rb2p_collectOppDefStats() : [];
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/defstats/' + oppR), ods).catch(function () {});
+                } catch (e) {}
             }
         };
 
@@ -5142,6 +5202,7 @@
         var unsubscribeOutcomes = null;
         var unsubscribeConfig = null;
         var unsubscribeFinal = null;
+        var unsubscribeDefStats = null;
         var unsubscribeOt = null;
         var unsubscribeTeams = null;
         var otAppliedPeriods = {};
@@ -5340,6 +5401,18 @@
                 }
             );
 
+            // V89: my defense's stats, measured & published by the opponent's
+            // device (keyed by MY role). Merge into my FINAL when it arrives.
+            unsubscribeDefStats = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/defstats/' + role),
+                function (snap) {
+                    var ds = snap.val();
+                    if (!ds || !ds.length) return;
+                    myDefStats = ds;
+                    if (localFinalReport) { mergeMyDefStats(ds); renderFinal(); }
+                }
+            );
+
             // V66: team picks. Seed this device's default if unset, then
             // mirror both picks into the UI and the engine-launch globals.
             updateTeamUI();
@@ -5439,6 +5512,7 @@
             if (unsubscribeOutcomes) { unsubscribeOutcomes(); unsubscribeOutcomes = null; }
             if (unsubscribeConfig) { unsubscribeConfig(); unsubscribeConfig = null; }
             if (unsubscribeFinal) { unsubscribeFinal(); unsubscribeFinal = null; }
+            if (unsubscribeDefStats) { unsubscribeDefStats(); unsubscribeDefStats = null; }
             if (unsubscribeOt) { unsubscribeOt(); unsubscribeOt = null; }
             if (unsubscribeTeams) { unsubscribeTeams(); unsubscribeTeams = null; }
             try {
@@ -5690,6 +5764,7 @@
             // this match starts blank (the room is reused across rematches).
             localFinalReport = null;
             oppFinalReport = null;
+            myDefStats = null;   // V89
             window._rb2p_gameOverReported = false;
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
