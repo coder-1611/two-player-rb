@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V87</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V88</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1050,9 +1050,11 @@
                     //   easy:    7
                     // Default is 'max' if the user hasn't picked anything.
                     try {
-                        var pref = localStorage.getItem('rb2p_difficulty') || 'max';
-                        var difTable = { max: -15, hard: -5, medium: 2, easy: 7 };
-                        var dif = difTable[pref];
+                        // V88: baseline from the difficulty toggle, modulated by
+                        // the opponent's defensive rating (see computeDefenseAggression).
+                        var dif = (typeof window._rb2p_computeDefenseAggression === 'function')
+                            ? window._rb2p_computeDefenseAggression()
+                            : ({ max: -15, hard: -5, medium: 2, easy: 7 }[localStorage.getItem('rb2p_difficulty') || 'max']);
                         if (typeof dif === 'number') engineMatch.engineDefenseAggression = dif;
                     } catch (e) {}
                     if (engineMatch.engineDriveDirection == null || engineMatch.engineDriveDirection === 0) engineMatch.engineDriveDirection = 1;
@@ -4426,6 +4428,90 @@
                 } catch (e) {}
             };
 
+            // ===== V88: star the OPPONENT's named defenders (offense device) =====
+            // Defenders (obj_playerDF) spawn anonymous (_7j = -4) every snap and
+            // identifiable only by _O01 (6=DL,7=LB,8/9=DB). We create engine
+            // structs for the opponent's named D players (TEAM_ROSTERS[oppUid])
+            // and assign them to defender instances by position group. Verified:
+            // setting a defender's _7j to a star struct makes the engine render
+            // its gold star + initials + face automatically (same path offense
+            // stars use). Only the named D (~6) are starred; the rest stay
+            // anonymous. Slot order is stable (sorted by y) so a given defender
+            // slot stays the same named player all game. These structs double as
+            // the per-game stat accumulators (Step 3 credits sacks/INTs/tackles
+            // onto them; the totals sync to the D's owner for the FINAL screen).
+            var rb2pOppStars = null;     // [{fn,ln,pos, id}]
+            var rb2pOppStarsUid = null;
+            function rb2pBuildOppStars(oppUid) {
+                var specs = window._rb2p_TEAM_ROSTERS && window._rb2p_TEAM_ROSTERS[oppUid];
+                if (!specs) return null;
+                var ctrl = _si(64), o64 = null;
+                for (var k in ctrl) { if (ctrl.hasOwnProperty(k)) { o64 = ctrl[k]; break; } }
+                if (!o64 || o64._Ln == null || _wi(o64._Ln) === 0) return null;
+                var tmplId = _zi(o64._Ln, 0);
+                var tmplObj = _fg2._Ue2(tmplId);
+                if (!tmplObj) return null;
+                var out = [];
+                for (var i = 0; i < specs.length; i++) {
+                    var s = specs[i];
+                    if (!(s.pos >= 6 && s.pos <= 9)) continue;   // defense only
+                    var id = _du();
+                    var dst = _fg2._Ue2(id);
+                    if (!dst) continue;
+                    for (var key in tmplObj) {
+                        if (Object.prototype.hasOwnProperty.call(tmplObj, key)) dst[key] = tmplObj[key];
+                    }
+                    _Yi(id, 'fname', s.fn); _Yi(id, 'lname', s.ln); _Yi(id, 'position', s.pos);
+                    _Yi(id, 'skill', s.sk); _Yi(id, 'strength', s.st);
+                    _Yi(id, 'speed', s.sp); _Yi(id, 'stamina', s.sa);
+                    _Yi(id, 'max_skill', 10); _Yi(id, 'max_strength', 10);
+                    _Yi(id, 'max_speed', 10); _Yi(id, 'max_stamina', 10);
+                    _Yi(id, 'skin', s.skin); _Yi(id, 'face_y', s.fy); _Yi(id, 'face_x', s.fx);
+                    _Yi(id, 'condition', 100); _Yi(id, 'resting', 0);
+                    _Yi(id, 'injury_week', 0); _Yi(id, 'backup', 0); _Yi(id, 'hof', 0);
+                    _Yi(id, 'stat_tackles', 0); _Yi(id, 'stat_sacks', 0); _Yi(id, 'stat_int', 0);
+                    out.push({ fn: s.fn, ln: s.ln, pos: s.pos, id: id });
+                }
+                return out.length ? out : null;
+            }
+            function rb2pPosGroup(pos) {
+                return (pos === 6) ? 6 : (pos === 7) ? 7 : (pos === 8 || pos === 9) ? 8 : 0;
+            }
+            function rb2pStarDefenders() {
+                try {
+                    var oppUid = Number(window._rb2p_oppTeamUid);
+                    if (isNaN(oppUid)) return;
+                    if (rb2pOppStars == null || rb2pOppStarsUid !== oppUid) {
+                        rb2pOppStars = rb2pBuildOppStars(oppUid);
+                        rb2pOppStarsUid = oppUid;
+                    }
+                    if (!rb2pOppStars) return;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var insts = { 6: [], 7: [], 8: [] };
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2) continue;
+                        if (inst._eE2._fE2 !== 'obj_playerDF') continue;
+                        var g = rb2pPosGroup(inst._O01);
+                        if (g) insts[g].push(inst);
+                    }
+                    for (var gk in insts) insts[gk].sort(function (a, b) { return a.y - b.y; });
+                    var stars = { 6: [], 7: [], 8: [] };
+                    for (var j = 0; j < rb2pOppStars.length; j++) {
+                        var grp = rb2pPosGroup(rb2pOppStars[j].pos);
+                        if (grp) stars[grp].push(rb2pOppStars[j]);
+                    }
+                    for (var g2 in stars) {
+                        var arr = insts[g2], st = stars[g2];
+                        for (var n = 0; n < st.length && n < arr.length; n++) {
+                            var di = arr[n], star = st[n];
+                            if (di._7j !== star.id) di._7j = star.id;   // engine draws star+initials+face
+                            di._rb2pStar = star;                        // bridge tag (stat attribution)
+                        }
+                    }
+                } catch (e) {}
+            }
+
             // ===== Poll loop: detect stall + drain pending =====
             setInterval(function () {
                 try {
@@ -4438,6 +4524,7 @@
                     hookEngineAk1Script();
                     var engineMatch = RB.engineState();
                     if (!engineMatch) { hideWait(); return; }
+                    rb2pStarDefenders();   // V88: star the opponent's named D each tick
                     // Bug 2: _rb2p_userIsWaitingForOpponent is the single sentinel.
                     // It's set by the _1c1 wrapper when we lose possession,
                     // and by startTwoPlayerMatch('b') for the initial park.
@@ -4871,6 +4958,31 @@
             try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
             catch (e) { return 'max'; }
         }
+        // V88: make DEFENSE LEVEL matter. engineDefenseAggression (lower = harder)
+        // is set from the difficulty toggle as the BASELINE, then nudged by the
+        // OPPONENT's aggregate defensive rating (the D the user is driving
+        // against). A stronger D → lower value → harder to move the ball. The
+        // toggle stays primary; the engine clamps internally so at Max the
+        // effect is subtle, at Medium/Easy it's clear (per the agreed model).
+        // Rating comes from the static TEAM_ROSTERS table (present on both
+        // devices) keyed by the opponent's uid; neutral 6.5 if no custom roster.
+        function teamDefenseRating(uid) {
+            var t = window._rb2p_TEAM_ROSTERS && window._rb2p_TEAM_ROSTERS[uid];
+            if (!t) return 6.5;
+            var sum = 0, c = 0;
+            for (var i = 0; i < t.length; i++) {
+                var p = t[i];
+                if (p.pos >= 6 && p.pos <= 9) { sum += (p.sk + p.st + p.sp) / 3; c++; }
+            }
+            return c ? sum / c : 6.5;
+        }
+        function computeDefenseAggression() {
+            var base = USER_DIFFICULTY_TO_ENGINE_AGGRESSION[getUserDifficultyPref()];
+            if (typeof base !== 'number') base = -15;
+            var r = teamDefenseRating(Number(window._rb2p_oppTeamUid));
+            return base + (6.5 - r) * 1.5;   // stronger opp D → harder
+        }
+        window._rb2p_computeDefenseAggression = computeDefenseAggression;
         function setUserDifficultyPref(v) {
             try { localStorage.setItem('rb2p_difficulty', v); } catch (e) {}
             renderUserDifficultyButtons();
@@ -4878,7 +4990,7 @@
             try {
                 if (RB.isEngineInMatchRoom()) {
                     var engineMatch = RB.engineState();
-                    var aggression = USER_DIFFICULTY_TO_ENGINE_AGGRESSION[v];
+                    var aggression = computeDefenseAggression();
                     if (engineMatch && typeof aggression === 'number') {
                         engineMatch.engineDefenseAggression = aggression;
                     }
