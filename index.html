@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V79</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V80</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1176,6 +1176,106 @@
                 } catch (e) { console.log('[2P TEAMS] jersey hardcode err', e); }
             }
 
+            // ===== V80: custom per-team rosters =====
+            // Curated real-player rosters, installed at match start by
+            // OVERWRITING the 12 existing roster players in place (every
+            // engine-expected field already exists; savegame stays sane).
+            // Spec: fn/ln names; pos 1=QB 2=RB 3=TE 4=WR 6=DL 7=LB 8=DB 10=K;
+            // sk/st/sp/sa = engine skill/strength/speed/stamina (0-10; the UI
+            // relabels per position: skill=Accuracy(QB)/Catching/Tackling,
+            // strength=ArmStr(QB)/KickRange(K)/Blocking(TE));
+            // skin 2=light 1=mixed 0=dark; fy+skin pick the face sheet,
+            // fx 0-7 the face. Full conversion + face-catalog rules in
+            // .claude/skills/roster-injection/SKILL.md.
+            // Canonical order: QB, RB, WR, WR, TE, K, DL, DL, LB, LB, DB, DB.
+            var TEAM_ROSTERS = {
+                22: [ // San Francisco 49ers
+                    { fn: 'Brock',     ln: 'Purdy',      pos: 1,  sk: 9,  st: 8,  sp: 7, sa: 8,  skin: 2, fy: 0, fx: 4 },
+                    { fn: 'Christian', ln: 'McCaffrey',  pos: 2,  sk: 9,  st: 8,  sp: 9, sa: 10, skin: 2, fy: 1, fx: 3 },
+                    { fn: 'Mike',      ln: 'Evans',      pos: 4,  sk: 9,  st: 8,  sp: 7, sa: 8,  skin: 0, fy: 1, fx: 1 },
+                    { fn: 'Jauan',     ln: 'Jennings',   pos: 4,  sk: 9,  st: 8,  sp: 6, sa: 8,  skin: 0, fy: 4, fx: 3 },
+                    { fn: 'George',    ln: 'Kittle',     pos: 3,  sk: 10, st: 10, sp: 9, sa: 9,  skin: 2, fy: 0, fx: 3 },
+                    { fn: 'Eddy',      ln: 'Pineiro',    pos: 10, sk: 8,  st: 7,  sp: 5, sa: 8,  skin: 2, fy: 0, fx: 2 },
+                    { fn: 'Nick',      ln: 'Bosa',       pos: 6,  sk: 9,  st: 9,  sp: 9, sa: 8,  skin: 2, fy: 2, fx: 4 },
+                    { fn: 'Osa',       ln: 'Odighizuwa', pos: 6,  sk: 8,  st: 8,  sp: 7, sa: 8,  skin: 0, fy: 5, fx: 1 },
+                    { fn: 'Fred',      ln: 'Warner',     pos: 7,  sk: 10, st: 8,  sp: 9, sa: 10, skin: 0, fy: 4, fx: 0 },
+                    { fn: 'Dre',       ln: 'Greenlaw',   pos: 7,  sk: 9,  st: 7,  sp: 8, sa: 7,  skin: 0, fy: 1, fx: 4 },
+                    { fn: 'Deommodore',ln: 'Lenoir',     pos: 8,  sk: 7,  st: 6,  sp: 8, sa: 8,  skin: 0, fy: 1, fx: 0 },
+                    { fn: 'Nate',      ln: 'Hobbs',      pos: 8,  sk: 7,  st: 6,  sp: 8, sa: 8,  skin: 0, fy: 2, fx: 4 }
+                ],
+                11: [ // Pittsburgh Steelers
+                    { fn: 'Aaron',     ln: 'Rodgers',    pos: 1,  sk: 8,  st: 8,  sp: 5, sa: 7,  skin: 2, fy: 0, fx: 0, age: 41 },
+                    { fn: 'Jaylen',    ln: 'Warren',     pos: 2,  sk: 7,  st: 7,  sp: 8, sa: 8,  skin: 0, fy: 4, fx: 7 },
+                    { fn: 'D.K.',      ln: 'Metcalf',    pos: 4,  sk: 8,  st: 9,  sp: 9, sa: 8,  skin: 0, fy: 8, fx: 4 },
+                    { fn: 'Michael',   ln: 'Pittman',    pos: 4,  sk: 8,  st: 7,  sp: 7, sa: 8,  skin: 0, fy: 1, fx: 3 },
+                    { fn: 'Pat',       ln: 'Freiermuth', pos: 3,  sk: 8,  st: 7,  sp: 6, sa: 8,  skin: 2, fy: 0, fx: 4 },
+                    { fn: 'Chris',     ln: 'Boswell',    pos: 10, sk: 9,  st: 9,  sp: 5, sa: 8,  skin: 2, fy: 0, fx: 7 },
+                    { fn: 'Cameron',   ln: 'Heyward',    pos: 6,  sk: 9,  st: 9,  sp: 7, sa: 8,  skin: 0, fy: 3, fx: 6, age: 36 },
+                    { fn: 'Keeanu',    ln: 'Benton',     pos: 6,  sk: 7,  st: 8,  sp: 6, sa: 8,  skin: 0, fy: 2, fx: 6 },
+                    { fn: 'T.J.',      ln: 'Watt',       pos: 7,  sk: 9,  st: 9,  sp: 9, sa: 9,  skin: 2, fy: 2, fx: 4 },
+                    { fn: 'Patrick',   ln: 'Queen',      pos: 7,  sk: 9,  st: 6,  sp: 8, sa: 8,  skin: 0, fy: 4, fx: 1 },
+                    { fn: 'Jalen',     ln: 'Ramsey',     pos: 8,  sk: 8,  st: 7,  sp: 8, sa: 8,  skin: 0, fy: 1, fx: 6 },
+                    { fn: 'Joey',      ln: 'Porter',     pos: 8,  sk: 7,  st: 6,  sp: 9, sa: 8,  skin: 0, fy: 7, fx: 4 }
+                ]
+            };
+            function applyCustomRoster(st, uid) {
+                try {
+                    if (!st || st._Ln == null) return;
+                    var specs = TEAM_ROSTERS[uid];
+                    if (!specs) {
+                        console.log('[2P ROSTER] no custom roster for uid ' + uid + ' — engine default');
+                        return;
+                    }
+                    var n = _wi(st._Ln);
+                    var count = Math.min(n, specs.length);
+                    if (n < specs.length) {
+                        console.warn('[2P ROSTER] roster has only ' + n + ' slots — installing first ' + count);
+                    }
+                    for (var i = 0; i < count; i++) {
+                        var p = _zi(st._Ln, i);
+                        var s = specs[i];
+                        if (p == null) continue;
+                        _Yi(p, 'fname', s.fn);  _Yi(p, 'lname', s.ln);
+                        _Yi(p, 'position', s.pos);
+                        _Yi(p, 'skill', s.sk);  _Yi(p, 'strength', s.st);
+                        _Yi(p, 'speed', s.sp);  _Yi(p, 'stamina', s.sa);
+                        _Yi(p, 'max_skill', 10);    _Yi(p, 'max_strength', 10);
+                        _Yi(p, 'max_speed', 10);    _Yi(p, 'max_stamina', 10);
+                        _Yi(p, 'skin', s.skin);
+                        _Yi(p, 'face_x', s.fx);  _Yi(p, 'face_y', s.fy);
+                        _Yi(p, 'age', s.age || 26);
+                        _Yi(p, 'condition', 100);  _Yi(p, 'attitude', 99);
+                        _Yi(p, 'resting', 0);      _Yi(p, 'injury_week', 0);
+                        _Yi(p, 'hof', 0);
+                    }
+                    console.log('[2P ROSTER] installed ' + count + ' custom players for uid ' + uid);
+                } catch (e) { console.log('[2P ROSTER] err', e); }
+            }
+            // Console verification: dump the live roster as a table.
+            window._rb2p_dumpRoster = function () {
+                var rows = [];
+                try {
+                    var ctrl = _si(64), o = null;
+                    for (var k in ctrl) { if (ctrl.hasOwnProperty(k)) { o = ctrl[k]; break; } }
+                    if (!o || o._Ln == null) { console.warn('no roster'); return rows; }
+                    var n = _wi(o._Ln);
+                    for (var i = 0; i < n; i++) {
+                        var p = _zi(o._Ln, i);
+                        if (p == null) continue;
+                        rows.push({
+                            name: _Ai(p, 'fname') + ' ' + _Ai(p, 'lname'),
+                            pos: _Ai(p, 'position'),
+                            skill: _Ai(p, 'skill'), strength: _Ai(p, 'strength'),
+                            speed: _Ai(p, 'speed'), stamina: _Ai(p, 'stamina'),
+                            skin: _Ai(p, 'skin'),
+                            face: _Ai(p, 'face_y') + '/' + _Ai(p, 'face_x')
+                        });
+                    }
+                } catch (e) { console.warn('dump err', e); }
+                console.table(rows);
+                return rows;
+            };
+
             // ===== V73: paint every player EVERY FRAME (verified fix) =====
             // Verified in a headless browser by reading rendered pixels +
             // forcing test colors. Two corrections over V71:
@@ -1329,6 +1429,13 @@
                     // _gx applies (swap to the next color if it exactly
                     // matches the user's), so the two teams stay distinct.
                     applyHardcodedJerseys(st, userUid, oppUid);
+
+                    // ===== V80: install this device's curated roster =====
+                    // Overwrites the 12 roster players in place with the
+                    // picked team's real players (names/faces/ratings). The
+                    // opponent's roster is installed on THEIR device. Teams
+                    // without a TEAM_ROSTERS entry keep the engine default.
+                    applyCustomRoster(st, userUid);
 
                     if (st) st._fx = 0;
                     _Hj(STATE_MATCH);
