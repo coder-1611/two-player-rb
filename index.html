@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V80</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V81</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4416,14 +4416,25 @@
                     //   • otSuddenDeath: in OT (Q5+), the instant the score
                     //     stops being tied, the game is won.
                     if (u === o) return;
-                    var stageOver = em.engineDriveFsmStage === 13;
-                    // Clock-based fallback: require the play to have ended
-                    // (controller not in active-play state 2) so a last-second
-                    // game-winning play isn't cut off before it resolves.
+                    // V81 FIX: the old `stage 13 = game over` signal was
+                    // WRONG — FSM stage 13 is the END-OF-QUARTER display the
+                    // engine enters after EVERY quarter (retrobowl.js _Ib1
+                    // case 19 sets _Vy=13, THEN increments _Wy), so any
+                    // quarter ending with a non-tied score showed FINAL after
+                    // Q1. Stage-13 is dropped entirely. The unambiguous
+                    // signals are:
+                    //   • pastRegulation: the engine already incremented the
+                    //     quarter PAST 4 (happens only when Q4 ended). With a
+                    //     non-tied score that's the final whistle; with a tie
+                    //     the OT flow (below) takes over, and the first OT
+                    //     score makes this fire = sudden death.
+                    //   • regulationOver: Q4 clock at 0:00 with the play
+                    //     resolved (controller not in active-play state 2),
+                    //     for the moment before the engine's own transition.
+                    var pastRegulation = (q >= 5);
                     var regulationOver = (q === 4 && mn === 0 && sc === 0 &&
                                           em.engineControllerState !== 2);
-                    var otSuddenDeath = (q >= 5);
-                    if (!stageOver && !regulationOver && !otSuddenDeath) return;
+                    if (!pastRegulation && !regulationOver) return;
                     window._rb2p_gameOverReported = true;
                     var report = window._rb2p_collectBoxScore();
                     console.log('[2P FINAL] game over — ' + report.team + ' ' + report.score +
