@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V81</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V82</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1218,6 +1218,8 @@
                     { fn: 'Joey',      ln: 'Porter',     pos: 8,  sk: 7,  st: 6,  sp: 9, sa: 8,  skin: 0, fy: 7, fx: 4 }
                 ]
             };
+            // Exposed for the lobby's read-only roster preview (V82).
+            window._rb2p_TEAM_ROSTERS = TEAM_ROSTERS;
             function applyCustomRoster(st, uid) {
                 try {
                     if (!st || st._Ln == null) return;
@@ -1243,10 +1245,20 @@
                         _Yi(p, 'max_speed', 10);    _Yi(p, 'max_stamina', 10);
                         _Yi(p, 'skin', s.skin);
                         _Yi(p, 'face_x', s.fx);  _Yi(p, 'face_y', s.fy);
-                        _Yi(p, 'age', s.age || 26);
+                        var age = s.age || 26;
+                        _Yi(p, 'age', age);
                         _Yi(p, 'condition', 100);  _Yi(p, 'attitude', 99);
                         _Yi(p, 'resting', 0);      _Yi(p, 'injury_week', 0);
                         _Yi(p, 'hof', 0);
+                        // Made-up career flavor for the profile page (V82):
+                        // salary scales with overall, contract 2-3y, veteran
+                        // XP level from age. The engine derives the rest
+                        // (VALUE/round pick, GREAT condition, stars) itself.
+                        var avg = (s.sk + s.st + s.sp + s.sa) / 4;
+                        _Yi(p, 'salary', avg >= 9 ? 28 : avg >= 8 ? 20 : avg >= 7 ? 14 : 8);
+                        _Yi(p, 'contract', 2 + ((s.ln.length + i) % 2));
+                        _Yi(p, 'xp', 99);
+                        _Yi(p, 'xp_level', Math.max(1, Math.min(9, age - 21)));
                     }
                     console.log('[2P ROSTER] installed ' + count + ' custom players for uid ' + uid);
                 } catch (e) { console.log('[2P ROSTER] err', e); }
@@ -1275,6 +1287,76 @@
                 console.table(rows);
                 return rows;
             };
+
+            // ===== V82: read-only roster preview (reuses the ENGINE'S OWN
+            // roster + player-profile pages, which exist in retrobowl.js but
+            // were dead/unreachable in this fork) =====
+            // rm_roster = room 25, rm_profile_player = room 22 (room list
+            // order in retrobowl.js; rm_home=14 / rm_match=17 match the
+            // fork's existing constants). Picking a team installs its custom
+            // roster into object 64's _Ln and jumps to rm_roster; tapping a
+            // player card opens the engine's profile page with the real
+            // ratings bars. While preview is active, every career button
+            // (BENCH / STATS / MEETING / TRADE, nav helmet/home, info) is
+            // destroyed each tick — the preview is read-only; the only
+            // control is our own BACK arrow.
+            var ROSTER_ROOM = 25, PROFILE_ROOM = 22;
+            window._rb2p_rosterPreviewActive = false;
+            var previewBackBtn = document.createElement('button');
+            previewBackBtn.id = 'rb-preview-back';
+            previewBackBtn.textContent = '◀ BACK';
+            previewBackBtn.style.cssText =
+                'position:fixed;left:10px;bottom:10px;z-index:9999;display:none;' +
+                'background:#1a1a2e;color:#fff;border:2px solid #fff;border-radius:8px;' +
+                'padding:10px 18px;font-family:monospace;font-size:14px;font-weight:bold;' +
+                'letter-spacing:2px;cursor:pointer;';
+            document.body.appendChild(previewBackBtn);
+            previewBackBtn.addEventListener('click', function () {
+                window._rb2p_exitRosterPreview();
+            });
+            window._rb2p_previewRoster = function (uid) {
+                try {
+                    var st = _6E2._Ue2(64);
+                    if (!st || typeof _Hj !== 'function') return false;
+                    applyCustomRoster(st, uid);
+                    window._rb2p_rosterPreviewActive = true;
+                    _Hj(ROSTER_ROOM);
+                    console.log('[2P PREVIEW] roster preview for uid ' + uid);
+                    return true;
+                } catch (e) { console.log('[2P PREVIEW] err', e); return false; }
+            };
+            window._rb2p_exitRosterPreview = function () {
+                window._rb2p_rosterPreviewActive = false;
+                previewBackBtn.style.display = 'none';
+                try { _Hj(14); } catch (e) {}   // rm_home
+                if (typeof window._rb2p_afterPreview === 'function') {
+                    try { window._rb2p_afterPreview(); } catch (e) {}
+                }
+            };
+            setInterval(function () {
+                try {
+                    if (!window._rb2p_rosterPreviewActive) {
+                        if (previewBackBtn.style.display !== 'none') previewBackBtn.style.display = 'none';
+                        return;
+                    }
+                    var room = (typeof _ft !== 'undefined' && _ft._gt) ? _ft._gt() : -1;
+                    if (room !== ROSTER_ROOM && room !== PROFILE_ROOM) return;
+                    previewBackBtn.style.display = 'block';
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2) continue;
+                        var nm = inst._eE2._fE2 || '';
+                        // Strip every engine button family; the player CARDS
+                        // (obj_playerprofile) are not buttons and survive.
+                        if (nm.indexOf('obj_button') === 0 || nm.indexOf('obj_btn') === 0 ||
+                            nm === 'obj_hof_btn' || nm === 'obj_edit_team') {
+                            try { if (typeof _cr === 'function') _cr(inst); else inst._HL2 = true; }
+                            catch (eD) { try { inst._HL2 = true; } catch (e2) {} }
+                        }
+                    }
+                } catch (e) {}
+            }, 50);
 
             // ===== V73: paint every player EVERY FRAME (verified fix) =====
             // Verified in a headless browser by reading rendered pixels +
@@ -4807,6 +4889,17 @@
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/teams/' + myRole), uid)
                       .catch(function () {});
                 }
+                // V82: choosing a team opens the engine's own roster page
+                // (read-only — career buttons stripped, BACK returns here).
+                if (!gameStarted && typeof window._rb2p_previewRoster === 'function') {
+                    window._rb2p_afterPreview = function () {
+                        lobby.style.display = 'flex';
+                        showView('room');
+                    };
+                    if (window._rb2p_previewRoster(uid)) {
+                        lobby.style.display = 'none';
+                    }
+                }
             });
         }
 
@@ -5403,6 +5496,10 @@
             // startTwoPlayerMatch reads the final synced value (both devices
             // converged on the same rooms/{code}/config/quarterMins).
             window._rb2p_quarterMins = currentQuarterMins;
+            // V82: if a roster preview is open when both players ready up,
+            // shut it down so the match launch isn't fighting the preview.
+            window._rb2p_rosterPreviewActive = false;
+
             // V66/V68: lock in the agreed teams (authoritative, no race) so
             // the engine builds the match — and the jerseys — from the
             // selected UIDs rather than any stale/default value. Set the
