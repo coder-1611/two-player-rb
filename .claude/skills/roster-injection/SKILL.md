@@ -37,9 +37,28 @@ added by following the Workflow section.
   `attitude` (0-100), `resting:0`, `injury_week:0`, `hof:0`.
 - The engine's own full-creation generator is `_zH(_, t, pos, age, minR, maxR)`
   @58041 (sets ~70 fields incl. zeroed `stat_*`/`season_*`/`career_*`) — see
-  Appendix. **We do NOT create structs from scratch**: we OVERWRITE the 12
-  existing default-roster players in place (safer: every engine-expected field
-  already exists, savegame stays consistent).
+  Appendix.
+
+### Roster list only ships ~5 players — APPEND the rest (V85)
+The engine's roster list (object 64's `_Ln`) in this fork ships with only the
+**offense skill players** (~5: QB/RB/WR/WR/TE) — the defense and kicker never
+existed, so there was nothing to overwrite and they silently went missing.
+`applyCustomRoster` therefore does two things:
+- **i < current length** → overwrite the existing slot in place (`_zi(_Ln,i)`).
+- **i ≥ current length** → **clone** a known-good player struct and append it.
+  We do NOT build a struct from scratch (the card/profile renderers read ~70
+  fields). Instead `appendClonedPlayer(st, 0)`:
+  `var src=_fg2._Ue2(_zi(st._Ln,0))` → `var id=_du()` → `var dst=_fg2._Ue2(id)`
+  → shallow-copy every own key (`for k in src: dst[k]=src[k]`) → `_8j(st._Ln,id)`.
+  Every engine-expected field exists (copied from a live player); then
+  `writeRosterPlayer` overwrites name/pos/ratings/face/age/etc. `teamid` is left
+  as cloned (correct internal id). `randnum` (jersey #) is reset per slot so the
+  clones don't all inherit the template's number. Idempotent across re-previews
+  (only appends when `i ≥ length`, so the list caps at 12). The engine's roster
+  screen auto-lays the 12 cards 6-per-row (offense row + defense/K row) and
+  lights the DEFENSE star meter — no layout work needed.
+  `_du`/`_fg2`/`_8j` are all reachable from the bridge (the MAX button already
+  uses `_fg2._Ue2`).
 
 ### Rating-label mapping (VERIFIED @ retrobowl.js:69433-69470)
 The UI relabels the same 4 fields per position. Roster .md columns map:
