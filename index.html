@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V83</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V84</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1322,6 +1322,20 @@
                             catch (eD) { try { inst._HL2 = true; } catch (e2) {} }
                         }
                     }
+                    // V84: kill the engine's intro tutorial at the source.
+                    // s_check_intro pops msg_Intro_* boxes ("Welcome to
+                    // Buffalo!", "These are your key players...") whenever
+                    // object 64's step counter _0E is 1..8 and the matching
+                    // room loads (home=14, roster=25, profile=22). In the
+                    // roster preview the button sweeper eats the popup's OK
+                    // button, leaving an undismissable blue banner. Career
+                    // tutorial is meaningless in 2P — hold the step at 0
+                    // (and the _co done-flag at 1) so no intro box spawns.
+                    var c64 = _si(64);
+                    for (var k64 in c64) if (c64.hasOwnProperty(k64)) {
+                        if (c64[k64]._0E !== 0) c64[k64]._0E = 0;
+                        c64[k64]._co = 1;
+                    }
                 } catch (e) {}
             }, 100);
 
@@ -1342,6 +1356,13 @@
                     var st = _6E2._Ue2(64);
                     if (!st || typeof _Hj !== 'function') return false;
                     applyCustomRoster(st, uid);
+                    // V84: zero the tutorial step BEFORE entering rm_roster so
+                    // msg_Intro_4 can't fire on room entry (the 100ms guard
+                    // above would be up to a tick late).
+                    try {
+                        var cP = _si(64);
+                        for (var kP in cP) if (cP.hasOwnProperty(kP)) { cP[kP]._0E = 0; cP[kP]._co = 1; }
+                    } catch (eP) {}
                     window._rb2p_rosterPreviewActive = true;
                     _Hj(ROSTER_ROOM);
                     console.log('[2P PREVIEW] roster preview for uid ' + uid);
@@ -1372,8 +1393,14 @@
                         var nm = inst._eE2._fE2 || '';
                         // Strip every engine button family; the player CARDS
                         // (obj_playerprofile) are not buttons and survive.
+                        // V84: also strip popup boxes (obj_msgbg backdrop +
+                        // obj_messagebox text) — destroying only their buttons
+                        // left an undismissable blue tutorial banner. Scoped to
+                        // preview rooms; the PAT modal (same objects) lives in
+                        // rm_match and is untouched.
                         if (nm.indexOf('obj_button') === 0 || nm.indexOf('obj_btn') === 0 ||
-                            nm === 'obj_hof_btn' || nm === 'obj_edit_team') {
+                            nm === 'obj_hof_btn' || nm === 'obj_edit_team' ||
+                            nm === 'obj_msgbg' || nm === 'obj_messagebox') {
                             try { if (typeof _cr === 'function') _cr(inst); else inst._HL2 = true; }
                             catch (eD) { try { inst._HL2 = true; } catch (e2) {} }
                         }
