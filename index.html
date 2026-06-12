@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V77</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V78</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1189,6 +1189,16 @@
                 inst._oQ = writeRGB(null, sHex, 256); inst._WQ = writeRGB(null, sHex, 300);
                 inst._pQ = writeRGB(null, pHex, 256); inst._XQ = writeRGB(null, pHex, 300);
             }
+            // Overwrite one of object 64's color arrays in place (the engine's
+            // per-draw color SOURCE). Same [R/div, G/div, B/div] format _gx uses.
+            function setO64(o64, key, hex, div) {
+                try {
+                    var arr = o64[key];
+                    if (!arr || typeof arr.length !== 'number') { o64[key] = writeRGB(null, hex, div); return; }
+                    var rgb = writeRGB(null, hex, div);
+                    arr[0] = rgb[0]; arr[1] = rgb[1]; arr[2] = rgb[2];
+                } catch (e) {}
+            }
             function rb2pPaintJerseysOnce() {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
@@ -1204,6 +1214,19 @@
                     if (oh === uh) oh = os;   // clash-avoid opponent vs user
                     if (os === us) os = op;
                     if (op === up) op = oh;
+                    // ===== V78: overwrite the ENGINE'S color SOURCE every frame =====
+                    // The engine re-colors the on-field players from object 64's
+                    // color arrays on every draw (via _x7/_z7), instantly
+                    // overwriting any per-instance paint — which is why painting
+                    // player instances (incl. console commands) never sticks for
+                    // the offense. So we rewrite object 64 itself each frame:
+                    //   _It/_Kt/_Mt = USER helmet/shirt/pants (drives obj_playerOF)
+                    //   _St/_Ut/_Wt = OPPONENT helmet/shirt/pants (drives obj_playerDF)
+                    //   _Lt/_Nt, _Vt/_Xt = the darker /300 shade variants
+                    setO64(o64, '_It', uh, 256); setO64(o64, '_Kt', us, 256); setO64(o64, '_Lt', us, 300);
+                    setO64(o64, '_Mt', up, 256); setO64(o64, '_Nt', up, 300);
+                    setO64(o64, '_St', oh, 256); setO64(o64, '_Ut', os, 256); setO64(o64, '_Vt', os, 300);
+                    setO64(o64, '_Wt', op, 256); setO64(o64, '_Xt', op, 300);
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
