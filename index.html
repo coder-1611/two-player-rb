@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V82</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V83</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1302,6 +1302,29 @@
             // control is our own BACK arrow.
             var ROSTER_ROOM = 25, PROFILE_ROOM = 22;
             window._rb2p_rosterPreviewActive = false;
+
+            // ===== V83: kill achievement/notification toasts globally =====
+            // obj_notification is the engine's sliding "ACHIEVEMENT!" banner
+            // (created by _Wi on the PopUps layer, queued in object 64's
+            // _nl1). In this fork its dismiss timing can stall (gutted career
+            // loops), leaving the banner stuck on screen — and the 5-star
+            // custom rosters now trigger achievements constantly (preview
+            // install, 2-pt conversions, shutouts...). Career achievements
+            // are meaningless in 2P, so destroy every toast on sight.
+            setInterval(function () {
+                try {
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2) continue;
+                        if (inst._eE2._fE2 === 'obj_notification') {
+                            try { if (typeof _cr === 'function') _cr(inst); else inst._HL2 = true; }
+                            catch (eD) { try { inst._HL2 = true; } catch (e2) {} }
+                        }
+                    }
+                } catch (e) {}
+            }, 100);
+
             var previewBackBtn = document.createElement('button');
             previewBackBtn.id = 'rb-preview-back';
             previewBackBtn.textContent = '◀ BACK';
