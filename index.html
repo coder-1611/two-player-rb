@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V94</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V95</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2721,19 +2721,33 @@
                     // INT (Vy=8) which the receiver negates AGAIN (double-mirror).
                     //
                     // Possession must persist across Q1→Q2 and Q3→Q4 (only HALFTIME
-                    // and OT flip). So if a non-halftime quarter rollover just
-                    // happened (quarter incremented to 2 or 4 within ~5 s) and the
-                    // user still has the ball, RESUME the user's drive at the current
-                    // spot instead of handing off. Halftime (→Q3) and OT (→Q5) fall
-                    // through to the normal handoff below.
-                    var qTo = window._rb2p_quarterChangedTo;
-                    var qRolloverRecent = (Date.now() - (window._rb2p_quarterChangedToMs || 0)) < 5000;
-                    var nonHalftimeRollover = qRolloverRecent && (qTo === 2 || qTo === 4);
+                    // and OT flip). The fix CANNOT use a time window: the diagnostic
+                    // showed the post-rollover cascade parks the FSM at Vy=13 with the
+                    // clock FROZEN for ~5s, then drifts to dead Vy=4, and the watchdog
+                    // fires ~7-8s after the increment — past any fixed window (that's
+                    // why V94 missed). The robust signal is _rb2p_quarterResumePending:
+                    // the tracker sets it on a non-halftime rollover (into Q2/Q4) and
+                    // clears it only once the user actually plays a down in the new
+                    // quarter (the clock ticks below the quarter's start time). While
+                    // it's set, the offense is still trying to resume into the new
+                    // quarter — so KEEP the ball and re-establish the user's drive
+                    // instead of handing off. Halftime (→Q3) and OT (→Q5) never set
+                    // the flag, so they fall through to the normal handoff below; and
+                    // a genuine 4th-down stall mid-quarter (after the user has played)
+                    // also falls through because the flag is already cleared.
                     var userHasBall = engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx;
-                    if (nonHalftimeRollover && userHasBall && window._rb2p_userIsWaitingForOpponent !== true) {
-                        var keepYard = engineMatch.engineYardLineSigned;
-                        var keepDown = engineMatch.engineDownNumber;
-                        var keepToGo = engineMatch.engineYardsToGo;
+                    if (window._rb2p_quarterResumePending === true && userHasBall &&
+                        window._rb2p_userIsWaitingForOpponent !== true) {
+                        var qTo = window._rb2p_quarterChangedTo;
+                        // Resume where the user actually was when the quarter ended
+                        // (the tracker captured the last live offensive spot), not the
+                        // cascade's drifted value.
+                        var keepYard = (typeof window._rb2p_preRolloverYard === 'number')
+                            ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
+                        var keepDown = (typeof window._rb2p_preRolloverDown === 'number')
+                            ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
+                        var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
+                            ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
                         console.log('[2P QTR-KEEP] FSM parked at dead Vy=' + engineMatch.engineDriveFsmStage +
                                     ' right after rollover into Q' + qTo + ' — offense KEEPS the ball ' +
                                     '(yard ' + keepYard + ', down ' + keepDown + '&' + keepToGo + '); resuming drive, no handoff');
@@ -2786,20 +2800,57 @@
             window._rb2p_lastStableQuarter = 1;
             window._rb2p_quarterChangedToMs = 0;
             window._rb2p_quarterChangedTo   = 0;
+            window._rb2p_quarterResumePending = false;  // set on non-halftime rollover, cleared when user plays a down
+            window._rb2p_preRolloverYard = null;        // user's live spot just before the quarter ended
+            window._rb2p_preRolloverDown = null;
+            window._rb2p_preRolloverToGo = null;
             var qkPrevQuarterSeen = null;
+            var qkQuarterStartSec = null;               // the new quarter's starting clock (seconds), captured after the clock resets
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
                     var em = RB.engineState();
                     if (!em || em.engineQuarter == null) return;
                     var qNow = Number(em.engineQuarter);
-                    var clockRunning = Number(em.engineMinutesLeft) > 0 || Number(em.engineSecondsLeft) > 0;
+                    var sec  = Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft);
+                    var userHasBall = em.enginePossessingTeamIdx === em.engineUserTeamIdx;
+                    var clockRunning = sec > 0;
+
+                    // Capture the user's LIVE offensive spot during real play so a
+                    // quarter-keep can resume exactly there (not the cascade's drift).
+                    if (userHasBall && em.engineControllerState === 2 && window._rb2p_userIsWaitingForOpponent !== true) {
+                        window._rb2p_preRolloverYard = em.engineYardLineSigned;
+                        window._rb2p_preRolloverDown = em.engineDownNumber;
+                        window._rb2p_preRolloverToGo = em.engineYardsToGo;
+                    }
+
                     if (clockRunning) window._rb2p_lastStableQuarter = qNow;
+
                     if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen) {
+                        // Quarter just incremented.
                         window._rb2p_quarterChangedToMs = Date.now();
                         window._rb2p_quarterChangedTo   = qNow;
+                        qkQuarterStartSec = null;
+                        // Only Q2 and Q4 keep possession (Q1→Q2, Q3→Q4). Halftime
+                        // (→Q3) and OT (→Q5) legitimately change possession.
+                        window._rb2p_quarterResumePending = (qNow === 2 || qNow === 4) && userHasBall;
                     }
                     qkPrevQuarterSeen = qNow;
+
+                    // While a resume is pending, watch the clock: it stays frozen at
+                    // the new quarter's start until the user actually plays a down.
+                    // Capture that start value once the clock resets (>0), then clear
+                    // the flag the moment the clock ticks below it (= a real snap
+                    // happened and time elapsed). This bounds the keep-ball window to
+                    // "before the user's first play of the quarter" — robust to how
+                    // long the engine's rollover cascade takes.
+                    if (window._rb2p_quarterResumePending === true) {
+                        if (qkQuarterStartSec === null && sec > 0) {
+                            qkQuarterStartSec = sec;
+                        } else if (qkQuarterStartSec !== null && sec < qkQuarterStartSec) {
+                            window._rb2p_quarterResumePending = false;  // user has played a down
+                        }
+                    }
                 } catch (e) {}
             }, 100);
 
