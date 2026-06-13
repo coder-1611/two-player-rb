@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V91</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V92</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2205,6 +2205,22 @@
                         if (isApplyingOpponentOutcome) return;
                         var post = snapshotEngineMatch();
                         if (!pre || !post) return;
+                        // ===== GROUND-TRUTH probe for the quarter-boundary mirror =====
+                        // Logs the EXACT transform _1c1 applied to the signed yard
+                        // line (_6F) and possession (_UD), plus quarter/clock. The
+                        // "49ers 1-yd → Steelers 1-yd" bug is a double-negation of
+                        // _6F; this line shows whether _1c1 negated once (engine
+                        // correct, bridge/cross-device adds the 2nd) and whether it
+                        // fired on a clock-expired non-halftime boundary. Captured on
+                        // EVERY _1c1, before any early-return below.
+                        try {
+                            console.log('[2P 1c1] yard ' + pre.engineYardLineSigned + '→' + post.engineYardLineSigned +
+                                        ' | UD ' + pre.enginePossessingTeamIdx + '→' + post.enginePossessingTeamIdx +
+                                        ' | user0z=' + post.engineUserTeamIdx +
+                                        ' | Q' + pre.engineQuarter + '→' + post.engineQuarter +
+                                        ' clock=' + post.engineMinutesLeft + ':' + ('0' + post.engineSecondsLeft).slice(-2) +
+                                        ' expired=' + (Number(post.engineMinutesLeft) <= 0 && Number(post.engineSecondsLeft) <= 0));
+                        } catch (eP) {}
                         // Local user must have just lost possession this call.
                         if (!(pre.enginePossessingTeamIdx === pre.engineUserTeamIdx &&
                               post.enginePossessingTeamIdx !== post.engineUserTeamIdx)) return;
@@ -2337,17 +2353,17 @@
                         }
 
                         // ===== Normal possession-change SEND =====
-                        // Diagnostic: log the quarter/clock at every handoff. If a
-                        // handoff ever fires right at a non-halftime quarter
-                        // rollover (qtr just became 2 or 4), this line pinpoints it
-                        // so the spurious "possession changes between quarters" case
-                        // can be traced to its exact trigger.
+                        // Diagnostic: log the quarter/clock + yardline at every
+                        // handoff so a wrong-quarter possession flip can be traced
+                        // to its exact trigger and the yardline sign verified.
                         try {
                             console.log('[2P HANDOFF] _1c1 send — type=' + (outcome && outcome.type) +
                                         ' Q' + post.engineQuarter +
                                         ' ' + post.engineMinutesLeft + ':' +
                                         ('0' + post.engineSecondsLeft).slice(-2) +
-                                        ' graceActive=' + (Date.now() < (window._rb2p_qRolloverGraceUntilMs || 0)));
+                                        ' yardLine=' + (outcome && outcome.yardLine) +
+                                        ' clockExpired=' + (Number(post.engineMinutesLeft) <= 0 &&
+                                                            Number(post.engineSecondsLeft) <= 0));
                         } catch (eLog) {}
                         window._rb2p_userOutcomeSendInProgress = true;
                         window._rb2p_userIsWaitingForOpponent = true;
@@ -2666,34 +2682,6 @@
                     if (window._rb2p_userIsWaitingForOpponent === true) return;  // already handed off
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null || engineMatch.engineScoreboard == null) return;
-
-                    // ===== Quarter-rollover handoff guard =====
-                    // Possession must only switch at HALFTIME (Q2→Q3) — never at
-                    // Q1→Q2 or Q3→Q4, where the offense keeps the ball into the
-                    // next quarter (same as real football). The engine honors
-                    // this: it only flips _UD at the new Q3 (retrobowl.js case 20,
-                    // Wy=3); for Wy=2/4 it just resumes the saved drive stage
-                    // (_._Vy = _._0d1). BUT during that end-of-quarter cascade the
-                    // FSM legitimately PAUSES, and if it pauses on a "dead" stage
-                    // (4/10/11, AI-offense gutted), this watchdog would mistake the
-                    // pause for a stuck drive and force a possession change —
-                    // handing the ball to the opponent at the wrong boundary
-                    // ("possession changes between quarters sometimes"). So: on a
-                    // NON-halftime quarter rollover, give the engine a grace window
-                    // to resume the drive before the watchdog may force anything.
-                    // Real drive-ends at the buzzer (punt/turnover/score) and the
-                    // halftime kickoff still hand off via the untouched _1c1 hook.
-                    var qNow = Number(engineMatch.engineQuarter);
-                    if (qNow !== window._rb2p_wdPrevQuarter) {
-                        if (window._rb2p_wdPrevQuarter != null && qNow !== 3) {
-                            window._rb2p_qRolloverGraceUntilMs = Date.now() + 3000;
-                            console.log('[2P QTR] quarter ' + window._rb2p_wdPrevQuarter + '→' + qNow +
-                                        ' (non-halftime) — suppressing forced-handoff watchdog 3s so the ' +
-                                        'offense keeps the ball into the new quarter');
-                        }
-                        window._rb2p_wdPrevQuarter = qNow;
-                    }
-                    if (Date.now() < (window._rb2p_qRolloverGraceUntilMs || 0)) return;
 
                     // Track score so we can pick TD vs FG vs turnover for
                     // the forced end. Treat score regression as an external
