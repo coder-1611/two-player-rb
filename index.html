@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V93</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V94</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2222,44 +2222,12 @@
                                         ' expired=' + (Number(post.engineMinutesLeft) <= 0 && Number(post.engineSecondsLeft) <= 0) +
                                         ' lastStableQ=' + window._rb2p_lastStableQuarter);
                         } catch (eP) {}
-
-                        // ===== ROOT FIX: quarter-boundary possession is HALFTIME-ONLY =====
-                        // The engine treats a quarter-clock-expiry as a drive-end and
-                        // routes it through _1c1, which flips possession (_UD) AND
-                        // negates the signed yard line (_6F = -_6F). At a non-halftime
-                        // boundary that's wrong: the offense must keep the ball into
-                        // the next quarter (so "49ers 1-yd from TD" stays the 49ers,
-                        // not a mirror to the Steelers). We detect the clock-expiry
-                        // flip and UNDO it at this single chokepoint — restoring
-                        // possession, yard line, and down/distance — then skip the
-                        // handoff so the opponent's device is never told to take over.
-                        //
-                        // Gated precisely so the LEGIT flips are untouched:
-                        //   • clock must be expired (a normal mid-quarter turnover has
-                        //     clock > 0 — verified: a real INT logged clock=1:00),
-                        //   • the ending quarter (lastStableQuarter, the last quarter
-                        //     seen with the clock running) must be Q1 or Q3. Ending Q2
-                        //     (→ halftime kickoff) and Q4 (→ OT / game over) keep their
-                        //     correct possession change.
-                        var preClockExpired = Number(pre.engineMinutesLeft) <= 0 &&
-                                              Number(pre.engineSecondsLeft) <= 0;
-                        var endingQ = window._rb2p_lastStableQuarter;
-                        var nonHalftimeBoundary = (endingQ === 1 || endingQ === 3);
-                        var userLostPossession = pre.enginePossessingTeamIdx === pre.engineUserTeamIdx &&
-                                                 post.enginePossessingTeamIdx !== post.engineUserTeamIdx;
-                        if (preClockExpired && nonHalftimeBoundary && userLostPossession) {
-                            var emFix = RB.engineState();
-                            if (emFix) {
-                                emFix.enginePossessingTeamIdx = pre.enginePossessingTeamIdx;
-                                emFix.engineYardLineSigned    = pre.engineYardLineSigned;
-                                emFix.engineDownNumber        = pre.engineDownNumber;
-                                emFix.engineYardsToGo         = pre.engineYardsToGo;
-                            }
-                            console.log('[2P QTR-KEEP] end of Q' + endingQ + ' (non-halftime) — undid the ' +
-                                        'engine possession+yardline flip; offense keeps the ball at yard ' +
-                                        pre.engineYardLineSigned + '. No handoff sent.');
-                            return;   // skip the possession-change SEND below
-                        }
+                        // NOTE: the quarter-boundary possession bug is fixed at its
+                        // CONFIRMED source — the drive-end watchdog (see [2P QTR-KEEP]
+                        // there). It's NOT fixed here, because the flip is forced by
+                        // the watchdog AFTER the clock has reset to the new quarter
+                        // (so this _1c1 fires with clock running, not at 0:00). The
+                        // [2P 1c1] log above stays as a tracer.
                         // Local user must have just lost possession this call.
                         if (!(pre.enginePossessingTeamIdx === pre.engineUserTeamIdx &&
                               post.enginePossessingTeamIdx !== post.engineUserTeamIdx)) return;
@@ -2743,6 +2711,46 @@
                     if (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) < 3000) return;
                     if (window._rb2p_userOutcomeSendInProgress) return;
 
+                    // ===== ROOT FIX: don't force a handoff at a quarter rollover =====
+                    // CONFIRMED root cause of "possession switches between quarters /
+                    // 49ers 1-yd-from-TD → Steelers 1-yd-from-TD": the engine's
+                    // quarter cascade leaves the FSM resting on a DEAD stage (Vy=4,
+                    // the gutted AI go-for-it), so this watchdog mistook the rollover
+                    // for a stuck drive and force-ended it via _1c1 — flipping
+                    // possession AND negating the yard line, then shipping it as an
+                    // INT (Vy=8) which the receiver negates AGAIN (double-mirror).
+                    //
+                    // Possession must persist across Q1→Q2 and Q3→Q4 (only HALFTIME
+                    // and OT flip). So if a non-halftime quarter rollover just
+                    // happened (quarter incremented to 2 or 4 within ~5 s) and the
+                    // user still has the ball, RESUME the user's drive at the current
+                    // spot instead of handing off. Halftime (→Q3) and OT (→Q5) fall
+                    // through to the normal handoff below.
+                    var qTo = window._rb2p_quarterChangedTo;
+                    var qRolloverRecent = (Date.now() - (window._rb2p_quarterChangedToMs || 0)) < 5000;
+                    var nonHalftimeRollover = qRolloverRecent && (qTo === 2 || qTo === 4);
+                    var userHasBall = engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx;
+                    if (nonHalftimeRollover && userHasBall && window._rb2p_userIsWaitingForOpponent !== true) {
+                        var keepYard = engineMatch.engineYardLineSigned;
+                        var keepDown = engineMatch.engineDownNumber;
+                        var keepToGo = engineMatch.engineYardsToGo;
+                        console.log('[2P QTR-KEEP] FSM parked at dead Vy=' + engineMatch.engineDriveFsmStage +
+                                    ' right after rollover into Q' + qTo + ' — offense KEEPS the ball ' +
+                                    '(yard ' + keepYard + ', down ' + keepDown + '&' + keepToGo + '); resuming drive, no handoff');
+                        if (typeof forceUserOffenseDrive === 'function') {
+                            forceUserOffenseDrive(keepYard);
+                            // forceUserOffenseDrive resets to 1st & 10; restore the
+                            // real down/distance that carried over the quarter break.
+                            try {
+                                engineMatch.engineDownNumber = keepDown;
+                                engineMatch.engineYardsToGo  = keepToGo;
+                            } catch (eDD) {}
+                        }
+                        stuckEngineFsmStage = null;            // re-baseline the stuck detector
+                        engineFsmStageStuckSinceMs = Date.now();
+                        return;                                 // do NOT force a possession change
+                    }
+
                     // Pick the end-Vy from the score delta so the receiver
                     // gets the right outcome type:
                     //   delta ≥ 6 → vyStage = 9  (TD)       → 'TD'  → kickoff (random 25-40)
@@ -2765,25 +2773,35 @@
                 } catch (e) {}
             }, 250);
 
-            // ===== Stable-quarter tracker =====
-            // Records the quarter number whenever the clock is RUNNING (not
-            // expired). At a quarter-clock-expiry the _1c1 hook reads this to
-            // know unambiguously WHICH quarter is ending — without it, the
-            // quarter number at the flip moment is racy (it may or may not have
-            // incremented yet), and misclassifying halftime would break the
-            // legit 2nd-half kickoff. lastStableQuarter ∈ {1,3} ⇒ ending Q1/Q3
-            // (non-halftime, offense keeps the ball); 2 ⇒ ending Q2 (halftime,
-            // possession flips); 4 ⇒ ending Q4 (game over / OT).
+            // ===== Quarter-change tracker =====
+            // Records the quarter number each tick and, crucially, WHEN it
+            // increments and to WHAT. The drive-end watchdog uses this to tell a
+            // genuine drive-end (4th-down go-for-it that died on the gutted AI
+            // path) apart from a quarter ROLLOVER (where the engine's quarter
+            // cascade parks the FSM on the same dead stage but the offense must
+            // KEEP the ball into the next quarter). Confirmed empirically: after
+            // a non-halftime rollover the FSM rests at Vy=4 and the watchdog was
+            // force-ending the drive — flipping possession + mirroring the yard
+            // line — at Q1→Q2 and Q3→Q4. (See qtr_test3 repro.)
             window._rb2p_lastStableQuarter = 1;
+            window._rb2p_quarterChangedToMs = 0;
+            window._rb2p_quarterChangedTo   = 0;
+            var qkPrevQuarterSeen = null;
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
                     var em = RB.engineState();
                     if (!em || em.engineQuarter == null) return;
+                    var qNow = Number(em.engineQuarter);
                     var clockRunning = Number(em.engineMinutesLeft) > 0 || Number(em.engineSecondsLeft) > 0;
-                    if (clockRunning) window._rb2p_lastStableQuarter = Number(em.engineQuarter);
+                    if (clockRunning) window._rb2p_lastStableQuarter = qNow;
+                    if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen) {
+                        window._rb2p_quarterChangedToMs = Date.now();
+                        window._rb2p_quarterChangedTo   = qNow;
+                    }
+                    qkPrevQuarterSeen = qNow;
                 } catch (e) {}
-            }, 200);
+            }, 100);
 
             // ===== Bidirectional UD watchdog =====
             // Rule:
