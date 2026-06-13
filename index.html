@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V98</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V99</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2740,27 +2740,95 @@
                             Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
                             !window._rb2p_userOutcomeSendInProgress) {
-                            var qlen = Number(engineMatch.engineQuarterLengthMins);
-                            if (!(qlen >= 1)) qlen = 2;
-                            console.log('[2P HALFTIME] FSM parked at Vy=13 ("End of 1st half") for ' +
-                                        (Date.now() - engineFsmStageStuckSinceMs) + 'ms (Q' + halfQ +
-                                        ', clock 0:00) — _Uc1 commercial-break resume never fires; ' +
-                                        'handing off the 2nd-half kickoff to the opponent (Q3, ' + qlen + ':00)');
-                            // Clear any stale pick-6 TD-replay latch so the
-                            // HALF_END send can't be misread as a pick-6.
+
+                            // --- REAL quarter length (issue #1) ---
+                            // engineQuarterLengthMins (_5F) is clamped >=2 by the
+                            // engine, so it forced 2:00 onto 1-minute games. Use
+                            // the max clock the scoreboard actually showed.
+                            var qsec = Number(window._rb2p_quarterLenSec);
+                            if (!(qsec >= 1)) qsec = 120;
+                            var qmin = Math.floor(qsec / 60), qrem = qsec % 60;
+
+                            // --- WHO gets the 2nd-half kickoff (issue #2) ---
+                            // Role A (engineUserTeamIdx===0) ALWAYS receives the
+                            // opening kickoff in this build (forced on offense at
+                            // match start); role B (===1) starts waiting. So the
+                            // 2nd-half kickoff ALWAYS goes to B — independent of
+                            // who happened to hold the ball when Q2 expired. (The
+                            // engine's own __y is the random coin toss the bridge
+                            // overrode, so it's unreliable here — use the role.)
+                            //   • This device is B  → it KEEPS / receives → resume
+                            //     a playable Q3 drive locally (no handoff).
+                            //   • This device is A  → the OTHER device (B) gets the
+                            //     ball → hand off as HALF_END.
+                            var iAmSecondHalfReceiver = (engineMatch.engineUserTeamIdx === 1);
+                            var raw = engineMatch.rawEngineMatch;
+                            // Clear any stale pick-6 TD-replay latch so the resume
+                            // / HALF_END can't be misread as a pick-6.
                             window._rb2p_lastTdReplayMs = 0;
                             window._rb2p_lastTdScoringTeamIdx = undefined;
-                            // Advance into the 2nd half + reset the clock so the
-                            // outcome (built from the post snapshot + live clock)
-                            // carries Q3 at full quarter length.
-                            engineMatch.engineQuarter       = 3;
-                            engineMatch.engineMinutesLeft   = qlen;
-                            engineMatch.engineSecondsLeft   = 0;
-                            engineMatch.engineTickAllowance = 0;
-                            engineMatch.engineDriveFsmStage = 24;   // inferUserDriveEndType(24) => 'HALF_END'
-                            engineMatch.enginePriorFsmStage = 24;
-                            var halfChangePoss = RB.getEngineScript('gml_Script_s_change_possession');
-                            if (typeof halfChangePoss === 'function') halfChangePoss(engineMatch.rawEngineMatch, _Sc2);
+
+                            if (iAmSecondHalfReceiver) {
+                                // KEEP: this device (B) receives the 2nd-half
+                                // kickoff. Resume into Q3 with a fresh kickoff
+                                // drive — same unstick as the V96 quarter-keep
+                                // (clear commentary, drives>=1, s_set_up_play,
+                                // hold kp=2 to overpower the engine's reset).
+                                var koYardK = -(25 + Math.floor(Math.random() * 16));   // own 25..40
+                                console.log('[2P HALFTIME] Vy=13 parked ' +
+                                            (Date.now() - engineFsmStageStuckSinceMs) + 'ms (Q' + halfQ +
+                                            ') — this device is the 2nd-half receiver (B); KEEPING ball, ' +
+                                            'starting Q3 ' + qmin + ':' + ('0' + qrem).slice(-2) +
+                                            ' at own ' + (50 + koYardK));
+                                engineMatch.engineQuarter       = 3;
+                                engineMatch.engineMinutesLeft   = qmin;
+                                engineMatch.engineSecondsLeft   = qrem;
+                                engineMatch.engineTickAllowance = 0;
+                                try { raw._831 = ''; raw.__b1 = ''; } catch (eC) {}
+                                engineMatch.engineMainCommentaryText = '';
+                                engineMatch.engineSubCommentaryText  = '';
+                                try { if (Number(raw._Nb1) < 1) raw._Nb1 = 1; } catch (eN) {}
+                                engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                                engineMatch.engineYardLineSigned    = koYardK;
+                                engineMatch.engineDownNumber        = 1;
+                                engineMatch.engineYardsToGo          = 10;
+                                var setUpPlayH = RB.getEngineScript('gml_Script_s_set_up_play');
+                                if (typeof setUpPlayH === 'function') setUpPlayH(raw, _Sc2, 0);
+                                engineMatch.engineDriveFsmStage   = 2;
+                                engineMatch.engineControllerState = 2;
+                                if (!qkResumeHoldActive) {
+                                    qkResumeHoldActive = true;
+                                    var hnH = 0;
+                                    var hivH = setInterval(function () {
+                                        try {
+                                            var em2 = RB.engineState();
+                                            if (em2) {
+                                                em2.engineControllerState = 2;
+                                                if (em2.engineDriveFsmStage > 2) em2.engineDriveFsmStage = 2;
+                                            }
+                                        } catch (eH) {}
+                                        if (++hnH > 90) { clearInterval(hivH); qkResumeHoldActive = false; }
+                                    }, 16);
+                                }
+                            } else {
+                                // HAND OFF: the OTHER device (B) is the 2nd-half
+                                // receiver. Advance to Q3 + reset the clock so the
+                                // HALF_END outcome carries the right quarter/clock,
+                                // then fire s_change_possession → the _1c1 hook
+                                // ships the outcome and parks us in WAIT.
+                                console.log('[2P HALFTIME] Vy=13 parked ' +
+                                            (Date.now() - engineFsmStageStuckSinceMs) + 'ms (Q' + halfQ +
+                                            ') — opponent (B) is the 2nd-half receiver; handing off Q3 ' +
+                                            qmin + ':' + ('0' + qrem).slice(-2));
+                                engineMatch.engineQuarter       = 3;
+                                engineMatch.engineMinutesLeft   = qmin;
+                                engineMatch.engineSecondsLeft   = qrem;
+                                engineMatch.engineTickAllowance = 0;
+                                engineMatch.engineDriveFsmStage = 24;   // inferUserDriveEndType(24) => 'HALF_END'
+                                engineMatch.enginePriorFsmStage = 24;
+                                var halfChangePoss = RB.getEngineScript('gml_Script_s_change_possession');
+                                if (typeof halfChangePoss === 'function') halfChangePoss(raw, _Sc2);
+                            }
                             stuckEngineFsmStage = null;
                             engineFsmStageStuckSinceMs = Date.now();
                         }
@@ -2911,6 +2979,18 @@
                     var sec  = Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft);
                     var userHasBall = em.enginePossessingTeamIdx === em.engineUserTeamIdx;
                     var clockRunning = sec > 0;
+
+                    // Capture the REAL quarter length = the max clock the
+                    // scoreboard ever showed (the clock only counts DOWN within
+                    // a quarter and resets to the same length each quarter, so
+                    // the max over the game IS the quarter length). The engine's
+                    // engineQuarterLengthMins (_5F) is clamped to >=2, which on a
+                    // 1-minute game wrongly forced 2:00 onto the 2nd half — this
+                    // empirical value is what the user actually set. Cap at 15min
+                    // to ignore any transient display glitch.
+                    if (sec > 0 && sec <= 900 && sec > (window._rb2p_quarterLenSec || 0)) {
+                        window._rb2p_quarterLenSec = sec;
+                    }
 
                     // Capture the user's LIVE offensive spot during real play so a
                     // quarter-keep can resume exactly there (not the cascade's drift).
