@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V97</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V98</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2702,6 +2702,71 @@
                         engineFsmStageStuckSinceMs = Date.now();
                         return;
                     }
+
+                    // ===== HALFTIME FREEZE (Vy=13 "End of 1st half") =====
+                    // CONFIRMED root cause (engine read, retrobowl.js _Ib1):
+                    // at clock=0 the engine runs e=19 (the Vy=12 quarter-over
+                    // handler), which sets the "End of 1st half" banner, Vy=13,
+                    // and increments the quarter. For NON-halftime ends it lets
+                    // the normal commentary-advance re-enter _Ib1 (e=20 restores
+                    // the saved Vy → lands on the V96-handled Vy=4 rollover), so
+                    // Vy=13 is sub-second there. But for HALFTIME (post-increment
+                    // Wy==3) e=19 instead schedules a poki commercial break
+                    // (_di(_,t,_Uc1,"poki_commercial_break")) — and _Uc1 NEVER
+                    // fires in this stripped build, so e=20 (clock reset + 2nd-
+                    // half kickoff) is never reached and the FSM is PARKED on
+                    // Vy=13 forever. (With ads off / global._mu=0 the branch is a
+                    // no-op and it parks just the same.) That's the freeze the
+                    // user sees — distinct from the Vy=4 quarter freeze.
+                    //
+                    // Both devices reach it; the WAIT device returned above. The
+                    // offense device (poss=ME) drives the resume: possession MUST
+                    // flip at halftime (the 2nd-half kickoff goes to the other
+                    // team — the user's own rule, "it should only switch in
+                    // halftime"), so we reuse the proven handoff path. Advance to
+                    // Q3 + reset the clock so the HALF_END outcome carries the
+                    // right quarter/clock, then fire s_change_possession → the
+                    // _1c1 hook ships a HALF_END outcome and parks us in WAIT.
+                    // The receiver applies it as a 2nd-half kickoff and plays Q3.
+                    if (engineMatch.engineDriveFsmStage === 13) {
+                        var halfQ = Number(engineMatch.engineQuarter);
+                        var halfClockExpired = Number(engineMatch.engineMinutesLeft) <= 0 &&
+                                               Number(engineMatch.engineSecondsLeft) <= 0;
+                        var halfPossMe = engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx;
+                        // 1500ms dwell excludes the sub-second transient Vy=13 at
+                        // Q1/Q3 ends (those auto-advance via e=20). Wy in {2,3}
+                        // pins it to the 1st-half boundary (Q4/OT ends are 4/5).
+                        if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 3) &&
+                            Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
+                            Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
+                            !window._rb2p_userOutcomeSendInProgress) {
+                            var qlen = Number(engineMatch.engineQuarterLengthMins);
+                            if (!(qlen >= 1)) qlen = 2;
+                            console.log('[2P HALFTIME] FSM parked at Vy=13 ("End of 1st half") for ' +
+                                        (Date.now() - engineFsmStageStuckSinceMs) + 'ms (Q' + halfQ +
+                                        ', clock 0:00) — _Uc1 commercial-break resume never fires; ' +
+                                        'handing off the 2nd-half kickoff to the opponent (Q3, ' + qlen + ':00)');
+                            // Clear any stale pick-6 TD-replay latch so the
+                            // HALF_END send can't be misread as a pick-6.
+                            window._rb2p_lastTdReplayMs = 0;
+                            window._rb2p_lastTdScoringTeamIdx = undefined;
+                            // Advance into the 2nd half + reset the clock so the
+                            // outcome (built from the post snapshot + live clock)
+                            // carries Q3 at full quarter length.
+                            engineMatch.engineQuarter       = 3;
+                            engineMatch.engineMinutesLeft   = qlen;
+                            engineMatch.engineSecondsLeft   = 0;
+                            engineMatch.engineTickAllowance = 0;
+                            engineMatch.engineDriveFsmStage = 24;   // inferUserDriveEndType(24) => 'HALF_END'
+                            engineMatch.enginePriorFsmStage = 24;
+                            var halfChangePoss = RB.getEngineScript('gml_Script_s_change_possession');
+                            if (typeof halfChangePoss === 'function') halfChangePoss(engineMatch.rawEngineMatch, _Sc2);
+                            stuckEngineFsmStage = null;
+                            engineFsmStageStuckSinceMs = Date.now();
+                        }
+                        return;   // never treat Vy=13 as a normal stuck-drive handoff
+                    }
+
                     if (!deadEngineFsmStages[engineMatch.engineDriveFsmStage]) return;
                     // V59: 800ms (was 1500) — these stages are genuinely dead
                     // (AI offense is gutted), so a shorter dwell just makes
@@ -4579,8 +4644,14 @@
                         //     the receiver's frame from _1c1's mirror after
                         //     _Dc1 advanced the punt distance.
                         // Type-driven yard-line placement:
+                        // HALF_END is the 2nd-half kickoff: receiver returns it
+                        // to their own 25..40, same as a TD/FG kickoff. (Without
+                        // this it would fall through to the turnover branch and
+                        // NEGATE the sender's yardLine — pinning the receiver in
+                        // the wrong spot.)
                         var isRandomKickoff = (outcome.type === 'TD' ||
-                                               outcome.type === 'FG');
+                                               outcome.type === 'FG'  ||
+                                               outcome.type === 'HALF_END');
                         var isEngineKickoff = (outcome.type === 'KICKOFF');
                         var isPunt          = (outcome.type === 'PUNT');
                         var yard;
