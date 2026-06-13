@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V96</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V97</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4760,8 +4760,21 @@
                         var arr = insts[g2], st = stars[g2];
                         for (var n = 0; n < st.length && n < arr.length; n++) {
                             var di = arr[n], star = st[n];
-                            if (di._7j !== star.id) di._7j = star.id;   // engine draws star+initials+face
+                            if (di._7j !== star.id) di._7j = star.id;   // engine draws star+face
                             di._rb2pStar = star;                        // bridge tag (stat attribution)
+                            // Initials over the head: the engine draws _I51 (the
+                            // "F.L" over-head label) whenever it's non-empty
+                            // (retrobowl.js:66960), but only ever COMPUTES it for
+                            // WR/TE at spawn — and defenders spawn with _7j=-4, so it
+                            // stays "". _I51 is set once at spawn and not reset per
+                            // frame, so writing it here makes the engine render the
+                            // starred defender's initials above their head, in the
+                            // engine's own camera space (tracks the player perfectly).
+                            if (!star._initials) {
+                                star._initials = (star.fn ? star.fn.charAt(0) : '') + '.' +
+                                                 (star.ln ? star.ln.charAt(0) : '');
+                            }
+                            if (di._I51 !== star._initials) di._I51 = star._initials;
                         }
                     }
                 } catch (e) {}
