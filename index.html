@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V89</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V90</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1541,9 +1541,72 @@
             // Run on BOTH rAF (before paint) AND a fast interval (after the
             // engine's step/draw), so we win the race against the engine's
             // per-frame default recolor regardless of callback ordering.
-            function rb2pRafLoop() { rb2pPaintJerseysOnce(); requestAnimationFrame(rb2pRafLoop); }
+
+            // ===== V90: EXACT sack/tackle attribution =====
+            // The engine stores the ACTUAL engaging defender on the ball
+            // carrier: carrier._l31 = defender instance id at engagement, and
+            // carrier._r81 ("last_tackled" per the engine's own debug name map)
+            // keeps the last engaged defender (retrobowl.js:54200-54202). So at
+            // the moment a play resolves as a tackle (controller _kp 2 → 4) or
+            // sack (2 → 11, QB carrier — retrobowl.js:52996), we read the
+            // carrier's engaged defender and credit ITS struct. Starred
+            // defender (_7j = named star struct) → credit lands on the real
+            // player; anonymous defender (_7j = -4) → counts for NOBODY.
+            // No heuristics: this is the same defender instance the engine
+            // physically collided with the carrier. Distance sanity-check
+            // guards the _r81 fallback (stale after a broken tackle when the
+            // carrier then runs out of bounds).
+            var rb2pPrevKp = null;
+            window._rb2p_defObsLog = [];
+            function rb2pObserveTackles() {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { rb2pPrevKp = null; return; }
+                    var em = RB.engineState();
+                    if (!em) return;
+                    var kp = em.engineControllerState;
+                    var prev = rb2pPrevKp;
+                    rb2pPrevKp = kp;
+                    if (kp === prev) return;
+                    if (prev !== 2) return;                 // only a live play resolving
+                    if (kp !== 4 && kp !== 11) return;      // 4 = carrier downed, 11 = QB sacked
+                    var carrierId = em.engineActivePlayerInst;
+                    if (carrierId == null || carrierId === -4) return;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var carrier = null, i;
+                    for (i = 0; i < all.length; i++) {
+                        var x = all[i];
+                        if (x && !x._HL2 && x.id === carrierId) { carrier = x; break; }
+                    }
+                    if (!carrier) return;
+                    var tacklerId = (typeof carrier._l31 === 'number' && carrier._l31 > 0) ? carrier._l31
+                                  : (typeof carrier._r81 === 'number' && carrier._r81 > 0) ? carrier._r81 : -4;
+                    if (tacklerId === -4) return;            // no contact (out of bounds / slide)
+                    var tackler = null;
+                    for (i = 0; i < all.length; i++) {
+                        var y = all[i];
+                        if (y && !y._HL2 && y.id === tacklerId) { tackler = y; break; }
+                    }
+                    if (!tackler) return;
+                    // Sanity: credited defender must actually be ON the carrier.
+                    var dx = tackler.x - carrier.x, dy = tackler.y - carrier.y;
+                    if (dx * dx + dy * dy > 24 * 24) return;
+                    var isSack = (kp === 11);
+                    if (!tackler._rb2pStar || tackler._7j == null || tackler._7j === -4) {
+                        window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: 'unstarred', credit: 'nobody' });
+                        console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') + ' by unstarred defender — counted for nobody');
+                        return;
+                    }
+                    _Yi(tackler._7j, 'stat_tackles', (Number(_Ai(tackler._7j, 'stat_tackles')) || 0) + 1);
+                    if (isSack) _Yi(tackler._7j, 'stat_sacks', (Number(_Ai(tackler._7j, 'stat_sacks')) || 0) + 1);
+                    window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: tackler._rb2pStar.ln });
+                    console.log('[2P DEF] ' + (isSack ? 'SACK' : 'TACKLE') + ' by ' +
+                                tackler._rb2pStar.fn + ' ' + tackler._rb2pStar.ln);
+                } catch (e) {}
+            }
+
+            function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pObserveTackles(); requestAnimationFrame(rb2pRafLoop); }
             requestAnimationFrame(rb2pRafLoop);
-            setInterval(rb2pPaintJerseysOnce, 16);
+            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); }, 16);
 
             function startTwoPlayerMatch(role) {
                 try {
