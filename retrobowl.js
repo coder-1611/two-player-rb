@@ -55127,10 +55127,15 @@ function _Ib1(_, t) {
                                 switch (0 == yyCompareVal(g, 6, g_GMLMathEpsilon, !1) || 0 == yyCompareVal(g, 7, g_GMLMathEpsilon, !1) ? A = 0 : 0 != yyCompareVal(g, 9, g_GMLMathEpsilon, !1) && 0 != yyCompareVal(g, 8, g_GMLMathEpsilon, !1) || (A = 1),
                                 A) {
                                     case 0:
-                                        yyfless(random(4), random(_Ai(p, "skill"))) && _X21(p, "stat_tackles", yyfplus(_Ri(_Ai(p, "stat_tackles")), 1));
+                                        /* [2P] removed probabilistic AI tackle attribution: this loop
+                                           credited a tackle to EVERY rostered defender on a per-trigger
+                                           random skill-roll (random(4)<random(skill)), multi-counting and
+                                           violating the "no probability for stats" rule. Real, exact tackle
+                                           credit is done by the bridge observer (carrier._l31/_r81). */
+                                        0;
                                         break;
                                     case 1:
-                                        yyfless(random(6), random(_Ai(p, "skill"))) && _X21(p, "stat_tackles", yyfplus(_Ri(_Ai(p, "stat_tackles")), 1))
+                                        0
                                 }
                             }
                         }

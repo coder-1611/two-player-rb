@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V90</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V91</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1604,7 +1604,12 @@
                 } catch (e) {}
             }
 
-            function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pObserveTackles(); requestAnimationFrame(rb2pRafLoop); }
+            // NOTE: rb2pObserveTackles() runs from the 16 ms interval ONLY (single
+            // caller). It was previously also called from the rAF loop, but the two
+            // loops share the rb2pPrevKp latch, so a 2->4/2->11 edge could be seen by
+            // both before either updated the latch — double-crediting one tackle.
+            // One caller = one credit per play-resolution edge.
+            function rb2pRafLoop() { rb2pPaintJerseysOnce(); requestAnimationFrame(rb2pRafLoop); }
             requestAnimationFrame(rb2pRafLoop);
             setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); }, 16);
 
@@ -2332,6 +2337,18 @@
                         }
 
                         // ===== Normal possession-change SEND =====
+                        // Diagnostic: log the quarter/clock at every handoff. If a
+                        // handoff ever fires right at a non-halftime quarter
+                        // rollover (qtr just became 2 or 4), this line pinpoints it
+                        // so the spurious "possession changes between quarters" case
+                        // can be traced to its exact trigger.
+                        try {
+                            console.log('[2P HANDOFF] _1c1 send — type=' + (outcome && outcome.type) +
+                                        ' Q' + post.engineQuarter +
+                                        ' ' + post.engineMinutesLeft + ':' +
+                                        ('0' + post.engineSecondsLeft).slice(-2) +
+                                        ' graceActive=' + (Date.now() < (window._rb2p_qRolloverGraceUntilMs || 0)));
+                        } catch (eLog) {}
                         window._rb2p_userOutcomeSendInProgress = true;
                         window._rb2p_userIsWaitingForOpponent = true;
                         // V56: turnover-type outcomes are HELD briefly before
@@ -2649,6 +2666,34 @@
                     if (window._rb2p_userIsWaitingForOpponent === true) return;  // already handed off
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null || engineMatch.engineScoreboard == null) return;
+
+                    // ===== Quarter-rollover handoff guard =====
+                    // Possession must only switch at HALFTIME (Q2→Q3) — never at
+                    // Q1→Q2 or Q3→Q4, where the offense keeps the ball into the
+                    // next quarter (same as real football). The engine honors
+                    // this: it only flips _UD at the new Q3 (retrobowl.js case 20,
+                    // Wy=3); for Wy=2/4 it just resumes the saved drive stage
+                    // (_._Vy = _._0d1). BUT during that end-of-quarter cascade the
+                    // FSM legitimately PAUSES, and if it pauses on a "dead" stage
+                    // (4/10/11, AI-offense gutted), this watchdog would mistake the
+                    // pause for a stuck drive and force a possession change —
+                    // handing the ball to the opponent at the wrong boundary
+                    // ("possession changes between quarters sometimes"). So: on a
+                    // NON-halftime quarter rollover, give the engine a grace window
+                    // to resume the drive before the watchdog may force anything.
+                    // Real drive-ends at the buzzer (punt/turnover/score) and the
+                    // halftime kickoff still hand off via the untouched _1c1 hook.
+                    var qNow = Number(engineMatch.engineQuarter);
+                    if (qNow !== window._rb2p_wdPrevQuarter) {
+                        if (window._rb2p_wdPrevQuarter != null && qNow !== 3) {
+                            window._rb2p_qRolloverGraceUntilMs = Date.now() + 3000;
+                            console.log('[2P QTR] quarter ' + window._rb2p_wdPrevQuarter + '→' + qNow +
+                                        ' (non-halftime) — suppressing forced-handoff watchdog 3s so the ' +
+                                        'offense keeps the ball into the new quarter');
+                        }
+                        window._rb2p_wdPrevQuarter = qNow;
+                    }
+                    if (Date.now() < (window._rb2p_qRolloverGraceUntilMs || 0)) return;
 
                     // Track score so we can pick TD vs FG vs turnover for
                     // the forced end. Treat score regression as an external
@@ -4680,6 +4725,15 @@
                         var s = _zi(roster, i);
                         if (!s) continue;
                         var pos = Number(_Ai(s, 'position')) || 0;
+                        // 2P: the local team's DEFENSE never plays a scene on this
+                        // device (the owner is parked in WAIT while the human-on-
+                        // offense plays on the OTHER device). Any stat_tackles/sacks
+                        // on the local roster's D are engine-sim artifacts (the
+                        // case-8 random skill-roll loop). The REAL, exact D stats for
+                        // this team are measured on the opponent's device and arrive
+                        // via mergeMyDefStats(). So never emit local-roster defense
+                        // here — it would show inflated/duplicate numbers.
+                        if (pos >= 6 && pos <= 9) continue;
                         var passYds = statNum(s, 'stat_yards');       // QB pass / receiver rec yards
                         var rushYds = statNum(s, 'stat_rush_yards');
                         var passTd  = statNum(s, 'stat_touchdowns');
