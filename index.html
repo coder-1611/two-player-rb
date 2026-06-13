@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V95</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V96</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2683,6 +2683,7 @@
             // (own 25). Otherwise vyStage = 8 (turnover-on-downs).
             var deadEngineFsmStages = { 4: true, 10: true, 11: true };
             var stuckEngineFsmStage = null, engineFsmStageStuckSinceMs = 0, lastUserScoreObserved = -1;
+            var qkResumeHoldActive = false;   // guards the kp=2 hold-loop so it can't stack
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
@@ -2748,17 +2749,47 @@
                             ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
                         var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
                             ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
-                        console.log('[2P QTR-KEEP] FSM parked at dead Vy=' + engineMatch.engineDriveFsmStage +
-                                    ' right after rollover into Q' + qTo + ' — offense KEEPS the ball ' +
-                                    '(yard ' + keepYard + ', down ' + keepDown + '&' + keepToGo + '); resuming drive, no handoff');
-                        if (typeof forceUserOffenseDrive === 'function') {
-                            forceUserOffenseDrive(keepYard);
-                            // forceUserOffenseDrive resets to 1st & 10; restore the
-                            // real down/distance that carried over the quarter break.
+                        // Re-establish a PLAYABLE drive (not just possession). A plain
+                        // forceUserOffenseDrive does NOT stick here: after a rollover the
+                        // engine sits in COMM_STAGE_DRIVE (Vy=4) with drives=0 and
+                        // re-asserts kp=1 (commentary mode) every frame, wiping the spawn
+                        // — the field stays empty (ball/OF/DF=0) and the screen freezes
+                        // on "X has it in midfield". Confirmed live. The cure (also
+                        // confirmed live): clear the looping drive-intro commentary, set
+                        // drives>0, force-spawn the play, then HOLD kp=2 for ~1.5 s to
+                        // overpower the engine's per-frame reset until the controller
+                        // commits to active play. Guarded so the hold-loop can't stack.
+                        if (!qkResumeHoldActive) {
+                            qkResumeHoldActive = true;
+                            console.log('[2P QTR-KEEP] FSM parked at dead Vy=' + engineMatch.engineDriveFsmStage +
+                                        ' (COMM_STAGE_DRIVE) after rollover into Q' + qTo + ' — offense KEEPS the ball; ' +
+                                        'force-spawning a playable drive (yard ' + keepYard + ', down ' + keepDown + '&' + keepToGo + ')');
                             try {
-                                engineMatch.engineDownNumber = keepDown;
-                                engineMatch.engineYardsToGo  = keepToGo;
-                            } catch (eDD) {}
+                                var raw = engineMatch.rawEngineMatch;
+                                try { raw._831 = ''; raw.__b1 = ''; } catch (eC) {}
+                                engineMatch.engineMainCommentaryText = '';
+                                engineMatch.engineSubCommentaryText  = '';
+                                try { if (Number(raw._Nb1) < 1) raw._Nb1 = 1; } catch (eN) {}  // drives=0 -> 1 (intro loops on 0)
+                                engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                                engineMatch.engineYardLineSigned    = keepYard;
+                                engineMatch.engineDownNumber        = keepDown;
+                                engineMatch.engineYardsToGo          = keepToGo;
+                                var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
+                                if (typeof setUpPlay === 'function') setUpPlay(raw, _Sc2, 0);
+                                engineMatch.engineDriveFsmStage   = 2;
+                                engineMatch.engineControllerState = 2;
+                                var hn = 0;
+                                var hiv = setInterval(function () {
+                                    try {
+                                        var em2 = RB.engineState();
+                                        if (em2) {
+                                            em2.engineControllerState = 2;
+                                            if (em2.engineDriveFsmStage > 2) em2.engineDriveFsmStage = 2;
+                                        }
+                                    } catch (eH) {}
+                                    if (++hn > 90) { clearInterval(hiv); qkResumeHoldActive = false; }
+                                }, 16);
+                            } catch (eR) { qkResumeHoldActive = false; }
                         }
                         stuckEngineFsmStage = null;            // re-baseline the stuck detector
                         engineFsmStageStuckSinceMs = Date.now();
