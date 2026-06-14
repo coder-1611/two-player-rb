@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V107</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V108</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5279,14 +5279,40 @@
                         window._rb2p_gameOverReported = false;
                     }
                     if (window._rb2p_gameOverReported) return;
+                    // V108: OVERTIME = "first TOUCHDOWN wins". A field goal does
+                    // NOT end OT, and the PAT is irrelevant — the 6-point TD
+                    // itself decides it. A TD is detected as a >=6-point jump in
+                    // either score since the last poll while in OT (set by the
+                    // OT-kickoff coordinator when regulation ends tied). FGs
+                    // (+3) just advance the baseline and play continues until a
+                    // TD. (Two scores can't land inside one 300 ms poll, so each
+                    // delta reflects exactly one scoring play.)
+                    if (q >= 5 && window._rb2p_inOvertime) {
+                        if (window._rb2p_otLastUser == null) {
+                            window._rb2p_otLastUser = u; window._rb2p_otLastOpp = o;
+                        }
+                        var userTd = (u - window._rb2p_otLastUser) >= 6;
+                        var oppTd  = (o - window._rb2p_otLastOpp)  >= 6;
+                        if (!userTd && !oppTd) {
+                            window._rb2p_otLastUser = u;   // FG/safety: advance baseline, keep playing
+                            window._rb2p_otLastOpp  = o;
+                            return;
+                        }
+                        window._rb2p_gameOverReported = true;
+                        var otRep = window._rb2p_collectBoxScore();
+                        console.log('[2P OT] touchdown scored — ' +
+                                    (userTd ? 'YOU win' : 'opponent wins'));
+                        if (typeof window._rb2p_reportGameOver === 'function') {
+                            window._rb2p_reportGameOver(otRep);
+                        }
+                        return;
+                    }
                     // V62: NEVER end on a tie — a tie goes to overtime. So
                     // every game-over signal requires the score to differ:
                     //   • stageOver: engine reached the game-over display
                     //     stage (only persists for a non-tie; on a tie the
                     //     engine resets _Vy to 1 for the OT kickoff).
                     //   • regulationOver: Q4 clock at 0:00, non-tied.
-                    //   • otSuddenDeath: in OT (Q5+), the instant the score
-                    //     stops being tied, the game is won.
                     if (u === o) return;
                     // V81 FIX: the old `stage 13 = game over` signal was
                     // WRONG — FSM stage 13 is the END-OF-QUARTER display the
@@ -5335,7 +5361,7 @@
             // this device routes possession the same way the opening kickoff
             // does (forceUserOffenseDrive for the receiver, WAIT for the
             // other). After that, normal 2P send/receive carries OT, and the
-            // sudden-death branch above ends it on the first score.
+            // OT branch above ends it on the first TOUCHDOWN (FGs don't win).
             var otInitedPeriod = -1;
             setInterval(function () {
                 try {
@@ -5344,11 +5370,25 @@
                     if (!em || em.engineUserTeamIdx == null) return;
                     var q = Number(em.engineQuarter) || 1;
                     // Reset the per-period guard when a fresh match starts.
-                    if (q <= 1) { otInitedPeriod = -1; return; }
+                    if (q <= 1) {
+                        otInitedPeriod = -1;
+                        // V108: clear OT state so a rematch's first-TD-wins
+                        // detection re-arms from scratch.
+                        window._rb2p_inOvertime = false;
+                        window._rb2p_otLastUser = null;
+                        window._rb2p_otLastOpp  = null;
+                        return;
+                    }
                     if (q < 5) return;                       // regulation
                     if (em.userScore !== em.opponentScore) return;  // someone leads → sudden death handles it
                     if (otInitedPeriod === q) return;        // already requested this OT period
                     otInitedPeriod = q;
+                    // V108: we're tied entering OT → mark OT active so the
+                    // game-over detector switches to "first TD wins" and snapshot
+                    // the (tied) baseline scores for TD-delta detection.
+                    window._rb2p_inOvertime = true;
+                    window._rb2p_otLastUser = Number(em.userScore) || 0;
+                    window._rb2p_otLastOpp  = Number(em.opponentScore) || 0;
                     console.log('[2P OT] tied entering OT period ' + q + ' — requesting shared kickoff');
                     if (typeof window._rb2p_requestOtKickoff === 'function') {
                         window._rb2p_requestOtKickoff(q);
@@ -6425,6 +6465,9 @@
             myDefStats = null;   // V89
             oppDefStatsLocal = null;   // V106
             window._rb2p_gameOverReported = false;
+            window._rb2p_inOvertime = false;   // V108: re-arm first-TD-wins OT
+            window._rb2p_otLastUser = null;
+            window._rb2p_otLastOpp  = null;
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
             // V62: clear any prior overtime coin flips so a rematch's OT
