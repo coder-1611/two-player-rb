@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V103</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V104</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5044,6 +5044,7 @@
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_MATCH) {
                         hideWait();
+                        window._rb2p_recvStatInited = false;   // re-arm for next match
                         return;
                     }
                     hookEngineChangePossessionScript();
@@ -5052,6 +5053,29 @@
                     var engineMatch = RB.engineState();
                     if (!engineMatch) { hideWait(); return; }
                     rb2pStarDefenders();   // V88: star the opponent's named D each tick
+                    // V104 CRASH FIX: stat_receive is a bridge-added field (the V102
+                    // reception patch at retrobowl.js:55869 increments it). The engine
+                    // never initializes it on roster structs, so reading it unset gives
+                    // undefined and the engine patch's _Ri(_Ai(...,"stat_receive"))
+                    // THROWS inside the engine step on the first catch — killing the
+                    // engine's frame loop (the random mid-play freeze: render alive,
+                    // step dead). Zero it once per match on every local roster player
+                    // (JS Number||0, never _Ri, so this can't throw) before any catch.
+                    if (window._rb2p_recvStatInited !== true) {
+                        try {
+                            var ctrl64 = _si(64), to64 = null;
+                            for (var kk in ctrl64) { if (ctrl64.hasOwnProperty(kk)) { to64 = ctrl64[kk]; break; } }
+                            if (to64 && to64._Ln != null) {
+                                var rn = _wi(to64._Ln);
+                                for (var ri = 0; ri < rn; ri++) {
+                                    var rp = _zi(to64._Ln, ri);
+                                    if (rp != null) _Yi(rp, 'stat_receive', Number(_Ai(rp, 'stat_receive')) || 0);
+                                }
+                                window._rb2p_recvStatInited = true;
+                                console.log('[2P] stat_receive zero-initialized on ' + rn + ' roster players');
+                            }
+                        } catch (eInit) {}
+                    }
                     // Bug 2: _rb2p_userIsWaitingForOpponent is the single sentinel.
                     // It's set by the _1c1 wrapper when we lose possession,
                     // and by startTwoPlayerMatch('b') for the initial park.
