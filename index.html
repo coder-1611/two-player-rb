@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V100</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V101</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2729,58 +2729,54 @@
                     // _1c1 hook ships a HALF_END outcome and parks us in WAIT.
                     // The receiver applies it as a 2nd-half kickoff and plays Q3.
                     if (engineMatch.engineDriveFsmStage === 13) {
+                        // ===== Vy=13 = the engine's between-quarters park stage =====
+                        // CONFIRMED (engine read + headless): at clock=0 the engine
+                        // runs case 19 (the Vy=12 handler) which sets the end-of-
+                        // quarter banner, Vy=13, records the quarter score, and
+                        // INCREMENTS the quarter. Then the resume step (e=20) is
+                        // supposed to reset the clock and start the next quarter —
+                        // but in this stripped build that step never fires (the
+                        // commentary-advance / poki commercial callback that would
+                        // re-enter _Ib1 is gone), so the FSM is PARKED on Vy=13
+                        // forever at EVERY quarter end. (Pre-V100 it crashed at
+                        // Q3 end instead; fixing that exposed this park.)
+                        //
+                        // Because case 19 already incremented the quarter, engineQuarter
+                        // here is the quarter we're ENTERING. So:
+                        //   Wy=2 → end of Q1  → continue into Q2 (KEEP possession)
+                        //   Wy=3 → HALFTIME   → 2nd-half kickoff (possession FLIPS)
+                        //   Wy=4 → end of Q3  → continue into Q4 (KEEP possession)
+                        //   Wy>=5 → end of regulation / OT → leave it to the engine.
+                        // (The earlier Wy in {2,3} test wrongly treated end-of-Q1 as
+                        // halftime and skipped Q2 — that was the "ends in Q3" bug.)
                         var halfQ = Number(engineMatch.engineQuarter);
                         var halfClockExpired = Number(engineMatch.engineMinutesLeft) <= 0 &&
                                                Number(engineMatch.engineSecondsLeft) <= 0;
                         var halfPossMe = engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx;
-                        // 1500ms dwell excludes the sub-second transient Vy=13 at
-                        // Q1/Q3 ends (those auto-advance via e=20). Wy in {2,3}
-                        // pins it to the 1st-half boundary (Q4/OT ends are 4/5).
-                        if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 3) &&
+                        // 1500ms dwell excludes a sub-second transient Vy=13 if the
+                        // engine ever does auto-advance (then V96's Vy=4 keep-path
+                        // catches it instead — both KEEP, so no conflict).
+                        if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 3 || halfQ === 4) &&
                             Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
                             !window._rb2p_userOutcomeSendInProgress) {
 
-                            // --- REAL quarter length (issue #1) ---
-                            // engineQuarterLengthMins (_5F) is clamped >=2 by the
-                            // engine, so it forced 2:00 onto 1-minute games. Use
-                            // the max clock the scoreboard actually showed.
+                            // REAL quarter length: max clock the scoreboard showed
+                            // (engineQuarterLengthMins/_5F is clamped >=2, which
+                            // forced 2:00 onto 1-minute games).
                             var qsec = Number(window._rb2p_quarterLenSec);
                             if (!(qsec >= 1)) qsec = 120;
                             var qmin = Math.floor(qsec / 60), qrem = qsec % 60;
-
-                            // --- WHO gets the 2nd-half kickoff (issue #2) ---
-                            // Role A (engineUserTeamIdx===0) ALWAYS receives the
-                            // opening kickoff in this build (forced on offense at
-                            // match start); role B (===1) starts waiting. So the
-                            // 2nd-half kickoff ALWAYS goes to B — independent of
-                            // who happened to hold the ball when Q2 expired. (The
-                            // engine's own __y is the random coin toss the bridge
-                            // overrode, so it's unreliable here — use the role.)
-                            //   • This device is B  → it KEEPS / receives → resume
-                            //     a playable Q3 drive locally (no handoff).
-                            //   • This device is A  → the OTHER device (B) gets the
-                            //     ball → hand off as HALF_END.
-                            var iAmSecondHalfReceiver = (engineMatch.engineUserTeamIdx === 1);
                             var raw = engineMatch.rawEngineMatch;
-                            // Clear any stale pick-6 TD-replay latch so the resume
-                            // / HALF_END can't be misread as a pick-6.
+                            // Clear any stale pick-6 TD-replay latch so the resume /
+                            // HALF_END can't be misread as a pick-6.
                             window._rb2p_lastTdReplayMs = 0;
                             window._rb2p_lastTdScoringTeamIdx = undefined;
 
-                            if (iAmSecondHalfReceiver) {
-                                // KEEP: this device (B) receives the 2nd-half
-                                // kickoff. Resume into Q3 with a fresh kickoff
-                                // drive — same unstick as the V96 quarter-keep
-                                // (clear commentary, drives>=1, s_set_up_play,
-                                // hold kp=2 to overpower the engine's reset).
-                                var koYardK = -(25 + Math.floor(Math.random() * 16));   // own 25..40
-                                console.log('[2P HALFTIME] Vy=13 parked ' +
-                                            (Date.now() - engineFsmStageStuckSinceMs) + 'ms (Q' + halfQ +
-                                            ') — this device is the 2nd-half receiver (B); KEEPING ball, ' +
-                                            'starting Q3 ' + qmin + ':' + ('0' + qrem).slice(-2) +
-                                            ' at own ' + (50 + koYardK));
-                                engineMatch.engineQuarter       = 3;
+                            // Shared "resume a playable drive on THIS device" unstick
+                            // (clear commentary, drives>=1, spawn the play, hold kp=2
+                            // to overpower the engine's per-frame reset).
+                            var doKeepDrive = function (yard, down, toGo) {
                                 engineMatch.engineMinutesLeft   = qmin;
                                 engineMatch.engineSecondsLeft   = qrem;
                                 engineMatch.engineTickAllowance = 0;
@@ -2789,9 +2785,9 @@
                                 engineMatch.engineSubCommentaryText  = '';
                                 try { if (Number(raw._Nb1) < 1) raw._Nb1 = 1; } catch (eN) {}
                                 engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
-                                engineMatch.engineYardLineSigned    = koYardK;
-                                engineMatch.engineDownNumber        = 1;
-                                engineMatch.engineYardsToGo          = 10;
+                                engineMatch.engineYardLineSigned    = yard;
+                                engineMatch.engineDownNumber        = down;
+                                engineMatch.engineYardsToGo          = toGo;
                                 var setUpPlayH = RB.getEngineScript('gml_Script_s_set_up_play');
                                 if (typeof setUpPlayH === 'function') setUpPlayH(raw, _Sc2, 0);
                                 engineMatch.engineDriveFsmStage   = 2;
@@ -2810,29 +2806,55 @@
                                         if (++hnH > 90) { clearInterval(hivH); qkResumeHoldActive = false; }
                                     }, 16);
                                 }
+                            };
+
+                            if (halfQ === 3) {
+                                // ===== HALFTIME: possession FLIPS =====
+                                // Role A (engineUserTeamIdx===0) ALWAYS received the
+                                // opening kickoff (forced on offense at match start);
+                                // role B (===1) started waiting. So the 2nd-half
+                                // kickoff ALWAYS goes to B — regardless of who held
+                                // the ball when Q2 expired. (The engine's __y is the
+                                // random coin toss the bridge overrode, so use role.)
+                                var iAmSecondHalfReceiver = (engineMatch.engineUserTeamIdx === 1);
+                                if (iAmSecondHalfReceiver) {
+                                    var koYardK = -(25 + Math.floor(Math.random() * 16));   // own 25..40
+                                    console.log('[2P HALFTIME] Vy=13 (Q3) — this device is the 2nd-half ' +
+                                                'receiver (B); KEEPING ball, Q3 ' + qmin + ':' +
+                                                ('0' + qrem).slice(-2) + ' at own ' + (50 + koYardK));
+                                    doKeepDrive(koYardK, 1, 10);
+                                } else {
+                                    console.log('[2P HALFTIME] Vy=13 (Q3) — opponent (B) is the 2nd-half ' +
+                                                'receiver; handing off Q3 ' + qmin + ':' + ('0' + qrem).slice(-2));
+                                    engineMatch.engineMinutesLeft   = qmin;
+                                    engineMatch.engineSecondsLeft   = qrem;
+                                    engineMatch.engineTickAllowance = 0;
+                                    engineMatch.engineDriveFsmStage = 24;   // inferUserDriveEndType(24) => 'HALF_END'
+                                    engineMatch.enginePriorFsmStage = 24;
+                                    var halfChangePoss = RB.getEngineScript('gml_Script_s_change_possession');
+                                    if (typeof halfChangePoss === 'function') halfChangePoss(raw, _Sc2);
+                                }
                             } else {
-                                // HAND OFF: the OTHER device (B) is the 2nd-half
-                                // receiver. Advance to Q3 + reset the clock so the
-                                // HALF_END outcome carries the right quarter/clock,
-                                // then fire s_change_possession → the _1c1 hook
-                                // ships the outcome and parks us in WAIT.
-                                console.log('[2P HALFTIME] Vy=13 parked ' +
-                                            (Date.now() - engineFsmStageStuckSinceMs) + 'ms (Q' + halfQ +
-                                            ') — opponent (B) is the 2nd-half receiver; handing off Q3 ' +
-                                            qmin + ':' + ('0' + qrem).slice(-2));
-                                engineMatch.engineQuarter       = 3;
-                                engineMatch.engineMinutesLeft   = qmin;
-                                engineMatch.engineSecondsLeft   = qrem;
-                                engineMatch.engineTickAllowance = 0;
-                                engineMatch.engineDriveFsmStage = 24;   // inferUserDriveEndType(24) => 'HALF_END'
-                                engineMatch.enginePriorFsmStage = 24;
-                                var halfChangePoss = RB.getEngineScript('gml_Script_s_change_possession');
-                                if (typeof halfChangePoss === 'function') halfChangePoss(raw, _Sc2);
+                                // ===== NON-HALFTIME quarter end (Q1→Q2, Q3→Q4) =====
+                                // Possession does NOT change — the offense continues
+                                // into the next quarter from the same spot, fresh
+                                // clock. engineQuarter is already the new quarter
+                                // (case 19 incremented it).
+                                var keepYard = (typeof window._rb2p_preRolloverYard === 'number')
+                                    ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
+                                var keepDown = (typeof window._rb2p_preRolloverDown === 'number')
+                                    ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
+                                var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
+                                    ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
+                                console.log('[2P QTR-ADVANCE] Vy=13 (end of Q' + (halfQ - 1) + ' → Q' + halfQ +
+                                            ') — KEEPING ball, ' + qmin + ':' + ('0' + qrem).slice(-2) +
+                                            ' at yard ' + keepYard + ' down ' + keepDown + '&' + keepToGo);
+                                doKeepDrive(keepYard, keepDown, keepToGo);
                             }
                             stuckEngineFsmStage = null;
                             engineFsmStageStuckSinceMs = Date.now();
                         }
-                        return;   // never treat Vy=13 as a normal stuck-drive handoff
+                        return;   // Vy=13 is never a normal stuck-drive handoff
                     }
 
                     if (!deadEngineFsmStages[engineMatch.engineDriveFsmStage]) return;
