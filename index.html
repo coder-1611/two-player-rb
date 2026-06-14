@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V99</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V100</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2980,6 +2980,30 @@
                     var userHasBall = em.enginePossessingTeamIdx === em.engineUserTeamIdx;
                     var clockRunning = sec > 0;
 
+                    // ===== Keep _Et/_Ht (per-quarter line score) numeric =====
+                    // CONFIRMED crash (end of 3rd quarter, ###game_end###):
+                    // object 64's _Et (home) / _Ht (away) per-quarter arrays
+                    // start [null,null,null,null] and are ONLY written by the
+                    // engine's case-19 score recording. In this 2P build the
+                    // quarter transitions are driven by the bridge, so those
+                    // slots stay null — and when the engine DOES run case 19 at
+                    // a later quarter end it computes e.g. _Et[2] = total -
+                    // _Et[0] - _Et[1], where _Ri(null) throws "undefined value
+                    // in expression" and ends the match. Replace any null with 0
+                    // every tick (starts within 100ms of match start, long
+                    // before Q1 ends) so case 19 can never read an unset slot.
+                    try {
+                        if (typeof _jj === 'function') {
+                            var o64 = _jj(em.rawEngineMatch, _Sc2, 64);
+                            if (o64 && o64._Et && o64._Ht) {
+                                for (var qi = 0; qi < 4; qi++) {
+                                    if (o64._Et[qi] == null) o64._Et[qi] = 0;
+                                    if (o64._Ht[qi] == null) o64._Ht[qi] = 0;
+                                }
+                            }
+                        }
+                    } catch (eEt) {}
+
                     // Capture the REAL quarter length = the max clock the
                     // scoreboard ever showed (the clock only counts DOWN within
                     // a quarter and resets to the same length each quarter, so
@@ -3007,6 +3031,30 @@
                         window._rb2p_quarterChangedToMs = Date.now();
                         window._rb2p_quarterChangedTo   = qNow;
                         qkQuarterStartSec = null;
+
+                        // Record the COMPLETED quarter's score into the line-
+                        // score arrays the way the engine's case-19 switch would
+                        // (thisQuarter = current total - sum of prior quarters),
+                        // so the FINAL box score's per-quarter line is correct
+                        // even though the bridge — not case 19 — drove this
+                        // transition. Idempotent with the engine if it also runs.
+                        try {
+                            var completedQ = qkPrevQuarterSeen;   // the quarter that just ended
+                            if (typeof _jj === 'function' && completedQ >= 1 && completedQ <= 4 &&
+                                em.engineScoreboard) {
+                                var o64b = _jj(em.rawEngineMatch, _Sc2, 64);
+                                if (o64b && o64b._Et && o64b._Ht) {
+                                    var pe = 0, ph = 0;
+                                    for (var pj = 0; pj < completedQ - 1; pj++) {
+                                        pe += Number(o64b._Et[pj]) || 0;
+                                        ph += Number(o64b._Ht[pj]) || 0;
+                                    }
+                                    o64b._Et[completedQ - 1] = (Number(em.engineScoreboard[0]) || 0) - pe;
+                                    o64b._Ht[completedQ - 1] = (Number(em.engineScoreboard[1]) || 0) - ph;
+                                }
+                            }
+                        } catch (eRec) {}
+
                         // Only Q2 and Q4 keep possession (Q1→Q2, Q3→Q4). Halftime
                         // (→Q3) and OT (→Q5) legitimately change possession.
                         window._rb2p_quarterResumePending = (qNow === 2 || qNow === 4) && userHasBall;
