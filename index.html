@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V112</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V113</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5310,9 +5310,31 @@
             // One-shot per match; reset when a fresh match starts (score 0-0,
             // Q1) so a rematch re-arms it.
             window._rb2p_gameOverReported = false;
+            var gameOverWasInMatch = false;
             setInterval(function () {
                 try {
-                    if (!RB.isEngineInMatchRoom()) return;
+                    var nowInMatch = RB.isEngineInMatchRoom();
+                    // V113 SAFETY NET: the Retro Bowl engine has its OWN overtime
+                    // and native end-of-game (the "X win the Retro Bowl" season
+                    // flow). During OT our score-diff detector is hands-off, so if
+                    // the engine ends the game natively before the equal-possession
+                    // logic declares it, NOTHING shows the 2P FINAL — the season
+                    // screen leaks through on the scoring device and the other
+                    // device hangs on WAIT. Catch the engine LEAVING the match room
+                    // mid-OT without a reported game-over: force the 2P FINAL from
+                    // the last box score we cached during OT, then publish it so the
+                    // V107 backstop ends the other device too.
+                    if (gameOverWasInMatch && !nowInMatch && window._rb2p_inOvertime &&
+                        !window._rb2p_gameOverReported) {
+                        console.log('[2P OT] engine ended the game natively — forcing 2P FINAL');
+                        window._rb2p_gameOverReported = true;
+                        var natRep = window._rb2p_lastOtBoxScore ||
+                            (typeof window._rb2p_collectBoxScore === 'function'
+                                ? window._rb2p_collectBoxScore() : { players: [] });
+                        if (typeof window._rb2p_reportGameOver === 'function') window._rb2p_reportGameOver(natRep);
+                    }
+                    gameOverWasInMatch = nowInMatch;
+                    if (!nowInMatch) return;
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     var q = Number(em.engineQuarter) || 1;
@@ -5324,6 +5346,16 @@
                         window._rb2p_gameOverReported = false;
                     }
                     if (window._rb2p_gameOverReported) return;
+                    // V113: while in OT, keep a fresh snapshot of the box score so
+                    // the safety net above has real data once the engine tears the
+                    // match down (collectBoxScore reads rm_match state, which is
+                    // gone the instant the engine leaves).
+                    if (window._rb2p_inOvertime && typeof window._rb2p_collectBoxScore === 'function') {
+                        try {
+                            var snap = window._rb2p_collectBoxScore();
+                            if (snap && snap.players) window._rb2p_lastOtBoxScore = snap;
+                        } catch (eSnap) {}
+                    }
                     // V109: OVERTIME is owned ENTIRELY by the equal-possession
                     // engine (see the OT round logic + applyOpponentOutcome). A
                     // mere lead no longer ends the game in OT — each team gets an
@@ -6649,6 +6681,7 @@
             window._rb2p_otMyPoss   = 0;
             window._rb2p_otOppPoss  = 0;
             window._rb2p_otWasWaiting = null;
+            window._rb2p_lastOtBoxScore = null;   // V113
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
             // V62: clear any prior overtime coin flips so a rematch's OT
