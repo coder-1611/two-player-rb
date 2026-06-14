@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V106</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V107</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5623,6 +5623,28 @@
             }
         };
 
+        // V106: end this device's game because the OPPONENT declared game over.
+        // In sudden-death OT only the SCORING device sees the score diverge and
+        // fires its own game-over detector; the waiting device's scoreboard may
+        // never receive that winning score, so its detector never trips and it
+        // sits on the "opponent has the ball" WAIT screen forever. The opponent
+        // publishes final/{theirRole} at game over — when that lands and we
+        // haven't ended, we end too, trusting their score line (their oppScore
+        // is THEIR view of OUR points; their score is theirs). Safe because
+        // final/* is removed at every match start, so it only ever reflects a
+        // real, current game over.
+        function endGameFromOpponentDeclaration(oppRep) {
+            if (window._rb2p_gameOverReported) return;
+            if (!oppRep) return;
+            window._rb2p_gameOverReported = true;
+            var report = (typeof window._rb2p_collectBoxScore === 'function')
+                ? window._rb2p_collectBoxScore() : { team: 'YOU', score: 0, oppScore: 0, players: [] };
+            if (typeof oppRep.score === 'number')    report.oppScore = oppRep.score;
+            if (typeof oppRep.oppScore === 'number') report.score    = oppRep.oppScore;
+            if (oppRep.team && !report.oppTeam)      report.oppTeam  = oppRep.team;
+            window._rb2p_reportGameOver(report);
+        }
+
         // ---- DOM ----
         var lobby      = document.getElementById('rb-lobby');
         var $input     = document.getElementById('rb-room-input');
@@ -6028,6 +6050,12 @@
                     // Only (re)render if our side has already ended — avoids a
                     // stale report flashing the screen mid-game.
                     if (localFinalReport) renderFinal();
+                    // V106: the opponent declared game over but we haven't —
+                    // sudden-death OT where the winning score never reached our
+                    // scoreboard. End from their declaration so we don't hang on
+                    // the WAIT screen. (final/* is cleared at match start, so a
+                    // present report is always a real, current game over.)
+                    else endGameFromOpponentDeclaration(rep);
                 }
             );
 
