@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V110</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V111</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5488,11 +5488,21 @@
                         // re-park at the OT-start Vy=13 stage (without this both
                         // devices end up stuck on WAITING).
                         if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
+                        // V111: re-baseline the possession-edge tracker to the
+                        // POST-kickoff state. The coordinator set otWasWaiting at
+                        // OT-init (before this kickoff ran); without re-baselining,
+                        // the kickoff's own offense/wait transition is misread as a
+                        // finished possession (the bogus "my possession ended"
+                        // seen on the NON-receiver). I'm on offense now.
+                        window._rb2p_otWasWaiting = false;
                         console.log('[2P OT] received kickoff — on offense at ' + yard + ' (holding kp=2)');
                     } else {
                         // Opponent receives → I wait on defense.
                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
                         window._rb2p_userIsWaitingForOpponent = true;
+                        // V111: re-baseline — I was just parked into WAIT by the
+                        // kickoff; that is NOT a finished possession.
+                        window._rb2p_otWasWaiting = true;
                         console.log('[2P OT] opponent received kickoff — waiting');
                     }
                 } catch (e) { console.log('[2P OT apply err]', e); }
