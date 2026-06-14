@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V105</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V106</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5442,6 +5442,7 @@
         var localFinalReport = null;
         var oppFinalReport = null;
         var myDefStats = null;   // V89: my D's stats, measured on the opponent's device
+        var oppDefStatsLocal = null;  // V106: the OPP's D stats THIS device measured while on offense
 
         // V89: merge my defense's synced stats into my FINAL report. The engine
         // credits the OPPONENT device's star structs (it measures my D while it
@@ -5452,8 +5453,18 @@
         // …TE(3), DL(4), DB(5), LB(6), K(7).
         var DEF_POS_RANK  = { 6: 4, 7: 6, 8: 5, 9: 5 };
         function mergeMyDefStats(defStats) {
-            if (!localFinalReport || !defStats || !defStats.length) return;
-            if (!localFinalReport.players) localFinalReport.players = [];
+            mergeDefStatsInto(localFinalReport, defStats);
+        }
+        // V106: the opponent's defense rows are built on THIS device from the
+        // stats we measured against them while on offense (collectOppDefStats),
+        // so they always show even if the opponent's published report lacks
+        // them (publish-race, or the opponent is on a stale build).
+        function mergeOppDefStats() {
+            mergeDefStatsInto(oppFinalReport, oppDefStatsLocal);
+        }
+        function mergeDefStatsInto(report, defStats) {
+            if (!report || !defStats || !defStats.length) return;
+            if (!report.players) report.players = [];
             defStats.forEach(function (d) {
                 var tck = Math.round(d.tck || 0), sck = Math.round(d.sck || 0), intc = Math.round(d.int || 0);
                 // Show EVERY starred defender (even at 0) so the defense always
@@ -5468,13 +5479,13 @@
                 var posLabel = DEF_POS_LABEL[d.pos] || 'DB';
                 var posRank  = DEF_POS_RANK[d.pos]  || 5;
                 var existing = null;
-                for (var i = 0; i < localFinalReport.players.length; i++) {
-                    if (localFinalReport.players[i].name === nm) { existing = localFinalReport.players[i]; break; }
+                for (var i = 0; i < report.players.length; i++) {
+                    if (report.players[i].name === nm) { existing = report.players[i]; break; }
                 }
                 if (existing) { existing.line = line; existing.pos = posLabel; existing.posRank = posRank; existing.sort = sort; }
-                else localFinalReport.players.push({ name: nm, pos: posLabel, posRank: posRank, line: line, sort: sort });
+                else report.players.push({ name: nm, pos: posLabel, posRank: posRank, line: line, sort: sort });
             });
-            localFinalReport.players.sort(function (a, b) {
+            report.players.sort(function (a, b) {
                 return ((a.posRank || 0) - (b.posRank || 0)) || ((b.sort || 0) - (a.sort || 0));
             });
         }
@@ -5514,6 +5525,7 @@
             });
         }
         function renderFinal() {
+            mergeOppDefStats();   // V106: fold in the opp D we measured locally
             var me = localFinalReport;
             var opp = oppFinalReport;
             var myScore  = me ? me.score : 0;
@@ -5604,7 +5616,9 @@
                     var oppR = myRole === 'a' ? 'b' : 'a';
                     var ods = (typeof window._rb2p_collectOppDefStats === 'function')
                         ? window._rb2p_collectOppDefStats() : [];
+                    oppDefStatsLocal = ods;   // V106: keep a local copy to render the opp's D rows here
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/defstats/' + oppR), ods).catch(function () {});
+                    if (oppFinalReport) renderFinal();   // re-render now that opp D is captured
                 } catch (e) {}
             }
         };
@@ -6381,6 +6395,7 @@
             localFinalReport = null;
             oppFinalReport = null;
             myDefStats = null;   // V89
+            oppDefStatsLocal = null;   // V106
             window._rb2p_gameOverReported = false;
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
