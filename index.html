@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V104</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V105</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -415,7 +415,19 @@
         </div>
     </div>
 
-    <script type="text/javascript" src="retrobowl.js"></script>
+    <!-- Cache-bust retrobowl.js with the SAME per-session ?v= token as the page,
+         so engine edits actually reach the browser (a bare src was cached
+         indefinitely — stale engine = e.g. the reception patch never loaded).
+         document.write keeps it synchronous + in document order so the bridge
+         scripts below still see the engine globals at parse time. -->
+    <script>
+        (function () {
+            var v = '';
+            try { v = new URL(location.href).searchParams.get('v') || ''; } catch (e) {}
+            document.write('<script type="text/javascript" src="retrobowl.js' +
+                           (v ? '?v=' + encodeURIComponent(v) : '') + '"><\/script>');
+        })();
+    </script>
 
     <script>
         (function () {
@@ -2769,11 +2781,17 @@
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
                             !window._rb2p_userOutcomeSendInProgress) {
 
-                            // REAL quarter length: max clock the scoreboard showed
-                            // (engineQuarterLengthMins/_5F is clamped >=2, which
-                            // forced 2:00 onto 1-minute games).
-                            var qsec = Number(window._rb2p_quarterLenSec);
-                            if (!(qsec >= 1)) qsec = 120;
+                            // Quarter length for the reset: use the AGREED setting
+                            // (_rb2p_quarterMins, kept converged on BOTH devices by
+                            // the Firebase config subscription) — NOT the per-device
+                            // observed max (_rb2p_quarterLenSec), which drifts if the
+                            // two devices launched with different _Ws and made the
+                            // clocks disagree (2:00 vs 1:00). Falls back to observed
+                            // max, then 2:00.
+                            var qAgreed = Number(window._rb2p_quarterMins);
+                            var qsec = (qAgreed === 1 || qAgreed === 2 || qAgreed === 3)
+                                ? qAgreed * 60
+                                : (Number(window._rb2p_quarterLenSec) >= 1 ? Number(window._rb2p_quarterLenSec) : 120);
                             var qmin = Math.floor(qsec / 60), qrem = qsec % 60;
                             var raw = engineMatch.rawEngineMatch;
                             // Clear any stale pick-6 TD-replay latch so the resume /
@@ -5142,6 +5160,11 @@
                     if (!teamObj || !teamObj._Ln) return report;
                     var roster = teamObj._Ln;
                     var n = _wi(roster);
+                    // Show the full starting offense in roster order even with 0
+                    // stats (so WR/TE always appear), capped per position so bench
+                    // depth doesn't flood the list. posShown counts emitted players.
+                    var STARTER_CAP = { 1: 1, 2: 1, 3: 1, 4: 2, 10: 1, 11: 1 };  // QB,RB,TE,WR,K
+                    var posShown = {};
                     for (var i = 0; i < n; i++) {
                         var s = _zi(roster, i);
                         if (!s) continue;
@@ -5174,7 +5197,12 @@
                         var fum     = statNum(s, 'stat_fumbles');
                         var activity = passYds + rushYds + passTd + rushTd + cmp + att +
                                        carries + rec + intc + fum;
-                        if (activity <= 0) continue;
+                        // Always show starters (within the per-position cap) even at
+                        // 0 stats; show any active depth player; skip 0-stat depth.
+                        var cap = STARTER_CAP[pos];
+                        var withinStarterCap = (cap != null) && ((posShown[pos] || 0) < cap);
+                        if (activity <= 0 && !withinStarterCap) continue;
+                        posShown[pos] = (posShown[pos] || 0) + 1;
                         var parts = [], posRank = 7, sortAct = 0;
                         if (pos === 1) {                         // QB
                             posRank = 0;
@@ -5276,8 +5304,17 @@
                     //     resolved (controller not in active-play state 2),
                     //     for the moment before the engine's own transition.
                     var pastRegulation = (q >= 5);
+                    // CRITICAL: Vy=13 is the BETWEEN-QUARTERS park (every quarter
+                    // end momentarily sits at Wy=N, clock 0:00, Vy=13, kp!=2 before
+                    // the bridge resumes the next quarter). Without the Vy!=13 guard
+                    // the Q3->Q4 boundary (Wy=4, clock 0:00, kp!=2) matched
+                    // regulationOver and ended the game IN Q3 — the recurring bug.
+                    // The true Q4 end fires either via pastRegulation (Wy reaches 5)
+                    // or via regulationOver in the play-resolution window (Wy=4,
+                    // clock 0, kp=4, Vy=tackle-resolution != 13) before case 19 runs.
                     var regulationOver = (q === 4 && mn === 0 && sc === 0 &&
-                                          em.engineControllerState !== 2);
+                                          em.engineControllerState !== 2 &&
+                                          em.engineDriveFsmStage !== 13);
                     if (!pastRegulation && !regulationOver) return;
                     window._rb2p_gameOverReported = true;
                     var report = window._rb2p_collectBoxScore();
@@ -5419,11 +5456,13 @@
             if (!localFinalReport.players) localFinalReport.players = [];
             defStats.forEach(function (d) {
                 var tck = Math.round(d.tck || 0), sck = Math.round(d.sck || 0), intc = Math.round(d.int || 0);
-                if (tck + sck + intc <= 0) return;
+                // Show EVERY starred defender (even at 0) so the defense always
+                // appears in the box score — same as the offense starters.
                 var parts = [];
                 if (tck) parts.push(tck + ' TCK');
                 if (sck) parts.push(sck + ' SCK');
                 if (intc) parts.push(intc + ' INT');
+                if (!parts.length) parts.push('0 TCK');
                 var nm = (d.fn ? d.fn.charAt(0) + '. ' : '') + d.ln;
                 var line = parts.join(' · '), sort = intc * 100 + sck * 10 + tck;
                 var posLabel = DEF_POS_LABEL[d.pos] || 'DB';
