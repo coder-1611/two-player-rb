@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V102</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V103</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1596,8 +1596,16 @@
                         console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') + ' by unstarred defender — counted for nobody');
                         return;
                     }
-                    _Yi(tackler._7j, 'stat_tackles', (Number(_Ai(tackler._7j, 'stat_tackles')) || 0) + 1);
-                    if (isSack) _Yi(tackler._7j, 'stat_sacks', (Number(_Ai(tackler._7j, 'stat_sacks')) || 0) + 1);
+                    // The observer is the SOLE authority for tackles/sacks. Count
+                    // on the star object itself (engine-untouchable) — NOT the
+                    // engine's stat_tackles/stat_sacks fields, which the engine
+                    // credits from ~14 probabilistic / multi-credit sites that
+                    // inflate the total (the "too high again" bug). ONLY this real
+                    // post-collision resolution — one per downed carrier, with the
+                    // engaged defender verified on the carrier — is counted.
+                    var star = tackler._rb2pStar;
+                    star.obsTck = (Number(star.obsTck) || 0) + 1;
+                    if (isSack) star.obsSck = (Number(star.obsSck) || 0) + 1;
                     window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: tackler._rb2pStar.ln });
                     console.log('[2P DEF] ' + (isSack ? 'SACK' : 'TACKLE') + ' by ' +
                                 tackler._rb2pStar.fn + ' ' + tackler._rb2pStar.ln);
@@ -4946,7 +4954,11 @@
                     _Yi(id, 'condition', 100); _Yi(id, 'resting', 0);
                     _Yi(id, 'injury_week', 0); _Yi(id, 'backup', 0); _Yi(id, 'hof', 0);
                     _Yi(id, 'stat_tackles', 0); _Yi(id, 'stat_sacks', 0); _Yi(id, 'stat_int', 0);
-                    out.push({ fn: s.fn, ln: s.ln, pos: s.pos, id: id });
+                    // obsTck/obsSck: the collision observer's authoritative tackle/
+                    // sack counts for this star (see rb2pObserveTackles). Reset to 0
+                    // here at star build (BACK TO LOBBY reloads the page, so a fresh
+                    // game always rebuilds these).
+                    out.push({ fn: s.fn, ln: s.ln, pos: s.pos, id: id, obsTck: 0, obsSck: 0 });
                 }
                 return out.length ? out : null;
             }
@@ -5014,9 +5026,13 @@
                         var s = rb2pOppStars[i];
                         out.push({
                             fn: s.fn, ln: s.ln, pos: s.pos,
+                            // INT stays engine-sourced: a pick is a real catch the
+                            // engine credits to the actual intercepting defender's
+                            // _7j (retrobowl.js:52847) — genuine, not probabilistic.
+                            // TCK/SCK come ONLY from the collision observer.
                             int: Math.round(Number(_Ai(s.id, 'stat_int')) || 0),
-                            sck: Math.round(Number(_Ai(s.id, 'stat_sacks')) || 0),
-                            tck: Math.round(Number(_Ai(s.id, 'stat_tackles')) || 0)
+                            sck: Math.round(Number(s.obsSck) || 0),
+                            tck: Math.round(Number(s.obsTck) || 0)
                         });
                     }
                 } catch (e) {}
