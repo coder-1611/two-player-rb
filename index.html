@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V101</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V102</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5108,51 +5108,69 @@
                         var pos = Number(_Ai(s, 'position')) || 0;
                         // 2P: the local team's DEFENSE never plays a scene on this
                         // device (the owner is parked in WAIT while the human-on-
-                        // offense plays on the OTHER device). Any stat_tackles/sacks
-                        // on the local roster's D are engine-sim artifacts (the
-                        // case-8 random skill-roll loop). The REAL, exact D stats for
-                        // this team are measured on the opponent's device and arrive
-                        // via mergeMyDefStats(). So never emit local-roster defense
-                        // here — it would show inflated/duplicate numbers.
+                        // offense plays on the OTHER device). The REAL, exact D
+                        // stats for this team are measured on the opponent's device
+                        // and arrive via mergeMyDefStats(); never emit local-roster
+                        // defense here.
                         if (pos >= 6 && pos <= 9) continue;
-                        var passYds = statNum(s, 'stat_yards');       // QB pass / receiver rec yards
+                        // Field map (verified retrobowl.js 55855-55871):
+                        //   stat_yards    = passing yds (QB) | receiving yds (receiver)
+                        //   stat_touchdowns = passing TD (QB) | receiving TD (receiver)
+                        //   stat_longest  = longest pass (QB) | longest reception (receiver)
+                        //   stat_attempts/stat_complete = pass att/comp (QB)
+                        //   stat_rush_*   = rushing (carrier)
+                        //   stat_receive  = receptions (added by the engine patch at 55869)
+                        var passYds = statNum(s, 'stat_yards');
                         var rushYds = statNum(s, 'stat_rush_yards');
                         var passTd  = statNum(s, 'stat_touchdowns');
                         var rushTd  = statNum(s, 'stat_rush_touchdowns');
-                        var cmp = statNum(s, 'stat_complete');
-                        var att = statNum(s, 'stat_attempts');
-                        var rec = statNum(s, 'stat_receive');
-                        var tck = statNum(s, 'stat_tackles');
-                        var sck = statNum(s, 'stat_sacks');
-                        var intc = statNum(s, 'stat_int');
-                        var fum = statNum(s, 'stat_fumbles');
-                        var fgm = statNum(s, 'stat_fgm');
-                        var fga = statNum(s, 'stat_fga');
-                        var yds = passYds + rushYds, td = passTd + rushTd;
-                        var activity = yds + td + cmp + att + rec + tck + sck + intc + fum + fgm + fga;
+                        var cmp     = statNum(s, 'stat_complete');
+                        var att     = statNum(s, 'stat_attempts');
+                        var carries = statNum(s, 'stat_rush_attempts');
+                        var rec     = statNum(s, 'stat_receive');
+                        var recLng  = statNum(s, 'stat_longest');
+                        var rushLng = statNum(s, 'stat_rush_longest');
+                        var intc    = statNum(s, 'stat_int');
+                        var fum     = statNum(s, 'stat_fumbles');
+                        var activity = passYds + rushYds + passTd + rushTd + cmp + att +
+                                       carries + rec + intc + fum;
                         if (activity <= 0) continue;
-                        // Build a compact stat line, position-appropriate.
-                        var parts = [];
-                        if (pos === 1) {            // QB
+                        var parts = [], posRank = 7, sortAct = 0;
+                        if (pos === 1) {                         // QB
+                            posRank = 0;
                             if (att > 0) parts.push(cmp + '/' + att);
-                            if (yds) parts.push(yds + ' YDS');
-                            if (td) parts.push(td + ' TD');
-                            if (intc) parts.push(intc + ' INT');
-                        } else if (pos >= 2 && pos <= 4) {   // RB/TE/WR
-                            if (yds) parts.push(yds + ' YDS');
-                            if (td) parts.push(td + ' TD');
+                            parts.push(passYds + ' YDS');
+                            if (passTd) parts.push(passTd + ' TD');
+                            if (intc)   parts.push(intc + ' INT');
+                            if (recLng) parts.push(recLng + ' LG');
+                            if (rushYds) parts.push('+' + rushYds + ' RUSH' + (rushTd ? ' ' + rushTd + 'TD' : ''));
+                            sortAct = passYds + passTd * 100;
+                        } else if (pos === 2) {                  // RB
+                            posRank = 1;
+                            if (carries) parts.push(carries + ' CAR');
+                            parts.push(rushYds + ' YDS');
+                            if (carries) parts.push((rushYds / carries).toFixed(1) + ' AVG');
+                            if (rushTd) parts.push(rushTd + ' TD');
+                            if (rushLng) parts.push(rushLng + ' LG');
+                            if (rec) parts.push(rec + ' REC ' + passYds + 'yd' + (passTd ? ' ' + passTd + 'TD' : ''));
+                            sortAct = rushYds + rushTd * 100;
+                        } else if (pos === 4 || pos === 3) {     // WR / TE
+                            posRank = (pos === 4) ? 2 : 3;
                             if (rec) parts.push(rec + ' REC');
-                        } else if (pos >= 6 && pos <= 9) {   // defense
-                            if (tck) parts.push(tck + ' TCK');
-                            if (sck) parts.push(sck + ' SCK');
-                            if (intc) parts.push(intc + ' INT');
-                        } else if (pos === 10 || pos === 11) { // kicker
-                            if (fga > 0) parts.push(fgm + '/' + fga + ' FG');
-                            if (td) parts.push(td + ' TD');
-                        } else {
-                            if (yds) parts.push(yds + ' YDS');
-                            if (td) parts.push(td + ' TD');
-                            if (tck) parts.push(tck + ' TCK');
+                            parts.push(passYds + ' YDS');
+                            if (rec) parts.push((passYds / rec).toFixed(1) + ' AVG');
+                            if (passTd) parts.push(passTd + ' TD');
+                            if (recLng) parts.push(recLng + ' LG');
+                            sortAct = passYds + passTd * 100;
+                        } else if (pos === 10 || pos === 11) {   // K (FG/XP added by FG tracker later)
+                            posRank = 7;
+                            var ktd = passTd + rushTd;
+                            if (ktd) parts.push(ktd + ' TD');
+                            sortAct = 0;
+                        } else {                                 // OL / other
+                            posRank = 6.5;
+                            if (passYds + rushYds) parts.push((passYds + rushYds) + ' YDS');
+                            sortAct = passYds + rushYds;
                         }
                         if (fum) parts.push(fum + ' FUM');
                         if (!parts.length) continue;
@@ -5162,10 +5180,13 @@
                         var nm = (fname ? fname.charAt(0) + '. ' : '') + lname;
                         report.players.push({
                             name: nm || 'Player', pos: POS_LABELS[pos] || '?',
-                            line: parts.join(' · '), sort: yds + td * 100 + (tck + sck + intc) * 10
+                            posRank: posRank, line: parts.join(' · '), sort: sortAct
                         });
                     }
-                    report.players.sort(function (a, b) { return b.sort - a.sort; });
+                    // Fixed roster order: QB, RB, WR, WR, TE, …, then by activity.
+                    report.players.sort(function (a, b) {
+                        return ((a.posRank || 0) - (b.posRank || 0)) || ((b.sort || 0) - (a.sort || 0));
+                    });
                 } catch (e) { console.log('[2P FINAL] collect err', e); }
                 return report;
             };
@@ -5350,6 +5371,9 @@
         // is on offense), so my own roster's D rows read 0 here — we add the
         // synced rows. Keyed/replaced by player name so re-arrival is idempotent.
         var DEF_POS_LABEL = { 6: 'DL', 7: 'LB', 8: 'DB', 9: 'DB' };
+        // Roster display order rank — defense slots in the user's order:
+        // …TE(3), DL(4), DB(5), LB(6), K(7).
+        var DEF_POS_RANK  = { 6: 4, 7: 6, 8: 5, 9: 5 };
         function mergeMyDefStats(defStats) {
             if (!localFinalReport || !defStats || !defStats.length) return;
             if (!localFinalReport.players) localFinalReport.players = [];
@@ -5362,14 +5386,18 @@
                 if (intc) parts.push(intc + ' INT');
                 var nm = (d.fn ? d.fn.charAt(0) + '. ' : '') + d.ln;
                 var line = parts.join(' · '), sort = intc * 100 + sck * 10 + tck;
+                var posLabel = DEF_POS_LABEL[d.pos] || 'DB';
+                var posRank  = DEF_POS_RANK[d.pos]  || 5;
                 var existing = null;
                 for (var i = 0; i < localFinalReport.players.length; i++) {
                     if (localFinalReport.players[i].name === nm) { existing = localFinalReport.players[i]; break; }
                 }
-                if (existing) { existing.line = line; existing.pos = DEF_POS_LABEL[d.pos] || 'DB'; existing.sort = sort; }
-                else localFinalReport.players.push({ name: nm, pos: DEF_POS_LABEL[d.pos] || 'DB', line: line, sort: sort });
+                if (existing) { existing.line = line; existing.pos = posLabel; existing.posRank = posRank; existing.sort = sort; }
+                else localFinalReport.players.push({ name: nm, pos: posLabel, posRank: posRank, line: line, sort: sort });
             });
-            localFinalReport.players.sort(function (a, b) { return (b.sort || 0) - (a.sort || 0); });
+            localFinalReport.players.sort(function (a, b) {
+                return ((a.posRank || 0) - (b.posRank || 0)) || ((b.sort || 0) - (a.sort || 0));
+            });
         }
 
         function teamColumnHtml(rep, accent) {
@@ -5377,11 +5405,22 @@
                 return '<div style="flex:1;min-width:240px;opacity:0.5;text-align:center;padding:20px;">' +
                        'waiting for opponent’s stats…</div>';
             }
-            var rows = (rep.players || []).map(function (p) {
-                return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;' +
-                       'border-bottom:1px solid rgba(255,255,255,0.08);">' +
-                       '<span style="white-space:nowrap;"><b>' + esc(p.pos) + '</b> ' + esc(p.name) + '</span>' +
-                       '<span style="opacity:0.85;text-align:right;">' + esc(p.line) + '</span></div>';
+            // Fixed roster order (defensive against an unsorted/legacy report).
+            var players = (rep.players || []).slice().sort(function (a, b) {
+                return ((a.posRank || 0) - (b.posRank || 0)) || ((b.sort || 0) - (a.sort || 0));
+            });
+            // Aligned columns: a fixed-width POS + NAME prefix (monospace), then
+            // the position-specific stat tokens. pad() keeps the stats left edge
+            // lined up across rows regardless of name length.
+            function pad(str, n) {
+                str = String(str);
+                return str.length >= n ? str : str + new Array(n - str.length + 1).join(' ');
+            }
+            var rows = players.map(function (p) {
+                return '<div style="white-space:pre;font-size:12px;line-height:1.7;' +
+                       'border-bottom:1px solid rgba(255,255,255,0.07);overflow-x:auto;">' +
+                       '<b>' + esc(pad(p.pos, 3)) + '</b>' + esc(pad(p.name, 15)) +
+                       '<span style="opacity:0.85;">' + esc(p.line) + '</span></div>';
             }).join('');
             if (!rows) rows = '<div style="opacity:0.5;padding:8px 0;">no recorded stats</div>';
             return '<div style="flex:1;min-width:240px;max-width:440px;">' +
