@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V109</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V110</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4895,6 +4895,15 @@
                             engineMatch.engineYardsToGo       = 10;
                             engineMatch.engineDriveFsmStage    = 2;
                         }
+                        // V110: in OT, give this possession a clock and HOLD
+                        // kp=2 so a hand-off that lands near a quarter boundary
+                        // can't be re-parked into WAIT.
+                        if (window._rb2p_inOvertime) {
+                            engineMatch.engineMinutesLeft   = 9;
+                            engineMatch.engineSecondsLeft   = 0;
+                            engineMatch.engineTickAllowance = 0;
+                            if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
+                        }
                     } finally {
                         isApplyingOpponentOutcome = false;
                     }
@@ -5457,6 +5466,15 @@
                         window._rb2p_userOutcomeSendInProgress = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         var yard = -(25 + Math.floor(Math.random() * 16));
+                        // V110: clear the parked between-quarters commentary and
+                        // re-arm drives BEFORE spawning, exactly like the quarter
+                        // resume — otherwise the play opens under a stale banner
+                        // or the engine refuses to advance.
+                        var rawOt = em.rawEngineMatch;
+                        try { rawOt._831 = ''; rawOt.__b1 = ''; } catch (eC) {}
+                        em.engineMainCommentaryText = '';
+                        em.engineSubCommentaryText  = '';
+                        try { if (Number(rawOt._Nb1) < 1) rawOt._Nb1 = 1; } catch (eN) {}
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                             window._rb2p_forceUserOffenseDrive(yard);
                         }
@@ -5466,7 +5484,11 @@
                         em.engineMinutesLeft   = 9;
                         em.engineSecondsLeft   = 0;
                         em.engineTickAllowance = 0;
-                        console.log('[2P OT] received kickoff — on offense at ' + yard);
+                        // V110: HOLD kp=2 to overpower the engine's per-frame
+                        // re-park at the OT-start Vy=13 stage (without this both
+                        // devices end up stuck on WAITING).
+                        if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
+                        console.log('[2P OT] received kickoff — on offense at ' + yard + ' (holding kp=2)');
                     } else {
                         // Opponent receives → I wait on defense.
                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
@@ -5522,6 +5544,39 @@
                 if (!window._rb2p_inOvertime || window._rb2p_gameOverReported) return;
                 window._rb2p_otDeclareGameOver('defensive TD walk-off — ' +
                     (iAmDefender ? 'YOU win' : 'opponent wins'));
+            };
+            // V110: HOLD kp=2 / Vy<=2 for ~1.5s after starting an OT possession.
+            // OT begins parked at the between-quarters stage (Vy=13) from the
+            // regulation-ending tie, and the engine re-parks the FSM every frame
+            // — so a one-shot forceUserOffenseDrive is overwritten and the
+            // receiver bounces back to WAITING (deadlock: both devices wait).
+            // This is the same overpowering hold the Q2–Q4 quarter-resume uses;
+            // it lets the spawned play take over before the hold releases.
+            window._rb2p_otResumeHoldActive = false;
+            window._rb2p_otHoldKp2 = function () {
+                if (window._rb2p_otResumeHoldActive) return;
+                window._rb2p_otResumeHoldActive = true;
+                var hn = 0;
+                var hiv = setInterval(function () {
+                    try {
+                        var em2 = RB.engineState();
+                        if (em2) {
+                            em2.engineControllerState = 2;
+                            if (em2.engineDriveFsmStage > 2) em2.engineDriveFsmStage = 2;
+                        }
+                        // The engine's OT/quarter-start flow keeps re-spawning the
+                        // kickoff "Receive" button (it gates the controller step
+                        // on the dead AI-kickoff path). Nuke it every tick so the
+                        // scrimmage play spawned by forceUserOffenseDrive stays live.
+                        var insts = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                        for (var i = 0; i < insts.length; i++) {
+                            var inst = insts[i];
+                            if (inst && !inst._HL2 && inst._eE2 &&
+                                inst._eE2._fE2 === 'obj_btn_kickoff') inst._HL2 = true;
+                        }
+                    } catch (eH) {}
+                    if (++hn > 90) { clearInterval(hiv); window._rb2p_otResumeHoldActive = false; }
+                }, 16);
             };
         })();
     </script>
