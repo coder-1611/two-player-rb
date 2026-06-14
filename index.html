@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V111</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V112</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1634,6 +1634,10 @@
             setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); }, 16);
 
             function startTwoPlayerMatch(role) {
+                // V112: stash the authoritative Firebase role so OT (and anyone
+                // else outside this function) can decide possession by role
+                // rather than the unreliable engineUserTeamIdx→role guess.
+                window._rb2p_myFirebaseRole = role;
                 try {
                     var anyInst = null;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
@@ -5453,14 +5457,25 @@
 
             // Apply the shared OT coin flip on THIS device. receiverRole is
             // 'a'/'b'; map to team index (a=Buffalo=0, b=Kansas City=1).
-            window._rb2p_applyOtKickoff = function (receiverRole) {
+            window._rb2p_applyOtKickoff = function (receiverRole, myFirebaseRole) {
                 try {
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
-                    var myRoleByTeam = (em.engineUserTeamIdx === 0) ? 'a' : 'b';
+                    // V112: decide the receiver by FIREBASE ROLE (what the coin
+                    // flip uses), exactly like the opening kickoff (role==='a').
+                    // The old engineUserTeamIdx→role guess was WRONG here: a
+                    // device's engineUserTeamIdx does NOT reliably equal 0 for
+                    // role 'a', so the receiver (A) ran the WAIT branch and both
+                    // devices deadlocked. Prefer the passed role, then the
+                    // launch-stashed role, then the legacy guess as a last resort.
+                    var myRole = (myFirebaseRole === 'a' || myFirebaseRole === 'b')
+                        ? myFirebaseRole
+                        : ((window._rb2p_myFirebaseRole === 'a' || window._rb2p_myFirebaseRole === 'b')
+                            ? window._rb2p_myFirebaseRole
+                            : ((em.engineUserTeamIdx === 0) ? 'a' : 'b'));
                     window._rb2p_pickSixPatCascadeActive = false;
                     window._rb2p_pickSixThisDeviceIsThrower = false;
-                    if (myRoleByTeam === receiverRole) {
+                    if (myRole === receiverRole) {
                         // I receive the OT kickoff → I'm on offense.
                         window._rb2p_userIsWaitingForOpponent = false;
                         window._rb2p_userOutcomeSendInProgress = false;
@@ -6308,7 +6323,7 @@
                         console.log('[2P OT] applying ' + key + ' — receiver=' + entry.receiver);
                         showOtBanner(entry.receiver);
                         if (typeof window._rb2p_applyOtKickoff === 'function') {
-                            window._rb2p_applyOtKickoff(entry.receiver);
+                            window._rb2p_applyOtKickoff(entry.receiver, role);   // V112: pass authoritative Firebase role
                         }
                     });
                 }
