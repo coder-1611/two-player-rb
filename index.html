@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V124</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V125</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -378,13 +378,13 @@
             <div class="slots">
                 <div class="slot" id="rb-slot-a">
                     <div class="role">PLAYER A</div>
-                    <div class="team">BUFFALO</div>
+                    <div class="team">SAN FRANCISCO</div>
                     <div class="state">EMPTY</div>
                 </div>
                 <div class="vs">VS</div>
                 <div class="slot" id="rb-slot-b">
                     <div class="role">PLAYER B</div>
-                    <div class="team">KANSAS CITY</div>
+                    <div class="team">PITTSBURGH</div>
                     <div class="state">EMPTY</div>
                 </div>
             </div>
@@ -1682,8 +1682,8 @@
                     // launch. Falls back to the old Buffalo/KC defaults.
                     var userUid = Number(window._rb2p_myTeamUid);
                     var oppUid  = Number(window._rb2p_oppTeamUid);
-                    if (!(userUid >= 0 && userUid <= 31)) userUid = (role === 'a' ? 0 : KC_UID);
-                    if (!(oppUid  >= 0 && oppUid  <= 31)) oppUid  = (role === 'a' ? KC_UID : 0);
+                    if (!(userUid >= 0 && userUid <= 31)) userUid = (role === 'a' ? 22 : 11);   // V125: SF/Pitt defaults
+                    if (!(oppUid  >= 0 && oppUid  <= 31)) oppUid  = (role === 'a' ? 11 : 22);
 
                     var st = _6E2._Ue2(64);
                     if (st) st._Ip = userUid;   // local user identity
@@ -6171,7 +6171,7 @@
         // Each player picks their own NFL team (UID 0-31, Teams.txt order).
         // Picks are shared via rooms/{code}/teams/{role}; both devices need
         // both picks (my UID = engine user team, opp UID = engine opponent
-        // team). Defaults: A=Buffalo(0), B=Kansas City(5).
+        // team). Defaults: A=San Francisco(22), B=Pittsburgh(11).
         var NFL_TEAMS = ['Buffalo', 'Miami', 'New England', 'New York J', 'Denver',
             'Kansas City', 'Los Angeles C', 'Las Vegas', 'Baltimore', 'Cincinnati',
             'Cleveland', 'Pittsburgh', 'Houston', 'Indianapolis', 'Jacksonville',
@@ -6179,7 +6179,7 @@
             'Arizona', 'Los Angeles R', 'San Francisco', 'Seattle', 'Chicago',
             'Detroit', 'Green Bay', 'Minnesota', 'Atlanta', 'Carolina',
             'New Orleans', 'Tampa Bay'];
-        var teamByRole = { a: 0, b: 5 };
+        var teamByRole = { a: 22, b: 11 };   // V125: default A=San Francisco(22), B=Pittsburgh(11)
         var $teamSelect = document.getElementById('rb-team-select');
         NFL_TEAMS.forEach(function (name, uid) {
             var opt = document.createElement('option');
@@ -6196,9 +6196,9 @@
             if ($teamSelect && myUid != null) $teamSelect.value = String(myUid);
             try {
                 $slotA.querySelector('.team').textContent =
-                    (NFL_TEAMS[teamByRole.a] || 'Buffalo').toUpperCase();
+                    (NFL_TEAMS[teamByRole.a] || 'San Francisco').toUpperCase();
                 $slotB.querySelector('.team').textContent =
-                    (NFL_TEAMS[teamByRole.b] || 'Kansas City').toUpperCase();
+                    (NFL_TEAMS[teamByRole.b] || 'Pittsburgh').toUpperCase();
             } catch (e) {}
         }
         if ($teamSelect) {
