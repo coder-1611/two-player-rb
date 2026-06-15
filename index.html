@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V122</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V123</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5012,7 +5012,16 @@
                         } else if (isPunt) {
                             yard = outcome.yardLine;     // engine's signed landing spot
                         } else if (typeof outcome.yardLine === 'number') {
-                            yard = -outcome.yardLine;    // turnover → opposite side
+                            // V123: turnover (INT / fumble / downs / missed FG).
+                            // The engine's _1c1 ALREADY mirrored _6F into the NEW
+                            // possessor's frame (retrobowl.js:56461 a._6F=-a._6F)
+                            // before buildUserDriveEndOutcome captured it — so
+                            // outcome.yardLine is already the RECEIVER's spot, used
+                            // AS-IS (same as PUNT). The old NEGATE double-flipped it
+                            // back into the thrower's frame, putting the ball on the
+                            // wrong yard line. (The negate was calibrated for the
+                            // pre-V121 INT path that bypassed this builder.)
+                            yard = outcome.yardLine;
                         } else {
                             yard = -25;
                         }
@@ -5405,7 +5414,9 @@
                             sortAct = rushYds + rushTd * 100;
                         } else if (pos === 4 || pos === 3) {     // WR / TE
                             posRank = (pos === 4) ? 2 : 3;
-                            if (rec) parts.push(rec + ' REC');
+                            // V123: ALWAYS lead with the reception count for a
+                            // receiver (even 0) — the user wants to see catches.
+                            parts.push(rec + ' REC');
                             parts.push(passYds + ' YDS');
                             if (rec) parts.push((passYds / rec).toFixed(1) + ' AVG');
                             if (passTd) parts.push(passTd + ' TD');
@@ -6635,7 +6646,7 @@
             var badge = document.createElement('div');
             badge.id = 'rb-fb-badge';
             badge.style.cssText =
-                'position:fixed;left:6px;top:6px;padding:5px 10px;' +
+                'position:fixed;left:6px;bottom:6px;top:auto;padding:5px 10px;' +
                 'background:rgba(0,0,0,0.78);color:#3cff7a;' +
                 'font:bold 11px monospace;z-index:9999;border-radius:4px;' +
                 'letter-spacing:2px;border:1px solid #3cff7a;';
