@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V116</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V117</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2678,6 +2678,17 @@
                                 console.log('[2P OT] suppressed engine game-over FSM stage Vy=' + otVy +
                                             ' (bridge owns OT game-over)');
                                 return;
+                            }
+                            // V117: pin the engine in a single never-ending OT
+                            // period EVERY FRAME (faster than the 300ms coordinator,
+                            // so _Wy never even flickers to 6 / "@quarter_6"). _Wy
+                            // must not climb past 5 and the clock must not expire,
+                            // or the engine rolls the quarter and loops/freezes.
+                            if (Number(engineMatch.engineQuarter) > 5) engineMatch.engineQuarter = 5;
+                            if (Number(engineMatch.engineMinutesLeft) < 5) {
+                                engineMatch.engineMinutesLeft   = 9;
+                                engineMatch.engineSecondsLeft   = 0;
+                                engineMatch.engineTickAllowance = 0;
                             }
                         }
                         origIb1.call(this, _, t);
@@ -5521,14 +5532,19 @@
                             window._rb2p_otCheckRoundEnd();
                         }
                         window._rb2p_otWasWaiting = nowWaiting;
-                        // Keep OT effectively UNTIMED while on offense: a clock-0
-                        // quarter rollover past Q4 has no resume handler (the
-                        // Vy=13 handler only covers Q2–Q4) and would freeze the
-                        // game. Topping the clock means an OT possession can only
-                        // end via score / punt / turnover — all of which transfer
-                        // cleanly over the normal outcome path. The scoreboard
-                        // shows "OT", not this value, so the number is cosmetic.
-                        if (nowWaiting !== true && Number(em.engineMinutesLeft) < 5) {
+                        // V117: PIN the engine in a single, never-ending OT period.
+                        // The engine's quarter counter (_Wy) must NOT climb past 5,
+                        // and the clock must NOT expire — otherwise the engine rolls
+                        // the quarter (case 19: _Wy++ → "@quarter_6" label, and the
+                        // period-end loop the user saw "behaving like Q4 over and
+                        // over"), and a clock-0 rollover past Q4 has no resume
+                        // handler → freeze. Done on BOTH devices (the prior code
+                        // only topped the OFFENSE device, so the waiting side's
+                        // clock expired and drove the quarter forward). The bridge
+                        // owns rounds; the scoreboard shows "OT", so these are
+                        // cosmetic. A possession ends ONLY via score/punt/turnover.
+                        if (Number(em.engineQuarter) > 5) em.engineQuarter = 5;
+                        if (Number(em.engineMinutesLeft) < 5) {
                             em.engineMinutesLeft   = 9;
                             em.engineSecondsLeft   = 0;
                             em.engineTickAllowance = 0;
