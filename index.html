@@ -266,6 +266,7 @@
         #rb-lobby .diff-row {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 6px;
             margin: 0 0 14px 0;
         }
@@ -366,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V125</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V126</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -400,6 +401,7 @@
                 <button class="diff-btn" data-dif="medium">MED</button>
                 <button class="diff-btn" data-dif="hard">HARD</button>
                 <button class="diff-btn" data-dif="max">MAX</button>
+                <button class="diff-btn" data-dif="ultramax" title="Enter a raw defense-aggression number (lower = harder; MAX is -15)">ULTRA</button>
             </div>
             <div class="diff-row">
                 <span class="diff-label">QUARTER:</span>
@@ -6074,6 +6076,17 @@
             try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
             catch (e) { return 'max'; }
         }
+        // V126: ULTRAMAX — the user types a RAW engineDefenseAggression number
+        // (lower = harder; MAX is -15, so e.g. -30 is brutal). Stored separately
+        // so switching to a preset and back keeps the last custom value.
+        function getUltramaxValue() {
+            try { var n = parseFloat(localStorage.getItem('rb2p_ultramax_value'));
+                  return isFinite(n) ? n : -15; }
+            catch (e) { return -15; }
+        }
+        function setUltramaxValue(n) {
+            try { localStorage.setItem('rb2p_ultramax_value', String(n)); } catch (e) {}
+        }
         // V88: make DEFENSE LEVEL matter. engineDefenseAggression (lower = harder)
         // is set from the difficulty toggle as the BASELINE, then nudged by the
         // OPPONENT's aggregate defensive rating (the D the user is driving
@@ -6093,6 +6106,9 @@
             return c ? sum / c : 6.5;
         }
         function computeDefenseAggression() {
+            // V126: ULTRAMAX returns the raw user-entered number verbatim — no
+            // opponent-D nudge — so the value the user typed IS the aggression.
+            if (getUserDifficultyPref() === 'ultramax') return getUltramaxValue();
             var base = USER_DIFFICULTY_TO_ENGINE_AGGRESSION[getUserDifficultyPref()];
             if (typeof base !== 'number') base = -15;
             var r = teamDefenseRating(Number(window._rb2p_oppTeamUid));
@@ -6117,10 +6133,28 @@
             var cur = getUserDifficultyPref();
             $diffBtns.forEach(function (b) {
                 b.classList.toggle('selected', b.dataset.dif === cur);
+                // V126: show the live value on the ULTRA button when it's active.
+                if (b.dataset.dif === 'ultramax') {
+                    b.textContent = 'ULTRA' + (cur === 'ultramax' ? ' (' + getUltramaxValue() + ')' : '');
+                }
             });
         }
         $diffBtns.forEach(function (b) {
-            b.addEventListener('click', function () { setUserDifficultyPref(b.dataset.dif); });
+            b.addEventListener('click', function () {
+                // V126: ULTRAMAX prompts for a raw aggression number before selecting.
+                if (b.dataset.dif === 'ultramax') {
+                    var input = window.prompt(
+                        'ULTRAMAX — enter the defense-aggression number.\n' +
+                        'Lower = harder. MAX is -15; go lower for brutal (e.g. -30). ' +
+                        'Positive numbers are easier.',
+                        String(getUltramaxValue()));
+                    if (input === null) return;                 // cancelled
+                    var n = parseFloat(input);
+                    if (!isFinite(n)) return;                   // ignore non-numbers
+                    setUltramaxValue(n);
+                }
+                setUserDifficultyPref(b.dataset.dif);
+            });
         });
         renderUserDifficultyButtons();
 
