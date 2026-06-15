@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V127</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V128</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2442,6 +2442,14 @@
                         } catch (eLog) {}
                         window._rb2p_userOutcomeSendInProgress = true;
                         window._rb2p_userIsWaitingForOpponent = true;
+                        // V128: the user just LOST the ball (turnover/punt/score).
+                        // Any pending quarter-resume of this drive is void — clear
+                        // it and the stale pre-rollover capture so QTR-KEEP can't
+                        // later hand a 4th-down drive back to the wrong possessor.
+                        window._rb2p_quarterResumePending = false;
+                        window._rb2p_preRolloverYard = null;
+                        window._rb2p_preRolloverDown = null;
+                        window._rb2p_preRolloverToGo = null;
                         // V56: turnover-type outcomes are HELD briefly before
                         // sending. If this _1c1 was the INT-flip of a pick-6
                         // (the engine flips possession BEFORE the return-TD
@@ -3064,8 +3072,15 @@
                     // a genuine 4th-down stall mid-quarter (after the user has played)
                     // also falls through because the flag is already cleared.
                     var userHasBall = engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx;
+                    // V128: never treat a freshly-applied opponent outcome as a
+                    // resume — that's a brand-new possession (down 1 & 10) the
+                    // apply just set up, and resuming would overwrite it with the
+                    // stale pre-rollover down/yard. A genuine mid-drive rollover
+                    // resume never involves an opponent apply, so its timestamp is
+                    // always old here.
+                    var recentApply = (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0)) < 5000;
                     if (window._rb2p_quarterResumePending === true && userHasBall &&
-                        window._rb2p_userIsWaitingForOpponent !== true) {
+                        window._rb2p_userIsWaitingForOpponent !== true && !recentApply) {
                         var qTo = window._rb2p_quarterChangedTo;
                         // Resume where the user actually was when the quarter ended
                         // (the tracker captured the last live offensive spot), not the
@@ -4871,6 +4886,17 @@
                     window._rb2p_userIsWaitingForOpponent = false;
                     window._rb2p_userOutcomeSendInProgress    = false;
                     window._rb2p_lastOpponentOutcomeApplyMs       = Date.now();
+                    // V128: receiving an opponent outcome means a BRAND-NEW
+                    // possession is about to be set up (down 1 & 10 at the
+                    // applied spot) — it is NOT a quarter-resume of the user's
+                    // prior drive. Cancel any pending resume and drop the stale
+                    // pre-rollover capture so the QTR-KEEP watchdog can't clobber
+                    // this fresh drive with the old down/yard (the "starts on 4th
+                    // down, then an incomplete turns it over 60 yards away" bug).
+                    window._rb2p_quarterResumePending = false;
+                    window._rb2p_preRolloverYard = null;
+                    window._rb2p_preRolloverDown = null;
+                    window._rb2p_preRolloverToGo = null;
 
                     // V57: a generic outcome arriving while a pick-6 cascade
                     // is still up means the flow went off-script (expected:

@@ -34,6 +34,8 @@ page. A full run is ~1–2 min (most of it is the engine boot per page).
 | `ot-game-over-block.test.js` | engine `_1d1` swallowed during OT (V116) |
 | `ot-period-pin.test.js` | OT pins quarter=5, keeps the clock alive (V117) |
 | `defense-stats.test.js` | starring + spatial tackle credit + collect (V120) |
+| `ultramax-difficulty.test.js` | ULTRAMAX returns the raw entered aggression (V126) |
+| `qtr-keep-no-stale-resume.test.js` | turnover voids the stale quarter-resume capture (V128) |
 
 ## Writing a test
 Add `e2e/tests/<name>.test.js` exporting:
