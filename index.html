@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V117</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V118</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -6434,6 +6434,20 @@
                     Object.keys(ot).forEach(function (key) {
                         var entry = ot[key];
                         if (!entry || (entry.receiver !== 'a' && entry.receiver !== 'b')) return;
+                        // V118: IGNORE stale OT entries from a previous session in
+                        // this reused room. A dead session's ot/p5 lingered in
+                        // Firebase (the match-start cleanup is skipped on a
+                        // reload/resume) and got re-applied on a fresh match —
+                        // forcing B onto offense at Q1 with the 9:00 OT clock, the
+                        // corrupted state seen in the live dump (quarter=1, min=9).
+                        // Only honor a coin flip written in the last 60 s (the OT
+                        // actually in progress now); purge anything older.
+                        if (typeof entry.ts !== 'number' || (Date.now() - entry.ts) > 60000) {
+                            console.log('[2P OT] ignoring STALE ' + key + ' (age ' +
+                                        (entry.ts ? Math.round((Date.now() - entry.ts) / 1000) + 's' : 'no ts') + ')');
+                            FB.remove(FB.ref(db, 'rooms/' + code + '/ot/' + key)).catch(function () {});
+                            return;
+                        }
                         if (otAppliedPeriods[key]) return;
                         otAppliedPeriods[key] = true;
                         console.log('[2P OT] applying ' + key + ' — receiver=' + entry.receiver);
