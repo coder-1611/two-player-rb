@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V119</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V120</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1581,46 +1581,48 @@
                     if (kp === prev) return;
                     if (prev !== 2) return;                 // only a live play resolving
                     if (kp !== 4 && kp !== 11) return;      // 4 = carrier downed, 11 = QB sacked
-                    var carrierId = em.engineActivePlayerInst;
-                    if (carrierId == null || carrierId === -4) return;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    var carrier = null, i;
-                    for (i = 0; i < all.length; i++) {
-                        var x = all[i];
-                        if (x && !x._HL2 && x.id === carrierId) { carrier = x; break; }
-                    }
-                    if (!carrier) return;
-                    var tacklerId = (typeof carrier._l31 === 'number' && carrier._l31 > 0) ? carrier._l31
-                                  : (typeof carrier._r81 === 'number' && carrier._r81 > 0) ? carrier._r81 : -4;
-                    if (tacklerId === -4) return;            // no contact (out of bounds / slide)
-                    var tackler = null;
-                    for (i = 0; i < all.length; i++) {
-                        var y = all[i];
-                        if (y && !y._HL2 && y.id === tacklerId) { tackler = y; break; }
-                    }
-                    if (!tackler) return;
-                    // Sanity: credited defender must actually be ON the carrier.
-                    var dx = tackler.x - carrier.x, dy = tackler.y - carrier.y;
-                    if (dx * dx + dy * dy > 24 * 24) return;
+                    var i, x;
                     var isSack = (kp === 11);
-                    if (!tackler._rb2pStar || tackler._7j == null || tackler._7j === -4) {
-                        window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: 'unstarred', credit: 'nobody' });
-                        console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') + ' by unstarred defender — counted for nobody');
+                    // V120: SPATIAL attribution. The old path read the controlled
+                    // player (_X_) as the carrier + the engine's _l31/_r81 tackler
+                    // ids — but _X_ is the player the user CONTROLS, not always the
+                    // ball carrier, and the id fields don't resolve reliably, so it
+                    // credited "nobody" every time (tackles always 0). Instead:
+                    // locate the ball carrier (the controlled player if it resolves,
+                    // else the obj_ball position) and credit the STARRED defender
+                    // physically closest to it at the downing edge — real collision
+                    // truth, no engine probabilistic guess.
+                    var cx = null, cy = null;
+                    var carrierId = em.engineActivePlayerInst;
+                    if (carrierId != null && carrierId !== -4) {
+                        for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x.id === carrierId) { cx = x.x; cy = x.y; break; } }
+                    }
+                    if (cx == null) {
+                        for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { cx = x.x; cy = x.y; break; } }
+                    }
+                    if (cx == null) { console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') + ' — no carrier/ball found, skipped'); return; }
+                    // Nearest STARRED defender to the carrier.
+                    var best = null, bestD2 = 1e12;
+                    for (i = 0; i < all.length; i++) {
+                        var d = all[i];
+                        if (!d || d._HL2 || !d._eE2 || d._eE2._fE2 !== 'obj_playerDF') continue;
+                        if (!d._rb2pStar) continue;
+                        var ddx = d.x - cx, ddy = d.y - cy, dd = ddx * ddx + ddy * ddy;
+                        if (dd < bestD2) { bestD2 = dd; best = d; }
+                    }
+                    if (!best || bestD2 > 34 * 34) {
+                        console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') +
+                                    ' — nearest starred defender ' + (best ? Math.round(Math.sqrt(bestD2)) + 'px (out of range)' : 'none') +
+                                    ' — counted for nobody');
                         return;
                     }
-                    // The observer is the SOLE authority for tackles/sacks. Count
-                    // on the star object itself (engine-untouchable) — NOT the
-                    // engine's stat_tackles/stat_sacks fields, which the engine
-                    // credits from ~14 probabilistic / multi-credit sites that
-                    // inflate the total (the "too high again" bug). ONLY this real
-                    // post-collision resolution — one per downed carrier, with the
-                    // engaged defender verified on the carrier — is counted.
-                    var star = tackler._rb2pStar;
+                    var star = best._rb2pStar;
                     star.obsTck = (Number(star.obsTck) || 0) + 1;
                     if (isSack) star.obsSck = (Number(star.obsSck) || 0) + 1;
-                    window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: tackler._rb2pStar.ln });
+                    window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: star.ln });
                     console.log('[2P DEF] ' + (isSack ? 'SACK' : 'TACKLE') + ' by ' +
-                                tackler._rb2pStar.fn + ' ' + tackler._rb2pStar.ln);
+                                star.fn + ' ' + star.ln + ' (' + Math.round(Math.sqrt(bestD2)) + 'px) — obsTck=' + star.obsTck);
                 } catch (e) {}
             }
 
@@ -1629,6 +1631,34 @@
             // loops share the rb2pPrevKp latch, so a 2->4/2->11 edge could be seen by
             // both before either updated the latch — double-crediting one tackle.
             // One caller = one credit per play-resolution edge.
+            // V120: credit an interception to the opponent's starred defender
+            // nearest the ball (the interceptor). Called from the _1c1 hook when
+            // an INT is classified. Spatial, like the tackle observer — bypasses
+            // the engine's probabilistic _jc1 credit that misses our star structs.
+            window._rb2p_creditOppInt = function () {
+                try {
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var bx = null, by = null, i, x;
+                    for (i = 0; i < all.length; i++) {
+                        x = all[i];
+                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { bx = x.x; by = x.y; break; }
+                    }
+                    var best = null, bestD2 = 1e12;
+                    for (i = 0; i < all.length; i++) {
+                        var d = all[i];
+                        if (!d || d._HL2 || !d._eE2 || d._eE2._fE2 !== 'obj_playerDF' || !d._rb2pStar) continue;
+                        if (bx == null) { if (!best) best = d; continue; }
+                        var ddx = d.x - bx, ddy = d.y - by, dd = ddx * ddx + ddy * ddy;
+                        if (dd < bestD2) { bestD2 = dd; best = d; }
+                    }
+                    if (!best) { console.log('[2P DEF] INT — no starred defender to credit'); return; }
+                    var star = best._rb2pStar;
+                    star.obsInt = (Number(star.obsInt) || 0) + 1;
+                    console.log('[2P DEF] INTERCEPTION credited to ' + star.fn + ' ' + star.ln +
+                                (bx != null ? ' (' + Math.round(Math.sqrt(bestD2)) + 'px)' : ' (no ball ref)') +
+                                ' — obsInt=' + star.obsInt);
+                } catch (e) {}
+            };
             function rb2pRafLoop() { rb2pPaintJerseysOnce(); requestAnimationFrame(rb2pRafLoop); }
             requestAnimationFrame(rb2pRafLoop);
             setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); }, 16);
@@ -2263,6 +2293,18 @@
                         if (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) < 2000) return;
 
                         var outcome = buildUserDriveEndOutcome(pre, post, prevVy);
+
+                        // V120: an interception just happened (this device threw
+                        // it). The engine credits stat_int to _jc1's PROBABILISTIC
+                        // roster-list pick (NOT our injected star structs), so it
+                        // never reaches collectOppDefStats — INTs went untracked.
+                        // Credit it ourselves to the opponent's starred defender
+                        // nearest the ball (the interceptor). Fires for pick-6s too
+                        // (the pick is real regardless of the return).
+                        if (outcome && outcome.type === 'INT' &&
+                            typeof window._rb2p_creditOppInt === 'function') {
+                            window._rb2p_creditOppInt();
+                        }
 
                         // ===== PICK-6 BRANCH =====
                         // Rule: IF AND ONLY IF an interception is returned for
@@ -5099,7 +5141,7 @@
                     // sack counts for this star (see rb2pObserveTackles). Reset to 0
                     // here at star build (BACK TO LOBBY reloads the page, so a fresh
                     // game always rebuilds these).
-                    out.push({ fn: s.fn, ln: s.ln, pos: s.pos, id: id, obsTck: 0, obsSck: 0 });
+                    out.push({ fn: s.fn, ln: s.ln, pos: s.pos, id: id, obsTck: 0, obsSck: 0, obsInt: 0 });
                 }
                 return out.length ? out : null;
             }
@@ -5167,11 +5209,13 @@
                         var s = rb2pOppStars[i];
                         out.push({
                             fn: s.fn, ln: s.ln, pos: s.pos,
-                            // INT stays engine-sourced: a pick is a real catch the
-                            // engine credits to the actual intercepting defender's
-                            // _7j (retrobowl.js:52847) — genuine, not probabilistic.
-                            // TCK/SCK come ONLY from the collision observer.
-                            int: Math.round(Number(_Ai(s.id, 'stat_int')) || 0),
+                            // V120: TCK/SCK/INT all come from the bridge's spatial
+                            // observers. The engine credits stat_int/stat_tackles to
+                            // _jc1's PROBABILISTIC roster-list pick (retrobowl.js
+                            // 55194/55358), which never lands on our injected star
+                            // structs — so engine-sourced reads were 0/wrong. obsInt
+                            // is credited in _rb2p_creditOppInt at the INT event.
+                            int: Math.round(Number(s.obsInt) || 0),
                             sck: Math.round(Number(s.obsSck) || 0),
                             tck: Math.round(Number(s.obsTck) || 0)
                         });
