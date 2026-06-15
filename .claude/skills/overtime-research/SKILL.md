@@ -179,4 +179,5 @@ When `final/{oppRole}` arrives and we haven't ended, `endGameFromOpponentDeclara
 - **V111** — re-baseline `otWasWaiting` in `applyOtKickoff` (fixed bogus possession count on the non-receiver).
 - **V112** — decide receiver by Firebase role, not `engineUserTeamIdx` (fixed the receiver running the WAIT branch → deadlock).
 - **V113** — native-game-over safety net: force the 2P FINAL when the engine tears down the match mid-OT.
-- **Still open:** Fix A/B (suppress the engine's native game-over + period-end so multi-round equal-possession truly holds when the first possessor scores).
+- **V115** — Fix A IMPLEMENTED: the `_Ib1` clamp wrapper suppresses the engine's game-over FSM stages (`_Vy` 12/18/24) during 2P OT (parks at dead-stage 4), so cases 19/24/25 never call `_1d1`. The bridge's equal-possession round logic + walk-off are now the ONLY game-over paths; the drive-end watchdog ships the hand-off from the dead-stage 4 park, so the first possessor scoring no longer ends the game before the answer.
+- **Still open / verify on 2 devices:** that the first-possessor-scores case truly yields an answering possession in practice; that multi-round (tie → another round) holds; whether the clock top-up needs to run on the waiting device too.

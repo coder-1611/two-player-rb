@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V114</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V115</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2656,6 +2656,30 @@
                     var origIb1 = fn;
                     var clamp = function (_, t) {
                         var engineMatch = RB.engineState();
+                        // V115 (Fix A): in 2P OVERTIME the BRIDGE owns 100% of
+                        // game-over. The engine's native OT-end FSM stages call
+                        // _1d1 (s_end_match) → the "X win the Retro Bowl" season
+                        // flow, which is what leaked onto one screen while the
+                        // other hung. Stages: Vy 24 = overtime-over, Vy 18 =
+                        // game-over eval (both → _1d1), Vy 12 = end-of-quarter
+                        // (would roll the OT quarter toward that eval). Park the
+                        // stage at the inert dead-stage 4 and SKIP this _Ib1 frame
+                        // so cases 19/24/25 never execute. Parking at 4 also lets
+                        // the drive-end watchdog ship the possession hand-off if
+                        // the engine tried to end instead of kicking off. The
+                        // equal-possession round logic + walk-off are then the
+                        // ONLY paths to the 2P FINAL. (Not gated on
+                        // gameOverReported: keep the season flow suppressed even
+                        // after the bridge shows its FINAL — BACK TO LOBBY reloads.)
+                        if (window._rb2p_inOvertime && engineMatch) {
+                            var otVy = Number(engineMatch.engineDriveFsmStage);
+                            if (otVy === 12 || otVy === 18 || otVy === 24) {
+                                engineMatch.engineDriveFsmStage = 4;
+                                console.log('[2P OT] suppressed engine game-over FSM stage Vy=' + otVy +
+                                            ' (bridge owns OT game-over)');
+                                return;
+                            }
+                        }
                         origIb1.call(this, _, t);
                         // The engine PAT modal is suppressed by the
                         // popup-killer watchdog further down (it destroys
