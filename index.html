@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V115</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V116</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2709,6 +2709,49 @@
                     clamp._p2p_clamp = true;
                     _Y._PU1[idx] = clamp;
                     hookedEngineCommentaryScript = true;
+                } catch (e) {}
+            }
+
+            // ===== V116: block the engine's native game-over during 2P OT =====
+            // The engine reaches its native end via _Ib1 cases 20/25 calling
+            // _1d1 (s_end_match) → the "X win the Retro Bowl" season flow. Those
+            // calls happen via INTERNAL _Ib1 recursion within a single registry
+            // call, so Fix A's _Ib1-wrapper Vy-check (V115) can't catch the
+            // intermediate stages. But _1d1 is a reassignable GLOBAL whose bare
+            // internal callers resolve it at call time (verified:
+            // window._1d1===_1d1 and reassigning is seen by bare _1d1()), so
+            // wrapping it HERE intercepts the engine's own internal calls.
+            //
+            // During OT we SWALLOW _1d1 (the bridge — equal-possession round
+            // logic + walk-off — owns ALL game-over) and park the engine at the
+            // dead stage 4 so the drive-end watchdog ships the possession
+            // hand-off: the team that just scored sends its outcome and the OTHER
+            // team gets its answering possession instead of the game ending.
+            // Outside OT, _1d1 runs normally (regulation end is unaffected; the
+            // 2P FINAL overlay covers the engine's season flow as before).
+            var hookedEngineEndMatch = false;
+            function hookEngineEndMatchScript() {
+                if (hookedEngineEndMatch) return;
+                try {
+                    if (typeof window._1d1 !== 'function') return;
+                    if (window._1d1._p2p_otGuard) { hookedEngineEndMatch = true; return; }
+                    var orig1d1 = window._1d1;
+                    var wrapped = function (_, t, i) {
+                        if (window._rb2p_inOvertime) {
+                            console.log('[2P OT] blocked engine _1d1(' + i +
+                                        ') native game-over — parking for bridge handoff');
+                            try {
+                                var em = RB.engineState();
+                                if (em) { em.engineDriveFsmStage = 4; em.engineControllerState = 1; }
+                            } catch (eP) {}
+                            return;
+                        }
+                        return orig1d1.apply(this, arguments);
+                    };
+                    wrapped._p2p_otGuard = true;
+                    window._1d1 = wrapped;
+                    hookedEngineEndMatch = true;
+                    console.log('[2P] _1d1 (s_end_match) OT guard installed');
                 } catch (e) {}
             }
 
@@ -5137,6 +5180,7 @@
                     hookEngineChangePossessionScript();
                     hookEngineCommentaryScript();
                     hookEngineAk1Script();
+                    hookEngineEndMatchScript();   // V116: block engine native game-over during OT
                     var engineMatch = RB.engineState();
                     if (!engineMatch) { hideWait(); return; }
                     rb2pStarDefenders();   // V88: star the opponent's named D each tick
