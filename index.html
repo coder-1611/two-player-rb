@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V129</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V130</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -6978,6 +6978,118 @@
                     fin(false);
                 }
             });
+        })();
+    </script>
+
+    <!-- ====================================================================
+         V130: URL-gated AUTOPLAY BOT (dev/demo only).
+         Active ONLY when the URL has ?bot=a or ?bot=b — real players never
+         pass that, so this is a complete no-op for them. When armed, the tab
+         auto-enters a room (?room=CODE, default BOTS), auto-readies, and once
+         in a match plays the offense by synthesizing snap/throw pointer events
+         on the canvas. Open two tabs/windows (one per port) to watch two bots
+         play each other:
+            http://localhost:1611/index.html?bot=a&room=1611
+            http://localhost:1612/index.html?bot=b&room=1611
+         ==================================================================== -->
+    <script>
+        (function () {
+            var params = new URLSearchParams(location.search);
+            var botRole = params.get('bot');
+            if (botRole !== 'a' && botRole !== 'b') return;   // not a bot tab → no-op
+            var room = (params.get('room') || 'BOTS').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'BOTS';
+            var log = function (m) { try { console.log('[BOT ' + botRole + '] ' + m); } catch (e) {} };
+            log('autoplay armed, room=' + room);
+
+            function $(id) { return document.getElementById(id); }
+            function inMatch() { try { return RB.isEngineInMatchRoom() === true; } catch (e) { return false; } }
+            function instances() { try { return (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || []; } catch (e) { return []; } }
+            function hasObj(name) {
+                var a = instances();
+                for (var i = 0; i < a.length; i++) {
+                    var x = a[i];
+                    if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === name) return true;
+                }
+                return false;
+            }
+            function anyButton() {
+                var a = instances();
+                for (var i = 0; i < a.length; i++) {
+                    var x = a[i];
+                    if (x && !x._HL2 && x._eE2 && x._eE2._fE2 && /btn|button/.test(x._eE2._fE2)) return true;
+                }
+                return false;
+            }
+            function ptr(type, xf, yf) {
+                var c = $('canvas'); if (!c) return;
+                var r = c.getBoundingClientRect();
+                var o = { bubbles: true, cancelable: true,
+                          clientX: r.left + r.width * xf, clientY: r.top + r.height * yf,
+                          pointerId: 1, isPrimary: true, button: 0,
+                          buttons: type === 'pointerup' ? 0 : 1, pointerType: 'mouse' };
+                try { c.dispatchEvent(new PointerEvent(type, o)); } catch (e) {}
+                var mt = type === 'pointerdown' ? 'mousedown' : type === 'pointerup' ? 'mouseup' : 'mousemove';
+                try { c.dispatchEvent(new MouseEvent(mt, o)); } catch (e) {}
+            }
+            function tap(xf, yf) { ptr('pointerdown', xf, yf); setTimeout(function () { ptr('pointerup', xf, yf); }, 60); }
+            function tapButtonZones() {
+                // We don't compute each button's screen coords; instead tap the
+                // spots Retro Bowl buttons live (kickoff = center; the 4th-down
+                // PUNT / GO-FOR-IT / FG row + "tap to continue" = bottom band).
+                var spots = [[0.50, 0.50], [0.50, 0.88], [0.30, 0.88], [0.70, 0.88], [0.50, 0.80]];
+                spots.forEach(function (p, i) { setTimeout(function () { tap(p[0], p[1]); }, i * 80); });
+            }
+            function throwBall() {
+                // press near the QB (lower-center), drag downfield, release to throw.
+                ptr('pointerdown', 0.50, 0.62);
+                setTimeout(function () { ptr('pointermove', 0.52, 0.46); }, 110);
+                setTimeout(function () { ptr('pointermove', 0.54, 0.34); }, 230);
+                setTimeout(function () { ptr('pointerup',   0.54, 0.34); }, 350);
+            }
+
+            // ---- Phase 1: join + ready via the real lobby ----
+            var joined = false, readied = false, playing = false;
+            var lobbyTimer = setInterval(function () {
+                try {
+                    if (typeof window.s_play_two_player_match !== 'function') return;  // engine not booted
+                    if (inMatch()) { clearInterval(lobbyTimer); startAutoplay(); return; }
+                    var lobby = $('rb-lobby');
+                    if (!lobby) return;
+                    var view = lobby.getAttribute('data-active');
+                    if (view === 'entry' && !joined) {
+                        var inp = $('rb-room-input');
+                        if (inp) { inp.value = room; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+                        var jb = $('rb-join'); if (jb) jb.click();
+                    } else if (view === 'room') {
+                        joined = true;
+                        var rb = $('rb-ready');
+                        if (rb && !rb.disabled && !readied) { rb.click(); readied = true; log('readied up'); }
+                    }
+                } catch (e) {}
+            }, 800);
+
+            // ---- Phase 2: play the offense ----
+            function startAutoplay() {
+                if (playing) return;
+                playing = true;
+                log('in match — autoplay running');
+                var phase = 0;
+                setInterval(function () {
+                    try {
+                        if (!inMatch()) return;
+                        // On defense the other human/bot is driving — just watch
+                        // (don't poke buttons; the bridge manages the wait device).
+                        if (window._rb2p_userIsWaitingForOpponent === true) return;
+                        // Any button scene (kickoff / 4th-down punt-or-go / PAT /
+                        // "tap to continue") — tap the button zones to advance.
+                        if (anyButton()) { tapButtonZones(); return; }
+                        if (!hasObj('obj_ball')) return;     // snap scene not live yet
+                        phase = (phase + 1) % 4;
+                        if (phase === 1)      tap(0.5, 0.5);  // snap the ball
+                        else if (phase === 3) throwBall();    // throw downfield
+                    } catch (e) {}
+                }, 850);
+            }
         })();
     </script>
 </body>
