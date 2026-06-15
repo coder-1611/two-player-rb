@@ -366,7 +366,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V120</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V121</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2483,6 +2483,19 @@
                     };
                     wrapped._p2p_hooked = true;
                     _Y._PU1[idx] = wrapped;
+                    // V121: ALSO reassign the GLOBAL _1c1. The engine calls
+                    // s_change_possession BOTH via the registry (caught above) AND
+                    // by bare name internally (e.g. the INT turnover at
+                    // retrobowl.js:55358 / case 29) — and bare calls resolve the
+                    // GLOBAL, which the registry swap leaves untouched. That's why
+                    // interceptions left possession with the thrower: the hook's
+                    // send never ran (no [2P 1c1]/[2P HANDOFF] logs), so the
+                    // possession clamp forced the ball back. Verified: window._1c1
+                    // ===_1c1, the registry entry was the same object, and bare
+                    // callers see the reassignment — so this catches every path.
+                    // wrapped calls the saved original, and the
+                    // userOutcomeSendInProgress guard prevents any double-send.
+                    try { window._1c1 = wrapped; } catch (eG) {}
                     hookedEngineChangePossession = true;
                     hookedChangePossessionScriptIdx = idx;
                 } catch (e) { /* registry not ready yet */ }
