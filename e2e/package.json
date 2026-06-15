@@ -1,0 +1,13 @@
+{
+  "name": "two-player-rb-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless end-to-end tests for the two-player-rb bridge (drives the real engine in Chrome).",
+  "scripts": {
+    "test": "node run.js",
+    "stop": "node run.js --stop-server"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.1.0"
+  }
+}
