@@ -36,6 +36,33 @@ page. A full run is ~1–2 min (most of it is the engine boot per page).
 | `defense-stats.test.js` | starring + spatial tackle credit + collect (V120) |
 | `ultramax-difficulty.test.js` | ULTRAMAX returns the raw entered aggression (V126) |
 | `qtr-keep-no-stale-resume.test.js` | turnover voids the stale quarter-resume capture (V128) |
+| `two-player-live.test.js` | **two real pages** join one room over live Firebase + launch (V129) |
+
+## Two-player simulation (`two-player.js`)
+
+`startTwoPlayerGame()` launches **two headless pages in one browser**, drives the
+real lobby (type code → JOIN → READY on each), and waits for both to enter a live
+match — coordinating over the actual Firebase RTDB exactly like two phones. Test
+rooms use a `Z`-prefixed random code and are deleted on cleanup.
+
+```js
+const TP = require('../two-player');
+const game = await TP.startTwoPlayerGame();   // { code, a, b, snapshot, waitFor, cleanup }
+try {
+    const A = await TP.snapshot(game.a.page);  // { role, inMatch, waiting, myUid, oppUid, quarter }
+    const B = await TP.snapshot(game.b.page);
+    // ... assert cross-device state (A.waiting !== B.waiting, teams mirror, etc.)
+} finally {
+    await game.cleanup();                      // closes pages + deletes the room
+}
+```
+
+Gotcha that took a debugging pass: the GameMaker engine advances on
+`requestAnimationFrame`, which Chrome **pauses for hidden tabs** — so the
+first-opened page would freeze mid-launch (stuck at room 2) once the second tab
+took focus. `openLobbyPage` fixes this with CDP `Emulation.setFocusEmulationEnabled`
+so both tabs keep rendering. A two-player test sets `browser: false` (it owns its
+own browser + both pages); the runner skips its single-page setup for it.
 
 ## Writing a test
 Add `e2e/tests/<name>.test.js` exporting:
@@ -61,9 +88,10 @@ and the instance list `_Sc2._GL2._oq2`.
 - The `_GL2` console error during boot is a known benign load-race (an early
   interval reads `_Sc2._GL2` before the engine assigns it) — the harness filters
   it so it doesn't fail tests.
-- These are **single-device** checks against the live engine. Genuinely
-  cross-device behavior (two browsers syncing over Firebase) still needs a real
-  2-device playtest — but every fix that *can* be pinned to one device's engine
-  state lives here.
+- Most tests are **single-device** checks against the live engine. For genuine
+  **cross-device** behavior there's now `two-player.js` (see below) — two real
+  pages that join one room over the live Firebase RTDB and play. A real phone-to-
+  phone playtest is still the final word on feel/latency, but the coordination
+  (join, ready, launch, possession, sync) is now reproducible headlessly.
 - See the `overtime-research` / `overtime-equal-possession` skills for the
   code map these tests correspond to.

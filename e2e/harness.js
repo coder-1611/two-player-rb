@@ -72,7 +72,14 @@ async function launchBrowser() {
         executablePath: CHROME,
         headless: 'new',
         args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader',
-               '--enable-unsafe-swiftshader', '--mute-audio', '--window-size=900,560']
+               '--enable-unsafe-swiftshader', '--mute-audio', '--window-size=900,560',
+               // Two-player sim opens two tabs; a backgrounded tab gets its
+               // rAF/timer loop throttled by Chrome, which freezes the engine's
+               // room transition mid-launch. These keep BOTH tabs running at
+               // full speed (harmless for the single-page tests).
+               '--disable-background-timer-throttling',
+               '--disable-backgrounding-occluded-windows',
+               '--disable-renderer-backgrounding']
     });
 }
 
