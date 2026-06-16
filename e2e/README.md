@@ -38,6 +38,7 @@ page. A full run is ~1–2 min (most of it is the engine boot per page).
 | `qtr-keep-no-stale-resume.test.js` | turnover voids the stale quarter-resume capture (V128) |
 | `two-player-live.test.js` | **two real pages** join one room over live Firebase + launch (V129) |
 | `stale-final-guard.test.js` | stale `final` ignored, fresh one still ends the game (V131) |
+| `room-ttl-sweep.test.js` | rooms idle >2h are swept on load; fresh rooms survive (V132) |
 
 ## Two-player simulation (`two-player.js`)
 

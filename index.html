@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V131</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V132</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -6326,6 +6326,46 @@
         var unsubscribeTeams = null;
         var otAppliedPeriods = {};
         var gameStarted = false;
+
+        // V132: auto-expire stale rooms. Firebase has open rules and no backend
+        // here, so each client sweeps on load (and every 20 min) — any room whose
+        // most-recent activity is older than 2 hours is deleted. This stops the
+        // rooms/ tree from accumulating forever and, crucially, kills the stale
+        // final/ot/live leftovers that caused the reused-code bugs (e.g. 1611).
+        // "Activity" = the newest ts anywhere in the room (players join, live
+        // sync every 0.5s during play, final/ot reports), so an actively-played
+        // game is never swept mid-match — only rooms idle for 2h+.
+        var ROOM_TTL_MS = 2 * 60 * 60 * 1000;   // 2 hours
+        function newestTsIn(obj) {
+            var max = 0;
+            (function walk(o) {
+                if (!o || typeof o !== 'object') return;
+                for (var k in o) {
+                    if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
+                    var v = o[k];
+                    if ((k === 'ts' || k === 'createdAt') && typeof v === 'number') { if (v > max) max = v; }
+                    else if (v && typeof v === 'object') walk(v);
+                }
+            })(obj);
+            return max;
+        }
+        async function sweepStaleRooms() {
+            try {
+                var snap = await FB.get(FB.ref(db, 'rooms'));
+                var all = snap.val() || {};
+                var now = Date.now();
+                Object.keys(all).forEach(function (code) {
+                    if (code === myRoom) return;             // never nuke the room we're in
+                    // newest === 0 for a legacy room with no ts anywhere → treated
+                    // as stale and removed.
+                    if (now - newestTsIn(all[code]) > ROOM_TTL_MS) {
+                        FB.remove(FB.ref(db, 'rooms/' + code)).catch(function () {});
+                    }
+                });
+            } catch (e) {}
+        }
+        sweepStaleRooms();
+        setInterval(sweepStaleRooms, 20 * 60 * 1000);
 
         showView('entry');
 
