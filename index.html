@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V130</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V131</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -6035,6 +6035,9 @@
         // Called by the bridge when this device detects game over.
         window._rb2p_reportGameOver = function (report) {
             localFinalReport = report || {};
+            // V131: stamp the report so the other device can tell a real,
+            // current game-over from a stale leftover in a reused room.
+            localFinalReport.ts = Date.now();
             if (myDefStats) mergeMyDefStats(myDefStats);   // V89: fold in my D's synced stats
             renderFinal();
             // Publish our half so the opponent can show our players too.
@@ -6368,6 +6371,10 @@
                 var oppLive = oppLiveSnap.val();
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
                 var inProgress = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
+                // V131: only a FRESH final (ts within 25s) means a real game-over.
+                // A stale leftover in this reused room must NOT block resume.
+                var finalRep = finalSnap.val();
+                var finalFresh = !!(finalRep && finalRep.ts && (Date.now() - finalRep.ts < 25000));
 
                 // Make sure our slot exists (re-claim if onDisconnect cleared it).
                 var snap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole));
@@ -6376,7 +6383,10 @@
                                  { ts: Date.now(), ready: inProgress ? true : false });
                 }
 
-                if (inProgress && !finalSnap.exists()) {
+                if (inProgress && !finalFresh) {
+                    // V131: anchor the stale-final guard for this resumed session
+                    // (no startMatch runs on a reload-resume).
+                    window._rb2p_matchStartMs = Date.now();
                     // Pull the shared quarter length before launch so _Ws is right.
                     try {
                         var cfgSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/config/quarterMins'));
@@ -6510,6 +6520,17 @@
                 function (snap) {
                     var rep = snap.val();
                     if (!rep) { oppFinalReport = null; return; }
+                    // V131: ignore a STALE final report — one with no ts, or a ts
+                    // from before this match started (a leftover from a prior game
+                    // in this reused room). Without this guard a stale report trips
+                    // endGameFromOpponentDeclaration and pops a FINAL mid-game.
+                    // Purge it so it can't keep firing, and don't end on it.
+                    var startMs = window._rb2p_matchStartMs || 0;
+                    if (!rep.ts || rep.ts < startMs) {
+                        oppFinalReport = null;
+                        FB.remove(FB.ref(db, 'rooms/' + code + '/final/' + oppRole)).catch(function () {});
+                        return;
+                    }
                     oppFinalReport = rep;
                     // Only (re)render if our side has already ended — avoids a
                     // stale report flashing the screen mid-game.
@@ -6517,8 +6538,8 @@
                     // V106: the opponent declared game over but we haven't —
                     // sudden-death OT where the winning score never reached our
                     // scoreboard. End from their declaration so we don't hang on
-                    // the WAIT screen. (final/* is cleared at match start, so a
-                    // present report is always a real, current game over.)
+                    // the WAIT screen. (Guarded above so only a real, current
+                    // game-over report reaches here.)
                     else endGameFromOpponentDeclaration(rep);
                 }
             );
@@ -6908,6 +6929,12 @@
             window._rb2p_otOppPoss  = 0;
             window._rb2p_otWasWaiting = null;
             window._rb2p_lastOtBoxScore = null;   // V113
+            // V131: stamp when THIS match started. Any final/{role} report whose
+            // ts predates this (or has no ts) is from a PRIOR game in this reused
+            // room and must be ignored — otherwise a leftover report trips
+            // endGameFromOpponentDeclaration and pops a stale FINAL mid-game (the
+            // "3-0 game over while the engine plays on to 9-0" bug).
+            window._rb2p_matchStartMs = Date.now();
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
             // V62: clear any prior overtime coin flips so a rematch's OT
@@ -7077,6 +7104,11 @@
                 setInterval(function () {
                     try {
                         if (!inMatch()) return;
+                        // V131: game over (FINAL screen up or flagged) — STOP. A
+                        // human stops at FINAL; the bot must too, or it runs the
+                        // score up behind the overlay on a dead/parked engine.
+                        var fin = $('rb-final');
+                        if (window._rb2p_gameOverReported === true || (fin && fin.style.display !== 'none')) return;
                         // On defense the other human/bot is driving — just watch
                         // (don't poke buttons; the bridge manages the wait device).
                         if (window._rb2p_userIsWaitingForOpponent === true) return;
