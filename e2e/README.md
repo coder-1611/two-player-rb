@@ -39,6 +39,7 @@ page. A full run is ~1–2 min (most of it is the engine boot per page).
 | `two-player-live.test.js` | **two real pages** join one room over live Firebase + launch (V129) |
 | `stale-final-guard.test.js` | stale `final` ignored, fresh one still ends the game (V131) |
 | `room-ttl-sweep.test.js` | rooms idle >2h are swept on load; fresh rooms survive (V132) |
+| `scenario-toolkit.test.js` | scenario director: set clock + force a turnover across devices (V133) |
 
 ## Two-player simulation (`two-player.js`)
 
@@ -65,6 +66,42 @@ first-opened page would freeze mid-launch (stuck at room 2) once the second tab
 took focus. `openLobbyPage` fixes this with CDP `Emulation.setFocusEmulationEnabled`
 so both tabs keep rendering. A two-player test sets `browser: false` (it owns its
 own browser + both pages); the runner skips its single-page setup for it.
+
+## Scenario testing (`scenario.js`)
+
+`scenario.js` is a **director** layered on the two-player sim: it drives the live
+engine on either bot page into a chosen state deterministically, so scenarios you
+can't reliably wait for (end-of-quarter possession, turnovers, touchdowns, OT)
+become one-liners. It reads/writes through the same `RB.engineState()` façade the
+bridge uses and fires the **real** possession path (`_1c1`), so it exercises the
+actual bridge pipeline, not a fake.
+
+```js
+const TP = require('../two-player');
+const D  = require('../scenario');
+
+const game = await TP.startTwoPlayerGame();
+const off  = await D.offensePage(game);          // whichever bot has the ball
+const def  = D.otherPage(game, off);
+
+await D.pauseBoth(game);                          // freeze bots while setting up
+await D.setClock(off, { q: 4, min: 0, sec: 3 }); // ← manually CHOOSE A TIME
+await D.setScore(off, { user: 21, opp: 21 });    // tie → end-of-Q4 should go to OT
+await D.forceTurnover(off);                       // hand the ball to the other device
+await D.forceDriveEnd(off, 'TD');                 // end the drive as TD/FG/PUNT/INT/DOWNS
+await D.addPoints(off, 'user', 6);               // deterministic score bump
+const s = await D.state(def);                     // rich side-effect-free snapshot
+await D.waitForState(def, x => !x.waiting, 14000);
+await game.cleanup();
+```
+
+Key calls: `state` · `offensePage`/`otherPage` · `setClock`/`setScore`/`setBall` ·
+`forceTurnover`/`forceDriveEnd(type)` (`INT|DOWNS|FUMBLE|TD|FG|PUNT`) · `addPoints` ·
+`endOfQuarter` · `pauseBot`/`resumeBot`/`pauseBoth`/`resumeBoth` · `waitFor`/`waitForState`.
+
+The autoplay bot honors `window._rb2p_botPaused` (set by `pauseBot`) so it won't
+snap and undo a scenario mid-setup. See `tests/scenario-toolkit.test.js` for a
+worked example.
 
 ## Writing a test
 Add `e2e/tests/<name>.test.js` exporting:

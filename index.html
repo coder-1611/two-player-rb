@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V132</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V133</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -7107,11 +7107,16 @@
                 spots.forEach(function (p, i) { setTimeout(function () { tap(p[0], p[1]); }, i * 80); });
             }
             function throwBall() {
-                // press near the QB (lower-center), drag downfield, release to throw.
+                // Press near the QB (lower-center), drag downfield, release to
+                // throw. Vary the target each play (lateral + depth) so different
+                // receivers get the ball and some passes actually connect — more
+                // dynamic than always throwing to the same spot.
+                var tx = 0.36 + Math.random() * 0.30;   // 0.36..0.66 across the field
+                var ty = 0.22 + Math.random() * 0.26;   // 0.22..0.48 depth (upfield)
                 ptr('pointerdown', 0.50, 0.62);
-                setTimeout(function () { ptr('pointermove', 0.52, 0.46); }, 110);
-                setTimeout(function () { ptr('pointermove', 0.54, 0.34); }, 230);
-                setTimeout(function () { ptr('pointerup',   0.54, 0.34); }, 350);
+                setTimeout(function () { ptr('pointermove', (0.50 + tx) / 2, 0.50); }, 110);
+                setTimeout(function () { ptr('pointermove', tx, ty); }, 230);
+                setTimeout(function () { ptr('pointerup',   tx, ty); }, 350);
             }
 
             // ---- Phase 1: join + ready via the real lobby ----
@@ -7144,6 +7149,10 @@
                 setInterval(function () {
                     try {
                         if (!inMatch()) return;
+                        // V133: the test director can freeze the bot while it sets
+                        // up a scenario (clock/score/turnover) so the bot doesn't
+                        // immediately snap and undo it.
+                        if (window._rb2p_botPaused === true) return;
                         // V131: game over (FINAL screen up or flagged) — STOP. A
                         // human stops at FINAL; the bot must too, or it runs the
                         // score up behind the overlay on a dead/parked engine.
