@@ -51,11 +51,43 @@ The user's insight: at the snap each `obj_playerOF` has a **start position and a
 - **Avoid coverage** — don't throw where a `obj_playerDF` is near the predicted catch point.
 - **Prefer the deepest open man**, dump to a short open man if everyone downfield is covered.
 
-## OPEN — must be probed/calibrated (don't assume)
+## What's SOLVED vs still OPEN (measured)
 
-1. **Room→screen transform.** The camera offset+scale that maps `inst.x/.y` (room) to canvas client pixels is not yet known. Needed if the throw requires aiming at the receiver's *screen point* (vs just a direction). Resolve: find the GameMaker view/camera, or calibrate by correlating a known instance's room pos to its on-screen pixel (screenshot + locate, or move a known object).
-2. **Throw-input mapping.** Unknown whether the release point = the aim/target on screen, or it's a direction/power flick from the QB. Resolve empirically: from a fixed snap, vary the drag vector (direction & length) and observe which receiver/where the ball goes.
-3. **4th-down button click.** Two `obj_button`s read at room/GUI ≈ (113,224) and (272,224). Clicking those mapped through BOTH the 760-px canvas space AND a 480×270 GUI space did **not** dismiss them — mapping still unresolved, so the bot stalls at 4th down. Resolve: confirm the GUI resolution / button anchor, or screenshot the 4th-down screen and read the real button pixels. (A human watching can just say where they are.)
+**SOLVED — formation positions are readable.** A live `obj_playerOF` dump (driveDir=-1):
+ball ≈ (1820, 332); offensive line clustered x≈1830–1860, y≈302–362; WRs split wide
+at y≈193 and y≈438; backs/slots at y≈287, 297, 392. So receiver START positions are
+directly available from the instances at any time. (Room coords.)
+
+**OPEN — these still block receiver-aimed throwing:**
+
+1. **Routes aren't directly readable.** `inst.hspeed/.vspeed/.direction/.speed` all come
+   back `undefined` — the engine moves players by writing `x/y` each frame, not via GM
+   motion vars. So a route = sampling an instance's `x/y` across consecutive frames
+   during a LIVE play. BUT: a press-hold does NOT start the play (positions stay frozen),
+   and the snap+throw is a SINGLE trusted drag (down→move→up) that hikes AND throws at
+   once — so there's no simple-input window to observe routes developing before throwing.
+   To read routes you'd need to hike and sample over frames without immediately releasing
+   the throw — mechanism for that is not yet found.
+2. **Room→screen transform — camera not reachable.** The engine uses legacy GM views:
+   `view_xview=_IE4`, `view_yview=_JE4`, `view_wview=_KE4`, `view_hview=_LE4` (from the
+   name-map at retrobowl.js:1818; `_IE4` is used 6×, a real var). BUT these are
+   **closure-scoped, NOT global** — `window._IE4` is undefined and `eval('_IE4')` throws in
+   page context (unlike `_Sc2`, which IS global). So `frac = (room - view.x)/view.w` can't
+   be computed yet. Needs another access path (a global object holding the views, an
+   instance-level view field, or a `view_get_*` script in the registry), or empirical
+   calibration (correlate a known instance's room pos to its screenshot pixel).
+3. **Throw-input mapping.** Unknown whether the drag's release point = the on-screen aim
+   target (engine throws to nearest receiver there), or it's a direction/power flick from
+   the QB. Resolve empirically: from a fixed snap, vary the drag vector and observe where
+   the ball goes / who's targeted.
+4. **4th-down button click.** Two `obj_button`s read at ≈ (113,224) and (272,224). Clicking
+   mapped through BOTH the 760-px canvas space AND a 480×270 GUI space did NOT dismiss them
+   — mapping unresolved, so the bot stalls at 4th down. (A human watching can just say
+   where they are.)
+
+**Bottom line:** reading positions is easy; the hard part is (a) getting the room→screen
+transform out of a closure-scoped camera and (b) the throw-input mapping. Both are real
+reverse-engineering against the minified 4.5 MB engine, hard to verify without watching.
 
 ## Where this lives
 
