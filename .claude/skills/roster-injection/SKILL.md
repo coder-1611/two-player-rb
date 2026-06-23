@@ -16,8 +16,9 @@ Source data: `/Users/sohamsthitpragya/Projects/rosters/<team>.md` (all 32 exist;
 format documented below). Installed data: `TEAM_ROSTERS` table in
 `two-player-rb/index.html`, applied by `applyCustomRoster()` at match start.
 
-**Teams installed so far:** 22 San Francisco, 11 Pittsburgh. Remaining 30 are
-added by following the Workflow section.
+**Teams installed so far:** ALL 32 NFL teams (uids 0–31) installed as of V142.
+The 30 teams beyond SF (22) and Pittsburgh (11) were generated from the
+`rosters/*.md` source via the per-position stat mapping + hand-assigned faces.
 
 ## Engine facts (verified against retrobowl.js, 2026-06-12)
 
