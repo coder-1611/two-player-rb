@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V138</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V139</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1680,6 +1680,9 @@
             // we clamp as a runaway guard. Increment is tunable (accel units) via
             // window._rb2p_setDefSpeedBump(n); default .03 ~ closes the accel gap
             // to the ball carrier (~.05 makes defenders outrun the carrier).
+            // V139: DBs (CB = _O01 8, Safety = _O01 9) instead get a MULTIPLIER on
+            // their base accel (default 1.5x) for tighter coverage — tunable via
+            // window._rb2p_setDbSpeedMult(n). DL/LB keep the flat increment.
             function rb2pBumpDefenderSpeed() {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
@@ -1692,10 +1695,14 @@
                     }
                     if (!isMax) return;
                     var inc = parseFloat(localStorage.getItem('rb2p_def_speed_bump'));
-                    if (!isFinite(inc)) inc = 0.03;          // default increment
+                    if (!isFinite(inc)) inc = 0.03;          // default DL/LB increment
                     if (inc < 0) inc = 0;
                     if (inc > 0.25) inc = 0.25;
-                    if (inc <= 0) return;
+                    var dbMult = parseFloat(localStorage.getItem('rb2p_db_speed_mult'));
+                    if (!isFinite(dbMult)) dbMult = 1.5;      // default DB multiplier
+                    if (dbMult < 1) dbMult = 1;
+                    if (dbMult > 3) dbMult = 3;
+                    if (inc <= 0 && dbMult <= 1) return;      // nothing to do
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var d = all[i];
@@ -1703,7 +1710,9 @@
                         if (typeof d._j51 !== 'number') continue;
                         // engine wrote a fresh accel since our last frame → recapture base
                         if (d._rb2p_j51out !== d._j51) d._rb2p_j51base = d._j51;
-                        var target = d._rb2p_j51base + inc;
+                        // DBs (CB/Safety) get the multiplier; DL/LB get the flat bump.
+                        var isDB = (d._O01 >= 8 && d._O01 <= 9);
+                        var target = isDB ? (d._rb2p_j51base * dbMult) : (d._rb2p_j51base + inc);
                         if (target > 0.35) target = 0.35;    // runaway guard
                         d._j51 = target;
                         d._rb2p_j51out = target;
@@ -1721,6 +1730,18 @@
                 if (n < 0) n = 0;
                 if (n > 0.25) n = 0.25;
                 try { localStorage.setItem('rb2p_def_speed_bump', String(n)); } catch (e) {}
+                return n;
+            };
+            window._rb2p_getDbSpeedMult = function () {
+                var n = parseFloat(localStorage.getItem('rb2p_db_speed_mult'));
+                return isFinite(n) ? n : 1.5;
+            };
+            window._rb2p_setDbSpeedMult = function (n) {
+                n = parseFloat(n);
+                if (!isFinite(n)) return;
+                if (n < 1) n = 1;
+                if (n > 3) n = 3;
+                try { localStorage.setItem('rb2p_db_speed_mult', String(n)); } catch (e) {}
                 return n;
             };
             function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pBumpDefenderSpeed(); requestAnimationFrame(rb2pRafLoop); }
