@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V135</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V136</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5422,33 +5422,48 @@
                         if (activity <= 0 && !withinStarterCap) continue;
                         posShown[pos] = (posShown[pos] || 0) + 1;
                         var parts = [], posRank = 7, sortAct = 0;
-                        if (pos === 1) {                         // QB
+                        if (pos === 1) {                         // QB — passing, plus rushing kept separate
                             posRank = 0;
                             if (att > 0) parts.push(cmp + '/' + att);
-                            parts.push(passYds + ' YDS');
-                            if (passTd) parts.push(passTd + ' TD');
+                            parts.push(passYds + ' PASS YDS');
+                            if (passTd) parts.push(passTd + ' PASS TD');
                             if (intc)   parts.push(intc + ' INT');
                             if (recLng) parts.push(recLng + ' LG');
-                            if (rushYds) parts.push('+' + rushYds + ' RUSH' + (rushTd ? ' ' + rushTd + 'TD' : ''));
-                            sortAct = passYds + passTd * 100;
-                        } else if (pos === 2) {                  // RB
-                            posRank = 1;
                             if (carries) parts.push(carries + ' CAR');
-                            parts.push(rushYds + ' YDS');
+                            if (rushYds || carries) parts.push(rushYds + ' RUSH YDS' + (rushTd ? ' ' + rushTd + ' RUSH TD' : ''));
+                            sortAct = passYds + passTd * 100;
+                        } else if (pos === 2) {                  // RB — RUSHING and RECEIVING shown as SEPARATE stats
+                            posRank = 1;
+                            // rushing block (stat_rush_*)
+                            if (carries) parts.push(carries + ' CAR');
+                            parts.push(rushYds + ' RUSH YDS');
                             if (carries) parts.push((rushYds / carries).toFixed(1) + ' AVG');
-                            if (rushTd) parts.push(rushTd + ' TD');
+                            if (rushTd) parts.push(rushTd + ' RUSH TD');
                             if (rushLng) parts.push(rushLng + ' LG');
-                            if (rec) parts.push(rec + ' REC ' + passYds + 'yd' + (passTd ? ' ' + passTd + 'TD' : ''));
-                            sortAct = rushYds + rushTd * 100;
-                        } else if (pos === 4 || pos === 3) {     // WR / TE
+                            // receiving block (stat_receive = catches, stat_yards = receiving yds)
+                            if (rec) {
+                                parts.push(rec + ' REC');
+                                parts.push(passYds + ' REC YDS');
+                                if (rec) parts.push((passYds / rec).toFixed(1) + ' AVG');
+                                if (passTd) parts.push(passTd + ' REC TD');
+                                if (recLng) parts.push(recLng + ' LG');
+                            }
+                            sortAct = rushYds + rushTd * 100 + passYds;
+                        } else if (pos === 4 || pos === 3) {     // WR / TE — full RECEIVING line
                             posRank = (pos === 4) ? 2 : 3;
                             // V123: ALWAYS lead with the reception count for a
                             // receiver (even 0) — the user wants to see catches.
                             parts.push(rec + ' REC');
-                            parts.push(passYds + ' YDS');
+                            parts.push(passYds + ' REC YDS');
                             if (rec) parts.push((passYds / rec).toFixed(1) + ' AVG');
-                            if (passTd) parts.push(passTd + ' TD');
+                            if (passTd) parts.push(passTd + ' REC TD');
                             if (recLng) parts.push(recLng + ' LG');
+                            // a receiver who also ran (jet sweep / end-around): rushing kept separate
+                            if (carries) {
+                                parts.push(carries + ' CAR');
+                                parts.push(rushYds + ' RUSH YDS');
+                                if (rushTd) parts.push(rushTd + ' RUSH TD');
+                            }
                             sortAct = passYds + passTd * 100;
                         } else if (pos === 10 || pos === 11) {   // K (FG/XP added by FG tracker later)
                             posRank = 7;
@@ -7107,16 +7122,101 @@
                 spots.forEach(function (p, i) { setTimeout(function () { tap(p[0], p[1]); }, i * 80); });
             }
             function throwBall() {
-                // Press near the QB (lower-center), drag downfield, release to
-                // throw. Vary the target each play (lateral + depth) so different
-                // receivers get the ball and some passes actually connect — more
-                // dynamic than always throwing to the same spot.
-                var tx = 0.36 + Math.random() * 0.30;   // 0.36..0.66 across the field
-                var ty = 0.22 + Math.random() * 0.26;   // 0.22..0.48 depth (upfield)
-                ptr('pointerdown', 0.50, 0.62);
-                setTimeout(function () { ptr('pointermove', (0.50 + tx) / 2, 0.50); }, 110);
+                // Replicate the human throw: PRESS on the QB, RELEASE on the receiver's
+                // on-screen position (this locks the receiver and throws a led pass).
+                // Room->screen (calibrated): the scrolling camera view is ~960 room-units
+                // wide and 540 tall (from _ft._KE4/_LE4); the camera keeps the QB at a
+                // ~fixed screen fraction (offense sees downfield), ≈0.77 across when the
+                // drive attacks screen-left (engineDriveDirection<0) and ≈0.23 when it
+                // attacks screen-right; screen-Y = roomY/540. So a receiver's screen pos
+                // is qbScreen + ((recv-ball)/viewSize). Downfield = engineDriveDirection
+                // (flips by quarter — read live, never preset).
+                var ball = null, recv = [], df = [], dd = 1;
+                try {
+                    var s = RB.engineState();
+                    if (s && typeof s.engineDriveDirection === 'number') dd = s.engineDriveDirection >= 0 ? 1 : -1;
+                    var arr = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < arr.length; i++) {
+                        var x = arr[i];
+                        if (!x || x._HL2 || !x._eE2 || !x._eE2._fE2) continue;
+                        var nm = x._eE2._fE2;
+                        if (nm === 'obj_ball') { try { ball = { x: x.x, y: x.y }; } catch (e) {} }
+                        else if (nm === 'obj_playerOF') { try { recv.push({ id: x.id, x: x.x, y: x.y }); } catch (e) {} }
+                        else if (nm === 'obj_playerDF') { try { df.push({ x: x.x, y: x.y }); } catch (e) {} }
+                    }
+                } catch (e) {}
+                var VW = (typeof window._rb2p_viewW === 'number') ? window._rb2p_viewW : 960;
+                var VH = 540;
+                // THROW ORIGIN = the QB, NOT obj_ball. The ball sprite sits AHEAD of the
+                // QB (held out front), so measuring from it makes every receiver look
+                // "behind". The QB is the furthest-BACK offensive player (extreme against
+                // the drive direction). Track receivers and aim relative to the QB.
+                var qb = null;
+                for (var qi = 0; qi < recv.length; qi++) { var rr = recv[qi];
+                    if (!qb || (rr.x * -dd) > (qb.x * -dd)) qb = rr; }   // max backfield
+                if (!qb && ball) qb = { x: ball.x, y: ball.y };
+                var ox = qb ? qb.x : (ball ? ball.x : 0);
+                var oy = qb ? qb.y : (ball ? ball.y : 0);
+                var qbFx = (dd < 0) ? 0.77 : 0.23;                       // QB screen-x by drive dir
+                var qbFy = Math.max(0.10, Math.min(0.90, oy / VH));
+                // LEAD: per the skill, throw to the PREDICTED catch point = pos + vel*lead.
+                // Receiver velocity comes from the position history (by stable instance id).
+                var LEADT = (typeof window._rb2p_leadT === 'number') ? window._rb2p_leadT : 0.45;
+                var prev = window._rb2p_ofPrev, cur = window._rb2p_ofCur;
+                var dt = (prev && cur && cur.t > prev.t) ? (cur.t - prev.t) / 1000 : 0.35;
+                var t = null, aimX, aimY;
+                if (recv.length) {
+                    recv.forEach(function (r) {
+                        if (qb && r.id === qb.id) { r.depth = -9999; return; }   // don't target the QB himself
+                        var vx = 0, vy = 0;
+                        if (prev && cur && prev.pos[r.id] && cur.pos[r.id]) {
+                            vx = (cur.pos[r.id].x - prev.pos[r.id].x) / dt;
+                            vy = (cur.pos[r.id].y - prev.pos[r.id].y) / dt;
+                        }
+                        r.px = r.x + vx * LEADT; r.py = r.y + vy * LEADT;   // predicted catch point
+                        r.depth = (r.px - ox) * dd;                          // downfield of the QB
+                        var best = 1e9; for (var k = 0; k < df.length; k++) { var dx = df[k].x - r.px, dy = df[k].y - r.py, dist = Math.sqrt(dx * dx + dy * dy); if (dist < best) best = dist; }
+                        r.sep = best;
+                    });
+                    // candidates: downfield of the QB, reachable, not buried in coverage
+                    var cand = recv.filter(function (r) { return r.depth > 20 && r.depth < 700 && Math.abs(r.py - oy) < 340; });
+                    if (cand.length) {
+                        // most OPEN wins, mild preference for shorter throws
+                        cand.sort(function (a, b) { return (b.sep - b.depth * 0.12) - (a.sep - a.depth * 0.12); });
+                        t = cand[0];
+                    }
+                }
+                // aim a bit UP and a little SHORTER (user feedback), in room units (20 u/yd).
+                var UP = (typeof window._rb2p_aimUp === 'number') ? window._rb2p_aimUp : 25;       // room units toward top
+                var SHORT = (typeof window._rb2p_aimShort === 'number') ? window._rb2p_aimShort : 40; // pull the target in
+                aimX = t ? (t.px - dd * SHORT) : (ox + dd * 100);
+                aimY = (t ? t.py : oy) - UP;
+                // SLINGSHOT: drag AWAY from the target to throw TOWARD it. So the
+                // release point is the QB MINUS the receiver offset (pull back), not
+                // toward the receiver. (Dragging toward the receiver throws backward.)
+                // PULL = throw power. The throw distance is AMPLIFIED relative to the
+                // drag, so a full-offset pull overshoots ("overthrows every time").
+                // Use a modest pull and CAP its magnitude so it never maxes out / clamps.
+                var PULL = (typeof window._rb2p_throwPull === 'number') ? window._rb2p_throwPull : 0.40;
+                var MAXDRAG = (typeof window._rb2p_maxDrag === 'number') ? window._rb2p_maxDrag : 0.18;
+                var tx, ty;
+                if (t) {
+                    var dragX = ((aimX - ox) / VW) * PULL;       // measured from the QB origin
+                    var dragY = ((aimY - oy) / VH) * PULL;
+                    var mag = Math.sqrt(dragX * dragX + dragY * dragY);
+                    if (mag > MAXDRAG) { dragX = dragX / mag * MAXDRAG; dragY = dragY / mag * MAXDRAG; } // cap power (shorter)
+                    tx = qbFx - dragX;   // pull opposite the target (slingshot)
+                    ty = qbFy - dragY;
+                } else {
+                    tx = qbFx - dd * 0.10; ty = qbFy - 0.10;     // fallback: small pull downfield+up
+                }
+                tx = Math.max(0.03, Math.min(0.97, tx));
+                ty = Math.max(0.05, Math.min(0.95, ty));
+                try { window._rb2p_lastThrow = { t: Date.now(), ball: ball, qb: qb ? { x: Math.round(ox), y: Math.round(oy) } : null, tgt: t ? { x: Math.round(aimX), y: Math.round(aimY), sep: Math.round(t.sep), depth: Math.round(t.depth) } : null, tx: tx, ty: ty, dd: dd, qbFx: qbFx, qbFy: qbFy }; } catch (e) {}
+                ptr('pointerdown', qbFx, qbFy);          // press ON the QB
+                setTimeout(function () { ptr('pointermove', (qbFx + tx) / 2, (qbFy + ty) / 2); }, 110);
                 setTimeout(function () { ptr('pointermove', tx, ty); }, 230);
-                setTimeout(function () { ptr('pointerup',   tx, ty); }, 350);
+                setTimeout(function () { ptr('pointerup',   tx, ty); }, 350);   // release ON the receiver
             }
 
             // ---- Phase 1: join + ready via the real lobby ----
@@ -7145,10 +7245,22 @@
                 if (playing) return;
                 playing = true;
                 log('in match — autoplay running');
-                var phase = 0;
+                var snapState = 'idle', snapTick = 0, thrownThisPlay = false, tick = 0;
                 setInterval(function () {
                     try {
                         if (!inMatch()) return;
+                        // keep a short position history (by stable instance id) so the
+                        // throw can compute receiver velocity and LEAD them (per skill).
+                        try {
+                            var a = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                            var nowH = Date.now(), cur = {};
+                            for (var hi = 0; hi < a.length; hi++) { var hx = a[hi];
+                                if (!hx || hx._HL2 || !hx._eE2 || hx._eE2._fE2 !== 'obj_playerOF') continue;
+                                try { cur[hx.id] = { x: hx.x, y: hx.y }; } catch (e) {} }
+                            window._rb2p_ofPrev = window._rb2p_ofCur || null;
+                            window._rb2p_ofCur = { t: nowH, pos: cur };
+                            if (window._rb2p_ofPrev) window._rb2p_ofPrevSaved = window._rb2p_ofPrev;
+                        } catch (e) {}
                         // V133: the test director can freeze the bot while it sets
                         // up a scenario (clock/score/turnover) so the bot doesn't
                         // immediately snap and undo it.
@@ -7165,9 +7277,13 @@
                         // "tap to continue") — tap the button zones to advance.
                         if (anyButton()) { tapButtonZones(); return; }
                         if (!hasObj('obj_ball')) return;     // snap scene not live yet
-                        phase = (phase + 1) % 4;
-                        if (phase === 1)      tap(0.5, 0.5);  // snap the ball
-                        else if (phase === 3) throwBall();    // throw downfield
+                        // Proven cadence (850ms ticks): snap, then throw ~1.7s later — this
+                        // is the window where the synthetic throw reliably REGISTERS as a
+                        // pass (later, the QB has scrambled/been sacked so it no-ops). The
+                        // throw now targets the open receiver relative to the QB (§0 fix).
+                        tick = (tick + 1) % 4;               // 4*850 = 3.4s cycle
+                        if (tick === 1)      tap(0.5, 0.5);  // SNAP
+                        else if (tick === 3) throwBall();    // throw ~1.7s after snap
                     } catch (e) {}
                 }, 850);
             }
