@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V140</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V141</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1706,6 +1706,15 @@
                     if (dbMult < 1) dbMult = 1;
                     if (dbMult > 3) dbMult = 3;
                     if (inc <= 0 && dbMult <= 1) return;      // nothing to do
+                    // V141: detect the turnover return in REAL TIME. The engine sets
+                    // the drive FSM stage (_Vy) = 8 the instant a defender gets the
+                    // ball; the return then plays out DURING stage 8. (The _1c1
+                    // possession-change classification only fires when the return
+                    // ENDS — too late, which is why pick-6s still ran at full speed.)
+                    // Latch the moment we see stage 8 so the ENTIRE return is normal.
+                    if (window._rb2p_intReturnActive !== true) {
+                        try { var em8 = RB.engineState(); if (em8 && em8.engineDriveFsmStage === 8) window._rb2p_intReturnActive = true; } catch (e) {}
+                    }
                     // V140: after a turnover the intercepting team RETURNS the ball
                     // (the returner + blockers are still obj_playerDF) — run that
                     // return at NORMAL speed, not the MAX bump. Re-enabled on the
