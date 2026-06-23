@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V137</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V138</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1670,9 +1670,62 @@
                                 ' — obsInt=' + star.obsInt);
                 } catch (e) {}
             };
-            function rb2pRafLoop() { rb2pPaintJerseysOnce(); requestAnimationFrame(rb2pRafLoop); }
+            // V138: MAX defender SPEED bump. On-field defenders are obj_playerDF
+            // instances; they move via _j51 (my_accel, retrobowl.js:66770 applies
+            // pos += heading * _o71 * _j51). We add a flat increment to every
+            // defender's accel each frame — ONLY in MAX, ONLY on obj_playerDF, so
+            // the user's offense (obj_playerOF) is never touched. It is idempotent:
+            // we derive from the engine's CURRENT _j51 (capturing a fresh base
+            // whenever the engine recomputes it) so the bump never compounds, and
+            // we clamp as a runaway guard. Increment is tunable (accel units) via
+            // window._rb2p_setDefSpeedBump(n); default .03 ~ closes the accel gap
+            // to the ball carrier (~.05 makes defenders outrun the carrier).
+            function rb2pBumpDefenderSpeed() {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var pref = localStorage.getItem('rb2p_difficulty') || 'max';
+                    var isMax = (pref === 'max');
+                    if (!isMax && pref === 'ultramax') {
+                        var uv = parseFloat(localStorage.getItem('rb2p_ultramax_value'));
+                        if (!isFinite(uv)) uv = -5;
+                        isMax = (Math.max(uv, -5) <= -5);   // ULTRA at the -5 floor == MAX
+                    }
+                    if (!isMax) return;
+                    var inc = parseFloat(localStorage.getItem('rb2p_def_speed_bump'));
+                    if (!isFinite(inc)) inc = 0.03;          // default increment
+                    if (inc < 0) inc = 0;
+                    if (inc > 0.25) inc = 0.25;
+                    if (inc <= 0) return;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var d = all[i];
+                        if (!d || d._HL2 || !d._eE2 || d._eE2._fE2 !== 'obj_playerDF') continue;
+                        if (typeof d._j51 !== 'number') continue;
+                        // engine wrote a fresh accel since our last frame → recapture base
+                        if (d._rb2p_j51out !== d._j51) d._rb2p_j51base = d._j51;
+                        var target = d._rb2p_j51base + inc;
+                        if (target > 0.35) target = 0.35;    // runaway guard
+                        d._j51 = target;
+                        d._rb2p_j51out = target;
+                    }
+                } catch (e) {}
+            }
+            window._rb2p_bumpDefenderSpeed = rb2pBumpDefenderSpeed;
+            window._rb2p_getDefSpeedBump = function () {
+                var n = parseFloat(localStorage.getItem('rb2p_def_speed_bump'));
+                return isFinite(n) ? n : 0.03;
+            };
+            window._rb2p_setDefSpeedBump = function (n) {
+                n = parseFloat(n);
+                if (!isFinite(n)) return;
+                if (n < 0) n = 0;
+                if (n > 0.25) n = 0.25;
+                try { localStorage.setItem('rb2p_def_speed_bump', String(n)); } catch (e) {}
+                return n;
+            };
+            function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pBumpDefenderSpeed(); requestAnimationFrame(rb2pRafLoop); }
             requestAnimationFrame(rb2pRafLoop);
-            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); }, 16);
+            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); rb2pBumpDefenderSpeed(); }, 16);
 
             function startTwoPlayerMatch(role) {
                 // V112: stash the authoritative Firebase role so OT (and anyone
