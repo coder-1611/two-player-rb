@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V139</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V140</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1018,6 +1018,9 @@
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
+                    // V140: user is on offense again → re-enable the MAX defender
+                    // speed bump (cleared after a turnover so the return ran normal).
+                    window._rb2p_intReturnActive = false;
                     // Drop any lingering kickoff button — it gates the
                     // controller's step and would re-trigger the dead path.
                     var allInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
@@ -1703,6 +1706,11 @@
                     if (dbMult < 1) dbMult = 1;
                     if (dbMult > 3) dbMult = 3;
                     if (inc <= 0 && dbMult <= 1) return;      // nothing to do
+                    // V140: after a turnover the intercepting team RETURNS the ball
+                    // (the returner + blockers are still obj_playerDF) — run that
+                    // return at NORMAL speed, not the MAX bump. Re-enabled on the
+                    // user's next offensive drive (forceUserOffenseDrive clears it).
+                    var intReturn = window._rb2p_intReturnActive === true;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var d = all[i];
@@ -1710,9 +1718,14 @@
                         if (typeof d._j51 !== 'number') continue;
                         // engine wrote a fresh accel since our last frame → recapture base
                         if (d._rb2p_j51out !== d._j51) d._rb2p_j51base = d._j51;
-                        // DBs (CB/Safety) get the multiplier; DL/LB get the flat bump.
-                        var isDB = (d._O01 >= 8 && d._O01 <= 9);
-                        var target = isDB ? (d._rb2p_j51base * dbMult) : (d._rb2p_j51base + inc);
+                        var target;
+                        if (intReturn) {
+                            target = d._rb2p_j51base;        // V140: normal speed on the return
+                        } else {
+                            // DBs (CB/Safety) get the multiplier; DL/LB get the flat bump.
+                            var isDB = (d._O01 >= 8 && d._O01 <= 9);
+                            target = isDB ? (d._rb2p_j51base * dbMult) : (d._rb2p_j51base + inc);
+                        }
                         if (target > 0.35) target = 0.35;    // runaway guard
                         d._j51 = target;
                         d._rb2p_j51out = target;
@@ -2390,6 +2403,11 @@
                             typeof window._rb2p_creditOppInt === 'function') {
                             window._rb2p_creditOppInt();
                         }
+                        // V140: a turnover (INT/fumble) flips possession — the
+                        // intercepting team now RETURNS the ball. Drop the MAX
+                        // defender speed bump so the return runs at normal speed
+                        // (re-enabled on the user's next drive). Covers pick-6s.
+                        if (outcome && outcome.type === 'INT') window._rb2p_intReturnActive = true;
 
                         // ===== PICK-6 BRANCH =====
                         // Rule: IF AND ONLY IF an interception is returned for
