@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V136</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V137</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -401,7 +401,7 @@
                 <button class="diff-btn" data-dif="medium">MED</button>
                 <button class="diff-btn" data-dif="hard">HARD</button>
                 <button class="diff-btn" data-dif="max">MAX</button>
-                <button class="diff-btn" data-dif="ultramax" title="Enter a raw defense-aggression number (lower = harder; MAX is -15)">ULTRA</button>
+                <button class="diff-btn" data-dif="ultramax" title="Enter a raw defense-aggression number (-5 is the engine max; below -5 is weaker)">ULTRA</button>
             </div>
             <div class="diff-row">
                 <span class="diff-label">QUARTER:</span>
@@ -830,7 +830,10 @@
         //   _l51  engineTimeouts           — [team0Timeouts, team1Timeouts]
         //   _Z21  enginePatModeFlag        — 1 during PAT/2-pt scene
         //   _001  engineDefenseAggression  — per-engineMatch defense AI modifier;
-        //                                    lower = harder defense
+        //                                    lower = harder, but only DOWN TO -5
+        //                                    (the engine's hardest tier); below
+        //                                    -5 it gets WEAKER again. Pair with
+        //                                    object-64 _2t=4 for the true ceiling.
         //   _8c1  engineSkipCommentaryFlag — suppresses commentary FSM tick
         //   _831  engineSubCommentaryText  — small grey line under the
         //                                    main commentary banner
@@ -1053,12 +1056,15 @@
                     engineMatch.engineYardLineSigned = ydl;
 
                     // Apply local 2P difficulty preference.
-                    // engineMatch.engineDefenseAggression is the per-engineMatch defense aggression
-                    // modifier. Lower = harder (defenders close gaps faster).
+                    // engineMatch.engineDefenseAggression (_001) is the per-match
+                    // defense AI modifier. The engine's TRUE hardest is _001 = -5
+                    // EXACTLY: it hits the ==-5 bonus (retrobowl.js:55201) and keeps
+                    // pursuit timers healthy (_o51 ~ 4*(20+_001+skill)). Pushing
+                    // _001 BELOW -5 shrinks those timers → WEAKER defense, not harder.
                     // The engine's defense-aim AI does:
-                    //   G = clamp(difficulty, 1, 10) / 10  (aggression mult)
+                    //   G = clamp(_001, 1, 10) / 10   (so any _001 <= 1 pins G = 0.1)
                     // Mapping (matches the engine's _Z6 ladder):
-                    //   max:    -5  (G clamps to 0.1, hardest)
+                    //   max:    -5  + _2t=4 (extra-hard tier — the true ceiling)
                     //   hard:   -5
                     //   medium:  2
                     //   easy:    7
@@ -1068,8 +1074,11 @@
                         // the opponent's defensive rating (see computeDefenseAggression).
                         var dif = (typeof window._rb2p_computeDefenseAggression === 'function')
                             ? window._rb2p_computeDefenseAggression()
-                            : ({ max: -15, hard: -5, medium: 2, easy: 7 }[localStorage.getItem('rb2p_difficulty') || 'max']);
+                            : ({ max: -5, hard: -5, medium: 2, easy: 7 }[localStorage.getItem('rb2p_difficulty') || 'max']);
                         if (typeof dif === 'number') engineMatch.engineDefenseAggression = dif;
+                        // V137: sync the engine's extra-hard tier (_2t=4) with the
+                        // difficulty toggle so max/ULTRA get the harder defender AI.
+                        if (typeof window._rb2p_applyOpDifficulty === 'function') window._rb2p_applyOpDifficulty();
                     } catch (e) {}
                     if (engineMatch.engineDriveDirection == null || engineMatch.engineDriveDirection === 0) engineMatch.engineDriveDirection = 1;
                     engineMatch.engineDriveFsmStage = 2;
@@ -6115,28 +6124,30 @@
         // forceUserOffenseDrive reads this same key and applies it to
         // engineDefenseAggression on every play setup, so changes take effect
         // from the next drive.
-        var USER_DIFFICULTY_TO_ENGINE_AGGRESSION = { max: -15, hard: -5, medium: 2, easy: 7 };
+        var USER_DIFFICULTY_TO_ENGINE_AGGRESSION = { max: -5, hard: -5, medium: 2, easy: 7 };
         function getUserDifficultyPref() {
             try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
             catch (e) { return 'max'; }
         }
-        // V126: ULTRAMAX — the user types a RAW engineDefenseAggression number
-        // (lower = harder; MAX is -15, so e.g. -30 is brutal). Stored separately
-        // so switching to a preset and back keeps the last custom value.
+        // V126/V137: ULTRAMAX — the user types a RAW engineDefenseAggression
+        // number. The engine's hardest is -5; values BELOW -5 only WEAKEN defense
+        // (they shrink the unclamped pursuit timers), so the typed value is
+        // clamped to a -5 floor in computeDefenseAggression. Stored separately so
+        // switching to a preset and back keeps the last custom value.
         function getUltramaxValue() {
             try { var n = parseFloat(localStorage.getItem('rb2p_ultramax_value'));
-                  return isFinite(n) ? n : -15; }
-            catch (e) { return -15; }
+                  return isFinite(n) ? n : -5; }
+            catch (e) { return -5; }
         }
         function setUltramaxValue(n) {
             try { localStorage.setItem('rb2p_ultramax_value', String(n)); } catch (e) {}
         }
-        // V88: make DEFENSE LEVEL matter. engineDefenseAggression (lower = harder)
-        // is set from the difficulty toggle as the BASELINE, then nudged by the
-        // OPPONENT's aggregate defensive rating (the D the user is driving
-        // against). A stronger D → lower value → harder to move the ball. The
-        // toggle stays primary; the engine clamps internally so at Max the
-        // effect is subtle, at Medium/Easy it's clear (per the agreed model).
+        // V88/V137: make DEFENSE LEVEL matter. For easy/medium/hard the toggle
+        // sets a BASELINE that is then nudged by the OPPONENT's aggregate
+        // defensive rating (stronger D → lower value → harder to move the ball).
+        // max and ULTRAMAX SKIP this nudge: max must return EXACTLY -5 (the nudge
+        // would knock it off the engine's ==-5 hardest tier) and ULTRA is clamped
+        // to the -5 floor. See computeDefenseAggression below.
         // Rating comes from the static TEAM_ROSTERS table (present on both
         // devices) keyed by the opponent's uid; neutral 6.5 if no custom roster.
         function teamDefenseRating(uid) {
@@ -6150,15 +6161,56 @@
             return c ? sum / c : 6.5;
         }
         function computeDefenseAggression() {
-            // V126: ULTRAMAX returns the raw user-entered number verbatim — no
-            // opponent-D nudge — so the value the user typed IS the aggression.
-            if (getUserDifficultyPref() === 'ultramax') return getUltramaxValue();
-            var base = USER_DIFFICULTY_TO_ENGINE_AGGRESSION[getUserDifficultyPref()];
-            if (typeof base !== 'number') base = -15;
+            // V137: the engine's true hardest is _001 = -5 EXACTLY — it triggers
+            // the ==-5 bonus (retrobowl.js:55201) and keeps pursuit timers healthy
+            // (_o51 ~ 4*(20+_001+skill)); pushing _001 BELOW -5 shrinks those timers
+            // and makes defense WEAKER, not harder. So:
+            //   • max      → return -5 verbatim (NO opponent-D nudge — the nudge
+            //                would knock it off the exact -5 tier).
+            //   • ultramax → the typed value, clamped to a -5 floor.
+            //   • easy/medium/hard → baseline nudged by opponent D (the V88 model).
+            var pref = getUserDifficultyPref();
+            if (pref === 'ultramax') return Math.max(getUltramaxValue(), -5);
+            if (pref === 'max') return -5;
+            var base = USER_DIFFICULTY_TO_ENGINE_AGGRESSION[pref];
+            if (typeof base !== 'number') base = -5;
             var r = teamDefenseRating(Number(window._rb2p_oppTeamUid));
-            return base + (6.5 - r) * 1.5;   // stronger opp D → harder
+            return base + (6.5 - r) * 1.5;   // stronger opp D → harder (easy/med/hard)
         }
         window._rb2p_computeDefenseAggression = computeDefenseAggression;
+
+        // V137: EXTRA-HARD ENGINE TIER. `_2t` (op_difficulty on object 64) == 4
+        // turns on the engine's "extra hard" defender behaviors: v=10 in the
+        // defense-aim calc (retrobowl.js:55197) plus faster pursuit/speed timers
+        // (53234/53303/...). It is a GLOBAL flag — a single value on the one
+        // object-64 controller (it holds both teams in _Fj), so we set it once.
+        // We raise it to 4 on max / ULTRA-at-floor and restore the cached native
+        // baseline otherwise, leaving easy/medium/hard exactly as they were. This
+        // only hardens the engine-run DEFENSE the human faces; the no-AI-offense
+        // path is untouched, and the only offense-side effect (the _2t>=3 catch
+        // radius, retrobowl.js:52805) never SHRINKS the user's catch radius below
+        // the _001=-5 baseline, so it cannot make the user's offense worse.
+        function desiredOpDifficulty(baseline) {
+            var pref = getUserDifficultyPref();
+            if (pref === 'max') return 4;
+            if (pref === 'ultramax') return (Math.max(getUltramaxValue(), -5) <= -5) ? 4 : baseline;
+            return baseline;   // easy/medium/hard: keep native behavior
+        }
+        function getCtrl64() {
+            try { var c = _si(64); for (var k in c) { if (c.hasOwnProperty(k)) return c[k]; } }
+            catch (e) {}
+            return null;
+        }
+        window._rb2p_applyOpDifficulty = function () {
+            try {
+                if (!RB.isEngineInMatchRoom()) return;
+                var o = getCtrl64(); if (!o) return;
+                // Cache the native op_difficulty once, before we ever overwrite it.
+                if (window._rb2p_baseOpDifficulty == null) window._rb2p_baseOpDifficulty = o._2t;
+                o._2t = desiredOpDifficulty(window._rb2p_baseOpDifficulty);
+            } catch (e) {}
+        };
+        window._rb2p_readOpDifficulty = function () { var o = getCtrl64(); return o ? o._2t : null; };
         function setUserDifficultyPref(v) {
             try { localStorage.setItem('rb2p_difficulty', v); } catch (e) {}
             renderUserDifficultyButtons();
@@ -6170,6 +6222,7 @@
                     if (engineMatch && typeof aggression === 'number') {
                         engineMatch.engineDefenseAggression = aggression;
                     }
+                    window._rb2p_applyOpDifficulty();   // V137: sync extra-hard tier _2t
                 }
             } catch (e) {}
         }
@@ -6189,8 +6242,8 @@
                 if (b.dataset.dif === 'ultramax') {
                     var input = window.prompt(
                         'ULTRAMAX — enter the defense-aggression number.\n' +
-                        'Lower = harder. MAX is -15; go lower for brutal (e.g. -30). ' +
-                        'Positive numbers are easier.',
+                        '-5 is the engine\'s hardest. Below -5 only makes defense ' +
+                        'WEAKER (clamped to -5). Positive numbers are easier.',
                         String(getUltramaxValue()));
                     if (input === null) return;                 // cancelled
                     var n = parseFloat(input);
