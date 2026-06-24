@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V146</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V147</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3110,7 +3110,28 @@
                     // callers see the reassignment — so this catches every path.
                     // wrapped calls the saved original, and the
                     // userOutcomeSendInProgress guard prevents any double-send.
-                    try { window._1c1 = wrapped; } catch (eG) {}
+                    //
+                    // V147 (REGRESSION FIX — pick-6 PAT looped forever): the engine
+                    // fires _1c1 BARE 18 times, several DURING a pick-6 PAT cascade
+                    // (the INT turnover, the post-return flip, s_action_result's
+                    // fresh-TD misroute, the post-PAT kickoff). V121's blanket
+                    // global wrap made EVERY one of those re-enter the bridge
+                    // detect/send/swallow logic — and the misroute↔guardian repair
+                    // cycle stopped converging, re-popping the PAT modal endlessly.
+                    // The cascade code itself is unchanged since the known-good V100;
+                    // only this routing changed. Fix: while a pick-6 PAT cascade is
+                    // ACTIVE, route bare engine _1c1 straight to the ORIGINAL (exact
+                    // V100 behavior — the PAT guardian drives PAT_RESULT). Outside a
+                    // cascade, keep V121's wrapper so normal INTs still transfer
+                    // possession. The registry hook (_PU1[idx]) is unchanged.
+                    try {
+                        window._1c1 = function (_, t) {
+                            if (window._rb2p_pickSixPatCascadeActive === true) {
+                                return originalEngineChangePossession.call(this, _, t);
+                            }
+                            return wrapped.call(this, _, t);
+                        };
+                    } catch (eG) {}
                     hookedEngineChangePossession = true;
                     hookedChangePossessionScriptIdx = idx;
                 } catch (e) { /* registry not ready yet */ }
