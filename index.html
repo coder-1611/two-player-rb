@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V148</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V149</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4121,7 +4121,46 @@
                             // an anomaly — but the PAT is settled either way;
                             // staying "pending" forever would freeze the
                             // cascade, which is worse. Resolve and report.
-                            if (userDelta > 2) {
+                            if (userDelta >= 6) {
+                                // ===== V149: SCORER-SIDE 2-pt misroute REPAIR =====
+                                // The user-confirmed loop: the scorer's 2-pt
+                                // conversion is processed by _hB with _t11 < 6, so
+                                // case 1 treats it as a FRESH touchdown — credits the
+                                // SCORER +6 (not +2), runs _1c1, and re-pops the PAT
+                                // modal → "PAT over and over" (engine log:
+                                // "Score a 2 point conversion / ... / ACTION_RESULT_
+                                // TOUCHDOWN"). This race lives INSIDE the _hB call, so
+                                // the 100ms _t11=6 re-assert can't win it, and the old
+                                // code just "resolved anyway" keeping the wrong +6 and
+                                // leaving the engine in the TD/PAT state → it looped.
+                                // The conversion DID succeed, so REPAIR to +2, KILL the
+                                // re-popped modal, and force the post-PAT kickoff so the
+                                // engine leaves the TD/PAT path and the loop ends.
+                                var fixedScore = (window._rb2p_patUserScoreAtStart || 0) + 2;
+                                em.setUserScore(fixedScore);
+                                userDelta = 2;
+                                try {
+                                    var pps = window._rb2p_enumeratePopupInstances ?
+                                        window._rb2p_enumeratePopupInstances() : [];
+                                    for (var pk = 0; pk < pps.length; pk++) {
+                                        try { (typeof _cr === 'function') ? _cr(pps[pk]) : (pps[pk]._HL2 = true); }
+                                        catch (eK) {}
+                                    }
+                                } catch (eP) {}
+                                // leave the TD/PAT re-loop: down→1, possession to the
+                                // scorer (so the watchdog ships the post-PAT kickoff),
+                                // FSM→kickoff. Re-baseline so the score-watcher doesn't
+                                // re-fire on the +2 we just set.
+                                em.engineDownNumber     = 1;
+                                em.engineYardsToGo      = 10;
+                                em.engineDriveFsmStage  = 1;   // COMM_STAGE kickoff
+                                if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                                console.warn('[2P PAT GUARD] 2-pt conversion misrouted as fresh TD (+' +
+                                             (em.userScore - (window._rb2p_patUserScoreAtStart || 0)) +
+                                             ' raw) — corrected to +2, modal killed, forcing kickoff');
+                                if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                                    '2pt misroute repaired → +2 (was +6 fresh-TD)');
+                            } else if (userDelta > 2) {
                                 console.warn('[2P PAT GUARD] anomalous PAT credit +' + userDelta +
                                              ' (expected 1 or 2) — resolving anyway');
                                 if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
