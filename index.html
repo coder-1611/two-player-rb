@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V143</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V144</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1205,6 +1205,25 @@
                 } catch (e) { console.log('[2P TEAMS] jersey hardcode err', e); }
             }
 
+            // V144: recolor the read-only roster CARDS (obj_playerprofile) to a
+            // team. The cards draw from object 64's team-color arrays — the same
+            // per-draw color SOURCE as the on-field jerseys — which on the roster
+            // page otherwise sit at the engine default (49ers, uid 22). Set BOTH
+            // the user (_It/_Kt/_Mt) and opponent (_St/_Ut/_Wt) slots so the cards
+            // match regardless of which slot the card draw reads.
+            function setRosterCardColors(o64, uid) {
+                try {
+                    var C = TEAM_COLORS[uid]; if (!o64 || !C) return;
+                    var h = C[0], s = C[1], p = C[2];
+                    o64._It = writeRGB(o64._It, h, 256);
+                    o64._Kt = writeRGB(o64._Kt, s, 256); o64._Lt = writeRGB(o64._Lt, s, 300);
+                    o64._Mt = writeRGB(o64._Mt, p, 256); o64._Nt = writeRGB(o64._Nt, p, 300);
+                    o64._St = writeRGB(o64._St, h, 256);
+                    o64._Ut = writeRGB(o64._Ut, s, 256); o64._Vt = writeRGB(o64._Vt, s, 300);
+                    o64._Wt = writeRGB(o64._Wt, p, 256); o64._Xt = writeRGB(o64._Xt, p, 300);
+                } catch (e) {}
+            }
+
             // ===== V80: custom per-team rosters =====
             // Curated real-player rosters, installed at match start by
             // OVERWRITING the 12 existing roster players in place (every
@@ -1849,6 +1868,10 @@
                     var st = _6E2._Ue2(64);
                     if (!st || typeof _Hj !== 'function') return false;
                     applyCustomRoster(st, uid);
+                    // V144: recolor the cards to THIS team (the maintenance loop
+                    // below re-enforces it every tick while the preview is open).
+                    window._rb2p_previewUid = uid;
+                    setRosterCardColors(st, uid);
                     // V84: zero the tutorial step BEFORE entering rm_roster so
                     // msg_Intro_4 can't fire on room entry (the 100ms guard
                     // above would be up to a tick late).
@@ -1864,6 +1887,7 @@
             };
             window._rb2p_exitRosterPreview = function () {
                 window._rb2p_rosterPreviewActive = false;
+                window._rb2p_previewUid = null;   // V144: stop card recolor
                 previewBackBtn.style.display = 'none';
                 try { _Hj(14); } catch (e) {}   // rm_home
                 if (typeof window._rb2p_afterPreview === 'function') {
@@ -1896,6 +1920,20 @@
                             nm === 'obj_msgbg' || nm === 'obj_messagebox') {
                             try { if (typeof _cr === 'function') _cr(inst); else inst._HL2 = true; }
                             catch (eD) { try { inst._HL2 = true; } catch (e2) {} }
+                        }
+                    }
+                    // V144: keep the roster CARDS painted in the previewed team's
+                    // colors every tick (object 64 is the engine's per-draw color
+                    // source; on the roster page it otherwise defaults to 49ers).
+                    var pUid = window._rb2p_previewUid;
+                    if (pUid != null) {
+                        var ctrlC = _si(64), o64C = null;
+                        for (var kC in ctrlC) { if (ctrlC.hasOwnProperty(kC)) { o64C = ctrlC[kC]; break; } }
+                        if (o64C) setRosterCardColors(o64C, pUid);
+                        var CC = TEAM_COLORS[pUid];
+                        if (CC) for (var j = 0; j < all.length; j++) {
+                            var card = all[j];
+                            if (card && !card._HL2 && card._eE2 && card._eE2._fE2 === 'obj_playerprofile') paintPlayer(card, CC[0], CC[1], CC[2]);
                         }
                     }
                 } catch (e) {}
