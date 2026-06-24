@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V149</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V150</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1025,6 +1025,9 @@
                     // V140: user is on offense again → re-enable the MAX defender
                     // speed bump (cleared after a turnover so the return ran normal).
                     window._rb2p_intReturnActive = false;
+                    // V150: fresh offensive possession → re-arm pick-6 sending
+                    // (the anti-loop cap in enterPickSixCascade is per-possession).
+                    window._rb2p_pick6SentThisPossession = false;
                     // Drop any lingering kickoff button — it gates the
                     // controller's step and would re-trigger the dead path.
                     var allInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
@@ -3151,6 +3154,20 @@
                         console.log('[2P PICK6] enter(' + source + ') ignored — cascade already active');
                         return false;
                     }
+                    // V150 (ANTI-LOOP — the "unlimited PAT" root on the THROWER):
+                    // after we ship ONE PICK6, the thrower's engine is parked on the
+                    // gutted no-holder TD stage (Vy=10) and keeps re-crediting the
+                    // opponent +6; once the cascade clears, the score-watcher re-fires
+                    // and we'd send ANOTHER PICK6 → the scorer receives a fresh pick-6
+                    // and re-pops the PAT, forever. You cannot legitimately score two
+                    // pick-6s without regaining possession in between, so refuse to
+                    // re-enter until the user actually starts their NEXT offensive
+                    // drive (forceUserOffenseDrive clears the flag).
+                    if (window._rb2p_pick6SentThisPossession === true) {
+                        console.log('[2P PICK6] enter(' + source + ') ignored — a PICK6 was already sent ' +
+                                    'this possession (anti-loop); re-arms on the next offensive drive');
+                        return false;
+                    }
                     // If a plain turnover send is being held (the INT-flip
                     // _1c1 fired before the return-TD resolved), cancel it.
                     // The opponent must see ONLY the PICK6 outcome, not an
@@ -3229,6 +3246,7 @@
                                 message: 'PICK SIX! Defensive touchdown.',
                                 ts: Date.now()
                             });
+                            window._rb2p_pick6SentThisPossession = true;   // V150: one PICK6 per possession
                             console.log('[2P PICK6] PICK6 sent (plus6Landed=' + plus6Landed +
                                         ' scoreUser=' + em2.userScore +
                                         ' scoreOpp=' + em2.opponentScore + ')');
