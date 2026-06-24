@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V147</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V148</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4408,7 +4408,22 @@
                     for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
                         if (!inst || inst._HL2) continue;
-                        if (inst._Ca === ca) out.push(inst);
+                        // V148 (pick-6 PAT loop/hang ROOT FIX): _wm draws the message
+                        // BACKGROUND (obj_msgbg) at the PopUps layer depth `ca`, but its
+                        // CHILDREN — the title/body text and, critically, the 1pt/2pt
+                        // BUTTONS (obj_button, _0G = 100367/100369) — at `ca - 1`
+                        // (retrobowl.js:57587-57590). The old `=== ca` match saw ONLY the
+                        // msgbg, so:
+                        //   • the SCORER monitor counted 0 PAT buttons (false "0 modals"),
+                        //     and the popup-killer's "authorized" set never included the
+                        //     scorer's own buttons; and
+                        //   • on the THROWER, the killer destroyed the msgbg but left the
+                        //     engine's wrong-side PAT BUTTONS orphaned, so the engine kept
+                        //     re-popping the modal → the "PAT over and over" loop.
+                        // Include the modal's child depth (ca-1) AND any PAT-response
+                        // button by _0G so both devices see the COMPLETE modal.
+                        if (inst._Ca === ca || inst._Ca === ca - 1 ||
+                            inst._0G === 100367 || inst._0G === 100369) out.push(inst);
                     }
                 } catch (e) {}
                 return out;
