@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V144</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V145</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1211,16 +1211,41 @@
             // page otherwise sit at the engine default (49ers, uid 22). Set BOTH
             // the user (_It/_Kt/_Mt) and opponent (_St/_Ut/_Wt) slots so the cards
             // match regardless of which slot the card draw reads.
-            function setRosterCardColors(o64, uid) {
+            // Roster CARDS (obj_playerprofile) are colored from per-instance HEX
+            // fields — _hk/_wk/_Kk (hex helmet/shirt/pants) — which the engine's
+            // own uniform setup (_ik/_9R, retrobowl.js:49567 sets _oQ = _9R(...,
+            // o._wk, ...)) turns into the drawn colors. Object 64's _It/_Kt/_Mt
+            // only drive the on-field OF/DF, NOT the cards. The hex is GameMaker
+            // "$BBGGRR" (blue-first) — the web RRGGBB bytes reversed. So set each
+            // card's hex to the previewed team's colors and let the engine render
+            // them, exactly how it colors its own teams' cards.
+            function paintRosterCards(uid) {
                 try {
-                    var C = TEAM_COLORS[uid]; if (!o64 || !C) return;
-                    var h = C[0], s = C[1], p = C[2];
-                    o64._It = writeRGB(o64._It, h, 256);
-                    o64._Kt = writeRGB(o64._Kt, s, 256); o64._Lt = writeRGB(o64._Lt, s, 300);
-                    o64._Mt = writeRGB(o64._Mt, p, 256); o64._Nt = writeRGB(o64._Nt, p, 300);
-                    o64._St = writeRGB(o64._St, h, 256);
-                    o64._Ut = writeRGB(o64._Ut, s, 256); o64._Vt = writeRGB(o64._Vt, s, 300);
-                    o64._Wt = writeRGB(o64._Wt, p, 256); o64._Xt = writeRGB(o64._Xt, p, 300);
+                    var C = TEAM_COLORS[uid]; if (!C) return;
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var o = all[i];
+                        if (!o || o._HL2 || !o._eE2) continue;
+                        var nm = o._eE2._fE2;
+                        // The drawn jersey lives on obj_uniform; the 12 cards are
+                        // obj_player_profile. Set whichever carries the fields.
+                        if (nm !== 'obj_uniform' && nm !== 'obj_player_profile') continue;
+                        // Hex source: "$"+web RRGGBB. The engine's _9R reverses the
+                        // bytes into the [b,g,r] array the card shader draws (verified:
+                        // _wk "$003087" -> _oQ [135,48,0], drawn slot0=blue).
+                        if (o._hk !== undefined) o._hk = '$' + C[0];
+                        if (o._wk !== undefined) o._wk = '$' + C[1];
+                        if (o._Kk !== undefined) o._Kk = '$' + C[2];
+                        // Backstop: also write the rendered color arrays directly
+                        // (BGR via writeRGB), matching _9R's output, in case the
+                        // engine doesn't recompute from the hex this frame.
+                        if (o._nQ !== undefined) o._nQ = writeRGB(o._nQ, C[0], 256);
+                        if (o._oQ !== undefined) o._oQ = writeRGB(o._oQ, C[1], 256);
+                        if (o._pQ !== undefined) o._pQ = writeRGB(o._pQ, C[2], 256);
+                        if (o._VQ !== undefined) o._VQ = writeRGB(o._VQ, C[0], 300);
+                        if (o._WQ !== undefined) o._WQ = writeRGB(o._WQ, C[1], 300);
+                        if (o._XQ !== undefined) o._XQ = writeRGB(o._XQ, C[2], 300);
+                    }
                 } catch (e) {}
             }
 
@@ -1871,7 +1896,6 @@
                     // V144: recolor the cards to THIS team (the maintenance loop
                     // below re-enforces it every tick while the preview is open).
                     window._rb2p_previewUid = uid;
-                    setRosterCardColors(st, uid);
                     // V84: zero the tutorial step BEFORE entering rm_roster so
                     // msg_Intro_4 can't fire on room entry (the 100ms guard
                     // above would be up to a tick late).
@@ -1925,17 +1949,7 @@
                     // V144: keep the roster CARDS painted in the previewed team's
                     // colors every tick (object 64 is the engine's per-draw color
                     // source; on the roster page it otherwise defaults to 49ers).
-                    var pUid = window._rb2p_previewUid;
-                    if (pUid != null) {
-                        var ctrlC = _si(64), o64C = null;
-                        for (var kC in ctrlC) { if (ctrlC.hasOwnProperty(kC)) { o64C = ctrlC[kC]; break; } }
-                        if (o64C) setRosterCardColors(o64C, pUid);
-                        var CC = TEAM_COLORS[pUid];
-                        if (CC) for (var j = 0; j < all.length; j++) {
-                            var card = all[j];
-                            if (card && !card._HL2 && card._eE2 && card._eE2._fE2 === 'obj_playerprofile') paintPlayer(card, CC[0], CC[1], CC[2]);
-                        }
-                    }
+                    if (window._rb2p_previewUid != null) paintRosterCards(window._rb2p_previewUid);
                 } catch (e) {}
             }, 50);
 
