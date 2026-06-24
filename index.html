@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V145</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V146</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -804,7 +804,10 @@
         //         (in the engine's view; the bridge re-clamps this so it
         //         matches the user's offense/defense role)
         //   _0z   engineUserTeamIdx        — which team THIS device plays
-        //   _6F   engineYardLineSigned     — +N = own half, -N = opp half
+        //   _6F   engineYardLineSigned     — signed yards from MIDFIELD; -N = own
+        //                                    half, +N = opponent half. The on-screen
+        //                                    yard marker = 50 - |_6F| (so own 25 =
+        //                                    _6F -25, own 40 = _6F -10). ~20 units/yd.
         //   _Vy   engineDriveFsmStage      — 1=kickoff, 8=turnover, 9=TD,
         //                                    11=PAT-pick, 12/23=punt,
         //                                    14=FG made, 24=half end
@@ -1039,10 +1042,11 @@
                     window._rb2p_opponentScoreAtDriveStart  = engineMatch.opponentScore;
 
                     // Field state for a fresh 1st & 10.
-                    // yardLine is signed: positive = own half (0..50),
-                    // negative = opp half (-1..-50, the red zone). Clamp to
-                    // engine's valid range but PRESERVE sign — a turnover in
-                    // our own red zone legitimately needs a negative value.
+                    // yardLine is signed yards from MIDFIELD: negative = own half
+                    // (0..-50), positive = opp half (1..50, the red zone where you
+                    // score). Marker shown = 50 - |yardLine|, so own 25 = -25.
+                    // Clamp to engine's valid range but PRESERVE sign — a turnover
+                    // deep in opponent territory legitimately needs a positive value.
                     engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
                     engineMatch.engineDownNumber = 1;
                     engineMatch.engineYardsToGo = 10;
@@ -1126,6 +1130,24 @@
             // actually wait, now I can.md" — call this from devtools to force
             // the user offense at any signed yard line.
             window.__summonUserOffense  = forceUserOffenseDrive;
+
+            // ---- kickoffReturnYard: signed _6F for "receiver's own 25..40" ----
+            // CONVENTION (verified against retrobowl.js:66251-66312 + the live
+            // 2-bot yard probe): engineYardLineSigned (_6F) is the signed distance
+            // from MIDFIELD, ~20 room-units/yard, NEGATIVE = the offense's own half.
+            // The on-screen yard marker the player reads is  50 - |_6F|  (= 50 + _6F
+            // when _6F < 0). So a team's OWN 25 = _6F -25, own 40 = _6F -10.
+            //
+            // The old kickoff code used  -(25 + random*16)  = _6F -25..-40, which
+            // the player SEES as own 25 down to own **10** (its own debug string
+            // "at own " + (50 + koYardK) gives 25..10) — that was the reported
+            // "teams start on their 10 instead of 25" + "10-15 yard error after a
+            // quarter/halftime kickoff". The correct range for own 25..40 is
+            // _6F -25..-10  =  -(10 + random*16).
+            function kickoffReturnYard() {
+                return -(10 + Math.floor(Math.random() * 16));   // _6F -10..-25 = own 40..25
+            }
+            window._rb2p_kickoffReturnYard = kickoffReturnYard;
 
             // Generalised: set up a engineMatch between BUFF (uid 0) and KC (uid 5)
             // with the local user's team determined by role. _gx wants the
@@ -2348,7 +2370,7 @@
                                     window._rb2p_userIsWaitingForOpponent = false;
                                     window._rb2p_userOutcomeSendInProgress = false;
                                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                                    forceUserOffenseDrive(-(25 + Math.floor(Math.random() * 16)));
+                                    forceUserOffenseDrive(kickoffReturnYard());
                                 } else {
                                     em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
                                     window._rb2p_userIsWaitingForOpponent = true;
@@ -2403,7 +2425,7 @@
                                 // instead of always starting at own 25.
                                 engineMatch.enginePriorFsmStage = engineMatch.engineDriveFsmStage;
                                 // Receiver's own X = NEGATIVE yardLine.
-                                var openingYard = -(25 + Math.floor(Math.random() * 16));
+                                var openingYard = kickoffReturnYard();
                                 if (!forceUserOffenseDrive(openingYard)) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
@@ -3213,7 +3235,7 @@
                             window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                             window._rb2p_userOutcomeSendInProgress  = false;
                             window._rb2p_userIsWaitingForOpponent   = false;
-                            var yard = -(25 + Math.floor(Math.random() * 16));
+                            var yard = kickoffReturnYard();
                             if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                                 window._rb2p_forceUserOffenseDrive(yard);
                             }
@@ -3581,7 +3603,7 @@
                                 // random coin toss the bridge overrode, so use role.)
                                 var iAmSecondHalfReceiver = (engineMatch.engineUserTeamIdx === 1);
                                 if (iAmSecondHalfReceiver) {
-                                    var koYardK = -(25 + Math.floor(Math.random() * 16));   // own 25..40
+                                    var koYardK = kickoffReturnYard();   // own 25..40
                                     console.log('[2P HALFTIME] Vy=13 (Q3) — this device is the 2nd-half ' +
                                                 'receiver (B); KEEPING ball, Q3 ' + qmin + ':' +
                                                 ('0' + qrem).slice(-2) + ' at own ' + (50 + koYardK));
@@ -4006,7 +4028,7 @@
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
                         ' scoreOpp=' + outcome.scoreOpp + ')');
                     if (wasInCascade) {
-                        var yard = -(25 + Math.floor(Math.random() * 16));
+                        var yard = kickoffReturnYard();
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                             window._rb2p_forceUserOffenseDrive(yard);
                         }
@@ -5614,7 +5636,7 @@
                         if (isRandomKickoff) {
                             // TD/FG receiver kickoff — pick a fresh random
                             // own 25..40 (NEGATIVE yardLine in this engine).
-                            yard = -(25 + Math.floor(Math.random() * 16));
+                            yard = kickoffReturnYard();
                         } else if (isEngineKickoff) {
                             // The other side already ran _Zb1 + _1c1 with
                             // engine-randomized landing. outcome.yardLine
@@ -6290,7 +6312,7 @@
                         window._rb2p_userIsWaitingForOpponent = false;
                         window._rb2p_userOutcomeSendInProgress = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                        var yard = -(25 + Math.floor(Math.random() * 16));
+                        var yard = kickoffReturnYard();
                         // V110: clear the parked between-quarters commentary and
                         // re-arm drives BEFORE spawning, exactly like the quarter
                         // resume — otherwise the play opens under a stale banner
