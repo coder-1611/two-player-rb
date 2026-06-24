@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V142</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V143</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -394,6 +394,7 @@
             <div class="diff-row">
                 <span class="diff-label">YOUR TEAM:</span>
                 <select id="rb-team-select" class="diff-btn" style="min-width:160px;cursor:pointer;"></select>
+                <button class="diff-btn" id="rb-view-roster" title="View this team's player cards">VIEW ROSTER</button>
             </div>
             <div class="diff-row">
                 <span class="diff-label">DEFENSE:</span>
@@ -6873,6 +6874,28 @@
                     if (window._rb2p_previewRoster(uid)) {
                         lobby.style.display = 'none';
                     }
+                }
+            });
+        }
+
+        // V143: explicit "VIEW ROSTER" button — opens the engine's player-card
+        // page (rm_roster) for the currently selected team, without having to
+        // re-pick the team. Reuses the same read-only preview path as the
+        // team-select change handler above.
+        var $viewRoster = document.getElementById('rb-view-roster');
+        if ($viewRoster) {
+            $viewRoster.addEventListener('click', function () {
+                if (gameStarted) return;                          // lobby only
+                var uid = parseInt($teamSelect && $teamSelect.value, 10);
+                if (!(uid >= 0 && uid <= 31)) uid = teamByRole[myRole];
+                if (!(uid >= 0 && uid <= 31)) return;             // no team chosen yet
+                if (typeof window._rb2p_previewRoster !== 'function') return;
+                window._rb2p_afterPreview = function () {
+                    lobby.style.display = 'flex';
+                    showView('room');
+                };
+                if (window._rb2p_previewRoster(uid)) {
+                    lobby.style.display = 'none';
                 }
             });
         }
