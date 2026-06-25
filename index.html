@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V150</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V151</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2373,7 +2373,7 @@
                                     window._rb2p_userIsWaitingForOpponent = false;
                                     window._rb2p_userOutcomeSendInProgress = false;
                                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                                    forceUserOffenseDrive(kickoffReturnYard());
+                                    forceUserOffenseDrive(window._rb2p_kickoffReturnYard());
                                 } else {
                                     em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
                                     window._rb2p_userIsWaitingForOpponent = true;
@@ -2428,7 +2428,7 @@
                                 // instead of always starting at own 25.
                                 engineMatch.enginePriorFsmStage = engineMatch.engineDriveFsmStage;
                                 // Receiver's own X = NEGATIVE yardLine.
-                                var openingYard = kickoffReturnYard();
+                                var openingYard = window._rb2p_kickoffReturnYard();
                                 if (!forceUserOffenseDrive(openingYard)) {
                                     if (triesA > 400) clearInterval(pollA);
                                     return;
@@ -3274,7 +3274,7 @@
                             window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                             window._rb2p_userOutcomeSendInProgress  = false;
                             window._rb2p_userIsWaitingForOpponent   = false;
-                            var yard = kickoffReturnYard();
+                            var yard = window._rb2p_kickoffReturnYard();
                             if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                                 window._rb2p_forceUserOffenseDrive(yard);
                             }
@@ -3642,7 +3642,7 @@
                                 // random coin toss the bridge overrode, so use role.)
                                 var iAmSecondHalfReceiver = (engineMatch.engineUserTeamIdx === 1);
                                 if (iAmSecondHalfReceiver) {
-                                    var koYardK = kickoffReturnYard();   // own 25..40
+                                    var koYardK = window._rb2p_kickoffReturnYard();   // own 25..40
                                     console.log('[2P HALFTIME] Vy=13 (Q3) — this device is the 2nd-half ' +
                                                 'receiver (B); KEEPING ball, Q3 ' + qmin + ':' +
                                                 ('0' + qrem).slice(-2) + ' at own ' + (50 + koYardK));
@@ -4067,7 +4067,7 @@
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
                         ' scoreOpp=' + outcome.scoreOpp + ')');
                     if (wasInCascade) {
-                        var yard = kickoffReturnYard();
+                        var yard = window._rb2p_kickoffReturnYard();
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                             window._rb2p_forceUserOffenseDrive(yard);
                         }
@@ -5729,7 +5729,7 @@
                         if (isRandomKickoff) {
                             // TD/FG receiver kickoff — pick a fresh random
                             // own 25..40 (NEGATIVE yardLine in this engine).
-                            yard = kickoffReturnYard();
+                            yard = window._rb2p_kickoffReturnYard();
                         } else if (isEngineKickoff) {
                             // The other side already ran _Zb1 + _1c1 with
                             // engine-randomized landing. outcome.yardLine
@@ -6405,7 +6405,7 @@
                         window._rb2p_userIsWaitingForOpponent = false;
                         window._rb2p_userOutcomeSendInProgress = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                        var yard = kickoffReturnYard();
+                        var yard = window._rb2p_kickoffReturnYard();
                         // V110: clear the parked between-quarters commentary and
                         // re-arm drives BEFORE spawning, exactly like the quarter
                         // resume — otherwise the play opens under a stale banner
