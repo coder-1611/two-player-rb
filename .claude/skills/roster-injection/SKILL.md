@@ -93,6 +93,25 @@ Contact sheets (4× scale, frames left→right = face_x 0..7) live in this skill
 `faces/` folder — **Read them when assigning faces** and pick the frame whose
 hair/beard/look best matches the real player's headshot.
 
+#### Matching rules — READ before assigning a face (learned the hard way, V153–V157)
+1. **ALWAYS open the player's real headshot first.** `curl` the image URL from
+   `rosters/<team>.md` and Read it. NEVER assign facial hair from memory — memory
+   over-beards. (V153 shipped 5 QBs with wrong beards; all were corrected only
+   after looking at the actual photos.)
+2. **Light stubble / 5-o'clock shadow = CLEAN, not a beard.** Assign a beard frame
+   ONLY for a distinct, dark, defined beard. A mustache/goatee-only player gets a
+   goatee frame (e.g. `dark_003 fx0`, `mix_001 fx6`), NOT a full-beard frame.
+   Real misreads: Purdy, McCaffrey, Goff, Daniel Jones, Geno Smith were all
+   clean/light-stubble that got mis-assigned full beards.
+3. **Hair vs beard is a forced trade-off on light skin — there is NO light frame
+   with BOTH long hair and a beard.** The only long-hair light frames are
+   `light_002 fx4` (long flowing) and `light_003 fx3` (man-bun), and both are
+   clean-shaven. For a long-haired player (e.g. Kittle), pick whichever feature is
+   more iconic; if the user flags the hair, prioritize the hair and accept the
+   clean face.
+4. **Skin tone is the one attribute that's reliably right — never change it** when
+   correcting a face; only adjust `fy`/`fx`.
+
 **FORBIDDEN (female-looking) faces — never assign to players:**
 `mix_001[0]` (long blond hair), `dark_006[6]` (side ponytail),
 `dark_007[2]`, `dark_007[6]`, `dark_007[7]` (long framed hair/braids),
