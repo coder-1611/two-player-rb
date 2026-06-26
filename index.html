@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V167</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V168</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2907,6 +2907,13 @@
                         // briefly flip possession and trick us into sending a
                         // bogus outcome on the first frame of our own drive.
                         if (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) < 2000) return;
+                        // V168: post-pick-6 kickoff grace — the kickoff cascade's
+                        // transient _UD flip is NOT a turnover; don't ship a handoff.
+                        if (Date.now() < (window._rb2p_kickoffGraceUntil || 0)) {
+                            console.log('[2P 1c1] suppressed send — post-pick-6 kickoff grace ' +
+                                        '(transient possession flip, not a real turnover)');
+                            return;
+                        }
 
                         var outcome = buildUserDriveEndOutcome(pre, post, prevVy);
 
@@ -4073,6 +4080,16 @@
                     window._rb2p_userIsWaitingForOpponent  = false;
                     window._rb2p_userOutcomeSendInProgress = false;
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                    // V168: this device just applied the pick-6 PAT_RESULT and is
+                    // about to RECEIVE the kickoff + start its own drive. The kickoff
+                    // cascade briefly flips _UD, which the _1c1 send-hook misreads as
+                    // "we lost the ball" once the 2s cooldown lapses — and it shipped a
+                    // SPURIOUS type=OTHER handoff carrying the mirrored kickoff scrimmage
+                    // (Firebase showed `type:OTHER yardLine:-37 message:"opponent 37"`),
+                    // teleporting the opponent. Open a grace window during which the
+                    // _1c1 hook refuses to send (we can't legitimately turn the ball
+                    // over in the first few seconds of receiving a kickoff).
+                    window._rb2p_kickoffGraceUntil = Date.now() + 7000;
                     window._rb2p_userPatPopupRefs = null;
                     if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
@@ -4954,6 +4971,12 @@
             var _rb2p_seenPatModalIds_global = {};
             setInterval(function () {
                 try {
+                    // V168: the V54/V55 pick-6 AUTO-TEST is a DIAGNOSTIC harness — it
+                    // fired a 30s observation window on EVERY pick-6 cascade in the
+                    // shipped build, adding overhead/noise during the most timing-
+                    // sensitive moment. Keep it opt-in only (set localStorage
+                    // 'rb2p_enable_autotest' = '1' to re-enable for debugging).
+                    if (localStorage.getItem('rb2p_enable_autotest') !== '1') return;
                     var cur = window._rb2p_pickSixPatCascadeActive === true;
                     if (cur && !_rb2p_lastCascadeState) {
                         console.log('[2P AUTOTEST V55] cascade flag false→true — launching auto-test (trigger=cascade)');
