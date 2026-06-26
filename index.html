@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V166</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V167</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2217,7 +2217,18 @@
                     // (the returner + blockers are still obj_playerDF) — run that
                     // return at NORMAL speed, not the MAX bump. Re-enabled on the
                     // user's next offensive drive (forceUserOffenseDrive clears it).
-                    var intReturn = window._rb2p_intReturnActive === true;
+                    //
+                    // V167 (ROOT FIX for "pick-6 only breaks on MAX, started after
+                    // the DB speed bump"): ALSO drop the bump for the ENTIRE pick-6
+                    // PAT cascade, not just the return. 1.5x-fast defenders make the
+                    // return AND the goal-line PAT resolve faster, which loses the
+                    // _t11 race inside _hB (the 2-pt-as-fresh-TD misroute) and
+                    // destabilizes the whole sequence — exactly why it works at
+                    // normal speed but loops on MAX. Running the cascade at normal
+                    // speed makes MAX behave like the (working) lower difficulties.
+                    // (Shipped as V167 — V153-166 were a separate faces/stats series.)
+                    var runNormal = window._rb2p_intReturnActive === true ||
+                                    window._rb2p_pickSixPatCascadeActive === true;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var d = all[i];
@@ -2226,8 +2237,8 @@
                         // engine wrote a fresh accel since our last frame → recapture base
                         if (d._rb2p_j51out !== d._j51) d._rb2p_j51base = d._j51;
                         var target;
-                        if (intReturn) {
-                            target = d._rb2p_j51base;        // V140: normal speed on the return
+                        if (runNormal) {
+                            target = d._rb2p_j51base;        // V140/V153: normal speed on the return + PAT cascade
                         } else {
                             // DBs (CB/Safety) get the multiplier; DL/LB get the flat bump.
                             var isDB = (d._O01 >= 8 && d._O01 <= 9);
