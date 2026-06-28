@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V169</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V170</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2912,6 +2912,21 @@
                         if (Date.now() < (window._rb2p_kickoffGraceUntil || 0)) {
                             console.log('[2P 1c1] suppressed send — post-pick-6 kickoff grace ' +
                                         '(transient possession flip, not a real turnover)');
+                            return;
+                        }
+                        // idiocy.md fix (V170): a REAL turnover settles _6F to an
+                        // integral yard line at BALL_DOWN/SACKED. A FRACTIONAL value
+                        // means the ball is still in motion — this _1c1 is one of the
+                        // engine's ~18 bare internal possession flips, NOT a play-end.
+                        // Shipping it teleports the receiver to a mid-flight position
+                        // (the "[2P apply v5] type=OTHER yardLineIn=2.6717… yardOut=3"
+                        // jump). Refuse to send a non-settled yard line. Safe for
+                        // downs/missed-FG turnovers (which ride type=OTHER too): those
+                        // have a settled INTEGER line and still pass this gate.
+                        if (typeof post.engineYardLineSigned === 'number' &&
+                            Math.abs(post.engineYardLineSigned - Math.round(post.engineYardLineSigned)) > 0.1) {
+                            console.log('[2P 1c1] suppressed send — yard line not settled (' +
+                                        post.engineYardLineSigned + '); ball in motion, not a real turnover');
                             return;
                         }
 
