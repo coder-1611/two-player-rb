@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V171</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V172</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2914,22 +2914,18 @@
                                         '(transient possession flip, not a real turnover)');
                             return;
                         }
-                        // idiocy.md fix (V170): a REAL turnover settles _6F to an
-                        // integral yard line at BALL_DOWN/SACKED. A FRACTIONAL value
-                        // means the ball is still in motion — this _1c1 is one of the
-                        // engine's ~18 bare internal possession flips, NOT a play-end.
-                        // Shipping it teleports the receiver to a mid-flight position
-                        // (the "[2P apply v5] type=OTHER yardLineIn=2.6717… yardOut=3"
-                        // jump). Refuse to send a non-settled yard line. Safe for
-                        // downs/missed-FG turnovers (which ride type=OTHER too): those
-                        // have a settled INTEGER line and still pass this gate.
-                        if (typeof post.engineYardLineSigned === 'number' &&
-                            Math.abs(post.engineYardLineSigned - Math.round(post.engineYardLineSigned)) > 0.1) {
-                            console.log('[2P 1c1] suppressed send — yard line not settled (' +
-                                        post.engineYardLineSigned + '); ball in motion, not a real turnover');
-                            return;
-                        }
-
+                        // V172 REVERT of the V170 "fractional yard = not a real
+                        // turnover" guard: WRONG premise. A real interception lands
+                        // wherever the defender caught it — a FRACTIONAL _6F (e.g.
+                        // 17.88) — and prevVy is frequently stale (maps to OTHER) on a
+                        // genuine INT too (see note at the _Ak1 hook above). So neither
+                        // fractional-yard nor type=OTHER reliably distinguishes a real
+                        // turnover from a spurious bare-_1c1 flip; the V170 guard ate
+                        // real interceptions, so the handoff never reached the other
+                        // device ("turnovers just teleport to a new yard line"). A
+                        // correct discriminator needs the actual turnover signal
+                        // (ACTION_RESULT_INTERCEPTED / COMM_STAGE_TURNOVER_HUMAN), not
+                        // a yard-value heuristic — pending the sender-side log.
                         var outcome = buildUserDriveEndOutcome(pre, post, prevVy);
 
                         // V120: an interception just happened (this device threw

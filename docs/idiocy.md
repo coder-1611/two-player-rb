@@ -158,17 +158,30 @@ its *kind*.
 
 ---
 
-## 7. The fix space — and what shipped (V170)
+## 7. The fix space — V170 shipped, then REVERTED in V172
 
-> **SHIPPED in V170: option (2) only.** Option (1) was investigated and
-> **rejected**: the apply-side comment at [`index.html:5791`](../index.html#L5791)
-> confirms the `OTHER` path legitimately carries **turnover-on-downs and missed-FG**
-> turnovers (neither has a dedicated `prevVy` code, so both classify as `OTHER`).
-> Refusing all `OTHER` would silently break possession sync on a 4th-down stop and a
-> missed field goal — real, common events. Option (2) catches the exact incident
-> without that risk: a downs/missed-FG turnover settles `_6F` to an **integer** line
-> and still passes the gate, while the mid-motion `2.6717…` is suppressed.
-> The guard lives just before [`index.html:2918`](../index.html#L2918).
+> **⚠️ CORRECTION.** V170 shipped option (2) — "refuse to send a fractional yard
+> line." **It was wrong and was reverted in V172.** The premise ("a real turnover
+> settles `_6F` to an integer") is false: a real **interception lands wherever the
+> defender caught it**, a fractional `_6F` (observed live: an INT at `17.88`). The
+> guard therefore ate *real* interceptions — the handoff never reached the other
+> device, and the thrower kept playing at the new spot ("turnovers just teleport to
+> a new yard line"). Option (1) ("refuse `OTHER`") is also unsound: `prevVy` is
+> frequently **stale** on a genuine INT (see the `_Ak1`-hook note,
+> [`index.html:2795`](../index.html#L2795)), so real INTs often classify as `OTHER`
+> too. **Neither yard-value nor `prevVy`-type is a reliable discriminator.**
+>
+> **What a correct fix needs:** the actual turnover *event* signal —
+> `ACTION_RESULT_INTERCEPTED` / `COMM_STAGE_TURNOVER_HUMAN` — to confirm a real
+> play-end occurred, versus a bare internal `_1c1` flip. That requires the
+> **sender-side** console at the moment of a genuine spurious teleport (which the
+> original §1 incident never provided — it was a *receiver* log). Until that exists,
+> the spurious-teleport guard stays out; restoring working turnovers wins.
+>
+> **Meta-lesson (the playbook's #1 rule, violated here):** I asserted "settled =
+> integer" without verifying against a real turnover's actual `_6F`. One look at a
+> live INT would have shown `17.88`. Verify the invariant against the real event
+> before gating on it.
 
 
 Per the playbook, the durable fixes are **structural invariants**, not more timing
