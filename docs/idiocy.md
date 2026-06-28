@@ -217,6 +217,43 @@ defeat both.
 
 ---
 
+## 8b. Sibling bug: the vanishing quarter (V171)
+
+A V169 log showed the clock jump from **0:00 Q1 to 0:56 Q3** — an entire quarter
+skipped — after a pick-6 TD+PAT that landed on the quarter horn. Same family, same
+cross-device root.
+
+**What the harness proved.** A deterministic repro (`_rb2p_reproQuarterBurst()`,
+runnable from any live console) forces the exact confluence — pick-6 + PAT with the
+clock at `0:00` — and drives the *real* engine. Result across all single-device
+variants: the quarter advances **exactly once** and the engine's own
+`COMM_STAGE_QUARTER_A/B` ceremony **resets the clock**, so `is_quarter_over` then
+reads NO. **A lone engine never bursts.**
+
+**So the burst needs the second device.** The only thing that keeps the clock pinned
+at `0:00` *across* rollover ceremonies — re-firing `is_quarter_over` each time — is the
+**live-sync** ([`index.html:7862`](../index.html#L7862)) writing the *lagging*
+opponent's stale `0:00` clock **and its lower quarter** onto the device that already
+rolled over. The two engines cross the horn a beat apart; the one behind keeps
+shoving the one ahead backward. Each shove re-expires the fresh quarter → another
+rollover → another quarter eaten. In the log this fired three times (Q1→Q2→Q3) before
+the opponent caught up.
+
+**The fix (V171).** The quarter is **monotonic**, exactly like the score — it only
+ever increases. The live-sync already refuses a push that would *regress the score*
+(`pushWouldRegressScore`); V171 adds the missing twin, `pushWouldRegressQuarter`:
+reject a push whose quarter is **below** ours (keep syncing the score, but never drag
+our quarter backward or re-zero our reset clock). This is a structural invariant, not
+a timing patch — the playbook's preferred shape.
+
+**Caveat (honest).** A single page can't host two engines, so the harness can prove
+the *engine* is innocent but **cannot reproduce the two-device burst itself**. The
+fix is validated by (a) the proven mechanism, (b) mirroring the existing score guard,
+(c) pick-6 regression still 37/37. Final confirmation is a live game on V171+ where a
+pick-6 lands near a quarter end and the quarter advances by exactly one.
+
+---
+
 ## 9. The one-paragraph version
 
 The ball "jumps for no reason" because the global `_1c1` wrapper can't tell a real

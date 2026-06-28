@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V170</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V171</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -5430,6 +5430,99 @@
                 return { ok: verdict, passed: passed, total: results.length, results: results };
             };
 
+            // ===== Quarter-burst repro (idiocy.md §"the 2nd quarter vanished") =====
+            // Forces the exact confluence that skipped a whole quarter in the V169
+            // log: a pick-6 TD + PAT landing with the quarter clock already at 0:00.
+            // Drives the REAL engine cascade, then polls engineQuarter for ~4.5s.
+            // If the quarter advances by >1 (or the FSM parks on the gutted Vy=4),
+            // the bug reproduced. Run on ONE device's console — no rare live event:
+            //   await _rb2p_reproQuarterBurst()                 // engine alone
+            //   await _rb2p_reproQuarterBurst({ pinClock:true })// also re-pin 0:00
+            //        each tick to mimic the cross-device live-sync clock clobber
+            window._rb2p_reproQuarterBurst = async function (opts) {
+                opts = opts || {};
+                var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+                var em = RB.engineState();
+                if (!em) { console.log('[2P REPRO] not in a match'); return null; }
+                var raw = em.rawEngineMatch;
+                var idx = RB.findEngineScriptIndex('gml_Script_s_action_result');
+                if (idx < 0) idx = RB.findEngineScriptIndex('gml_Script__hB');
+                var hBfn = idx >= 0 ? _Y._PU1[idx] : null;
+                if (typeof hBfn !== 'function') { console.log('[2P REPRO] cannot find _hB'); return null; }
+                if (!window._rb2p_quarterLenSec) window._rb2p_quarterLenSec = 60;
+
+                var save = {
+                    q: em.engineQuarter, min: em.engineMinutesLeft, sec: em.engineSecondsLeft,
+                    UD: em.enginePossessingTeamIdx, Vy: em.engineDriveFsmStage,
+                    u: em.userScore, o: em.opponentScore, t11: em.engineDownNumber,
+                    waiting: window._rb2p_userIsWaitingForOpponent
+                };
+                var realSend = window._twoPlayer && window._twoPlayer.send;
+                if (window._twoPlayer) window._twoPlayer.send = function () {};
+                function clearPopups() {
+                    try {
+                        var pops = window._rb2p_enumeratePopupInstances ? window._rb2p_enumeratePopupInstances() : [];
+                        for (var k = 0; k < pops.length; k++) { try { if (typeof _cr === 'function') _cr(pops[k]); } catch (e) {} }
+                    } catch (e) {}
+                }
+
+                var startQ = 1;
+                em.engineQuarter = startQ;
+                em.engineMinutesLeft = 0; em.engineSecondsLeft = 0;   // clock expired at the Q1 horn
+                console.log('[2P REPRO] start Q' + startQ + ' clock=0:00 pinClock=' + !!opts.pinClock +
+                            ' — firing pick-6 cascade');
+                window._rb2p_applyOpponentOutcome({
+                    type: 'PICK6', yardLine: 0, ownSide: true, needsPAT: true,
+                    scoreUser: em.opponentScore, scoreOpp: em.userScore + 6,
+                    quarter: startQ, minutesLeft: 0, secondsLeft: 0,
+                    fromTeam: '', toTeam: '', message: 'quarter-burst repro', ts: Date.now()
+                });
+                await sleep(300);
+                try { raw._Z21 = 1; } catch (e) {}     // PAT-kick flag the 1-pt click would set
+                hBfn(raw, _Sc2, 6);                     // s_action_result: made kick (+1)
+                em.engineMinutesLeft = 0; em.engineSecondsLeft = 0;   // re-assert the boundary
+                clearPopups();
+
+                // staleOpp: for staleMs, simulate a lagging opponent whose Firebase
+                // live-sync keeps writing its OLD (lower) quarter + 0:00 clock back
+                // onto us — the real two-device condition a single page can't get
+                // from one engine. Each stale push re-expires the freshly-rolled
+                // quarter → is_quarter_over fires again → another rollover ceremony.
+                var staleMs = (opts.staleMs != null) ? opts.staleMs : 1500;
+                var maxQ = startQ, prevQ = startQ, advances = 0, transitions = [], stuck = 0;
+                for (var i = 0; i < 45; i++) {          // ~4.5s of real engine ticks
+                    var s = RB.engineState();
+                    var q = Number(s.engineQuarter);
+                    if (q > prevQ) { advances++; transitions.push('+' + (i * 100) + 'ms→Q' + q); }
+                    prevQ = q;
+                    if (q > maxQ) maxQ = q;
+                    if (opts.staleOpp && (i * 100) < staleMs && q > startQ) {
+                        s.engineQuarter = startQ; s.engineMinutesLeft = 0; s.engineSecondsLeft = 0;
+                    } else if (opts.pinClock && q <= startQ) {
+                        s.engineMinutesLeft = 0; s.engineSecondsLeft = 0;
+                    }
+                    stuck = (Number(s.engineDriveFsmStage) === 4) ? stuck + 1 : 0;
+                    await sleep(100);
+                }
+                var fin = RB.engineState();
+                var delta = maxQ - startQ, frozen = stuck >= 10;
+                console.log('[2P REPRO] ===== RESULT =====');
+                console.log('  startQ=' + startQ + ' maxQ=' + maxQ + ' rolloverCeremonies=' + advances +
+                            ((advances > 1 || delta > 1) ? '  ❌ QUARTER BURST' : '  ✅ single clean rollover'));
+                console.log('  transitions: ' + (transitions.length ? transitions.join('  ') : '(none)'));
+                console.log('  final Vy=' + fin.engineDriveFsmStage + (frozen ? '  ❌ FROZEN on COMM_STAGE_DRIVE' : ''));
+
+                em.engineQuarter = save.q; em.engineMinutesLeft = save.min; em.engineSecondsLeft = save.sec;
+                em.enginePossessingTeamIdx = save.UD; em.engineDriveFsmStage = save.Vy;
+                em.setUserScore(save.u); em.setOpponentScore(save.o); em.engineDownNumber = save.t11;
+                window._rb2p_userIsWaitingForOpponent = save.waiting;
+                window._rb2p_pickSixPatCascadeActive = false;
+                clearPopups();
+                if (typeof window._rb2p_forceUserOffenseDrive === 'function') window._rb2p_forceUserOffenseDrive(-25);
+                if (window._twoPlayer) window._twoPlayer.send = realSend;
+                return { startQ: startQ, maxQ: maxQ, advances: advances, burst: (advances > 1 || delta > 1), frozen: frozen };
+            };
+
             function getEngineMatchInstance()  { return RB.getEngineMatch(); }
             function snapshotEngineMatch() { return RB.engineSnapshot(); }
 
@@ -7766,17 +7859,37 @@
                          opponentLivePayload.oppScore < engineMatch.userScore) ||
                         (typeof opponentLivePayload.myScore === 'number' &&
                          opponentLivePayload.myScore < engineMatch.opponentScore);
+                    // V171 (idiocy.md §"the 2nd quarter vanished"): the QUARTER is
+                    // monotonic — like the score it only ever increases (1→2→3→4→OT).
+                    // When a score lands on a quarter horn, the two engines roll over
+                    // a beat apart. The harness proved a lone engine rolls cleanly
+                    // ONCE; the burst only happens when the lagging opponent keeps
+                    // pushing its OLD lower quarter + 0:00 clock onto the device that
+                    // already advanced — re-expiring the fresh quarter so the engine's
+                    // is_quarter_over fires again, eating whole quarters. Reject a
+                    // STALE push (incoming quarter below ours): keep the score sync,
+                    // but never drag our quarter backward or re-zero our reset clock.
+                    var incomingQ = (typeof opponentLivePayload.quarter === 'number')
+                                    ? opponentLivePayload.quarter : null;
+                    var pushWouldRegressQuarter =
+                        incomingQ != null && incomingQ < Number(engineMatch.engineQuarter);
                     if (userIsOnDefense && !localPlayingPatScene && !pushWouldRegressScore) {
                         engineMatch.setOpponentScore(opponentLivePayload.myScore);
                         engineMatch.setUserScore(opponentLivePayload.oppScore);
                         if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
-                        if (typeof opponentLivePayload.minutesLeft === 'number')
-                            engineMatch.engineMinutesLeft = opponentLivePayload.minutesLeft;
-                        if (typeof opponentLivePayload.secondsLeft === 'number')
-                            engineMatch.engineSecondsLeft = opponentLivePayload.secondsLeft;
-                        if (typeof opponentLivePayload.quarter === 'number')
-                            engineMatch.engineQuarter = opponentLivePayload.quarter;
-                        engineMatch.engineTickAllowance = 0;
+                        if (pushWouldRegressQuarter) {
+                            console.log('[2P LIVE] stale quarter push rejected — incoming Q' + incomingQ +
+                                        ' < local Q' + engineMatch.engineQuarter +
+                                        ' (would re-expire a rolled-over quarter)');
+                        } else {
+                            if (typeof opponentLivePayload.minutesLeft === 'number')
+                                engineMatch.engineMinutesLeft = opponentLivePayload.minutesLeft;
+                            if (typeof opponentLivePayload.secondsLeft === 'number')
+                                engineMatch.engineSecondsLeft = opponentLivePayload.secondsLeft;
+                            if (incomingQ != null)
+                                engineMatch.engineQuarter = incomingQ;
+                            engineMatch.engineTickAllowance = 0;
+                        }
                     }
                     // Always refresh the WAITING overlay text, even if we
                     // couldn't safely mutate the engine state (e.g. match
