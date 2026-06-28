@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V173</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V174</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3290,14 +3290,19 @@
                             }
                         } catch (eP) { console.log('[2P PICK6 send-poll err]', eP); }
                     }, 100);
-                    // Hard fallback: if no PAT_RESULT ever comes back, force
-                    // the next drive after 75 s so the game doesn't deadlock.
-                    // (75 s, not 30: the opponent legitimately needs time to
-                    // see the modal, pick 1-pt/2-pt, and play the scene.)
+                    // Hard deadlock fallback (CLAUDE.md-sanctioned emergency): if
+                    // no PAT_RESULT EVER comes back, force the next drive so the
+                    // game can't hang permanently. V174: bumped 75s → 300s. With
+                    // the scorer-side 120s auto-miss removed, the scorer can take as
+                    // long as they want at the live "1 or 2 point conversion?" modal;
+                    // a 75s thrower-side timer was firing mid-deliberation and
+                    // switching possession on the clock (the "players spawned then
+                    // possession changed" glitch). 5 min only trips on a TRUE
+                    // emergency (scorer's device closed/crashed), never normal play.
                     setTimeout(function () {
                         try {
                             if (!window._rb2p_pickSixPatCascadeActive) return;
-                            console.log('[2P PICK6] 75s fallback — forcing thrower drive');
+                            console.log('[2P PICK6] 300s deadlock fallback — forcing thrower drive (no PAT_RESULT in 5 min)');
                             window._rb2p_pickSixPatCascadeActive    = false;
                             window._rb2p_pickSixThisDeviceIsThrower = false;
                             window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
@@ -3310,7 +3315,7 @@
                         } catch (e) {
                             console.log('[2P PICK6 fallback err]', e);
                         }
-                    }, 75000);
+                    }, 300000);
                     return true;
                 } catch (e) { console.log('[2P PICK6 enter err]', e); return false; }
             };
@@ -4189,15 +4194,14 @@
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     if (window._rb2p_patPlayPending === true) {
-                        // Hard cap: a PAT cannot take 2 minutes. Resolve as
-                        // miss so the synthetic send below unblocks the game.
-                        if (Date.now() - (window._rb2p_patPlayStartMs || 0) > 120000) {
-                            window._rb2p_patPlayPending  = false;
-                            window._rb2p_patPlayResolved = true;
-                            window._rb2p_patResolvedMs   = 0;   // forces immediate synthetic send
-                            console.warn('[2P PAT GUARD] 120s cap hit — resolving as miss');
-                            return;
-                        }
+                        // V174: the old 120s "hard cap → resolve as miss" was
+                        // REMOVED. It fired while the human was still deciding at
+                        // the live "1 or 2 point conversion?" modal, auto-missing
+                        // the PAT and switching possession purely on a timer — which
+                        // also violates the rule that a PAT outcome must come from a
+                        // played-out scene, never a clock. The PAT now resolves ONLY
+                        // when the human plays it (the userDelta detection below);
+                        // there is no time-based resolution.
                         var userDelta = em.userScore - (window._rb2p_patUserScoreAtStart || 0);
                         var oppDelta  = em.opponentScore - (window._rb2p_patOppScoreAtStart || 0);
                         // Wrongful fresh-TD repair: the engine credited the
@@ -5685,6 +5689,14 @@
                                 engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
                                 engineMatch.engineDownNumber       = 6;   // PAT-pending marker
                                 engineMatch.engineYardsToGo        = 2;
+                                // V174: pin the PAT scrimmage to the 2-yard line
+                                // (_6F = +48 → on-screen 2). Without this the modal
+                                // (and the 1PT kick / 2PT snap) plays from wherever
+                                // the ball happened to be — e.g. a 2nd pick-6 that
+                                // arrives mid-drive popped the conversion from B's
+                                // own ~20. The first PAT only looked right because
+                                // the fresh TD scene left the ball on the goal line.
+                                engineMatch.engineYardLineSigned   = 48;
                                 engineMatch.engineControllerState  = 2;
                                 // V57: bridge-side sticky PAT state. The
                                 // engine's own marker (_t11) gets reset by
