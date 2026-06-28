@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V174</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V175</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4302,6 +4302,22 @@
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('_t11 clobber re-asserted');
                         }
                         return;
+                    }
+                    // V175: close the "players spawn right after a PAT" gap. The
+                    // post-PAT kickoff flips possession to the opponent (UD→opp) the
+                    // instant the PAT resolves, but WAIT was only set ~5s later by the
+                    // synthetic send below. In that gap the bidirectional UD watchdog
+                    // saw "not waiting + UD≠user" and forced UD back to the user,
+                    // spawning a bogus user offense at the kickoff spot (own ~23).
+                    // Once the kickoff HAS flipped possession away from us, enter WAIT
+                    // immediately — no race with the kickoff (UD already flipped), and
+                    // PAT_RESULT still ships via the natural _1c1 or the synthetic
+                    // send below.
+                    if (window._rb2p_userIsWaitingForOpponent !== true &&
+                        em.enginePossessingTeamIdx !== em.engineUserTeamIdx) {
+                        window._rb2p_userIsWaitingForOpponent = true;
+                        console.log('[2P PAT GUARD] post-PAT kickoff flipped possession to opponent — ' +
+                                    'entering WAIT now (prevents bogus user drive at kickoff spot)');
                     }
                     // patPlayResolved: waiting for the kickoff _1c1 to ship
                     // PAT_RESULT (the _1c1 hook clears these flags when it
