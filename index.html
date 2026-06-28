@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V172</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V173</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3809,6 +3809,31 @@
                         stuckEngineFsmStage = null;            // re-baseline the stuck detector
                         engineFsmStageStuckSinceMs = Date.now();
                         return;                                 // do NOT force a possession change
+                    }
+
+                    // ===== V173: dead-FSM stall where the user is on DEFENSE =====
+                    // After a pick-6 PAT + kickoff (and other post-score kickoffs)
+                    // the SCORER's device kicks off — possession flips to the
+                    // opponent (UD != user) — but the send is suppressed by the
+                    // post-pick-6 kickoff grace (V168), so userIsWaitingForOpponent
+                    // never gets set and the FSM parks on the gutted Vy=4 forever
+                    // (endless COMM_STAGE_DRIVE — the freeze the user reported after
+                    // a missed 2-pt). The force-end below assumes the USER still has
+                    // the ball (it computes a score-delta outcome and hands the
+                    // user's drive off), so it MUST NOT run when the user is already
+                    // on defense — that would re-fire a bogus TD/kickoff. The correct
+                    // state is simply WAIT: the opponent has the ball and the
+                    // live-sync streams their drive. A genuine 4th-down stall keeps
+                    // userHasBall === true and still falls through to the handoff.
+                    if (!userHasBall) {
+                        console.log('[2P STUCK→WAIT] dead Vy=' + engineMatch.engineDriveFsmStage +
+                                    ' but possession is on the opponent (UD=' + engineMatch.enginePossessingTeamIdx +
+                                    ', user=' + engineMatch.engineUserTeamIdx + ') — entering WAIT ' +
+                                    '(post-kickoff defense, not a user drive)');
+                        window._rb2p_userIsWaitingForOpponent = true;
+                        stuckEngineFsmStage = null;
+                        engineFsmStageStuckSinceMs = Date.now();
+                        return;
                     }
 
                     // Pick the end-Vy from the score delta so the receiver
