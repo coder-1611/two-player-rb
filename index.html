@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V168</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V169</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4096,10 +4096,27 @@
                         ' scoreOpp=' + outcome.scoreOpp + ')');
                     if (wasInCascade) {
                         var yard = window._rb2p_kickoffReturnYard();
+                        // V169: break the post-pick-6 COMM_STAGE_DRIVE (Vy=4) FREEZE.
+                        // The engine parks A's kickoff-return drive on the gutted
+                        // Vy=4 stage and re-asserts kp=1 (commentary mode) every frame,
+                        // so a bare forceUserOffenseDrive never reaches active play —
+                        // the screen loops "s_update_commentary: COMM_STAGE_DRIVE"
+                        // forever (Firebase ERTH: both iHaveBall=true, A frozen at
+                        // 0:00 Q1). Clear the looping intro commentary, arm drives,
+                        // spawn the drive, then HOLD kp=2 for ~1.5s to overpower the
+                        // engine's re-park (the exact cure the OT kickoff already uses).
+                        try {
+                            var rawA = engineMatch.rawEngineMatch;
+                            try { rawA._831 = ''; rawA.__b1 = ''; } catch (eC) {}
+                            engineMatch.engineMainCommentaryText = '';
+                            engineMatch.engineSubCommentaryText  = '';
+                            try { if (Number(rawA._Nb1) < 1) rawA._Nb1 = 1; } catch (eN) {}
+                        } catch (ePre) {}
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                             window._rb2p_forceUserOffenseDrive(yard);
                         }
-                        console.log('[2P PICK6] PAT_RESULT applied — A kicking off');
+                        if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
+                        console.log('[2P PICK6] PAT_RESULT applied — A kicking off (holding kp=2 to start the drive)');
                     } else {
                         console.log('[2P PICK6] PAT_RESULT applied (scores only — drive already running)');
                     }
