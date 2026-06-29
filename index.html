@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V175</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V176</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4303,21 +4303,21 @@
                         }
                         return;
                     }
-                    // V175: close the "players spawn right after a PAT" gap. The
-                    // post-PAT kickoff flips possession to the opponent (UD→opp) the
-                    // instant the PAT resolves, but WAIT was only set ~5s later by the
-                    // synthetic send below. In that gap the bidirectional UD watchdog
-                    // saw "not waiting + UD≠user" and forced UD back to the user,
-                    // spawning a bogus user offense at the kickoff spot (own ~23).
-                    // Once the kickoff HAS flipped possession away from us, enter WAIT
-                    // immediately — no race with the kickoff (UD already flipped), and
-                    // PAT_RESULT still ships via the natural _1c1 or the synthetic
-                    // send below.
-                    if (window._rb2p_userIsWaitingForOpponent !== true &&
-                        em.enginePossessingTeamIdx !== em.engineUserTeamIdx) {
+                    // V176: the scorer ALWAYS goes to WAIT after a pick-6 PAT — it
+                    // kicks off and never keeps the ball. So enter WAIT the instant
+                    // the PAT resolves, UNCONDITIONALLY. (V175 gated this on
+                    // "possession already flipped to the opponent", but when the PAT
+                    // lands on a QUARTER BOUNDARY the rollover cascade transiently
+                    // flips possession back to us, so that check missed its window and
+                    // the bogus user drive still spawned at the kickoff spot.) Because
+                    // this branch runs every 100ms while the cascade is active, it also
+                    // RE-ASSERTS WAIT if the rollover clears it — so the bidirectional
+                    // UD watchdog keeps us on defense through the whole rollover.
+                    // PAT_RESULT still ships via the synthetic send below.
+                    if (window._rb2p_userIsWaitingForOpponent !== true) {
                         window._rb2p_userIsWaitingForOpponent = true;
-                        console.log('[2P PAT GUARD] post-PAT kickoff flipped possession to opponent — ' +
-                                    'entering WAIT now (prevents bogus user drive at kickoff spot)');
+                        console.log('[2P PAT GUARD] PAT resolved — scorer entering WAIT (kicks off, ' +
+                                    'never keeps the ball; covers the quarter-boundary rollover case)');
                     }
                     // patPlayResolved: waiting for the kickoff _1c1 to ship
                     // PAT_RESULT (the _1c1 hook clears these flags when it
