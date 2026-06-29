@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V185</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V186</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2281,14 +2281,28 @@
                                         window._rb2p_userIsWaitingForOpponent = false;
                                         window._rb2p_userOutcomeSendInProgress = false;
                                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                                        forceUserOffenseDrive(window._rb2p_kickoffReturnYard());
+                                        // V186: resume the drive at the SAVED field position
+                                        // instead of a kickoff-return spot, then restore the
+                                        // exact down & distance (the "downs don't get saved"
+                                        // fix). forceUserOffenseDrive spawns a fresh 1st&10 at
+                                        // the yard line; we overwrite down/toGo right after.
+                                        var resumeYard = (typeof rs.yardLine === 'number')
+                                            ? rs.yardLine : window._rb2p_kickoffReturnYard();
+                                        forceUserOffenseDrive(resumeYard);
+                                        if (typeof rs.down === 'number' && rs.down >= 1 && rs.down <= 4)
+                                            em.engineDownNumber = rs.down;
+                                        if (typeof rs.toGo === 'number' && rs.toGo >= 0)
+                                            em.engineYardsToGo = rs.toGo;
                                     } else {
                                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
                                         window._rb2p_userIsWaitingForOpponent = true;
                                     }
                                     console.log('[2P RESUME] restored ' + rs.myScore + '-' + rs.oppScore +
                                                 ' Q' + rs.quarter + ' ' + rs.minutes + ':' + ('0' + rs.seconds).slice(-2) +
-                                                ' iHaveBall=' + rs.iHaveBall + ' — holding state ~3s');
+                                                ' iHaveBall=' + rs.iHaveBall +
+                                                (rs.iHaveBall ? (' down=' + rs.down + ' toGo=' + rs.toGo +
+                                                                 ' yard=' + rs.yardLine) : '') +
+                                                ' — holding state ~3s');
                                     resumedOnce = true;
                                 }
                                 // Hold the floors for ~3s (60 × 50ms) after the first
@@ -7465,7 +7479,13 @@
                 seconds:  Number(useMyClock ? myLive.secondsLeft : oppLive.secondsLeft) || 0,
                 iHaveBall: (typeof myLive.iHaveBall === 'boolean')
                             ? myLive.iHaveBall            // what I was actually doing
-                            : !(oppLive.iHaveBall === true)
+                            : !(oppLive.iHaveBall === true),
+                // V186: down/distance/field position from MY OWN snapshot (the
+                // authoritative record of the drive I was playing). Restored only
+                // on the iHaveBall path; left null when absent (older rooms).
+                down:     (typeof myLive.down     === 'number') ? myLive.down     : null,
+                toGo:     (typeof myLive.toGo     === 'number') ? myLive.toGo     : null,
+                yardLine: (typeof myLive.yardLine === 'number') ? myLive.yardLine : null
             };
             hideLobby();
             var rs = window._rb2p_resumeState;
@@ -7979,6 +7999,13 @@
                         // resume on the correct side (if I have the ball, the
                         // opponent who just reloaded must wait, and vice versa).
                         iHaveBall:   window._rb2p_userIsWaitingForOpponent !== true,
+                        // V186: down & distance + field position so a reload-resume
+                        // restores the EXACT down the drive was on (1st&10 reset was
+                        // the "downs don't get saved" report). Only meaningful while
+                        // I'm on offense; resume reads them only on the iHaveBall path.
+                        down:        Number(engineMatch.engineDownNumber)   || 0,
+                        toGo:        Number(engineMatch.engineYardsToGo)    || 0,
+                        yardLine:    Number(engineMatch.engineYardLineSigned) || 0,
                         seq: ++userLivePushSeq,
                         ts: Date.now()
                     };
