@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V191</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V192</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -916,6 +916,8 @@
                     // V150: fresh offensive possession → re-arm pick-6 sending
                     // (the anti-loop cap in enterPickSixCascade is per-possession).
                     window._rb2p_pick6SentThisPossession = false;
+                    // V192: re-arm the per-play INT-credit dedup for this drive.
+                    window._rb2p_intCreditedThisPlay = false;
                     // Drop any lingering kickoff button — it gates the
                     // controller's step and would re-trigger the dead path.
                     var allInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
@@ -2095,6 +2097,15 @@
                               JSON.stringify({ yardLine: estYard, ts: Date.now() })); } catch (eLS) {}
                         if (typeof window._rb2p_saveTurnover === 'function')
                             window._rb2p_saveTurnover({ yardLine: estYard, isPick6: false });
+                        // V192: credit the INTERCEPTION STAT here — reliably. The old
+                        // path (creditOppInt at _1c1) only ran when outcome.type ===
+                        // 'INT', but prevVy is usually stale so real picks classify as
+                        // 'OTHER' and the credit never fired (the "INTs not counted"
+                        // report). At the catch the interceptor is unambiguous (the
+                        // defender now carrying the ball), so crediting the nearest
+                        // starred defender here is correct. Idempotent per play.
+                        if (typeof window._rb2p_creditOppInt === 'function')
+                            window._rb2p_creditOppInt();
                         console.log('[2P INT-CATCH] interception detected mid-play — turnover saved ' +
                                     'immediately (estYard=' + estYard + ')');
                     }
@@ -2112,6 +2123,12 @@
             // the engine's probabilistic _jc1 credit that misses our star structs.
             window._rb2p_creditOppInt = function () {
                 try {
+                    // V192: idempotent per play — the catch-detector calls this the
+                    // instant the pick happens; the _1c1 hook may also call it at
+                    // play end. Credit exactly once; the flag resets on the next
+                    // offensive drive (forceUserOffenseDrive).
+                    if (window._rb2p_intCreditedThisPlay === true) return;
+                    window._rb2p_intCreditedThisPlay = true;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var bx = null, by = null, i, x;
                     for (i = 0; i < all.length; i++) {
