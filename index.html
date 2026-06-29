@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V188</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V189</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1980,6 +1980,16 @@
                     rb2pPrevKp = kp;
                     if (kp === prev) return;
                     if (prev !== 2) return;                 // only a live play resolving
+                    // V189 DIAG: a live play just ended — record the controller
+                    // state it ended in. The tackle/sack credit fires only on
+                    // kp 4 (downed) / 11 (sacked); if real plays end on a DIFFERENT
+                    // value the observer credits nothing and all defensive tackle/
+                    // sack stats stay 0. Read window._rb2p_defDiag after a drive.
+                    if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, noStarred: 0, outOfRange: 0 };
+                    window._rb2p_defDiag.playEnds++;
+                    window._rb2p_defDiag.endKp[kp] = (window._rb2p_defDiag.endKp[kp] || 0) + 1;
+                    console.log('[2P DEF-DIAG] live play ended: controllerState 2 -> ' + kp +
+                                ' (tackle/sack credit fires only on 4 or 11)');
                     if (kp !== 4 && kp !== 11) return;      // 4 = carrier downed, 11 = QB sacked
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var i, x;
@@ -2012,6 +2022,7 @@
                         if (dd < bestD2) { bestD2 = dd; best = d; }
                     }
                     if (!best || bestD2 > 34 * 34) {
+                        if (window._rb2p_defDiag) { if (!best) window._rb2p_defDiag.noStarred++; else window._rb2p_defDiag.outOfRange++; }
                         console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') +
                                     ' — nearest starred defender ' + (best ? Math.round(Math.sqrt(bestD2)) + 'px (out of range)' : 'none') +
                                     ' — counted for nobody');
@@ -2020,6 +2031,7 @@
                     var star = best._rb2pStar;
                     star.obsTck = (Number(star.obsTck) || 0) + 1;
                     if (isSack) star.obsSck = (Number(star.obsSck) || 0) + 1;
+                    if (window._rb2p_defDiag) { window._rb2p_defDiag.tck++; if (isSack) window._rb2p_defDiag.sck++; }
                     window._rb2p_defObsLog.push({ t: Date.now(), type: isSack ? 'SACK' : 'TACKLE', by: star.ln });
                     console.log('[2P DEF] ' + (isSack ? 'SACK' : 'TACKLE') + ' by ' +
                                 star.fn + ' ' + star.ln + ' (' + Math.round(Math.sqrt(bestD2)) + 'px) — obsTck=' + star.obsTck);
