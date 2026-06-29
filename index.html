@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V183</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V184</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -7500,7 +7500,19 @@
                 var myLiveSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/live/' + savedRole));
                 var myLive = myLiveSnap.val();
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
-                var inProgress = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
+                // V184: the in-progress check must consider MY OWN live push, not
+                // just the opponent's. Both devices write live/{me} every 500ms
+                // while in the match. If I refresh right after LOSING possession
+                // (turnover on downs, punt, missed FG), the OPPONENT may not have a
+                // fresh live/{opp} yet — they were just handed the ball, or are mid-
+                // handoff, disconnected, or I'm testing solo. Gating only on oppLive
+                // then wrongly treated the game as over and STARTED A FRESH MATCH
+                // (Q1, 0-0, the "whole thing breaks down" report). My own snapshot,
+                // which I was writing until the reload, is the authoritative "a match
+                // is in progress" signal; resumeMatch already rebuilds state from it.
+                var oppFresh = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
+                var myFresh  = myLive  && (Date.now() - (Number(myLive.ts)  || 0) < 25000);
+                var inProgress = oppFresh || myFresh;
                 // V131: only a FRESH final (ts within 25s) means a real game-over.
                 // A stale leftover in this reused room must NOT block resume.
                 var finalRep = finalSnap.val();
