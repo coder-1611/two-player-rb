@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V184</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V185</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -7474,6 +7474,9 @@
                         rs.myScore + '-' + rs.oppScore + ' Q' + rs.quarter +
                         ' ' + rs.minutes + ':' + ('0' + rs.seconds).slice(-2) +
                         ' iHaveBall=' + rs.iHaveBall);
+            // V185: install the Firebase glue (send/receive/badge/live-sync) the
+            // same way a fresh startMatch does — a reload-resume needs it too.
+            installFirebaseMatchSync();
             window.s_play_two_player_match(role);
         }
 
@@ -7831,7 +7834,20 @@
         }
 
         // ---- Match start ----
-        function startMatch() {
+        // V185: all Firebase match glue (send wiring, opponent-outcome receive,
+        // the in-game badge, live score/clock push + mirror) lives here so BOTH
+        // startMatch() (fresh) AND resumeMatch() (reload-resume) install it.
+        // Before this extraction a reload-resume never called startMatch, so a
+        // resumed game had NO badge AND no 2P send/receive sync — the "bottom-
+        // left badge disappears on refresh" report was the visible tip of that.
+        // Idempotent: a session installs it once (fresh XOR resume), but the
+        // guard stops a stray double-call from stacking intervals/badges.
+        var _rb2pFbSyncInstalled = false;
+        function installFirebaseMatchSync() {
+            if (_rb2pFbSyncInstalled) return;
+            _rb2pFbSyncInstalled = true;
+            var staleBadge = document.getElementById('rb-fb-badge');
+            if (staleBadge && staleBadge.parentNode) staleBadge.parentNode.removeChild(staleBadge);
             // Wire SEND to Firebase BEFORE entering the engineMatch. The local
             // bridge already mutates _twoPlayer.send once installed; we
             // chain on top of whatever's there so simulate()/sentLog still
@@ -8078,6 +8094,10 @@
                     }
                 }
             );
+        }
+
+        function startMatch() {
+            installFirebaseMatchSync();
 
             // V61: clear any prior game's box score so the FINAL screen for
             // this match starts blank (the room is reused across rematches).
