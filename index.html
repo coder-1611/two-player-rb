@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V190</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V191</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3581,12 +3581,26 @@
                             if (window._rb2p_allowOffenseSpawn === true) {
                                 return origEb1.apply(this, arguments);
                             }
-                            // The pick-6 SCORER plays their PAT on this device —
-                            // its goal-line 2-PT snap (_eb1 case 2) is legitimate
-                            // even though possession bookkeeping is mid-cascade.
+                            // The pick-6 SCORER plays their PAT on this device. Its
+                            // goal-line 2-PT snap (_eb1 case 2) is legitimate WHILE the
+                            // PAT is pending (engineDownNumber === 6, the PAT marker, and
+                            // not yet resolved). But the OLD unconditional allow also let
+                            // the POST-PAT kickoff drive spawn — popping a fresh offense on
+                            // the scorer's screen the instant the PAT ended (the "sprites
+                            // spawned after a pick-6 PAT" report). So: allow ONLY the
+                            // pending snap; once the PAT resolves, block — the scorer must
+                            // go to WAIT, not spawn a drive.
                             if (window._rb2p_pickSixPatCascadeActive === true &&
                                 window._rb2p_pickSixThisDeviceIsThrower !== true) {
-                                return origEb1.apply(this, arguments);
+                                var emP = RB.engineState();
+                                var patPending = emP && emP.engineDownNumber === 6 &&
+                                                 window._rb2p_patPlayResolved !== true;
+                                if (patPending) return origEb1.apply(this, arguments);
+                                if (Date.now() - lastSpawnGateLogMs > 1000) {
+                                    lastSpawnGateLogMs = Date.now();
+                                    console.warn('[2P SPAWN-GATE] blocked post-pick6-PAT spawn — scorer → WAIT');
+                                }
+                                return;   // no post-PAT drive spawn on the scorer
                             }
                             var em = RB.engineState();
                             if (em && em.engineUserTeamIdx != null &&
