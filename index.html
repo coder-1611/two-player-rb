@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V192</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V193</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1992,6 +1992,35 @@
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
                     if (bkp === prev) return;
+                    // V193: RECEPTIONS. BALL_RECEIVED (5) = a thrown pass was caught
+                    // (handoffs/runs use a different state, so this won't over-count).
+                    // The engine's own stat_receive patch (retrobowl.js:55869) only
+                    // fires when _M31(_,t) resolves the receiver index, which it doesn't
+                    // in this fork — so receptions were ALWAYS 0. Credit it here: the
+                    // catcher is the rostered offensive player nearest the ball, and its
+                    // _7j IS the roster struct the box score reads. (The QB is in the
+                    // backfield, far from the downfield catch, so "nearest OF" = the
+                    // receiver, not the passer.)
+                    if (bkp === 5) {
+                        var rcx = ball.x, rcy = ball.y, rcv = null, rcvD2 = 1e12, op, odx, ody, od2;
+                        for (i = 0; i < all.length; i++) {
+                            op = all[i];
+                            if (!op || op._HL2 || !op._eE2 || op._eE2._fE2 !== 'obj_playerOF') continue;
+                            if (!op._7j || op._7j === -4) continue;   // rostered skill players only
+                            odx = op.x - rcx; ody = op.y - rcy; od2 = odx * odx + ody * ody;
+                            if (od2 < rcvD2) { rcvD2 = od2; rcv = op; }
+                        }
+                        if (rcv && rcvD2 <= 40 * 40) {
+                            try {
+                                _Yi(rcv._7j, 'stat_receive', (Number(_Ai(rcv._7j, 'stat_receive')) || 0) + 1);
+                                if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, rec: 0, noStarred: 0, outOfRange: 0 };
+                                window._rb2p_defDiag.rec = (window._rb2p_defDiag.rec || 0) + 1;
+                                console.log('[2P OFF] RECEPTION by ' + _Ai(rcv._7j, 'fname') + ' ' +
+                                            _Ai(rcv._7j, 'lname') + ' — stat_receive=' + _Ai(rcv._7j, 'stat_receive'));
+                            } catch (eR) {}
+                        }
+                        return;
+                    }
                     if (bkp !== 4 && bkp !== 11) return;   // 4 = BALL_DOWN (tackle), 11 = BALL_SACKED
                     var isSack = (bkp === 11);
                     if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, noStarred: 0, outOfRange: 0 };
