@@ -122,6 +122,69 @@
             color: #ffd23c;
             border-color: #ffd23c;
         }
+        #rb-roster-view {
+            top: 38px;
+            right: 10px;
+            display: none;   /* shown only during a match */
+            color: #3cb0ff;
+            border-color: #3cb0ff;
+        }
+        /* ---- Mid-game roster overlay ---- */
+        #rb-roster-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 10, 20, 0.82);
+            font-family: monospace;
+        }
+        #rb-roster-overlay.show { display: flex; }
+        .rb-roster-card {
+            background: #1a1a2e;
+            border: 2px solid #3cb0ff;
+            border-radius: 10px;
+            width: min(94vw, 460px);
+            max-height: 86vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .rb-roster-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            color: #3cb0ff;
+            font-weight: bold;
+            font-size: 15px;
+            border-bottom: 1px solid #3cb0ff;
+        }
+        #rb-roster-close {
+            background: none;
+            border: none;
+            color: #e94560;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        #rb-roster-body { overflow-y: auto; padding: 4px 0 8px; }
+        .rb-roster-body table { width: 100%; border-collapse: collapse; color: #e8e8f0; font-size: 12px; }
+        .rb-roster-body th {
+            position: sticky;
+            top: 0;
+            background: #16213e;
+            color: #8aa0c0;
+            font-weight: bold;
+            text-align: center;
+            padding: 5px 4px;
+        }
+        .rb-roster-body th.nm, .rb-roster-body td.nm { text-align: left; padding-left: 12px; }
+        .rb-roster-body td { padding: 5px 4px; text-align: center; border-top: 1px solid #2a2a44; }
+        .rb-roster-body tr:nth-child(even) td { background: rgba(255,255,255,0.025); }
+        .rb-roster-body td.pos { color: #3cb0ff; font-weight: bold; }
 
         /* ============ 2-Player Lobby ============ */
         #rb-lobby {
@@ -303,6 +366,18 @@
          (rb-pick6-wait) overlays have been removed. -->
 
     <button id="rb-leave-game" class="cheat-btn" title="Leave the game and return to the lobby">LEAVE</button>
+    <button id="rb-roster-view" class="cheat-btn" title="View your team's roster">ROSTER</button>
+
+    <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
+    <div id="rb-roster-overlay">
+        <div class="rb-roster-card">
+            <div class="rb-roster-head">
+                <span>YOUR ROSTER</span>
+                <button id="rb-roster-close" type="button">&times;</button>
+            </div>
+            <div id="rb-roster-body"></div>
+        </div>
+    </div>
 
     <!-- Capture-phase keyboard shield. GameMaker's HTML5 runner binds global
          keydown/keyup listeners and preventDefault()s most keys to stop the
@@ -353,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V181</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V182</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -7166,7 +7241,13 @@
         }
 
         var $leaveGame = document.getElementById('rb-leave-game');
-        function showLeaveGameBtn(on) { if ($leaveGame) $leaveGame.style.display = on ? 'block' : 'none'; }
+        var $rosterView = document.getElementById('rb-roster-view');
+        // LEAVE and ROSTER are both match-only controls — toggle them together.
+        function showLeaveGameBtn(on) {
+            if ($leaveGame)   $leaveGame.style.display   = on ? 'block' : 'none';
+            if ($rosterView)  $rosterView.style.display  = on ? 'block' : 'none';
+            if (!on) hideRosterOverlay();   // never leave the overlay up outside a match
+        }
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
                 if (!window.confirm('Leave the game and return to the lobby?')) return;
@@ -7179,6 +7260,50 @@
                 location.reload();   // fresh page → entry screen, no resume
             });
         }
+
+        // ---- Mid-game read-only roster overlay ----
+        // Pure HTML overlay built from _rb2p_dumpRoster() (reads object 64's
+        // live _Ln). Does NOT navigate the engine to its roster room, so the
+        // match underneath is untouched — safe to open/close any time.
+        var $rosterOverlay = document.getElementById('rb-roster-overlay');
+        var $rosterBody    = document.getElementById('rb-roster-body');
+        var $rosterClose   = document.getElementById('rb-roster-close');
+        var ROSTER_POS = { 1:'QB', 2:'RB', 3:'TE', 4:'WR', 5:'OL', 6:'DL', 7:'LB', 8:'DB', 9:'DB', 10:'K', 11:'KP' };
+        function escHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+        function hideRosterOverlay() { if ($rosterOverlay) $rosterOverlay.classList.remove('show'); }
+        function showRosterOverlay() {
+            if (!$rosterOverlay || !$rosterBody) return;
+            var rows = [];
+            try { rows = (typeof window._rb2p_dumpRoster === 'function') ? window._rb2p_dumpRoster() : []; } catch (e) {}
+            if (!rows || !rows.length) {
+                $rosterBody.innerHTML = '<div style="padding:24px 16px;color:#8aa0c0;text-align:center;">Roster not available yet.</div>';
+            } else {
+                var html = '<table><thead><tr>' +
+                    '<th class="nm">NAME</th><th>POS</th><th>SKL</th><th>STR</th><th>SPD</th><th>STA</th>' +
+                    '</tr></thead><tbody>';
+                for (var i = 0; i < rows.length; i++) {
+                    var r = rows[i];
+                    var pos = ROSTER_POS[r.pos] || (r.pos != null ? r.pos : '?');
+                    html += '<tr>' +
+                        '<td class="nm">' + escHtml(r.name || 'Player') + '</td>' +
+                        '<td class="pos">' + escHtml(pos) + '</td>' +
+                        '<td>' + escHtml(r.skill)    + '</td>' +
+                        '<td>' + escHtml(r.strength) + '</td>' +
+                        '<td>' + escHtml(r.speed)    + '</td>' +
+                        '<td>' + escHtml(r.stamina)  + '</td>' +
+                    '</tr>';
+                }
+                html += '</tbody></table>';
+                $rosterBody.innerHTML = html;
+                $rosterBody.scrollTop = 0;
+            }
+            $rosterOverlay.classList.add('show');
+        }
+        if ($rosterView)  $rosterView.addEventListener('click', showRosterOverlay);
+        if ($rosterClose) $rosterClose.addEventListener('click', hideRosterOverlay);
+        if ($rosterOverlay) $rosterOverlay.addEventListener('click', function (e) {
+            if (e.target === $rosterOverlay) hideRosterOverlay();   // click backdrop to close
+        });
 
         function showView(name) {
             lobby.dataset.active = name;
