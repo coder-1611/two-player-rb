@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V186</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V187</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2906,6 +2906,18 @@
                                     ' ak1Signal=' + ak1Signal +
                                     ' heuristicSignal=' + heuristicSignal +
                                     ' isPick6=' + isPick6);
+                        // V187: persist the INT to Firebase THE INSTANT it flips
+                        // possession — before the return finishes, while the
+                        // defender is still running — so a reload can't lose it.
+                        // This is a refresh-safety record ONLY; the live INT/PICK6
+                        // handoff below is unchanged. yardLine = where the pick
+                        // happened; isPick6 is whatever we know right now (may still
+                        // be false and get upgraded, or forgone if a refresh lands
+                        // mid-return — in which case the opponent simply gets the
+                        // ball at the pick spot, per spec).
+                        if (outcome.type === 'INT' && typeof window._rb2p_saveTurnover === 'function') {
+                            window._rb2p_saveTurnover({ yardLine: outcome.yardLine, isPick6: isPick6 });
+                        }
                         if (isPick6) {
                             // V56: all pick-6 entry routes through the shared,
                             // idempotent cascade-entry function (defined below
@@ -3034,6 +3046,11 @@
                                 window._rb2p_pendingTurnoverOutcome = null;
                                 try { window._twoPlayer.send(pending); }
                                 catch (e) { console.log('[2P] send err', e); }
+                                // V187: the live INT outcome shipped — mark the
+                                // refresh-safety record resolved so a later reload
+                                // doesn't re-send it on top of the real handoff.
+                                if (typeof window._rb2p_resolveTurnover === 'function')
+                                    window._rb2p_resolveTurnover(false);
                             };
                             window._rb2p_pendingTurnoverSendTimer = setTimeout(fireHeldSend, 4000);
                             console.log('[2P] turnover outcome (' + outcome.type +
@@ -3191,6 +3208,10 @@
                                 ts: Date.now()
                             });
                             window._rb2p_pick6SentThisPossession = true;   // V150: one PICK6 per possession
+                            // V187: upgrade the refresh-safety record to pick-6 +
+                            // mark it resolved (the live PICK6 has shipped).
+                            if (typeof window._rb2p_resolveTurnover === 'function')
+                                window._rb2p_resolveTurnover(true);
                             console.log('[2P PICK6] PICK6 sent (plus6Landed=' + plus6Landed +
                                         ' scoreUser=' + em2.userScore +
                                         ' scoreOpp=' + em2.opponentScore + ')');
@@ -7451,7 +7472,7 @@
         // possession from the opponent's last live state, instead of
         // restarting from 0-0. Field position is unrecoverable (a fresh drive
         // is spawned / WAIT shown), but the game state carries over.
-        function resumeMatch(role, oppLive, myLive) {
+        function resumeMatch(role, oppLive, myLive, turnover) {
             gameStarted = true;   // block the players-subscription from restarting
             window._rb2p_gameOverReported = false;
             oppLive = oppLive || {};
@@ -7487,6 +7508,32 @@
                 toGo:     (typeof myLive.toGo     === 'number') ? myLive.toGo     : null,
                 yardLine: (typeof myLive.yardLine === 'number') ? myLive.yardLine : null
             };
+            // V187: an unresolved interception (saved the instant it happened)
+            // overrides possession on resume. INT yardLine is already in the
+            // RECEIVER's frame (the engine mirrored _6F at the pick), so it's
+            // used as-is. The thrower re-sends the INT so the opponent — who may
+            // have been stuck in WAIT when the thrower reloaded — gets the ball.
+            var resumeResendInt = null;
+            if (turnover && turnover.thrower) {
+                if (turnover.thrower === role) {
+                    window._rb2p_resumeState.iHaveBall = false;   // I threw it → defense/WAIT
+                    resumeResendInt = {
+                        type: 'INT',
+                        yardLine: Number(turnover.yardLine) || 0,
+                        ownSide: (Number(turnover.yardLine) || 0) <= 50,
+                        message: 'Interception (recovered after reload).',
+                        ts: Date.now()
+                    };
+                } else {
+                    window._rb2p_resumeState.iHaveBall = true;    // opponent threw to me → my ball
+                    window._rb2p_resumeState.yardLine  = Number(turnover.yardLine) || 0;
+                    window._rb2p_resumeState.down       = 1;
+                    window._rb2p_resumeState.toGo       = 10;
+                }
+                console.log('[2P RESUME] unresolved-INT override — thrower=' + turnover.thrower +
+                            ' me=' + role + ' → iHaveBall=' + window._rb2p_resumeState.iHaveBall +
+                            ' yard=' + turnover.yardLine + ' isPick6=' + turnover.isPick6);
+            }
             hideLobby();
             var rs = window._rb2p_resumeState;
             console.log('[2P RESUME] resuming as ' + role + ' from ' +
@@ -7497,6 +7544,12 @@
             // V185: install the Firebase glue (send/receive/badge/live-sync) the
             // same way a fresh startMatch does — a reload-resume needs it too.
             installFirebaseMatchSync();
+            // V187: if I threw an unresolved INT, re-ship it now that send is
+            // wired so my opponent gets the ball (the freeze-break).
+            if (resumeResendInt) {
+                try { window._twoPlayer.send(resumeResendInt); } catch (e) {}
+                console.log('[2P RESUME] re-sent INT to opponent (yard=' + resumeResendInt.yardLine + ')');
+            }
             window.s_play_two_player_match(role);
         }
 
@@ -7523,6 +7576,14 @@
                 var myLiveSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/live/' + savedRole));
                 var myLive = myLiveSnap.val();
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
+                // V187: an unresolved interception (saved the instant it happened)
+                // overrides possession on resume — possession goes to the team that
+                // intercepted, at the pick spot, regardless of a sub-500ms-stale
+                // live snapshot.
+                var turnoverSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/turnover'));
+                var turnover = turnoverSnap.val();
+                var turnoverActive = turnover && turnover.resolved !== true &&
+                                     (Date.now() - (Number(turnover.ts) || 0) < 25000);
                 // V184: the in-progress check must consider MY OWN live push, not
                 // just the opponent's. Both devices write live/{me} every 500ms
                 // while in the match. If I refresh right after LOSING possession
@@ -7535,7 +7596,7 @@
                 // is in progress" signal; resumeMatch already rebuilds state from it.
                 var oppFresh = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
                 var myFresh  = myLive  && (Date.now() - (Number(myLive.ts)  || 0) < 25000);
-                var inProgress = oppFresh || myFresh;
+                var inProgress = oppFresh || myFresh || turnoverActive;
                 // V131: only a FRESH final (ts within 25s) means a real game-over.
                 // A stale leftover in this reused room must NOT block resume.
                 var finalRep = finalSnap.val();
@@ -7570,7 +7631,7 @@
                     } catch (e) {}
                     gameStarted = true;   // set before enterRoom subscribes
                     enterRoom(savedRoom, savedRole, /*restoring=*/true);
-                    resumeMatch(savedRole, oppLive, myLive);
+                    resumeMatch(savedRole, oppLive, myLive, turnoverActive ? turnover : null);
                     return;
                 }
 
@@ -7868,6 +7929,32 @@
             _rb2pFbSyncInstalled = true;
             var staleBadge = document.getElementById('rb-fb-badge');
             if (staleBadge && staleBadge.parentNode) staleBadge.parentNode.removeChild(staleBadge);
+
+            // V187: instant interception persistence for refresh-safety. The
+            // bridge calls _rb2p_saveTurnover the MOMENT an INT flips possession
+            // (mid-return), writing rooms/{code}/turnover with the pick spot and
+            // a provisional isPick6. When the live INT/PICK6 handoff actually
+            // ships, _rb2p_resolveTurnover marks it resolved (so a reload doesn't
+            // re-send on top). On resume, tryRestore reads this record: if I threw
+            // an unresolved INT I re-send it so my opponent gets the ball; if my
+            // opponent threw one to me I take possession at the pick spot.
+            window._rb2p_saveTurnover = function (rec) {
+                try {
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/turnover'), {
+                        thrower:  myRole,
+                        yardLine: Number(rec && rec.yardLine) || 0,
+                        isPick6:  !!(rec && rec.isPick6),
+                        resolved: false,
+                        ts:       Date.now()
+                    }).catch(function () {});
+                } catch (e) {}
+            };
+            window._rb2p_resolveTurnover = function (isPick6) {
+                try {
+                    FB.update(FB.ref(db, 'rooms/' + myRoom + '/turnover'),
+                              { resolved: true, isPick6: !!isPick6 }).catch(function () {});
+                } catch (e) {}
+            };
             // Wire SEND to Firebase BEFORE entering the engineMatch. The local
             // bridge already mutates _twoPlayer.send once installed; we
             // chain on top of whatever's there so simulate()/sentLog still
@@ -8150,6 +8237,9 @@
             // re-coordinates from scratch.
             otAppliedPeriods = {};
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/ot')).catch(function () {});
+            // V187: clear any leftover instant-INT record from a prior game so a
+            // rematch in this reused room can't resume into a stale turnover.
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/turnover')).catch(function () {});
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
