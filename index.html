@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V182</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V183</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3438,6 +3438,66 @@
                 } catch (e) {}
             }
 
+            // ===== V183: hard spawn-gate (players ONLY spawn in possession) =====
+            // _eb1 (s_set_up_play) spawns 11 obj_playerOF + 11 obj_playerDF +
+            // obj_ball at the scrimmage. After a possession change the engine's
+            // FSM calls it AGAIN for the new possessing team — even on the
+            // device that just LOST the ball, where the opponent's drive is
+            // actually played on the REMOTE device. That spurious spawn:
+            //   (a) flashed offensive players on the non-possessing screen, and
+            //   (b) left a stale ball at the wrong scrimmage that the next
+            //       scene reused — e.g. a pick-6 PAT popped from ~midfield
+            //       instead of the pinned 2-yard line (_6F=48).
+            // Gate the BARE global _eb1 (which the engine calls internally,
+            // proven by the _1c1/_1d1 hooks): run the real spawn ONLY when the
+            // user IS the possessing team. The bridge's own deliberate spawns
+            // (forceUserOffenseDrive, the pick-6 PAT apply) call s_set_up_play
+            // through RB.getEngineScript — the untouched REGISTRY entry — and
+            // set enginePossessingTeamIdx = engineUserTeamIdx first, so they are
+            // never gated. Only the engine's own post-handoff call is blocked.
+            var hookedEngineSetUpPlay = false, lastSpawnGateLogMs = 0;
+            function hookEngineSetUpPlayScript() {
+                if (hookedEngineSetUpPlay) return;
+                try {
+                    if (typeof window._eb1 !== 'function') return;
+                    if (window._eb1._p2p_spawnGate) { hookedEngineSetUpPlay = true; return; }
+                    var origEb1 = window._eb1;
+                    var gated = function () {
+                        try {
+                            // Explicit bridge override (set around legit spawns
+                            // that may run before possession is committed).
+                            if (window._rb2p_allowOffenseSpawn === true) {
+                                return origEb1.apply(this, arguments);
+                            }
+                            // The pick-6 SCORER plays their PAT on this device —
+                            // its goal-line 2-PT snap (_eb1 case 2) is legitimate
+                            // even though possession bookkeeping is mid-cascade.
+                            if (window._rb2p_pickSixPatCascadeActive === true &&
+                                window._rb2p_pickSixThisDeviceIsThrower !== true) {
+                                return origEb1.apply(this, arguments);
+                            }
+                            var em = RB.engineState();
+                            if (em && em.engineUserTeamIdx != null &&
+                                em.enginePossessingTeamIdx != null &&
+                                em.enginePossessingTeamIdx !== em.engineUserTeamIdx) {
+                                if (Date.now() - lastSpawnGateLogMs > 1000) {
+                                    lastSpawnGateLogMs = Date.now();
+                                    console.warn('[2P SPAWN-GATE] blocked s_set_up_play — user not in ' +
+                                                 'possession (UD=' + em.enginePossessingTeamIdx +
+                                                 ' user=' + em.engineUserTeamIdx + ')');
+                                }
+                                return;   // no players, no ball — device stays in WAIT
+                            }
+                        } catch (eG) {}
+                        return origEb1.apply(this, arguments);
+                    };
+                    gated._p2p_spawnGate = true;
+                    window._eb1 = gated;
+                    hookedEngineSetUpPlay = true;
+                    console.log('[2P] _eb1 (s_set_up_play) spawn-gate installed');
+                } catch (e) {}
+            }
+
             // ===== Drive-end watchdog (CRITICAL) =====
             // The engine's commentary FSM (_Ib1) drives the cascade after a
             // play ends: TD → PAT → kickoff → _1c1 (possession change).
@@ -6137,6 +6197,7 @@
                     hookEngineCommentaryScript();
                     hookEngineAk1Script();
                     hookEngineEndMatchScript();   // V116: block engine native game-over during OT
+                    hookEngineSetUpPlayScript();   // V183: players only spawn in possession
                     var engineMatch = RB.engineState();
                     if (!engineMatch) { hideWait(); return; }
                     rb2pStarDefenders();   // V88: star the opponent's named D each tick
