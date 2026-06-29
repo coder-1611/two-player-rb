@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V178</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V179</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3496,6 +3496,19 @@
             // team gets its answering possession instead of the game ending.
             // Outside OT, _1d1 runs normally (regulation end is unaffected; the
             // 2P FINAL overlay covers the engine's season flow as before).
+            // V179: the ONE gate for "may the game end right now?". A 2P game
+            // may end ONLY at the end of regulation (Q4) or during overtime —
+            // never in Q1–Q3. Both game-over paths (the engine's native _1d1
+            // below, and the bridge's score-diff detector) are wired through this.
+            window._rb2p_canGameEnd = function () {
+                if (window._rb2p_inOvertime === true) return true;
+                try {
+                    var em = RB.engineState();
+                    if (!em || em.engineQuarter == null) return false;
+                    return (Number(em.engineQuarter) || 1) >= 4;   // regulation: Q4 or beyond
+                } catch (e) { return false; }
+            };
+
             var hookedEngineEndMatch = false;
             function hookEngineEndMatchScript() {
                 if (hookedEngineEndMatch) return;
@@ -3511,6 +3524,21 @@
                                 var em = RB.engineState();
                                 if (em) { em.engineDriveFsmStage = 4; em.engineControllerState = 1; }
                             } catch (eP) {}
+                            return;
+                        }
+                        // V179: a game can ONLY end at Q4 or in OT. If the engine
+                        // tries to run s_end_match before Q4 (the "ended in the 3rd
+                        // quarter" bug), swallow it so play continues. No Vy=4 park
+                        // here — that's the OT-only handoff device; parking in
+                        // regulation would risk the COMM_STAGE_DRIVE freeze.
+                        if (typeof window._rb2p_canGameEnd === 'function' &&
+                            !window._rb2p_canGameEnd()) {
+                            try {
+                                var emr = RB.engineState();
+                                console.warn('[2P] blocked engine _1d1 native game-over in Q' +
+                                             (emr ? emr.engineQuarter : '?') +
+                                             ' — a game can only end at Q4 or OT');
+                            } catch (eW) {}
                             return;
                         }
                         return orig1d1.apply(this, arguments);
@@ -6436,6 +6464,7 @@
             // Q1) so a rematch re-arms it.
             window._rb2p_gameOverReported = false;
             var gameOverWasInMatch = false;
+            var gameOverConfirmTicks = 0;   // V179: end signal must persist (anti Q3->Q4-blip)
             setInterval(function () {
                 try {
                     var nowInMatch = RB.isEngineInMatchRoom();
@@ -6520,10 +6549,29 @@
                     // The true Q4 end fires either via pastRegulation (Wy reaches 5)
                     // or via regulationOver in the play-resolution window (Wy=4,
                     // clock 0, kp=4, Vy=tackle-resolution != 13) before case 19 runs.
+                    // V179: the decisive discriminator — the real Q4 end happens only
+                    // AFTER Q4 has actually been played (the clock counted down a full
+                    // quarter), whereas the Q3->Q4 boundary blip hits the instant Q4
+                    // BEGINS. quarterChangedToMs (maintained by the quarter tracker) is
+                    // ~0 at the boundary and ~a full quarter old at the true end.
+                    var q4ActiveMs = Date.now() - (window._rb2p_quarterChangedToMs || 0);
                     var regulationOver = (q === 4 && mn === 0 && sc === 0 &&
                                           em.engineControllerState !== 2 &&
-                                          em.engineDriveFsmStage !== 13);
-                    if (!pastRegulation && !regulationOver) return;
+                                          em.engineDriveFsmStage !== 13 &&
+                                          q4ActiveMs > 5000);   // Q4 truly played, not the entry blip
+                    // V179: also gate through the shared canGameEnd() (Q4+/OT only)
+                    // and require the end signal to be SUSTAINED. The Q3->Q4 boundary
+                    // reads q=4, clock 0:00 for a blip before the engine resets the Q4
+                    // clock — a one-tick match ended the game in Q3 (the recurring
+                    // bug, since the pick-6/kickoff cascades can sit on Vy=4 not 13 at
+                    // that moment, defeating the Vy!=13 guard). A real end stays at
+                    // 0:00 / q>=5; the boundary blip clears within ~1s. Require the
+                    // signal to hold ~1.2s (4 × 300ms) before declaring FINAL.
+                    var endSignal = (pastRegulation || regulationOver) &&
+                                    (typeof window._rb2p_canGameEnd !== 'function' ||
+                                     window._rb2p_canGameEnd());
+                    if (!endSignal) { gameOverConfirmTicks = 0; return; }
+                    if (++gameOverConfirmTicks < 4) return;
                     window._rb2p_gameOverReported = true;
                     var report = window._rb2p_collectBoxScore();
                     console.log('[2P FINAL] game over — ' + report.team + ' ' + report.score +
