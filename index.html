@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V193</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V194</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -7020,11 +7020,11 @@
                 var tck = Math.round(d.tck || 0), sck = Math.round(d.sck || 0), intc = Math.round(d.int || 0);
                 // Show EVERY starred defender (even at 0) so the defense always
                 // appears in the box score — same as the offense starters.
-                var parts = [];
-                if (tck) parts.push(tck + ' TCK');
-                if (sck) parts.push(sck + ' SCK');
-                if (intc) parts.push(intc + ' INT');
-                if (!parts.length) parts.push('0 TCK');
+                // V194: ALWAYS show all three defensive stats (even at 0) so INT
+                // and SACK never silently vanish from a defender's line — they
+                // were previously omitted whenever the value was 0, so a tackler
+                // showed only "N TCK" with no SACK/INT at all.
+                var parts = [tck + ' TCK', sck + ' SCK', intc + ' INT'];
                 var nm = (d.fn ? d.fn.charAt(0) + '. ' : '') + d.ln;
                 var line = parts.join(' · '), sort = intc * 100 + sck * 10 + tck;
                 var posLabel = DEF_POS_LABEL[d.pos] || 'DB';
