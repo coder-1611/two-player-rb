@@ -52260,7 +52260,7 @@ function _k01(_, t) {
                     case 0:
                         if (yyfgreater(global._K01, .2) && (_._111 = _Ko(yyfplus(_Ri(_._111), _Ri(yyftime(_Ri(global._211), 2))), -100, 100),
                             _._311 = _Ko(yyfplus(_Ri(_._311), _Ri(yyftime(_Ri(global._411), 2))), -100, 100)),
-                            _._R01 = _v01(0, 0, _._111, _Ri(-_Ri(_._311))),
+                            _._R01 = min(_v01(0, 0, _._111, _Ri(-_Ri(_._311))), 74)/* [2P] dragdist cap: 100->74 so a 10/10 arm tops out ~33yd (analog) */,
                             _._511 = _701(0, 0, _._111, _Ri(-_Ri(_._311))),
                             yyGetBool(global._611)) {
                             var A = _si(_._X_);
@@ -52278,7 +52278,7 @@ function _k01(_, t) {
                             yyGetBool(_I01(global._J01, 32769)) && _h11(_, t);
                         break;
                     case 1:
-                        _._R01 = min(_v01(_._y01, _._z01, i, e), 100);
+                        _._R01 = min(_v01(_._y01, _._z01, i, e), 74)/* [2P] dragdist cap: 100->74 so a 10/10 arm tops out ~33yd (touch) */;
                         var j = 0;
                         if (yyGetBool(global._rL) ? yyGetBool(_j11(0, 1)) && (j = 1,
                             yyGetBool(_k11(1, 1)) && (_._d11 = yyGetBool(_._d11) ? 0 : 1)) : yyGetBool(_q01(1)) && (j = 1,
