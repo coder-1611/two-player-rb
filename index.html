@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V189</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V190</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -1968,60 +1968,44 @@
             // physically collided with the carrier. Distance sanity-check
             // guards the _r81 fallback (stale after a broken tackle when the
             // carrier then runs out of bounds).
-            var rb2pPrevKp = null;
+            // V190: watch the BALL's state machine (obj_ball._kp), NOT the match
+            // controller state. The V189 diagnostic proved the old code read
+            // em.engineControllerState (match._kp, which ends a play 2 -> 1) and
+            // checked it for 4/11 — but 4/11 are values of a DIFFERENT _kp: the
+            // BALL object's state (per the engine's own name map: 4=BALL_DOWN,
+            // 11=BALL_SACKED, 9=BALL_INTERCEPTED). They never matched, so the
+            // tackle/sack credit NEVER fired and every defensive stat stayed 0.
+            // Now: when obj_ball._kp transitions into 4 (tackle) or 11 (sack),
+            // credit the starred defender nearest the ball (= the carrier's spot).
+            var rb2pPrevBallKp = null;
             window._rb2p_defObsLog = [];
             function rb2pObserveTackles() {
                 try {
-                    if (!RB.isEngineInMatchRoom()) { rb2pPrevKp = null; return; }
-                    var em = RB.engineState();
-                    if (!em) return;
-                    var kp = em.engineControllerState;
-                    var prev = rb2pPrevKp;
-                    rb2pPrevKp = kp;
-                    if (kp === prev) return;
-                    if (prev !== 2) return;                 // only a live play resolving
-                    // V189 DIAG: a live play just ended — record the controller
-                    // state it ended in. The tackle/sack credit fires only on
-                    // kp 4 (downed) / 11 (sacked); if real plays end on a DIFFERENT
-                    // value the observer credits nothing and all defensive tackle/
-                    // sack stats stay 0. Read window._rb2p_defDiag after a drive.
+                    if (!RB.isEngineInMatchRoom()) { rb2pPrevBallKp = null; return; }
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var i, x, ball = null;
+                    for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { ball = x; break; } }
+                    if (!ball) { rb2pPrevBallKp = null; return; }
+                    var bkp = ball._kp;
+                    var prev = rb2pPrevBallKp;
+                    rb2pPrevBallKp = bkp;
+                    if (bkp === prev) return;
+                    if (bkp !== 4 && bkp !== 11) return;   // 4 = BALL_DOWN (tackle), 11 = BALL_SACKED
+                    var isSack = (bkp === 11);
                     if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, noStarred: 0, outOfRange: 0 };
                     window._rb2p_defDiag.playEnds++;
-                    window._rb2p_defDiag.endKp[kp] = (window._rb2p_defDiag.endKp[kp] || 0) + 1;
-                    console.log('[2P DEF-DIAG] live play ended: controllerState 2 -> ' + kp +
-                                ' (tackle/sack credit fires only on 4 or 11)');
-                    if (kp !== 4 && kp !== 11) return;      // 4 = carrier downed, 11 = QB sacked
-                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    var i, x;
-                    var isSack = (kp === 11);
-                    // V120: SPATIAL attribution. The old path read the controlled
-                    // player (_X_) as the carrier + the engine's _l31/_r81 tackler
-                    // ids — but _X_ is the player the user CONTROLS, not always the
-                    // ball carrier, and the id fields don't resolve reliably, so it
-                    // credited "nobody" every time (tackles always 0). Instead:
-                    // locate the ball carrier (the controlled player if it resolves,
-                    // else the obj_ball position) and credit the STARRED defender
-                    // physically closest to it at the downing edge — real collision
-                    // truth, no engine probabilistic guess.
-                    var cx = null, cy = null;
-                    var carrierId = em.engineActivePlayerInst;
-                    if (carrierId != null && carrierId !== -4) {
-                        for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x.id === carrierId) { cx = x.x; cy = x.y; break; } }
-                    }
-                    if (cx == null) {
-                        for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { cx = x.x; cy = x.y; break; } }
-                    }
-                    if (cx == null) { console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') + ' — no carrier/ball found, skipped'); return; }
-                    // Nearest STARRED defender to the carrier.
+                    window._rb2p_defDiag.endKp[bkp] = (window._rb2p_defDiag.endKp[bkp] || 0) + 1;
+                    // Ball sits ON the carrier when downed/sacked, so its position is
+                    // the collision spot. Credit the STARRED defender nearest it.
+                    var cx = ball.x, cy = ball.y;
                     var best = null, bestD2 = 1e12;
                     for (i = 0; i < all.length; i++) {
                         var d = all[i];
-                        if (!d || d._HL2 || !d._eE2 || d._eE2._fE2 !== 'obj_playerDF') continue;
-                        if (!d._rb2pStar) continue;
+                        if (!d || d._HL2 || !d._eE2 || d._eE2._fE2 !== 'obj_playerDF' || !d._rb2pStar) continue;
                         var ddx = d.x - cx, ddy = d.y - cy, dd = ddx * ddx + ddy * ddy;
                         if (dd < bestD2) { bestD2 = dd; best = d; }
                     }
-                    if (!best || bestD2 > 34 * 34) {
+                    if (!best || bestD2 > 44 * 44) {
                         if (window._rb2p_defDiag) { if (!best) window._rb2p_defDiag.noStarred++; else window._rb2p_defDiag.outOfRange++; }
                         console.log('[2P DEF] ' + (isSack ? 'sack' : 'tackle') +
                                     ' — nearest starred defender ' + (best ? Math.round(Math.sqrt(bestD2)) + 'px (out of range)' : 'none') +
@@ -2145,6 +2129,8 @@
                     if (!best) { console.log('[2P DEF] INT — no starred defender to credit'); return; }
                     var star = best._rb2pStar;
                     star.obsInt = (Number(star.obsInt) || 0) + 1;
+                    if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, noStarred: 0, outOfRange: 0 };
+                    window._rb2p_defDiag.intc++;
                     console.log('[2P DEF] INTERCEPTION credited to ' + star.fn + ' ' + star.ln +
                                 (bx != null ? ' (' + Math.round(Math.sqrt(bestD2)) + 'px)' : ' (no ball ref)') +
                                 ' — obsInt=' + star.obsInt);
