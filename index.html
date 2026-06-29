@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V187</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V188</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2026,6 +2026,85 @@
                 } catch (e) {}
             }
 
+            // ===== V188: detect the INTERCEPTION AT THE CATCH (not at _1c1) =====
+            // _1c1 (where V187 saved the turnover) fires when the return ENDS —
+            // so a reload mid-return found nothing saved ("waited half a second,
+            // didn't save; works after the play ends"). This 16ms detector catches
+            // the pick the INSTANT a DEFENDER becomes the ball carrier during the
+            // user's own live play, and persists the turnover immediately — giving
+            // the async Firebase write the whole return (~1-2s) to land. The
+            // carrier is always the player CLOSEST to obj_ball, so "nearest player
+            // is an obj_playerDF" = a defender has the ball = interception (a tackle
+            // keeps the OF carrier closest, so it won't false-trigger). Requires 2
+            // consecutive frames on the same defender to reject a ball merely
+            // flying past one. If the play then ends with the user STILL in
+            // possession (a rare false positive), the provisional save is resolved
+            // away so a later refresh can't wrongly hand over the ball.
+            var rb2pIntLatch = false, rb2pIntPrevDF = null, rb2pIntStreak = 0;
+            function rb2pDetectIntCatch() {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { rb2pIntLatch = false; rb2pIntStreak = 0; rb2pIntPrevDF = null; return; }
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var userHasBall = em.enginePossessingTeamIdx === em.engineUserTeamIdx;
+                    var live = userHasBall && em.engineControllerState === 2 &&
+                               window._rb2p_userIsWaitingForOpponent !== true;
+                    if (!live) {
+                        // Play not live. If we flagged a catch this play but the user
+                        // STILL has the ball, it never actually turned over → neutralize
+                        // the provisional save (false positive).
+                        if (rb2pIntLatch && userHasBall && typeof window._rb2p_resolveTurnover === 'function') {
+                            window._rb2p_resolveTurnover(false);
+                            console.log('[2P INT-CATCH] play ended with possession retained — provisional INT cleared');
+                        }
+                        rb2pIntLatch = false; rb2pIntStreak = 0; rb2pIntPrevDF = null;
+                        return;
+                    }
+                    if (rb2pIntLatch) return;   // already saved this play
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var i, x, bx = null, by = null;
+                    for (i = 0; i < all.length; i++) {
+                        x = all[i];
+                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { bx = x.x; by = x.y; break; }
+                    }
+                    if (bx == null) { rb2pIntStreak = 0; rb2pIntPrevDF = null; return; }
+                    var nDF = null, nDFd2 = 1e12, nOFd2 = 1e12;
+                    for (i = 0; i < all.length; i++) {
+                        var p = all[i];
+                        if (!p || p._HL2 || !p._eE2) continue;
+                        var nm = p._eE2._fE2;
+                        var dx, dy, d2;
+                        if (nm === 'obj_playerDF') {
+                            dx = p.x - bx; dy = p.y - by; d2 = dx * dx + dy * dy;
+                            if (d2 < nDFd2) { nDFd2 = d2; nDF = p; }
+                        } else if (nm === 'obj_playerOF') {
+                            dx = p.x - bx; dy = p.y - by; d2 = dx * dx + dy * dy;
+                            if (d2 < nOFd2) { nOFd2 = d2; }
+                        }
+                    }
+                    var CARRY2 = 11 * 11;   // ball sits ON its carrier (~px)
+                    var dfHasBall = nDF && nDFd2 <= CARRY2 && nDFd2 < nOFd2;
+                    if (dfHasBall && nDF === rb2pIntPrevDF) rb2pIntStreak++;
+                    else { rb2pIntStreak = dfHasBall ? 1 : 0; rb2pIntPrevDF = dfHasBall ? nDF : null; }
+                    if (rb2pIntStreak >= 2) {
+                        rb2pIntLatch = true;
+                        // Receiver-frame yard estimate: the engine mirrors _6F (a._6F
+                        // = -a._6F) on the _1c1 flip; at the catch it's still the
+                        // thrower's frame, so negate it. Refined by V187's _1c1 save
+                        // when the return ends (no refresh).
+                        var estYard = -(Number(em.engineYardLineSigned) || 0);
+                        if (estYard < -50) estYard = -50;
+                        if (estYard >  50) estYard =  50;
+                        try { localStorage.setItem('rb2p_pendingInt',
+                              JSON.stringify({ yardLine: estYard, ts: Date.now() })); } catch (eLS) {}
+                        if (typeof window._rb2p_saveTurnover === 'function')
+                            window._rb2p_saveTurnover({ yardLine: estYard, isPick6: false });
+                        console.log('[2P INT-CATCH] interception detected mid-play — turnover saved ' +
+                                    'immediately (estYard=' + estYard + ')');
+                    }
+                } catch (e) {}
+            }
+
             // NOTE: rb2pObserveTackles() runs from the 16 ms interval ONLY (single
             // caller). It was previously also called from the rAF loop, but the two
             // loops share the rb2pPrevKp latch, so a 2->4/2->11 edge could be seen by
@@ -2165,7 +2244,7 @@
             };
             function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pBumpDefenderSpeed(); requestAnimationFrame(rb2pRafLoop); }
             requestAnimationFrame(rb2pRafLoop);
-            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); rb2pBumpDefenderSpeed(); }, 16);
+            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); rb2pBumpDefenderSpeed(); rb2pDetectIntCatch(); }, 16);
 
             function startTwoPlayerMatch(role) {
                 // V112: stash the authoritative Firebase role so OT (and anyone
@@ -7582,6 +7661,27 @@
                 // live snapshot.
                 var turnoverSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/turnover'));
                 var turnover = turnoverSnap.val();
+                // V188: localStorage backup. The catch-detector writes 'rb2p_pendingInt'
+                // SYNCHRONOUSLY at the pick (<1ms) AND fires the async Firebase write.
+                // If the reload beat the Firebase write to the wire, the Firebase
+                // turnover is missing/stale — fall back to my own instant local record
+                // so I (the thrower) still resume into WAIT and re-send the INT to my
+                // opponent. Only used when Firebase has nothing fresher.
+                var localInt = null;
+                try {
+                    var liRaw = localStorage.getItem('rb2p_pendingInt');
+                    if (liRaw) {
+                        var li = JSON.parse(liRaw);
+                        if (li && (Date.now() - (Number(li.ts) || 0) < 25000)) localInt = li;
+                    }
+                } catch (eLI) {}
+                if (localInt && !(turnover && turnover.resolved !== true &&
+                                  (Date.now() - (Number(turnover.ts) || 0) < 25000))) {
+                    // Synthesize a thrower-side unresolved turnover from the local record.
+                    turnover = { thrower: savedRole, yardLine: Number(localInt.yardLine) || 0,
+                                 isPick6: false, resolved: false, ts: Number(localInt.ts) || Date.now() };
+                }
+                try { localStorage.removeItem('rb2p_pendingInt'); } catch (eLR) {}   // consume once
                 var turnoverActive = turnover && turnover.resolved !== true &&
                                      (Date.now() - (Number(turnover.ts) || 0) < 25000);
                 // V184: the in-progress check must consider MY OWN live push, not
@@ -7954,6 +8054,7 @@
                     FB.update(FB.ref(db, 'rooms/' + myRoom + '/turnover'),
                               { resolved: true, isPick6: !!isPick6 }).catch(function () {});
                 } catch (e) {}
+                try { localStorage.removeItem('rb2p_pendingInt'); } catch (e2) {}
             };
             // Wire SEND to Firebase BEFORE entering the engineMatch. The local
             // bridge already mutates _twoPlayer.send once installed; we
@@ -8240,6 +8341,7 @@
             // V187: clear any leftover instant-INT record from a prior game so a
             // rematch in this reused room can't resume into a stale turnover.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/turnover')).catch(function () {});
+            try { localStorage.removeItem('rb2p_pendingInt'); } catch (e) {}   // V188: + local backup
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
