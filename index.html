@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V176</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V177</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4282,14 +4282,30 @@
                         // case 2 takes when a 2-pt miss is processed with a
                         // clobbered _t11 (< 6) — also a miss, but the FSM
                         // won't reach kickoff on its own.
-                        if ((em.engineDriveFsmStage === 1 ||
-                             em.engineDriveFsmStage === 22) && userDelta === 0) {
+                        // V177: a missed PAT does NOT always land the FSM on Vy=1/22 —
+                        // the post-PAT kickoff can park it on the gutted Vy=4. When it
+                        // does, this guardian never detected the miss, stayed "pending"
+                        // forever, and re-asserted _t11=6 every 100ms while the engine
+                        // tried to move on — hanging the FSM on Vy=4 (the endless
+                        // COMM_STAGE_DRIVE "random freeze"). The robust "the PAT scene
+                        // is over" signal is the kickoff having flipped possession AWAY
+                        // from the scorer (UD != user). A MADE PAT is caught earlier by
+                        // userDelta>=1 (the engine credits the score synchronously,
+                        // before the kickoff stage), so reaching here with userDelta===0
+                        // and possession already gone means a genuine miss.
+                        var patKickoffFlippedAway =
+                            em.enginePossessingTeamIdx !== em.engineUserTeamIdx;
+                        if (userDelta === 0 &&
+                            (em.engineDriveFsmStage === 1 ||
+                             em.engineDriveFsmStage === 22 ||
+                             patKickoffFlippedAway)) {
                             window._rb2p_patPlayPending  = false;
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = 0;
                             console.log('[2P PAT GUARD] PAT resolved: missed (Vy=' +
-                                        em.engineDriveFsmStage + ')');
+                                        em.engineDriveFsmStage + ', possessionFlipped=' +
+                                        patKickoffFlippedAway + ')');
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                                 'PAT missed (Vy=' + em.engineDriveFsmStage + ')');
                             return;
