@@ -367,7 +367,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V177</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V178</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2367,32 +2367,45 @@
                     if (window._rb2p_resumeState) {
                         var rs = window._rb2p_resumeState;
                         window._rb2p_resumeState = null;
-                        var triesR = 0;
+                        var triesR = 0, resumedOnce = false, holdTicks = 0;
                         var pollR = setInterval(function () {
                             triesR++;
                             try {
                                 if (!RB.isEngineInMatchRoom()) { if (triesR > 400) clearInterval(pollR); return; }
                                 var em = RB.engineState();
                                 if (!em || em.engineUserTeamIdx == null) { if (triesR > 400) clearInterval(pollR); return; }
-                                if (typeof rs.myScore === 'number') em.setUserScore(rs.myScore);
-                                if (typeof rs.oppScore === 'number') em.setOpponentScore(rs.oppScore);
-                                if (typeof rs.quarter === 'number') em.engineQuarter = rs.quarter;
-                                if (typeof rs.minutes === 'number') em.engineMinutesLeft = rs.minutes;
-                                if (typeof rs.seconds === 'number') em.engineSecondsLeft = rs.seconds;
-                                em.engineTickAllowance = 0;
-                                if (rs.iHaveBall) {
-                                    window._rb2p_userIsWaitingForOpponent = false;
-                                    window._rb2p_userOutcomeSendInProgress = false;
-                                    window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                                    forceUserOffenseDrive(window._rb2p_kickoffReturnYard());
-                                } else {
-                                    em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
-                                    window._rb2p_userIsWaitingForOpponent = true;
+                                // V178: re-assert score & quarter as monotonic FLOORS
+                                // every tick for a ~3s grace window. The engine's
+                                // opening inits Q1 / 0-0 and the live-sync may push a
+                                // stale value right after launch; setting the resumed
+                                // state only ONCE (the old code) let those roll it back,
+                                // producing the "score wrong / quarter oscillates Q1↔Q4"
+                                // mess. Floors only ever RAISE, so a legit quarter
+                                // advance during the window still goes through.
+                                if (typeof rs.myScore  === 'number' && em.userScore     < rs.myScore)  em.setUserScore(rs.myScore);
+                                if (typeof rs.oppScore === 'number' && em.opponentScore < rs.oppScore) em.setOpponentScore(rs.oppScore);
+                                if (typeof rs.quarter  === 'number' && Number(em.engineQuarter) < rs.quarter) em.engineQuarter = rs.quarter;
+                                if (!resumedOnce) {
+                                    if (typeof rs.minutes === 'number') em.engineMinutesLeft = rs.minutes;
+                                    if (typeof rs.seconds === 'number') em.engineSecondsLeft = rs.seconds;
+                                    em.engineTickAllowance = 0;
+                                    if (rs.iHaveBall) {
+                                        window._rb2p_userIsWaitingForOpponent = false;
+                                        window._rb2p_userOutcomeSendInProgress = false;
+                                        window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                                        forceUserOffenseDrive(window._rb2p_kickoffReturnYard());
+                                    } else {
+                                        em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
+                                        window._rb2p_userIsWaitingForOpponent = true;
+                                    }
+                                    console.log('[2P RESUME] restored ' + rs.myScore + '-' + rs.oppScore +
+                                                ' Q' + rs.quarter + ' ' + rs.minutes + ':' + ('0' + rs.seconds).slice(-2) +
+                                                ' iHaveBall=' + rs.iHaveBall + ' — holding state ~3s');
+                                    resumedOnce = true;
                                 }
-                                console.log('[2P RESUME] restored ' + rs.myScore + '-' + rs.oppScore +
-                                            ' Q' + rs.quarter + ' ' + rs.minutes + ':' + rs.seconds +
-                                            ' iHaveBall=' + rs.iHaveBall);
-                                clearInterval(pollR);
+                                // Hold the floors for ~3s (60 × 50ms) after the first
+                                // restore so the opening can't clobber them, then stop.
+                                if (resumedOnce && ++holdTicks >= 60) clearInterval(pollR);
                             } catch (e) { if (triesR > 400) clearInterval(pollR); }
                         }, 50);
                         return;
@@ -7377,22 +7390,43 @@
         // possession from the opponent's last live state, instead of
         // restarting from 0-0. Field position is unrecoverable (a fresh drive
         // is spawned / WAIT shown), but the game state carries over.
-        function resumeMatch(role, oppLive) {
+        function resumeMatch(role, oppLive, myLive) {
             gameStarted = true;   // block the players-subscription from restarting
             window._rb2p_gameOverReported = false;
+            oppLive = oppLive || {};
+            myLive  = myLive  || {};
+            // V178: rebuild from MY OWN last snapshot (authoritative for my state),
+            // cross-checked against the opponent's. Score & quarter are MONOTONIC
+            // (only ever increase), so take the MAX across both snapshots — a
+            // slightly-stale snapshot can no longer roll the game backward (the
+            // "score wrong / time shifting Q1↔Q4" symptom). The clock comes from
+            // whichever snapshot is FRESHER by ts. Possession uses my own last
+            // iHaveBall (what I was actually doing), not an inference from the
+            // opponent's view — which avoids both-wait deadlocks and both-ball races.
+            var myTs  = Number(myLive.ts)  || 0;
+            var oppTs = Number(oppLive.ts) || 0;
+            var useMyClock = myTs >= oppTs;
+            // my score: my own "myScore" and the opponent's "oppScore" (their view of me)
+            var myScore  = Math.max(Number(myLive.myScore)  || 0, Number(oppLive.oppScore) || 0);
+            // opp score: my own "oppScore" (my view of them) and their own "myScore"
+            var oppScore = Math.max(Number(myLive.oppScore) || 0, Number(oppLive.myScore)  || 0);
             window._rb2p_resumeState = {
-                myScore:  Number(oppLive.oppScore) || 0,   // opp's "oppScore" = MY score
-                oppScore: Number(oppLive.myScore) || 0,    // opp's "myScore"  = opp's score
-                quarter:  Number(oppLive.quarter) || 1,
-                minutes:  Number(oppLive.minutesLeft) || 0,
-                seconds:  Number(oppLive.secondsLeft) || 0,
-                // If the opponent has the ball, I must wait; otherwise I take
-                // over on offense. Missing flag (old payload) → take the ball
-                // (avoids both sides waiting → deadlock).
-                iHaveBall: !(oppLive.iHaveBall === true)
+                myScore:  myScore,
+                oppScore: oppScore,
+                quarter:  Math.max(Number(myLive.quarter) || 1, Number(oppLive.quarter) || 1),
+                minutes:  Number(useMyClock ? myLive.minutesLeft : oppLive.minutesLeft) || 0,
+                seconds:  Number(useMyClock ? myLive.secondsLeft : oppLive.secondsLeft) || 0,
+                iHaveBall: (typeof myLive.iHaveBall === 'boolean')
+                            ? myLive.iHaveBall            // what I was actually doing
+                            : !(oppLive.iHaveBall === true)
             };
             hideLobby();
-            console.log('[2P RESUME] resuming match as ' + role);
+            var rs = window._rb2p_resumeState;
+            console.log('[2P RESUME] resuming as ' + role + ' from ' +
+                        (useMyClock ? 'own' : 'opp') + ' snapshot — ' +
+                        rs.myScore + '-' + rs.oppScore + ' Q' + rs.quarter +
+                        ' ' + rs.minutes + ':' + ('0' + rs.seconds).slice(-2) +
+                        ' iHaveBall=' + rs.iHaveBall);
             window.s_play_two_player_match(role);
         }
 
@@ -7412,6 +7446,12 @@
                 // fire a fresh startMatch underneath us.
                 var oppLiveSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/live/' + oppRole));
                 var oppLive = oppLiveSnap.val();
+                // V178: my OWN last live push survives the reload (onDisconnect only
+                // clears players/, never live/), so it's the authoritative record of
+                // MY engine's score/quarter/clock/possession — far better than the
+                // opponent's drifted, often-stale VIEW of me. Read it for the resume.
+                var myLiveSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/live/' + savedRole));
+                var myLive = myLiveSnap.val();
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
                 var inProgress = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
                 // V131: only a FRESH final (ts within 25s) means a real game-over.
@@ -7448,7 +7488,7 @@
                     } catch (e) {}
                     gameStarted = true;   // set before enterRoom subscribes
                     enterRoom(savedRoom, savedRole, /*restoring=*/true);
-                    resumeMatch(savedRole, oppLive);
+                    resumeMatch(savedRole, oppLive, myLive);
                     return;
                 }
 
