@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V199</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V200</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -4142,9 +4142,21 @@
 
                     // Capture the user's LIVE offensive spot during real play so a
                     // quarter-keep can resume exactly there (not the cascade's drift).
-                    if (userHasBall && em.engineControllerState === 2 && window._rb2p_userIsWaitingForOpponent !== true) {
+                    // V200: capture at the STABLE between-plays staging point
+                    // (controllerState 1) too, not only during the active snap (2).
+                    // The down the drive RESUMES on is the POST-play value the engine
+                    // sets between plays; capturing only mid-snap left preRolloverDown
+                    // one play stale, so downs didn't always carry over correctly
+                    // across a quarter. Hard-gated against the quarter cascade: require
+                    // the clock STILL RUNNING (the cascade/park happens at 0:00, so a
+                    // reset down can never be latched) and a normal scrimmage down
+                    // (1..4 — never the PAT marker 6 or a transient 0).
+                    var qkDown = Number(em.engineDownNumber);
+                    if (userHasBall && window._rb2p_userIsWaitingForOpponent !== true && clockRunning &&
+                        (em.engineControllerState === 1 || em.engineControllerState === 2) &&
+                        qkDown >= 1 && qkDown <= 4) {
                         window._rb2p_preRolloverYard = em.engineYardLineSigned;
-                        window._rb2p_preRolloverDown = em.engineDownNumber;
+                        window._rb2p_preRolloverDown = qkDown;
                         window._rb2p_preRolloverToGo = em.engineYardsToGo;
                     }
 
