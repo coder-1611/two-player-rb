@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V195</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V196</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2023,6 +2023,30 @@
                     }
                     if (bkp !== 4 && bkp !== 11) return;   // 4 = BALL_DOWN (tackle), 11 = BALL_SACKED
                     var isSack = (bkp === 11);
+                    // INT-RETURN GUARD: on an interception (or any turnover return),
+                    // the ball CARRIER is a defender being chased down by the user's
+                    // offense. When that returner is tackled, bkp also hits 4 — but
+                    // the player going down is a DF, not a ball-carrying OF, so the
+                    // "nearest starred defender" below would wrongly credit a tackle
+                    // (often to the interceptor himself). Detect it by carrier
+                    // identity: if the player closest to the ball is an obj_playerDF,
+                    // this is a defensive carrier being downed → credit NOBODY.
+                    // (A real sack/tackle keeps an OF — QB or runner — closest.)
+                    if (bkp === 4) {
+                        var cgx = ball.x, cgy = ball.y, carIsDF = false, carD2 = 1e12, cp, cdx, cdy, cd2;
+                        for (i = 0; i < all.length; i++) {
+                            cp = all[i];
+                            if (!cp || cp._HL2 || !cp._eE2) continue;
+                            var cnm = cp._eE2._fE2;
+                            if (cnm !== 'obj_playerOF' && cnm !== 'obj_playerDF') continue;
+                            cdx = cp.x - cgx; cdy = cp.y - cgy; cd2 = cdx * cdx + cdy * cdy;
+                            if (cd2 < carD2) { carD2 = cd2; carIsDF = (cnm === 'obj_playerDF'); }
+                        }
+                        if (carIsDF) {
+                            console.log('[2P DEF] tackle on a defensive ball-carrier (turnover return) — counted for nobody');
+                            return;
+                        }
+                    }
                     if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, noStarred: 0, outOfRange: 0 };
                     window._rb2p_defDiag.playEnds++;
                     window._rb2p_defDiag.endKp[bkp] = (window._rb2p_defDiag.endKp[bkp] || 0) + 1;
