@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V198</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V199</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2077,24 +2077,25 @@
                 } catch (e) {}
             }
 
-            // ===== V188: detect the INTERCEPTION AT THE CATCH (not at _1c1) =====
+            // ===== V188/V199: detect the INTERCEPTION AT THE CATCH (not at _1c1) =====
             // _1c1 (where V187 saved the turnover) fires when the return ENDS —
             // so a reload mid-return found nothing saved ("waited half a second,
             // didn't save; works after the play ends"). This 16ms detector catches
-            // the pick the INSTANT a DEFENDER becomes the ball carrier during the
-            // user's own live play, and persists the turnover immediately — giving
-            // the async Firebase write the whole return (~1-2s) to land. The
-            // carrier is always the player CLOSEST to obj_ball, so "nearest player
-            // is an obj_playerDF" = a defender has the ball = interception (a tackle
-            // keeps the OF carrier closest, so it won't false-trigger). Requires 2
-            // consecutive frames on the same defender to reject a ball merely
-            // flying past one. If the play then ends with the user STILL in
-            // possession (a rare false positive), the provisional save is resolved
-            // away so a later refresh can't wrongly hand over the ball.
-            var rb2pIntLatch = false, rb2pIntPrevDF = null, rb2pIntStreak = 0;
+            // the pick the INSTANT the engine flags it during the user's own live
+            // play, and persists the turnover immediately — giving the async
+            // Firebase write the whole return (~1-2s) to land. V199: the trigger is
+            // the engine's authoritative ball state obj_ball._kp === 9
+            // (BALL_INTERCEPTED, set at retrobowl.js:52844), NOT a proximity guess.
+            // The original "nearest player to the ball is a defender" heuristic also
+            // fired on INCOMPLETE passes (ball lands by a covering defender → looks
+            // carried for a couple frames → phantom INT), which massively
+            // over-counted interceptions. _kp distinguishes them exactly: pick = 9,
+            // incompletion = 7. If the play ends with the user STILL in possession
+            // (shouldn't happen now), the provisional save is resolved away.
+            var rb2pIntLatch = false;
             function rb2pDetectIntCatch() {
                 try {
-                    if (!RB.isEngineInMatchRoom()) { rb2pIntLatch = false; rb2pIntStreak = 0; rb2pIntPrevDF = null; return; }
+                    if (!RB.isEngineInMatchRoom()) { rb2pIntLatch = false; return; }
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     var userHasBall = em.enginePossessingTeamIdx === em.engineUserTeamIdx;
@@ -2108,60 +2109,46 @@
                             window._rb2p_resolveTurnover(false);
                             console.log('[2P INT-CATCH] play ended with possession retained — provisional INT cleared');
                         }
-                        rb2pIntLatch = false; rb2pIntStreak = 0; rb2pIntPrevDF = null;
+                        rb2pIntLatch = false;
                         return;
                     }
                     if (rb2pIntLatch) return;   // already saved this play
+                    // V199: trigger on the ENGINE's authoritative ball state, NOT
+                    // proximity. The old "nearest player to the ball is a defender"
+                    // heuristic also fired on INCOMPLETE passes — the ball lands near a
+                    // defender in coverage, so for a couple frames it looked "carried"
+                    // and credited a phantom INT. That was the massive over-count
+                    // (Purdy 9/14 = 5 incompletions → 5 fake picks). The engine sets
+                    // obj_ball._kp = 9 (BALL_INTERCEPTED) ONLY on a real pick
+                    // (retrobowl.js:52844) and = 7 (BALL_INCOMPLETE) on an
+                    // incompletion, so keying off _kp === 9 separates them exactly. It
+                    // is set AT the catch (as early as the old proximity signal), so
+                    // the turnover still persists mid-return for the refresh case.
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    var i, x, bx = null, by = null;
+                    var i, x, bkp = null;
                     for (i = 0; i < all.length; i++) {
                         x = all[i];
-                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { bx = x.x; by = x.y; break; }
+                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { bkp = x._kp; break; }
                     }
-                    if (bx == null) { rb2pIntStreak = 0; rb2pIntPrevDF = null; return; }
-                    var nDF = null, nDFd2 = 1e12, nOFd2 = 1e12;
-                    for (i = 0; i < all.length; i++) {
-                        var p = all[i];
-                        if (!p || p._HL2 || !p._eE2) continue;
-                        var nm = p._eE2._fE2;
-                        var dx, dy, d2;
-                        if (nm === 'obj_playerDF') {
-                            dx = p.x - bx; dy = p.y - by; d2 = dx * dx + dy * dy;
-                            if (d2 < nDFd2) { nDFd2 = d2; nDF = p; }
-                        } else if (nm === 'obj_playerOF') {
-                            dx = p.x - bx; dy = p.y - by; d2 = dx * dx + dy * dy;
-                            if (d2 < nOFd2) { nOFd2 = d2; }
-                        }
-                    }
-                    var CARRY2 = 11 * 11;   // ball sits ON its carrier (~px)
-                    var dfHasBall = nDF && nDFd2 <= CARRY2 && nDFd2 < nOFd2;
-                    if (dfHasBall && nDF === rb2pIntPrevDF) rb2pIntStreak++;
-                    else { rb2pIntStreak = dfHasBall ? 1 : 0; rb2pIntPrevDF = dfHasBall ? nDF : null; }
-                    if (rb2pIntStreak >= 2) {
-                        rb2pIntLatch = true;
-                        // Receiver-frame yard estimate: the engine mirrors _6F (a._6F
-                        // = -a._6F) on the _1c1 flip; at the catch it's still the
-                        // thrower's frame, so negate it. Refined by V187's _1c1 save
-                        // when the return ends (no refresh).
-                        var estYard = -(Number(em.engineYardLineSigned) || 0);
-                        if (estYard < -50) estYard = -50;
-                        if (estYard >  50) estYard =  50;
-                        try { localStorage.setItem('rb2p_pendingInt',
-                              JSON.stringify({ yardLine: estYard, ts: Date.now() })); } catch (eLS) {}
-                        if (typeof window._rb2p_saveTurnover === 'function')
-                            window._rb2p_saveTurnover({ yardLine: estYard, isPick6: false });
-                        // V192: credit the INTERCEPTION STAT here — reliably. The old
-                        // path (creditOppInt at _1c1) only ran when outcome.type ===
-                        // 'INT', but prevVy is usually stale so real picks classify as
-                        // 'OTHER' and the credit never fired (the "INTs not counted"
-                        // report). At the catch the interceptor is unambiguous (the
-                        // defender now carrying the ball), so crediting the nearest
-                        // starred defender here is correct. Idempotent per play.
-                        if (typeof window._rb2p_creditOppInt === 'function')
-                            window._rb2p_creditOppInt();
-                        console.log('[2P INT-CATCH] interception detected mid-play — turnover saved ' +
-                                    'immediately (estYard=' + estYard + ')');
-                    }
+                    if (bkp !== 9) return;   // 9 = BALL_INTERCEPTED; everything else (esp. 7 = incomplete) is NOT a pick
+                    rb2pIntLatch = true;
+                    // Receiver-frame yard estimate: the engine mirrors _6F (a._6F
+                    // = -a._6F) on the _1c1 flip; at the catch it's still the
+                    // thrower's frame, so negate it. Refined by V187's _1c1 save
+                    // when the return ends (no refresh).
+                    var estYard = -(Number(em.engineYardLineSigned) || 0);
+                    if (estYard < -50) estYard = -50;
+                    if (estYard >  50) estYard =  50;
+                    try { localStorage.setItem('rb2p_pendingInt',
+                          JSON.stringify({ yardLine: estYard, ts: Date.now() })); } catch (eLS) {}
+                    if (typeof window._rb2p_saveTurnover === 'function')
+                        window._rb2p_saveTurnover({ yardLine: estYard, isPick6: false });
+                    // Credit the INTERCEPTION STAT to the opponent's starred defender
+                    // nearest the ball (the interceptor). Idempotent per play.
+                    if (typeof window._rb2p_creditOppInt === 'function')
+                        window._rb2p_creditOppInt();
+                    console.log('[2P INT-CATCH] BALL_INTERCEPTED — turnover saved ' +
+                                'immediately (estYard=' + estYard + ')');
                 } catch (e) {}
             }
 
