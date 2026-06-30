@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V197</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V198</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2435,6 +2435,13 @@
                                 if (typeof rs.myScore  === 'number' && em.userScore     < rs.myScore)  em.setUserScore(rs.myScore);
                                 if (typeof rs.oppScore === 'number' && em.opponentScore < rs.oppScore) em.setOpponentScore(rs.oppScore);
                                 if (typeof rs.quarter  === 'number' && Number(em.engineQuarter) < rs.quarter) em.engineQuarter = rs.quarter;
+                                // V198: re-assert saved offensive stats every tick of
+                                // the hold window. The restore is guarded (only raises
+                                // a value the engine reset to a lower number), so it's
+                                // idempotent and survives a late s_reset_match_stats.
+                                if (window._rb2p_resumeRawOffStats &&
+                                    typeof window._rb2p_restoreRawOffStats === 'function')
+                                    window._rb2p_restoreRawOffStats(window._rb2p_resumeRawOffStats);
                                 if (!resumedOnce) {
                                     if (typeof rs.minutes === 'number') em.engineMinutesLeft = rs.minutes;
                                     if (typeof rs.seconds === 'number') em.engineSecondsLeft = rs.seconds;
@@ -6635,6 +6642,75 @@
                 return report;
             };
 
+            // ===== V198: OFFENSIVE STATS SURVIVE A REFRESH =====
+            // Per-player stat_* accumulate on the local roster and the engine
+            // ZEROES them on reboot (s_reset_match_stats). So a mid-game refresh
+            // wiped the box score — only post-refresh plays counted, and a refresh
+            // near game-over could publish an EMPTY report (the "opponent offense
+            // blank / TEAM —" symptom). Fix: snapshot the raw stats to Firebase at
+            // each stable boundary and RESTORE them into the roster on resume, so
+            // the engine keeps accumulating from the saved baseline.
+            var OFF_STAT_KEYS = ['stat_yards', 'stat_rush_yards', 'stat_touchdowns',
+                'stat_rush_touchdowns', 'stat_complete', 'stat_attempts',
+                'stat_rush_attempts', 'stat_receive', 'stat_longest',
+                'stat_rush_longest', 'stat_int', 'stat_fumbles'];
+            function rb2pOffRoster() {
+                try {
+                    var ctrl = _si(64), teamObj = null;
+                    for (var k in ctrl) { if (ctrl.hasOwnProperty(k)) { teamObj = ctrl[k]; break; } }
+                    if (!teamObj || !teamObj._Ln) return null;
+                    return teamObj._Ln;
+                } catch (e) { return null; }
+            }
+            // Returns [{ i: rosterIndex, st: { stat_*: value } }] for offensive
+            // players with any recorded production. Keyed by roster INDEX, which is
+            // deterministic across a reload (the roster is rebuilt identically), so
+            // restore maps each line back to the same player unambiguously.
+            window._rb2p_collectRawOffStats = function () {
+                var out = [];
+                try {
+                    var roster = rb2pOffRoster(); if (!roster) return out;
+                    var n = _wi(roster);
+                    for (var i = 0; i < n; i++) {
+                        var s = _zi(roster, i); if (!s) continue;
+                        var pos = Number(_Ai(s, 'position')) || 0;
+                        if (pos >= 6 && pos <= 9) continue;   // defense is measured on the opp device
+                        var rec = {}, any = 0;
+                        for (var j = 0; j < OFF_STAT_KEYS.length; j++) {
+                            var v = Number(_Ai(s, OFF_STAT_KEYS[j])) || 0;
+                            rec[OFF_STAT_KEYS[j]] = v; any += Math.abs(v);
+                        }
+                        if (any > 0) out.push({ i: i, st: rec });
+                    }
+                } catch (e) {}
+                return out;
+            };
+            // Writes saved stats back into the roster, but only where the engine's
+            // current value is LOWER (i.e. a fresh post-reboot 0) — so we restore
+            // the pre-refresh baseline once and never clobber live accumulation
+            // that has already grown past it. Idempotent if called repeatedly.
+            window._rb2p_restoreRawOffStats = function (arr) {
+                if (!arr || !arr.length) return 0;
+                var done = 0;
+                try {
+                    var roster = rb2pOffRoster(); if (!roster) return 0;
+                    var n = _wi(roster);
+                    for (var a = 0; a < arr.length; a++) {
+                        var rec = arr[a];
+                        if (!rec || typeof rec.i !== 'number' || rec.i < 0 || rec.i >= n) continue;
+                        var s = _zi(roster, rec.i); if (!s) continue;
+                        for (var key in rec.st) {
+                            if (!rec.st.hasOwnProperty(key)) continue;
+                            var cur = Number(_Ai(s, key)) || 0, saved = Number(rec.st[key]) || 0;
+                            if (saved > cur) { try { _Yi(s, key, saved); } catch (eS) {} }
+                        }
+                        done++;
+                    }
+                    if (done) console.log('[2P FINAL] restored offensive stats for ' + done + ' players after refresh');
+                } catch (e) {}
+                return done;
+            };
+
             // Game-over detector. Primary signal: engine FSM stage 13 (the
             // game-over display stage the engine enters from _Ib1 case 19).
             // Fallback: Q4+ with the clock at 0:00 and a non-tied score.
@@ -7211,6 +7287,28 @@
         // Called by the bridge when this device detects game over.
         window._rb2p_reportGameOver = function (report) {
             localFinalReport = report || {};
+            // V198: NEVER publish a degenerate report. If the engine roster wasn't
+            // resolvable at the game-over instant, collectBoxScore returns an empty
+            // {team:'', players:[]} — which is exactly what made the opponent column
+            // show "TEAM —" with no offense. Fall back to the last good box score we
+            // cached while playing (it carries the full offensive lines), keeping the
+            // live score/team if those are present.
+            try {
+                var lg = window._rb2p_lastGoodBoxScore;
+                if (lg && lg.players && lg.players.length &&
+                    (!localFinalReport.players || !localFinalReport.players.length)) {
+                    var keepScore = localFinalReport.score, keepOpp = localFinalReport.oppScore;
+                    var keepTeam = localFinalReport.team, keepOppTeam = localFinalReport.oppTeam;
+                    localFinalReport = {
+                        team:    keepTeam    || lg.team || '',
+                        oppTeam: keepOppTeam || lg.oppTeam || '',
+                        score:    (keepScore != null) ? keepScore : lg.score,
+                        oppScore: (keepOpp   != null) ? keepOpp   : lg.oppScore,
+                        players: lg.players.slice()
+                    };
+                    console.log('[2P FINAL] empty box score at game-over — used last good cached box');
+                }
+            } catch (eLG) {}
             // V131: stamp the report so the other device can tell a real,
             // current game-over from a stale leftover in a reused room.
             localFinalReport.ts = Date.now();
@@ -7782,6 +7880,15 @@
                 var SNAP_FRESH = 25000;
                 if (mySnap  && (Date.now() - (Number(mySnap.ts)  || 0) < SNAP_FRESH)) myLive  = mySnap;
                 if (oppSnap && (Date.now() - (Number(oppSnap.ts) || 0) < SNAP_FRESH)) oppLive = oppSnap;
+                // V198: my saved offensive box stats — restored into the roster on
+                // resume so the engine keeps accumulating from the pre-refresh
+                // baseline instead of 0 (the "stats only count after refresh" fix).
+                try {
+                    var myBoxSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/box/' + savedRole));
+                    var myBox = myBoxSnap.val();
+                    if (myBox && myBox.stats && (Date.now() - (Number(myBox.ts) || 0) < SNAP_FRESH))
+                        window._rb2p_resumeRawOffStats = myBox.stats;
+                } catch (eBox) {}
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
                 // V187: an unresolved interception (saved the instant it happened)
                 // overrides possession on resume — possession goes to the team that
@@ -8321,6 +8428,23 @@
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/snap/' + myRole), snap)
                         .catch(function () {});
                     rb2pSnapWritten = true;
+                    // V198: alongside the score snapshot, persist the raw offensive
+                    // box stats so a refresh doesn't zero the box score. Only while
+                    // on offense (that's when my stats change) and only when there's
+                    // real production — never overwrite a good record with an empty
+                    // one. Also cache the last non-empty full box score so a
+                    // degenerate game-over collect can fall back to it.
+                    if (!waiting && typeof window._rb2p_collectRawOffStats === 'function') {
+                        var raw = window._rb2p_collectRawOffStats();
+                        if (raw && raw.length) {
+                            FB.set(FB.ref(db, 'rooms/' + myRoom + '/box/' + myRole),
+                                   { stats: raw, ts: Date.now() }).catch(function () {});
+                            if (typeof window._rb2p_collectBoxScore === 'function') {
+                                var full = window._rb2p_collectBoxScore();
+                                if (full && full.players && full.players.length) window._rb2p_lastGoodBoxScore = full;
+                            }
+                        }
+                    }
                 } catch (e) {}
             }
 
@@ -8494,6 +8618,8 @@
             oppFinalReport = null;
             myDefStats = null;   // V89
             oppDefStatsLocal = null;   // V106
+            window._rb2p_lastGoodBoxScore = null;     // V198: drop prior game's box cache
+            window._rb2p_resumeRawOffStats = null;    // V198: consume-once on resume
             window._rb2p_gameOverReported = false;
             window._rb2p_inOvertime = false;   // V109: re-arm equal-possession OT
             window._rb2p_otMyPoss   = 0;
