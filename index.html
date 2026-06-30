@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V206</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V207</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -463,7 +463,6 @@
                 <button class="diff-btn" data-dif="medium">MED</button>
                 <button class="diff-btn" data-dif="hard">HARD</button>
                 <button class="diff-btn" data-dif="max">MAX</button>
-                <button class="diff-btn" data-dif="ultramax" title="Enter a raw defense-aggression number (-5 is the engine max; below -5 is weaker)">ULTRA</button>
             </div>
             <div class="diff-row">
                 <span class="diff-label">QUARTER:</span>
@@ -7582,26 +7581,10 @@
             var cur = getUserDifficultyPref();
             $diffBtns.forEach(function (b) {
                 b.classList.toggle('selected', b.dataset.dif === cur);
-                // V126: show the live value on the ULTRA button when it's active.
-                if (b.dataset.dif === 'ultramax') {
-                    b.textContent = 'ULTRA' + (cur === 'ultramax' ? ' (' + getUltramaxValue() + ')' : '');
-                }
             });
         }
         $diffBtns.forEach(function (b) {
             b.addEventListener('click', function () {
-                // V126: ULTRAMAX prompts for a raw aggression number before selecting.
-                if (b.dataset.dif === 'ultramax') {
-                    var input = window.prompt(
-                        'ULTRAMAX — enter the defense-aggression number.\n' +
-                        '-5 is the engine\'s hardest. Below -5 only makes defense ' +
-                        'WEAKER (clamped to -5). Positive numbers are easier.',
-                        String(getUltramaxValue()));
-                    if (input === null) return;                 // cancelled
-                    var n = parseFloat(input);
-                    if (!isFinite(n)) return;                   // ignore non-numbers
-                    setUltramaxValue(n);
-                }
                 setUserDifficultyPref(b.dataset.dif);
             });
         });
