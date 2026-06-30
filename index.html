@@ -428,10 +428,15 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V208</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V209</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
+            </div>
+            <p class="prompt" style="font-size:11px;opacity:0.8;margin-bottom:4px;">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
+            <div class="diff-row" style="justify-content:center;">
+                <button class="diff-btn mode-btn" data-mode="same">SAME</button>
+                <button class="diff-btn mode-btn" data-mode="different">DIFFERENT</button>
             </div>
             <p id="rb-entry-msg" class="msg"></p>
         </div>
@@ -7467,7 +7472,7 @@
         var $status    = document.getElementById('rb-status');
         var $ready     = document.getElementById('rb-ready');
         var $leave     = document.getElementById('rb-leave');
-        var $diffBtns  = lobby.querySelectorAll('.diff-btn:not(.len-btn)');
+        var $diffBtns  = lobby.querySelectorAll('.diff-btn:not(.len-btn):not(.mode-btn)');
         var $lenBtns   = lobby.querySelectorAll('.len-btn');
 
         // ---- User-difficulty toggle (LOCAL ONLY — affects this device's offense)
@@ -7586,9 +7591,67 @@
         $diffBtns.forEach(function (b) {
             b.addEventListener('click', function () {
                 setUserDifficultyPref(b.dataset.dif);
+                // V209: in SAME mode, a difficulty pick is shared — write it to
+                // the room config so BOTH devices adopt it (the subscription
+                // mirrors it back; the equality guard there prevents an echo).
+                if (currentDiffMode === 'same' && myRoom) {
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/config/sharedDifficulty'),
+                           b.dataset.dif).catch(function () {});
+                }
             });
         });
         renderUserDifficultyButtons();
+
+        // ---- Difficulty mode: SAME vs DIFFERENT (V209) ----
+        // Chosen on the ENTRY page (where the room code is typed) and SHARED
+        // across the room via rooms/{code}/config/diffMode (A seeds it).
+        //   • DIFFERENT (original behavior): each player keeps their own local
+        //     DEFENSE difficulty — A's setting governs the defense A faces, B's
+        //     governs B's, independently.
+        //   • SAME: both players face the same difficulty. Any DEFENSE-button
+        //     click writes the shared value to config/sharedDifficulty and both
+        //     devices adopt it.
+        var $modeBtns = lobby.querySelectorAll('.mode-btn');
+        var currentDiffMode = 'different';
+        (function () {
+            try {
+                var m = localStorage.getItem('rb2p_diff_mode');
+                if (m === 'same' || m === 'different') currentDiffMode = m;
+            } catch (e) {}
+        })();
+        window._rb2p_diffMode = currentDiffMode;
+        function renderModeButtons() {
+            $modeBtns.forEach(function (b) {
+                b.classList.toggle('selected', b.dataset.mode === currentDiffMode);
+            });
+        }
+        // Apply a mode value locally (UI + globals + storage). Does NOT write to
+        // Firebase — callers decide that (clicks do; the subscription does not,
+        // to avoid an echo loop), mirroring the quarter-length pattern.
+        function applyDiffModeLocal(mode) {
+            if (mode !== 'same' && mode !== 'different') mode = 'different';
+            currentDiffMode = mode;
+            window._rb2p_diffMode = mode;
+            try { localStorage.setItem('rb2p_diff_mode', mode); } catch (e) {}
+            renderModeButtons();
+        }
+        $modeBtns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                var mode = b.dataset.mode;
+                applyDiffModeLocal(mode);
+                if (myRoom) {
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/config/diffMode'), mode)
+                      .catch(function () {});
+                    // Switching INTO same: seed the shared value from this
+                    // device's current pick so the other side converges on it.
+                    if (mode === 'same') {
+                        FB.set(FB.ref(db, 'rooms/' + myRoom + '/config/sharedDifficulty'),
+                               getUserDifficultyPref()).catch(function () {});
+                    }
+                }
+            });
+        });
+        renderModeButtons();
 
         // ---- Game length (SHARED — both devices must run the same quarter
         // clock or the cross-synced timer drifts). The chosen value lives at
@@ -7799,6 +7862,8 @@
         var unsubscribeDefStats = null;
         var unsubscribeOt = null;
         var unsubscribeTeams = null;
+        var unsubscribeDiffMode = null;
+        var unsubscribeSharedDiff = null;
         var otAppliedPeriods = {};
         var gameStarted = false;
 
@@ -8157,6 +8222,32 @@
                 }
             );
 
+            // V209: shared SAME/DIFFERENT difficulty mode (A seeds it, same as
+            // quarterMins). applyDiffModeLocal does NOT write back, so there's
+            // no echo loop.
+            unsubscribeDiffMode = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/config/diffMode'),
+                function (snap) {
+                    var v = snap.val();
+                    if (v === 'same' || v === 'different') {
+                        applyDiffModeLocal(v);
+                    } else if (role === 'a') {
+                        FB.set(FB.ref(db, 'rooms/' + code + '/config/diffMode'),
+                               currentDiffMode).catch(function () {});
+                    }
+                }
+            );
+            // V209: the shared difficulty value, honored only while in SAME mode.
+            // The equality guard stops the click→write→subscription→set echo.
+            unsubscribeSharedDiff = FB.onValue(
+                FB.ref(db, 'rooms/' + code + '/config/sharedDifficulty'),
+                function (snap) {
+                    var v = snap.val();
+                    if (currentDiffMode !== 'same') return;
+                    if (v && v !== getUserDifficultyPref()) setUserDifficultyPref(v);
+                }
+            );
+
             // V61: opponent's end-of-game box score. When it arrives (and we
             // already have our own / the game is over), merge it into the
             // FINAL screen so both teams' players show on this device.
@@ -8318,6 +8409,8 @@
             if (unsubscribeDefStats) { unsubscribeDefStats(); unsubscribeDefStats = null; }
             if (unsubscribeOt) { unsubscribeOt(); unsubscribeOt = null; }
             if (unsubscribeTeams) { unsubscribeTeams(); unsubscribeTeams = null; }
+            if (unsubscribeDiffMode) { unsubscribeDiffMode(); unsubscribeDiffMode = null; }
+            if (unsubscribeSharedDiff) { unsubscribeSharedDiff(); unsubscribeSharedDiff = null; }
             try {
                 if (myRoom && myRole) {
                     await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
@@ -8465,6 +8558,13 @@
                         }
                     }
                 } catch (e) {}
+                // V209: show the active DEFENSE difficulty (and SAME/DIFF mode) so
+                // the player can confirm what they're facing without leaving the game.
+                try {
+                    var dif = (localStorage.getItem('rb2p_difficulty') || 'max').toUpperCase();
+                    var mode = (window._rb2p_diffMode === 'same') ? 'SAME' : 'DIFF';
+                    label += ' • DIF:' + dif + '(' + mode + ')';
+                } catch (eD) {}
                 badge.textContent = label;
             }
             updateBadge();
