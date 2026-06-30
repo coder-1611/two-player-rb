@@ -55062,7 +55062,7 @@ function _Ib1(_, t) {
                 yyGetBool(r) && (s = yyfplus(s, _Ai(r, "skill")))),
                 _._Vy = 1,
                 yyGetBool(r) ? _.__b1 = _Em(_Xi(_, t, "match_OnsideKickingPlayer"), "$playername", _Ai(r, "lname")) : _.__b1 = _Em(_Xi(_, t, "match_OnsideKicking"), "$teamname", _._bL[_7v(_._UD, _._bL)]),
-                yyfless(_dq(99), s) ? _._Vy = 28 : _._Vy = 29;
+                /* [2P] onside ALWAYS fails (0% recovery). The 2P bridge has NO model for the kicking team keeping the ball after a kickoff — a SUCCESS fires _1c1 twice and desyncs both devices (both think they're on offense). A FAIL is a clean single _1c1 handoff to the receiver, which the bridge handles normally. So force the fail branch (was: yyfless(_dq(99), s) ? 28 : 29). */ _._Vy = 29;
             break;
         case 5:
             _U21(_, t),
