@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V203</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V204</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3762,6 +3762,11 @@
                     // so a never-delivered coin flip can't hang the watchdog forever.
                     if (window._rb2p_otKickoffPending === true &&
                         (Date.now() - (window._rb2p_otKickoffPendingMs || 0)) < 20000) return;
+                    // V204: same park for the Q2→Q3 (halftime) transition — the Q3 LAW
+                    // owns possession there; the watchdog must not force-end the
+                    // parked rollover state and race it.
+                    if (window._rb2p_q3KickoffPending === true &&
+                        (Date.now() - (window._rb2p_q3KickoffPendingMs || 0)) < 20000) return;
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null || engineMatch.engineScoreboard == null) return;
 
@@ -3827,10 +3832,19 @@
                         var halfClockExpired = Number(engineMatch.engineMinutesLeft) <= 0 &&
                                                Number(engineMatch.engineSecondsLeft) <= 0;
                         var halfPossMe = engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx;
+                        // V204: the moment we see Vy=13 at Q3 (halftime), park the
+                        // drive-end watchdog so it can't force-end this parked state
+                        // and race the Q3 LAW (same failure mode as the OT bug). The
+                        // Q3 LAW enforcer (below) owns Q2→Q3 possession now.
+                        if (halfQ === 3) {
+                            window._rb2p_q3KickoffPending   = true;
+                            window._rb2p_q3KickoffPendingMs = Date.now();
+                        }
                         // 1500ms dwell excludes a sub-second transient Vy=13 if the
                         // engine ever does auto-advance (then V96's Vy=4 keep-path
-                        // catches it instead — both KEEP, so no conflict).
-                        if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 3 || halfQ === 4) &&
+                        // catches it instead — both KEEP, so no conflict). Q3 (halftime)
+                        // is handled by the dedicated Q3 LAW, NOT here.
+                        if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 4) &&
                             Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
                             !window._rb2p_userOutcomeSendInProgress) {
@@ -3888,57 +3902,23 @@
                                 }
                             };
 
-                            if (halfQ === 3) {
-                                // ===== HALFTIME: possession FLIPS =====
-                                // Role A ALWAYS received the opening kickoff (forced on
-                                // offense at match start); role B started waiting. So
-                                // the 2nd-half kickoff ALWAYS goes to B — regardless of
-                                // who held the ball when Q2 expired.
-                                // V201 FIX: decide this by FIREBASE ROLE, not by
-                                // engineUserTeamIdx. The engine sets _0z (= _5Q) = 1 on
-                                // BOTH devices — the local user is always the home team
-                                // at _Fj[1] (retrobowl.js _gx: _5Q = 1 always). So the
-                                // old `engineUserTeamIdx === 1` test was TRUE on both
-                                // devices: whichever side had the ball at Q2's end kept
-                                // it (doKeepDrive), so halftime NEVER switched — and
-                                // since A receives the opening kickoff and usually had
-                                // the ball at the half, it "always went to A". The
-                                // authoritative A/B identity is _rb2p_myFirebaseRole.
-                                var iAmSecondHalfReceiver = (window._rb2p_myFirebaseRole === 'b');
-                                if (iAmSecondHalfReceiver) {
-                                    var koYardK = window._rb2p_kickoffReturnYard();   // own 25..40
-                                    console.log('[2P HALFTIME] Vy=13 (Q3) — this device is the 2nd-half ' +
-                                                'receiver (B); KEEPING ball, Q3 ' + qmin + ':' +
-                                                ('0' + qrem).slice(-2) + ' at own ' + (50 + koYardK));
-                                    doKeepDrive(koYardK, 1, 10);
-                                } else {
-                                    console.log('[2P HALFTIME] Vy=13 (Q3) — opponent (B) is the 2nd-half ' +
-                                                'receiver; handing off Q3 ' + qmin + ':' + ('0' + qrem).slice(-2));
-                                    engineMatch.engineMinutesLeft   = qmin;
-                                    engineMatch.engineSecondsLeft   = qrem;
-                                    engineMatch.engineTickAllowance = 0;
-                                    engineMatch.engineDriveFsmStage = 24;   // inferUserDriveEndType(24) => 'HALF_END'
-                                    engineMatch.enginePriorFsmStage = 24;
-                                    var halfChangePoss = RB.getEngineScript('gml_Script_s_change_possession');
-                                    if (typeof halfChangePoss === 'function') halfChangePoss(raw, _Sc2);
-                                }
-                            } else {
-                                // ===== NON-HALFTIME quarter end (Q1→Q2, Q3→Q4) =====
-                                // Possession does NOT change — the offense continues
-                                // into the next quarter from the same spot, fresh
-                                // clock. engineQuarter is already the new quarter
-                                // (case 19 incremented it).
-                                var keepYard = (typeof window._rb2p_preRolloverYard === 'number')
-                                    ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
-                                var keepDown = (typeof window._rb2p_preRolloverDown === 'number')
-                                    ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
-                                var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
-                                    ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
-                                console.log('[2P QTR-ADVANCE] Vy=13 (end of Q' + (halfQ - 1) + ' → Q' + halfQ +
-                                            ') — KEEPING ball, ' + qmin + ':' + ('0' + qrem).slice(-2) +
-                                            ' at yard ' + keepYard + ' down ' + keepDown + '&' + keepToGo);
-                                doKeepDrive(keepYard, keepDown, keepToGo);
-                            }
+                            // ===== NON-HALFTIME quarter end (Q1→Q2, Q3→Q4) =====
+                            // Possession does NOT change — the offense continues into
+                            // the next quarter from the same spot, fresh clock.
+                            // engineQuarter is already the new quarter (case 19
+                            // incremented it). HALFTIME (Q2→Q3) is NOT handled here —
+                            // it's owned by the dedicated Q3 LAW enforcer, which always
+                            // gives B the ball.
+                            var keepYard = (typeof window._rb2p_preRolloverYard === 'number')
+                                ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
+                            var keepDown = (typeof window._rb2p_preRolloverDown === 'number')
+                                ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
+                            var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
+                                ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
+                            console.log('[2P QTR-ADVANCE] Vy=13 (end of Q' + (halfQ - 1) + ' → Q' + halfQ +
+                                        ') — KEEPING ball, ' + qmin + ':' + ('0' + qrem).slice(-2) +
+                                        ' at yard ' + keepYard + ' down ' + keepDown + '&' + keepToGo);
+                            doKeepDrive(keepYard, keepDown, keepToGo);
                             stuckEngineFsmStage = null;
                             engineFsmStageStuckSinceMs = Date.now();
                         }
@@ -6913,6 +6893,8 @@
                         window._rb2p_otOppPoss  = 0;
                         window._rb2p_otWasWaiting = null;
                         window._rb2p_otKickoffPending = false;   // V203: clear OT-entry watchdog park
+                        window._rb2p_q3KickoffPending = false;   // V204: clear Q3 watchdog park
+                        window._rb2p_q3LawApplied     = false;   // V204: re-arm the Q3 law
                         return;
                     }
                     // V109: OT possession accounting — runs every tick during OT,
@@ -6973,6 +6955,68 @@
                     }
                 } catch (e) {}
             }, 300);
+
+            // ===== V204: Q3 LAW — the 3rd quarter ALWAYS starts with B =====
+            // B is the 2nd-half receiver (A receives the opening kickoff, so the
+            // 2nd-half kickoff goes to B). This runs INDEPENDENTLY on each device and
+            // decides possession purely by FIREBASE ROLE — it does NOT depend on who
+            // held the ball when Q2 expired, nor on a HALF_END handoff landing (both
+            // proved unreliable: "A still got the ball at the half"). When the engine
+            // enters Q3, B forces a fresh kickoff-return drive (own 25..40, 1st & 10)
+            // and A drops to WAIT. One-shot per match, re-armed on a fresh match.
+            window._rb2p_q3LawApplied = false;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var q = Number(em.engineQuarter);
+                    if (q <= 1) { window._rb2p_q3LawApplied = false; return; }   // re-arm on fresh match
+                    if (q !== 3 || window._rb2p_q3LawApplied === true) return;
+                    var role = window._rb2p_myFirebaseRole;
+                    if (role !== 'a' && role !== 'b') return;   // need the authoritative A/B identity
+                    window._rb2p_q3LawApplied   = true;
+                    window._rb2p_q3KickoffPending = false;   // release the watchdog park
+                    // Clear stale pick-6 cascade so this can't be misread as a pick-6.
+                    window._rb2p_pickSixPatCascadeActive    = false;
+                    window._rb2p_pickSixThisDeviceIsThrower = false;
+                    // Fresh Q3 clock = the agreed quarter length (kept converged via
+                    // the Firebase config sub); fall back to the observed max, then 2:00.
+                    var qAg = Number(window._rb2p_quarterMins);
+                    var qsec = (qAg === 1 || qAg === 2 || qAg === 3) ? qAg * 60
+                             : (Number(window._rb2p_quarterLenSec) >= 1 ? Number(window._rb2p_quarterLenSec) : 120);
+                    em.engineMinutesLeft   = Math.floor(qsec / 60);
+                    em.engineSecondsLeft   = qsec % 60;
+                    em.engineTickAllowance = 0;
+                    if (role === 'b') {
+                        // B receives the 2nd-half kickoff → on offense, fresh 1st & 10.
+                        window._rb2p_userIsWaitingForOpponent    = false;
+                        window._rb2p_userOutcomeSendInProgress   = false;
+                        window._rb2p_lastOpponentOutcomeApplyMs  = Date.now();
+                        var rawQ3 = em.rawEngineMatch;
+                        try { rawQ3._831 = ''; rawQ3.__b1 = ''; } catch (eC) {}
+                        em.engineMainCommentaryText = '';
+                        em.engineSubCommentaryText  = '';
+                        try { if (Number(rawQ3._Nb1) < 1) rawQ3._Nb1 = 1; } catch (eN) {}
+                        var koY = window._rb2p_kickoffReturnYard();   // own 25..40 (negative)
+                        if (typeof window._rb2p_forceUserOffenseDrive === 'function')
+                            window._rb2p_forceUserOffenseDrive(koY);
+                        em.engineDownNumber = 1;
+                        em.engineYardsToGo  = 10;
+                        // Hold kp=2 to overpower the engine's per-frame re-park at the
+                        // Vy=13 quarter-start stage (same fix the OT kickoff uses).
+                        if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
+                        console.log('[2P Q3-LAW] 3rd quarter — B TAKES POSSESSION (forced offense at own ' +
+                                    (50 + koY) + ', ' + em.engineMinutesLeft + ':' +
+                                    ('0' + em.engineSecondsLeft).slice(-2) + ')');
+                    } else {
+                        // A → WAIT (B has the ball this half).
+                        em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
+                        window._rb2p_userIsWaitingForOpponent = true;
+                        console.log('[2P Q3-LAW] 3rd quarter — A to WAIT (B has the ball)');
+                    }
+                } catch (e) {}
+            }, 200);
 
             // Apply the shared OT coin flip on THIS device. receiverRole is
             // 'a'/'b'; map to team index (a=Buffalo=0, b=Kansas City=1).
