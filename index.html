@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V202</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V203</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3752,6 +3752,16 @@
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
                     if (window._rb2p_userIsWaitingForOpponent === true) return;  // already handed off
+                    // V203: at OT ENTRY the Q4→Q5 rollover parks the FSM on Vy=13→Vy=4
+                    // with the user STILL "possessing" and not waiting. The force-end
+                    // path below would mistake that for a stuck 4th-down drive, ship a
+                    // bogus handoff, and RACE the OT coin-flip kickoff — corrupting
+                    // possession so BOTH devices deadlock in WAIT (the reported OT
+                    // stall). Stay HANDS-OFF until the OT coordinator routes possession
+                    // (flag set at OT init, cleared in _rb2p_applyOtKickoff). 20s cap
+                    // so a never-delivered coin flip can't hang the watchdog forever.
+                    if (window._rb2p_otKickoffPending === true &&
+                        (Date.now() - (window._rb2p_otKickoffPendingMs || 0)) < 20000) return;
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineUserTeamIdx == null || engineMatch.engineScoreboard == null) return;
 
@@ -6902,6 +6912,7 @@
                         window._rb2p_otMyPoss   = 0;
                         window._rb2p_otOppPoss  = 0;
                         window._rb2p_otWasWaiting = null;
+                        window._rb2p_otKickoffPending = false;   // V203: clear OT-entry watchdog park
                         return;
                     }
                     // V109: OT possession accounting — runs every tick during OT,
@@ -6941,6 +6952,11 @@
                     if (em.userScore !== em.opponentScore) return;  // tied check (only the very first OT kickoff is gated on a tie)
                     if (otInitedPeriod === q) return;        // already requested this OT period
                     otInitedPeriod = q;
+                    // V203: park the drive-end watchdog until the OT coin flip routes
+                    // possession (cleared in _rb2p_applyOtKickoff), so it can't
+                    // force-end the parked OT-entry state and race the kickoff.
+                    window._rb2p_otKickoffPending   = true;
+                    window._rb2p_otKickoffPendingMs = Date.now();
                     // V109: we're tied entering OT → mark OT active. From here
                     // the equal-possession engine owns game-over: each team gets
                     // the same number of possessions, the leader after equal
@@ -7023,6 +7039,9 @@
                         window._rb2p_otWasWaiting = true;
                         console.log('[2P OT] opponent received kickoff — waiting');
                     }
+                    // V203: possession is now routed by the coordinator — release the
+                    // drive-end watchdog so normal in-OT drive handoffs work again.
+                    window._rb2p_otKickoffPending = false;
                 } catch (e) { console.log('[2P OT apply err]', e); }
             };
 
