@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V207</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V208</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -8382,6 +8382,20 @@
             // work for debugging.
             var origSend = window._twoPlayer.send.bind(window._twoPlayer);
             window._twoPlayer.send = function (outcome) {
+                // V208: stamp the moment we hand the ball to the opponent via a
+                // NON-SCORE turnover (INT / fumble / missed FG / downs / punt —
+                // all bucketed as INT/OTHER/PUNT). The opponent cannot have
+                // legitimately driven and SCORED within a few seconds of this —
+                // they haven't played a down yet. Used by the receive-side
+                // phantom-score guard below to drop the engine's missed-FG/
+                // turnover return cascade that can auto-resolve into a TD on
+                // their device (an AI score, forbidden by the no-AI-offense rule).
+                try {
+                    if (outcome && (outcome.type === 'INT' || outcome.type === 'OTHER' ||
+                                    outcome.type === 'PUNT')) {
+                        window._rb2p_lastTurnoverHandoffMs = Date.now();
+                    }
+                } catch (eTH) {}
                 origSend(outcome);
                 FB.set(
                     FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + myRole),
@@ -8405,6 +8419,25 @@
                     }
                     if (!val || !val.ts || val.ts <= lastTs) return;
                     lastTs = val.ts;
+                    // V208: phantom-score guard. If WE just handed the ball to
+                    // the opponent via a turnover (missed FG / INT / fumble /
+                    // downs / punt), the opponent has not yet played a single
+                    // down — so a TD or FG arriving within 8 s cannot be a real
+                    // played-out drive. It's the engine's missed-FG / turnover
+                    // RETURN cascade auto-resolving into a score on their device
+                    // (an AI score). Drop it; we stay in WAIT, and the opponent's
+                    // genuine drive outcome (which comes many seconds later, after
+                    // they actually play it out) is accepted normally. Without this
+                    // the user "got possession back" right after missing a FG —
+                    // their own device applied the phantom TD's kickoff-receive.
+                    if ((val.type === 'TD' || val.type === 'FG') &&
+                        (Date.now() - (window._rb2p_lastTurnoverHandoffMs || 0)) < 8000) {
+                        console.log('[2P GUARD] rejected phantom ' + val.type +
+                                    ' arriving ' +
+                                    (Date.now() - (window._rb2p_lastTurnoverHandoffMs || 0)) +
+                                    'ms after our turnover handoff — opponent has not played a down');
+                        return;
+                    }
                     window._twoPlayer.receive(val);
                 }
             );
