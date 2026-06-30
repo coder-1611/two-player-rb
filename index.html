@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V194</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V195</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -2288,7 +2288,22 @@
             };
             function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pBumpDefenderSpeed(); requestAnimationFrame(rb2pRafLoop); }
             requestAnimationFrame(rb2pRafLoop);
-            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); rb2pBumpDefenderSpeed(); rb2pDetectIntCatch(); }, 16);
+            // V195: continuously remember the user's yard line while they legitimately
+            // hold the ball (on offense, not waiting). The possession clamp uses this
+            // to undo a spurious flip's _6F negation (the "yard line jumps" teleport).
+            function rb2pTrackGoodYard() {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    if (window._rb2p_userIsWaitingForOpponent === true) return;
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    if (em.enginePossessingTeamIdx === em.engineUserTeamIdx) {
+                        var y = Number(em.engineYardLineSigned);
+                        if (!isNaN(y)) window._rb2p_lastGoodYard = y;
+                    }
+                } catch (e) {}
+            }
+            setInterval(function () { rb2pPaintJerseysOnce(); rb2pObserveTackles(); rb2pBumpDefenderSpeed(); rb2pDetectIntCatch(); rb2pTrackGoodYard(); }, 16);
 
             function startTwoPlayerMatch(role) {
                 // V112: stash the authoritative Firebase role so OT (and anyone
@@ -3515,6 +3530,24 @@
                             } else {
                                 if (engineMatch.enginePossessingTeamIdx !== engineMatch.engineUserTeamIdx) {
                                     engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
+                                    // V195: a SPURIOUS s_change_possession (the "yard line
+                                    // jumps for no reason" bug, now seen in OT) flips
+                                    // possession AND negates _6F (engine does a._6F=-a._6F).
+                                    // The clamp just restored possession, but _6F stayed
+                                    // teleported. If the current yard line is the EXACT
+                                    // negative of the user's last good spot, undo it. Real
+                                    // turnovers set WAIT and take the branch above, never
+                                    // here — and the exact-negation test means a legit yard
+                                    // change is never touched.
+                                    var lg = window._rb2p_lastGoodYard;
+                                    if (typeof lg === 'number') {
+                                        var cur = Number(engineMatch.engineYardLineSigned);
+                                        if (!isNaN(cur) && Math.abs(cur - (-lg)) < 1.0 && Math.abs(cur - lg) > 0.5) {
+                                            engineMatch.engineYardLineSigned = lg;
+                                            console.warn('[2P YARD-GUARD] restored teleported yard ' +
+                                                         cur + ' → ' + lg + ' (spurious possession flip)');
+                                        }
+                                    }
                                 }
                             }
                         }
