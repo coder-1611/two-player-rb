@@ -428,15 +428,20 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V209</p>
-            <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
+            <p class="prompt">TAP PLAY TO START A GAME — V210</p>
             <div>
-                <button id="rb-join">JOIN ROOM</button>
+                <button id="rb-play2p">PLAY 2P</button>
             </div>
-            <p class="prompt" style="font-size:11px;opacity:0.8;margin-bottom:4px;">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
+            <p class="prompt" style="font-size:11px;opacity:0.8;margin:12px 0 4px;">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
             <div class="diff-row" style="justify-content:center;">
                 <button class="diff-btn mode-btn" data-mode="same">SAME</button>
                 <button class="diff-btn mode-btn" data-mode="different">DIFFERENT</button>
+            </div>
+            <p class="prompt" style="font-size:10px;opacity:0.55;margin:18px 0 4px;">HAVE A CODE? JOIN A FRIEND'S ROOM</p>
+            <div class="join-existing">
+                <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters"
+                       style="width:90px;font-size:14px;">
+                <button id="rb-join" class="diff-btn">JOIN</button>
             </div>
             <p id="rb-entry-msg" class="msg"></p>
         </div>
@@ -8135,6 +8140,52 @@
             if (e.key === 'Enter') $join.click();
         });
         $join.addEventListener('click', function () { joinByCode(); });
+
+        // ---- PLAY 2P: auto-generate a fresh room code and host it as A (V210).
+        // The manual code entry is now a SECONDARY "join a friend's room" option;
+        // the primary action generates a brand-new 4-letter code so the host
+        // never types anything. The code is shown on the room screen for sharing.
+        var $play2p = document.getElementById('rb-play2p');
+        function generateRoomCode() {
+            var L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', s = '';
+            for (var i = 0; i < 4; i++) s += L.charAt(Math.floor(Math.random() * 26));
+            return s;
+        }
+        // Claim a BRAND-NEW room transactionally: the players node must be absent
+        // (so we can't collide with an in-progress game), and we take slot A.
+        // Retries with fresh codes on the rare collision.
+        async function claimNewRoom() {
+            for (var i = 0; i < 12; i++) {
+                var code = generateRoomCode();
+                var res = await FB.runTransaction(
+                    FB.ref(db, 'rooms/' + code + '/players'),
+                    function (cur) {
+                        return cur === null ? { a: { ts: Date.now(), ready: false } } : undefined;
+                    }
+                );
+                if (res.committed) return code;
+            }
+            return null;
+        }
+        if ($play2p) {
+            $play2p.addEventListener('click', async function () {
+                $entryMsg.textContent = '';
+                $play2p.disabled = true;
+                try {
+                    var code = await claimNewRoom();
+                    if (!code) {
+                        $entryMsg.textContent = 'Could not create a room — try again.';
+                        return;
+                    }
+                    enterRoom(code, 'a', false);
+                } catch (e) {
+                    $entryMsg.textContent = 'Connection error: ' + (e.message || e);
+                    console.log('[lobby play2p err]', e);
+                } finally {
+                    $play2p.disabled = false;
+                }
+            });
+        }
 
         async function joinByCode() {
             $entryMsg.textContent = '';
