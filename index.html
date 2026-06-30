@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V200</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V201</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -3880,13 +3880,21 @@
 
                             if (halfQ === 3) {
                                 // ===== HALFTIME: possession FLIPS =====
-                                // Role A (engineUserTeamIdx===0) ALWAYS received the
-                                // opening kickoff (forced on offense at match start);
-                                // role B (===1) started waiting. So the 2nd-half
-                                // kickoff ALWAYS goes to B — regardless of who held
-                                // the ball when Q2 expired. (The engine's __y is the
-                                // random coin toss the bridge overrode, so use role.)
-                                var iAmSecondHalfReceiver = (engineMatch.engineUserTeamIdx === 1);
+                                // Role A ALWAYS received the opening kickoff (forced on
+                                // offense at match start); role B started waiting. So
+                                // the 2nd-half kickoff ALWAYS goes to B — regardless of
+                                // who held the ball when Q2 expired.
+                                // V201 FIX: decide this by FIREBASE ROLE, not by
+                                // engineUserTeamIdx. The engine sets _0z (= _5Q) = 1 on
+                                // BOTH devices — the local user is always the home team
+                                // at _Fj[1] (retrobowl.js _gx: _5Q = 1 always). So the
+                                // old `engineUserTeamIdx === 1` test was TRUE on both
+                                // devices: whichever side had the ball at Q2's end kept
+                                // it (doKeepDrive), so halftime NEVER switched — and
+                                // since A receives the opening kickoff and usually had
+                                // the ball at the half, it "always went to A". The
+                                // authoritative A/B identity is _rb2p_myFirebaseRole.
+                                var iAmSecondHalfReceiver = (window._rb2p_myFirebaseRole === 'b');
                                 if (iAmSecondHalfReceiver) {
                                     var koYardK = window._rb2p_kickoffReturnYard();   // own 25..40
                                     console.log('[2P HALFTIME] Vy=13 (Q3) — this device is the 2nd-half ' +
