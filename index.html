@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V201</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V202</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -6726,6 +6726,27 @@
             window._rb2p_gameOverReported = false;
             var gameOverWasInMatch = false;
             var gameOverConfirmTicks = 0;   // V179: end signal must persist (anti Q3->Q4-blip)
+            var gameOverPlayWaitTicks = 0;  // V202: ticks the FINAL is held while the last play resolves
+            // V202: true while a snapped down is still RESOLVING — the ball is in a
+            // moving/undecided state (aiming, in the air, a runner is up, a return,
+            // a sack, or a loose fumble). The engine FREEZES the clock at 0:00 but
+            // PLAYS THE DOWN OUT, so 0:00 always lands mid-play; we use this to hold
+            // the end-of-game FINAL until the play actually completes instead of
+            // cutting it off. Excludes terminal/dead states (4 downed, 6 TD, 7
+            // incomplete, 8 OOB, 12 safety), pre-snap (0 set / 1 aim), and "no ball".
+            function rb2pPlayInProgress() {
+                try {
+                    var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var x = all[i];
+                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') {
+                            var k = x._kp;
+                            return (k === 2 || k === 3 || k === 5 || k === 9 || k === 10 || k === 11 || k === 13);
+                        }
+                    }
+                } catch (e) {}
+                return false;   // no ball on the field = no play in progress
+            }
             setInterval(function () {
                 try {
                     var nowInMatch = RB.isEngineInMatchRoom();
@@ -6831,7 +6852,18 @@
                     var endSignal = (pastRegulation || regulationOver) &&
                                     (typeof window._rb2p_canGameEnd !== 'function' ||
                                      window._rb2p_canGameEnd());
-                    if (!endSignal) { gameOverConfirmTicks = 0; return; }
+                    if (!endSignal) { gameOverConfirmTicks = 0; gameOverPlayWaitTicks = 0; return; }
+                    // V202: end the game ON THE FINAL PLAY, not at 0:00. The clock can
+                    // only hit 0:00 mid-play (it's frozen pre-snap), so if a down is
+                    // still resolving when the end signal appears, HOLD the FINAL until
+                    // the ball is dead. Capped at ~12s (40 × 300ms) so a parked/stuck
+                    // ball can never deadlock the end-of-game — after the cap we end
+                    // anyway. This only DELAYS the FINAL; it never ends early.
+                    if (rb2pPlayInProgress() && ++gameOverPlayWaitTicks < 40) {
+                        if (gameOverPlayWaitTicks === 1)
+                            console.log('[2P FINAL] clock 0:00 — holding FINAL until the final play completes');
+                        return;
+                    }
                     if (++gameOverConfirmTicks < 4) return;
                     window._rb2p_gameOverReported = true;
                     var report = window._rb2p_collectBoxScore();
