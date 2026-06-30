@@ -428,7 +428,7 @@
     <div id="rb-lobby" data-active="entry">
         <div data-view="entry">
             <h1>RETRO BOWL 2P</h1>
-            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V196</p>
+            <p class="prompt">ENTER A 4-CHAR ROOM CODE — V197</p>
             <input id="rb-room-input" maxlength="4" autocomplete="off" autocapitalize="characters">
             <div>
                 <button id="rb-join">JOIN ROOM</button>
@@ -7769,6 +7769,19 @@
                 // opponent's drifted, often-stale VIEW of me. Read it for the resume.
                 var myLiveSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/live/' + savedRole));
                 var myLive = myLiveSnap.val();
+                // V197: prefer the STABLE per-play snapshot over the noisy 500ms
+                // live sample. The snapshot is captured only between plays, so it
+                // never carries a mid-play / mid-score / mid-kickoff transient —
+                // which is what made refresh produce phantom TDs and possession
+                // flips. Same field names as live, so it drops straight in.
+                // Fall back to live/ for older rooms that have no snap yet.
+                var mySnapSnap  = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/snap/' + savedRole));
+                var mySnap  = mySnapSnap.val();
+                var oppSnapSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/snap/' + oppRole));
+                var oppSnap = oppSnapSnap.val();
+                var SNAP_FRESH = 25000;
+                if (mySnap  && (Date.now() - (Number(mySnap.ts)  || 0) < SNAP_FRESH)) myLive  = mySnap;
+                if (oppSnap && (Date.now() - (Number(oppSnap.ts) || 0) < SNAP_FRESH)) oppLive = oppSnap;
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
                 // V187: an unresolved interception (saved the instant it happened)
                 // overrides possession on resume — possession goes to the team that
@@ -8266,6 +8279,51 @@
                 return qtrName(q) + ' ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
             }
 
+            // ===== V197: PER-PLAY SNAPSHOT (the refresh-truth record) =====
+            // The 500ms live/ push samples at arbitrary moments — including
+            // mid-play, mid-scoring-animation, and mid-kickoff possession swap —
+            // so a reload could resume from a TRANSIENT state (phantom TDs,
+            // possession flipped for no reason). This writes a SEPARATE
+            // authoritative record to rooms/{code}/snap/{role} ONLY at a STABLE
+            // between-plays boundary: the play is staged (controllerState === 1),
+            // the ball is set, down/distance/yard are final for the upcoming
+            // snap, and the score already reflects every completed play. It
+            // overwrites each play (the previous play's snap is replaced by the
+            // next play's), and resume reads THIS in preference to live/. Same
+            // field names as the live payload so resumeMatch consumes it as-is.
+            var rb2pSnapWritten = false;
+            function rb2pWriteSnap(em) {
+                try {
+                    var waiting = window._rb2p_userIsWaitingForOpponent === true;
+                    // Stable = parked in WAIT (opponent is authoritative; just keep
+                    // my score/clock fresh) OR staging my own next snap (state 1).
+                    // NEVER snapshot during an active play (state 2): the ball is
+                    // moving and a score/possession flip may be animating — exactly
+                    // the transient that produced the phantom-TD-on-resume bug.
+                    var stable = waiting || em.engineControllerState === 1;
+                    if (!stable) return;
+                    var down = Number(em.engineDownNumber) || 0;
+                    // down 6 = PAT-pending marker; any non-1..4 down is a transition,
+                    // not a scrimmage snap — never resume INTO one.
+                    if (!waiting && (down < 1 || down > 4)) return;
+                    var snap = {
+                        myScore:     Number(em.userScore) || 0,
+                        oppScore:    Number(em.opponentScore) || 0,
+                        quarter:     Number(em.engineQuarter) || 1,
+                        minutesLeft: Number(em.engineMinutesLeft),
+                        secondsLeft: Number(em.engineSecondsLeft),
+                        iHaveBall:   !waiting,
+                        down:        waiting ? null : down,
+                        toGo:        waiting ? null : (Number(em.engineYardsToGo) || 0),
+                        yardLine:    waiting ? null : (Number(em.engineYardLineSigned) || 0),
+                        ts: Date.now()
+                    };
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/snap/' + myRole), snap)
+                        .catch(function () {});
+                    rb2pSnapWritten = true;
+                } catch (e) {}
+            }
+
             var userLivePushSeq = 0;
             setInterval(function () {
                 try {
@@ -8273,6 +8331,7 @@
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineScoreboard == null ||
                         engineMatch.engineUserTeamIdx == null) return;
+                    rb2pWriteSnap(engineMatch);
                     // Push from both sides. The receive side only mirrors
                     // when the user is on defense, so we don't fight over
                     // who's authoritative — but during kickoff sequences
