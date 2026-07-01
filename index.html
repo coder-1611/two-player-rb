@@ -409,6 +409,103 @@
             position: absolute; inset: 0; z-index: 41; pointer-events: none;
             background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(4,10,30,.6) 100%);
         }
+
+        /* =====================================================================
+           MOBILE OVERHAUL (V214) — everything below is gated on html.rb-mobile,
+           which is added at runtime ONLY for touch phones. Desktop never gets
+           the class, so desktop rendering/behavior is completely untouched.
+           html.rb-rot90 is added on top when the phone is held in portrait, to
+           force the whole experience into landscape.
+           ===================================================================== */
+
+        /* ---- global: kill scroll/zoom/callout, native touch feel ---- */
+        html.rb-mobile, html.rb-mobile body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            touch-action: manipulation;
+        }
+        html.rb-mobile #canvas { touch-action: none; }
+        html.rb-mobile #gm4html5_div_id { margin: 0 !important; }
+        html.rb-mobile .cheat-btn,
+        html.rb-mobile #rb-lobby button,
+        html.rb-mobile #rb-lobby select {
+            -webkit-user-select: none; user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        /* the room-code field still needs real text selection/caret */
+        html.rb-mobile #rb-lobby input { -webkit-user-select: text; user-select: text; }
+
+        /* ---- press feedback: neutralize sticky :hover, drive :active ---- */
+        html.rb-mobile .cheat-btn:hover { opacity: .85; transform: none; }
+        html.rb-mobile .cheat-btn:active { opacity: 1; transform: scale(.9); }
+
+        html.rb-mobile #rb-lobby .rb-cta:hover:not(:disabled) { transform: none; box-shadow: 7px 7px 0 #0a1838; color: #1f63cf; }
+        html.rb-mobile #rb-lobby .rb-cta:active:not(:disabled) { transform: translate(4px,4px); box-shadow: 3px 3px 0 #0a1838; }
+
+        html.rb-mobile #rb-lobby .rb-join-btn:hover { transform: none; box-shadow: 4px 4px 0 #0a1838; }
+        html.rb-mobile #rb-lobby .rb-join-btn:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #0a1838; }
+
+        html.rb-mobile #rb-lobby .diff-btn:hover:not(:disabled) { transform: none; }
+        html.rb-mobile #rb-lobby .diff-btn:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 rgba(10,24,56,0.5); }
+
+        html.rb-mobile #rb-lobby #rb-ready:hover:not(:disabled),
+        html.rb-mobile #rb-lobby #rb-leave:hover:not(:disabled) { transform: none; box-shadow: 6px 6px 0 #0a1838; }
+        html.rb-mobile #rb-lobby #rb-ready:active:not(:disabled),
+        html.rb-mobile #rb-lobby #rb-leave:active:not(:disabled) { transform: translate(3px,3px); box-shadow: 3px 3px 0 #0a1838; }
+
+        /* ---- bigger, finger-friendly tap targets (kept compact) ---- */
+        html.rb-mobile .cheat-btn { padding: 10px 16px; min-height: 44px; font-size: 15px; }
+        html.rb-mobile #rb-leave-game { top: 10px; left: 10px; }
+        html.rb-mobile #rb-roster-view { top: 10px; right: 10px; }
+        html.rb-mobile #rb-lobby input,
+        html.rb-mobile #rb-lobby .rb-join-btn,
+        html.rb-mobile #rb-lobby .diff-btn { min-height: 44px; }
+
+        /* ---- lobby fully expanded, no scroll, desktop-like composition ---- */
+        html.rb-mobile #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"],
+        html.rb-mobile #rb-lobby[data-active="room"]  .rb-screen[data-view="room"] {
+            gap: 10px; padding: 14px 22px; justify-content: center;
+        }
+        html.rb-mobile #rb-lobby .rb-hero { gap: 8px; }
+        html.rb-mobile #rb-lobby .rb-stack { gap: 8px; }
+        html.rb-mobile #rb-lobby .slots { gap: 16px; margin: 2px 0; }
+        html.rb-mobile #rb-lobby .slot { padding: 12px 14px; }
+        html.rb-mobile #rb-lobby .diff-row { gap: 8px; }
+
+        /* ---- remove animations + ticker on mobile (they cause lag) ---- */
+        html.rb-mobile #rb-lobby,
+        html.rb-mobile #rb-lobby * { animation: none !important; }
+        html.rb-mobile #rb-lobby .rb-cursor { opacity: 1; }
+        html.rb-mobile #rb-lobby .rb-ticker,
+        html.rb-mobile #rb-lobby .rb-crt-scan,
+        html.rb-mobile #rb-lobby .rb-crt-vig { display: none !important; }
+
+        /* =================== FORCED LANDSCAPE (portrait phone) ===================
+           Rotate the whole <body> -90deg. Because a transform makes <body> the
+           containing block, all position:fixed children (canvas, lobby, buttons,
+           overlays) ride along and DOM hit-testing stays correct automatically.
+           The canvas needs the JS/engine coordinate remap (see bootstrap script
+           + retrobowl.js patches) since GameMaker maps taps via getBoundingRect. */
+        html.rb-rot90 body {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100vh;
+            height: 100vw;
+            transform-origin: left top;
+            transform: rotate(-90deg);
+            overflow: hidden;
+        }
+        /* In rotated mode the visual "width" is the viewport HEIGHT, so vw-based
+           font clamps under-size — swap them to vh. */
+        html.rb-rot90 #rb-lobby .rb-wordmark  { font-size: clamp(34px, 7vh, 78px); }
+        html.rb-rot90 #rb-lobby .rb-roomtitle { font-size: clamp(30px, 6vh, 62px); }
+        html.rb-rot90 #rb-lobby .rb-cta       { font-size: clamp(16px, 2.4vh, 24px); }
+        html.rb-rot90 #rb-lobby .vs           { font-size: clamp(20px, 3vh, 30px); }
     </style>
 </head>
 
@@ -509,7 +606,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V213<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V214<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -577,13 +674,86 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V213</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V213</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V214</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V214</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
         <div class="rb-crt-scan" aria-hidden="true"></div>
         <div class="rb-crt-vig" aria-hidden="true"></div>
     </div>
+
+    <!-- ============ MOBILE BOOTSTRAP (V214) ============
+         Runs ONLY on touch phones. Adds html.rb-mobile, forces landscape by
+         rotating <body> when portrait (html.rb-rot90), and cover-scales the
+         game canvas to fill the screen with no black bars. Defines the two
+         globals the retrobowl.js input patches read:
+           - window.__rbRemapPointer(px,py): screen -> logical-landscape coords
+           - window.__rbVirt: the virtual (un-rotated) canvas rect for _No2
+         On desktop this script returns immediately, both globals stay
+         undefined, and the engine patches short-circuit to a no-op. -->
+    <script>
+        (function () {
+            var mq = window.matchMedia('(hover: none) and (pointer: coarse)');
+            if (!mq.matches) return;                 // desktop -> do nothing
+            var docEl = document.documentElement;
+            docEl.classList.add('rb-mobile');
+
+            // let the canvas reach under notches / the home indicator
+            try {
+                var vp = document.querySelector('meta[name="viewport"]');
+                if (vp && vp.content.indexOf('viewport-fit') < 0)
+                    vp.content += ', viewport-fit=cover';
+            } catch (e) {}
+
+            var portraitMQ = window.matchMedia('(orientation: portrait)');
+
+            // screen (pageX,pageY) -> logical landscape coords, for the -90deg
+            // body rotation recipe used in CSS. Identity when not rotated.
+            window.__rbRemapPointer = function (px, py) {
+                if (!docEl.classList.contains('rb-rot90')) return null;
+                return [window.innerHeight - py, px];
+            };
+            window.__rbVirt = null;
+
+            function layout() {
+                var canvas = document.getElementById('canvas');
+                if (!canvas) return;
+                var rot = portraitMQ.matches;
+                docEl.classList.toggle('rb-rot90', rot);
+
+                var bw = canvas.width || 853, bh = canvas.height || 480;
+                // logical landscape viewport (swapped when rotated)
+                var LW = rot ? window.innerHeight : window.innerWidth;
+                var LH = rot ? window.innerWidth  : window.innerHeight;
+                var scale = Math.max(LW / bw, LH / bh);   // COVER (no black bars)
+                var cw = bw * scale, ch = bh * scale;
+                var ox = (LW - cw) / 2, oy = (LH - ch) / 2;
+
+                var s = canvas.style;
+                s.setProperty('position', 'fixed', 'important');
+                s.setProperty('left',   ox + 'px', 'important');
+                s.setProperty('top',    oy + 'px', 'important');
+                s.setProperty('width',  cw + 'px', 'important');
+                s.setProperty('height', ch + 'px', 'important');
+                s.setProperty('margin', '0', 'important');
+                s.setProperty('max-width', 'none', 'important');
+                s.setProperty('max-height', 'none', 'important');
+                s.setProperty('transform', 'none', 'important');
+
+                // virtual un-rotated rect the engine's _No2 override consumes so
+                // its getBoundingClientRect-based tap mapping stays correct.
+                window.__rbVirt = { left: ox, top: oy, right: ox + cw, bottom: oy + ch, sx: scale, sy: scale };
+            }
+
+            window.addEventListener('resize', layout);
+            window.addEventListener('orientationchange', function () { setTimeout(layout, 60); });
+            if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', layout);
+            document.addEventListener('DOMContentLoaded', layout);
+            window.addEventListener('load', layout);
+            // re-apply a few times to win over any late engine canvas centering
+            [0, 200, 600, 1200, 2500].forEach(function (t) { setTimeout(layout, t); });
+        })();
+    </script>
 
     <!-- Cache-bust retrobowl.js with the SAME per-session ?v= token as the page,
          so engine edits actually reach the browser (a bare src was cached

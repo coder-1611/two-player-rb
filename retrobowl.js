@@ -76360,6 +76360,8 @@ function _0p2(_) {
         }
         if (i = a.pageX,
             e = a.pageY,
+            window.__rbT = window.__rbRemapPointer && window.__rbRemapPointer(i, e),
+            window.__rbT && (i = window.__rbT[0], e = window.__rbT[1]),
             0 == n)
             switch (null != _8p2 && (_9p2 = i,
                 _ap2 = e),
@@ -76423,6 +76425,8 @@ function _hp2(_) {
     if (t >= 0) {
         var e = _.pageX
             , a = _.pageY;
+        var _rbP = window.__rbRemapPointer && window.__rbRemapPointer(e, a);
+        if (_rbP) { e = _rbP[0]; a = _rbP[1]; }
         if (0 == t)
             switch (null != _8p2 && (_9p2 = e,
                 _ap2 = a),
@@ -135494,7 +135498,11 @@ function _No2(_, t) {
     t.right = t.left + _u53,
         t.bottom = t.top + _v53,
         t.scaleX = _.clientWidth / _.width || 1,
-        t.scaleY = _.clientHeight / _.height || 1
+        t.scaleY = _.clientHeight / _.height || 1;
+    if (_ === canvas && window.__rbVirt && document.documentElement.classList.contains("rb-rot90")) {
+        var _rbv = window.__rbVirt;
+        t.left = _rbv.left, t.top = _rbv.top, t.right = _rbv.right, t.bottom = _rbv.bottom, t.scaleX = _rbv.sx, t.scaleY = _rbv.sy
+    }
 }
 function _yi5(_) {
     _2t4 = [],
