@@ -468,7 +468,12 @@
         /* ---- lobby fully expanded, no scroll, desktop-like composition ---- */
         html.rb-mobile #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"],
         html.rb-mobile #rb-lobby[data-active="room"]  .rb-screen[data-view="room"] {
-            gap: 10px; padding: 14px 22px; justify-content: center;
+            gap: 10px; justify-content: center;
+            /* leave breathing room for the browser toolbar / notch / home bar */
+            padding: max(22px, env(safe-area-inset-top))
+                     max(30px, env(safe-area-inset-right))
+                     max(22px, env(safe-area-inset-bottom))
+                     max(30px, env(safe-area-inset-left));
         }
         html.rb-mobile #rb-lobby .rb-hero { gap: 8px; }
         html.rb-mobile #rb-lobby .rb-stack { gap: 8px; }
@@ -492,10 +497,13 @@
            + retrobowl.js patches) since GameMaker maps taps via getBoundingRect. */
         html.rb-rot90 body {
             position: absolute;
-            top: 100%;
+            top: 100%;              /* fallback for old browsers */
+            top: 100dvh;            /* dvh excludes the visible browser chrome */
             left: 0;
             width: 100vh;
+            width: 100dvh;
             height: 100vw;
+            height: 100dvw;
             transform-origin: left top;
             transform: rotate(-90deg);
             overflow: hidden;
@@ -606,7 +614,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V214<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V215<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -674,7 +682,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V214</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V214</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V215</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V215</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -706,6 +714,11 @@
             } catch (e) {}
 
             var portraitMQ = window.matchMedia('(orientation: portrait)');
+            // Set rotation state SYNCHRONOUSLY, before retrobowl.js loads below,
+            // so the engine's _tI2/_uI2 report landscape dims when it first sizes
+            // its canvas buffer + camera (otherwise a portrait window makes it
+            // render the field into a letterboxed strip).
+            docEl.classList.toggle('rb-rot90', portraitMQ.matches);
 
             // screen (pageX,pageY) -> logical landscape coords, for the -90deg
             // body rotation recipe used in CSS. Identity when not rotated.

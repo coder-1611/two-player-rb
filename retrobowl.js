@@ -76374,7 +76374,9 @@ function _0p2(_) {
                 case "touchend":
                     _bp2 = 0
             }
-        switch (_Zo2[n]._Ho2(i, e),
+        switch (window.__rbIM = 1,
+        _Zo2[n]._Ho2(i, e),
+        window.__rbIM = 0,
         _cp2[n].x = i,
         _cp2[n].y = e,
         _.type) {
@@ -76443,7 +76445,9 @@ function _hp2(_) {
                 case "end":
                     _bp2 = 0
             }
-        switch (_Zo2[t]._Ho2(e, a),
+        switch (window.__rbIM = 1,
+        _Zo2[t]._Ho2(e, a),
+        window.__rbIM = 0,
         _cp2[t].x = e,
         _cp2[t].y = a,
         i) {
@@ -135499,7 +135503,7 @@ function _No2(_, t) {
         t.bottom = t.top + _v53,
         t.scaleX = _.clientWidth / _.width || 1,
         t.scaleY = _.clientHeight / _.height || 1;
-    if (_ === canvas && window.__rbVirt && document.documentElement.classList.contains("rb-rot90")) {
+    if (window.__rbIM && _ === canvas && window.__rbVirt && document.documentElement.classList.contains("rb-rot90")) {
         var _rbv = window.__rbVirt;
         t.left = _rbv.left, t.top = _rbv.top, t.right = _rbv.right, t.bottom = _rbv.bottom, t.scaleX = _rbv.sx, t.scaleY = _rbv.sy
     }
@@ -136031,11 +136035,13 @@ function _l35() {
 }
 function _tI2() {
     var _ = 640;
+    if (document.documentElement.classList.contains("rb-rot90")) return window.innerHeight || document.documentElement.clientHeight || 844;
     return "number" == typeof window.innerWidth ? _ = window.innerWidth : document.documentElement && document.documentElement.clientWidth ? _ = document.documentElement.clientWidth : document.body && document.body.clientWidth && (_ = document.body.clientWidth),
         _
 }
 function _uI2() {
     var _ = 480;
+    if (document.documentElement.classList.contains("rb-rot90")) return window.innerWidth || document.documentElement.clientWidth || 390;
     return "number" == typeof window.innerHeight ? _ = window.innerHeight : document.documentElement && document.documentElement.clientHeight ? _ = document.documentElement.clientHeight : document.body && document.body.clientHeight && (_ = document.body.clientHeight),
         _
 }
