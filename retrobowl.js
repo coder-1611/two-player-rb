@@ -86761,8 +86761,12 @@ function _l83(_) {
 }
 function _m01(_) {
     var t = 0;
-    0 == (_ = yyGetInt32(_)) ? t = _9p2 : _Zo2[_] && (t = _Zo2[_].x),
-        _No2(canvas, _Oo2),
+    0 == (_ = yyGetInt32(_)) ? t = _9p2 : _Zo2[_] && (t = _Zo2[_].x);
+    if (window.__rbVirt && document.documentElement.classList.contains("rb-rot90")) {
+        var _rvx = window.__rbVirt, _rwx = _rvx.right - _rvx.left, _rix = _fI2;
+        return _rix < 0 && (_rix = _rwx), ~~((t - _rvx.left) * (_rix / _rwx))
+    }
+    _No2(canvas, _Oo2),
         t -= _Oo2.left;
     var i = _fI2;
     return i < 0 && (i = _IA1()),
@@ -86770,8 +86774,12 @@ function _m01(_) {
 }
 function _o01(_) {
     var t = 0;
-    0 == (_ = yyGetInt32(_)) ? t = _ap2 : _Zo2[_] && (t = _Zo2[_].y),
-        _No2(canvas, _Oo2),
+    0 == (_ = yyGetInt32(_)) ? t = _ap2 : _Zo2[_] && (t = _Zo2[_].y);
+    if (window.__rbVirt && document.documentElement.classList.contains("rb-rot90")) {
+        var _rvy = window.__rbVirt, _rhy = _rvy.bottom - _rvy.top, _riy = _dI2;
+        return _riy < 0 && (_riy = _rhy), ~~((t - _rvy.top) * (_riy / _rhy))
+    }
+    _No2(canvas, _Oo2),
         t -= _Oo2.top;
     var i = _dI2;
     return i < 0 && (i = _JA1()),
