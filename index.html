@@ -492,6 +492,23 @@
         html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
         html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
 
+        /* ---- PLAY GAME rescue button (stuck GET READY screen) ---- */
+        #rb-play-game { display: none; }
+        html.rb-mobile.rb-stuck-kickoff #rb-play-game {
+            display: block;
+            position: fixed; z-index: 10002;
+            top: 8px; left: 50%; transform: translateX(-50%);
+            padding: 10px 22px;
+            font-family: monospace; font-weight: bold; font-size: 15px;
+            letter-spacing: 2px; line-height: 1;
+            color: #0a1838; background: #3cff7a;
+            border: 2px solid #0a1838; border-radius: 10px;
+            box-shadow: 0 3px 0 #0a1838;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+        }
+        html.rb-mobile.rb-stuck-kickoff #rb-play-game:active { transform: translateX(-50%) scale(.94); }
+
         /* the three overlay elements: compact + clustered under the toggle */
         html.rb-mobile #rb-leave-game,
         html.rb-mobile #rb-roster-view {
@@ -582,6 +599,11 @@
          into one small chip so they stop blocking the scoreboard + player names.
          Hidden on desktop (CSS). Tapping it expands the cluster. -->
     <button id="rb-hud-toggle" type="button" aria-label="Show game controls">&#9776;</button>
+    <!-- Mobile rescue button for the stuck GET READY / Kick Off screen: shown
+         only when the drive never spawned (no ball, engine parked). Tapping it
+         runs the same drive-force a refresh would trigger. DOM button, so the
+         tap maps through the forced-landscape rotation reliably. -->
+    <button id="rb-play-game" type="button">&#9654; PLAY GAME</button>
 
     <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
     <div id="rb-roster-overlay">
@@ -663,7 +685,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V223<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V224<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -731,7 +753,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V223</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V223</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V224</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V224</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8277,6 +8299,85 @@
             // behind it so it isn't floating over the card.
             if ($rosterView) $rosterView.addEventListener('click', function () {
                 document.documentElement.classList.remove('rb-hud-open');
+            });
+
+            // ---- PLAY GAME rescue button (V224) ----
+            // The stuck GET READY / Kick Off state = my offense is expected but
+            // the drive never spawned: in rm_match, NOT waiting on the opponent,
+            // no PAT pending, and no live obj_ball across consecutive checks.
+            // While that holds, show a DOM "PLAY GAME" button (DOM taps map
+            // through the forced-landscape rotation reliably); tapping it runs
+            // the same drive-force a refresh-resume would (forceUserOffenseDrive
+            // + the flag resets pollA does). The poller keeps watching, so if
+            // one press doesn't take, the button stays and can be pressed again.
+            var playGameBtn = document.getElementById('rb-play-game');
+            var stuckPolls = 0;
+            function pollStuckKickoff() {
+                var stuck = false;
+                try {
+                    if (document.documentElement.classList.contains('rb-in-match') &&
+                        window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom() &&
+                        window._rb2p_userIsWaitingForOpponent !== true &&
+                        window._rb2p_patPlayPending !== true) {
+                        var em = RB.engineState();
+                        if (em && em.engineUserTeamIdx != null) {
+                            var balls = 0;
+                            var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                            for (var i = 0; i < all.length; i++) {
+                                var inst = all[i];
+                                if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') balls++;
+                            }
+                            stuck = balls === 0;
+                        }
+                    }
+                } catch (e) { stuck = false; }
+                stuckPolls = stuck ? stuckPolls + 1 : 0;
+                // 3 consecutive polls (~2.1s) so the between-plays respawn gap
+                // and normal transitions never flash the button.
+                document.documentElement.classList.toggle('rb-stuck-kickoff', stuckPolls >= 3);
+            }
+            setInterval(pollStuckKickoff, 700);
+            if (playGameBtn) playGameBtn.addEventListener('click', function () {
+                try {
+                    var em = window.RB && RB.engineState && RB.engineState();
+                    console.log('[2P PLAY-GAME] pressed — kp=' + (em && em.engineControllerState) +
+                                ' down=' + (em && em.engineDownNumber) +
+                                ' clock=' + (em && em.engineMinutesLeft) + ':' + (em && em.engineSecondsLeft));
+                    window._rb2p_userIsWaitingForOpponent = false;
+                    window._rb2p_userOutcomeSendInProgress = false;
+                    window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                    var y = (typeof window._rb2p_kickoffReturnYard === 'function')
+                        ? window._rb2p_kickoffReturnYard() : -20;
+                    var ok = window._rb2p_forceUserOffenseDrive && window._rb2p_forceUserOffenseDrive(y);
+                    console.log('[2P PLAY-GAME] forceUserOffenseDrive(' + y + ') -> ' + ok);
+                    stuckPolls = 0;
+                    document.documentElement.classList.remove('rb-stuck-kickoff');
+                    // Fallback: if the drive STILL hasn't spawned shortly after,
+                    // the engine state is beyond an in-place repair — do the one
+                    // thing that always recovers it: reload into the resume flow
+                    // (same as the manual refresh players use today). At most one
+                    // auto-reload per minute so a truly broken state can't loop.
+                    setTimeout(function () {
+                        try {
+                            var balls = 0;
+                            var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                            for (var i = 0; i < all.length; i++) {
+                                var inst = all[i];
+                                if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') balls++;
+                            }
+                            if (balls > 0) return;   // recovered in place
+                            var lastR = Number(sessionStorage.getItem('rb2p_pg_reload') || 0);
+                            if (Date.now() - lastR < 60000) {
+                                console.warn('[2P PLAY-GAME] still stuck but reloaded <60s ago — leaving button up');
+                                return;
+                            }
+                            sessionStorage.setItem('rb2p_pg_reload', String(Date.now()));
+                            console.warn('[2P PLAY-GAME] in-place spawn failed — reloading into resume flow');
+                            playGameBtn.textContent = 'RESTARTING…';
+                            setTimeout(function () { location.reload(); }, 250);
+                        } catch (eF) {}
+                    }, 2500);
+                } catch (e) { console.log('[2P PLAY-GAME err]', e); }
             });
         })();
         if ($leaveGame) {
