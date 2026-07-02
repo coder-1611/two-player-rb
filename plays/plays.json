@@ -1,0 +1,547 @@
+{
+  "unitsPerYard": 20,
+  "colorLegend": {
+    "green": "WR/TE pass routes",
+    "white": "RB route",
+    "blue": "QB path + QB ring"
+  },
+  "paths": [
+    {
+      "index": 0,
+      "name": "route_flat",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 32,
+          "y": -64,
+          "speed": 100
+        },
+        {
+          "x": 64,
+          "y": -64,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "name": "route_slant",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 96,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 160,
+          "y": 96,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "name": "route_slant2",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 192,
+          "y": 96,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "route_curl",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 224,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 160,
+          "y": 32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "name": "route_comeback",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 192,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "name": "route_out1",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 96,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 96,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "name": "route_out2",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 160,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 160,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "route_out3",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 224,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 224,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "name": "route_dig1",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": 32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "name": "route_dig2",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 192,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 192,
+          "y": 32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "name": "route_dig3",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 208,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 208,
+          "y": 32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "name": "route_post",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 192,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 256,
+          "y": 32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "name": "route_corner",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 192,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 256,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "name": "route_streak",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 224,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "name": "route_fb_1",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 32,
+          "y": -32,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "name": "route_fb_2",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "name": "route_fb_3",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 32,
+          "y": 32,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": 32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "name": "route_fb_4",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 64,
+          "y": -32,
+          "speed": 100
+        },
+        {
+          "x": 96,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "name": "route_fb_5_notused",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 128,
+          "y": -32,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "name": "route_fb_flat",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 32,
+          "y": -48,
+          "speed": 100
+        },
+        {
+          "x": 64,
+          "y": -48,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "name": "route_fb_flat2",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 64,
+          "y": -48,
+          "speed": 100
+        },
+        {
+          "x": 96,
+          "y": -48,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "name": "route_te_block",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": 32,
+          "y": 0,
+          "speed": 100
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "name": "route_qb",
+      "smooth": 0,
+      "closed": false,
+      "precision": 1,
+      "points": [
+        {
+          "x": 0,
+          "y": 0,
+          "speed": 100
+        },
+        {
+          "x": -64,
+          "y": 0,
+          "speed": 100
+        }
+      ]
+    }
+  ]
+}
