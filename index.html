@@ -492,8 +492,12 @@
         html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
         html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
 
-        /* ---- PLAY GAME rescue button (stuck GET READY screen) ---- */
+        /* ---- PLAY GAME rescue button (stuck GET READY screen) ----
+           Shown automatically when the stuck state is detected, and ALSO
+           always available from the expanded ≡ HUD cluster as a manual
+           override (in case a stuck variant evades detection). */
         #rb-play-game { display: none; }
+        html.rb-mobile.rb-in-match.rb-hud-open #rb-play-game,
         html.rb-mobile.rb-stuck-kickoff #rb-play-game {
             display: block;
             position: fixed; z-index: 10002;
@@ -507,6 +511,7 @@
             cursor: pointer;
             -webkit-tap-highlight-color: transparent; touch-action: manipulation;
         }
+        html.rb-mobile.rb-in-match.rb-hud-open #rb-play-game:active,
         html.rb-mobile.rb-stuck-kickoff #rb-play-game:active { transform: translateX(-50%) scale(.94); }
 
         /* the three overlay elements: compact + clustered under the toggle */
@@ -685,7 +690,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V224<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V225<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -753,7 +758,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V224</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V224</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V225</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V225</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8321,13 +8326,19 @@
                         window._rb2p_patPlayPending !== true) {
                         var em = RB.engineState();
                         if (em && em.engineUserTeamIdx != null) {
-                            var balls = 0;
+                            var balls = 0, koBtn = false;
                             var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                             for (var i = 0; i < all.length; i++) {
                                 var inst = all[i];
-                                if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') balls++;
+                                if (!inst || inst._HL2 || !inst._eE2) continue;
+                                if (inst._eE2._fE2 === 'obj_ball') balls++;
+                                else if (inst._eE2._fE2 === 'obj_btn_kickoff') koBtn = true;
                             }
-                            stuck = balls === 0;
+                            // Stuck = drive never spawned (no ball) OR the engine's
+                            // kickoff staging survived (obj_btn_kickoff gates the
+                            // controller — the exact "GET READY + Kick Off" screen;
+                            // a ball may exist but the play is inert).
+                            stuck = (balls === 0) || koBtn;
                         }
                     }
                 } catch (e) { stuck = false; }
@@ -8343,6 +8354,22 @@
                     console.log('[2P PLAY-GAME] pressed — kp=' + (em && em.engineControllerState) +
                                 ' down=' + (em && em.engineDownNumber) +
                                 ' clock=' + (em && em.engineMinutesLeft) + ':' + (em && em.engineSecondsLeft));
+                    // Manual press (via the HUD cluster) while the drive is
+                    // actually healthy: do nothing — forceUserOffenseDrive
+                    // would reset down/distance mid-drive.
+                    var pgBalls = 0, pgKo = false;
+                    var pgAll = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var pgI = 0; pgI < pgAll.length; pgI++) {
+                        var pgInst = pgAll[pgI];
+                        if (!pgInst || pgInst._HL2 || !pgInst._eE2) continue;
+                        if (pgInst._eE2._fE2 === 'obj_ball') pgBalls++;
+                        else if (pgInst._eE2._fE2 === 'obj_btn_kickoff') pgKo = true;
+                    }
+                    if (pgBalls > 0 && !pgKo && em && em.engineControllerState === 2) {
+                        console.log('[2P PLAY-GAME] drive is healthy — ignored');
+                        document.documentElement.classList.remove('rb-hud-open');
+                        return;
+                    }
                     window._rb2p_userIsWaitingForOpponent = false;
                     window._rb2p_userOutcomeSendInProgress = false;
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
