@@ -614,7 +614,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V216<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V217<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -682,7 +682,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V216</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V216</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V217</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V217</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -701,6 +701,22 @@
          undefined, and the engine patches short-circuit to a no-op. -->
     <script>
         (function () {
+            // Map a canvas click/tap to 480x270 GUI space, correctly on BOTH
+            // desktop (plain rect math) and rotated mobile (through the same
+            // virtual rect the engine input patches use). Shared by the
+            // bridge's canvas click intercepts (PLAY 2P, options confetti).
+            window._rb2p_canvasClickToGame = function (e, cv) {
+                var v = window.__rbVirt;
+                var m = window.__rbRemapPointer && window.__rbRemapPointer(e.clientX, e.clientY);
+                if (m && v) {
+                    return { gx: (m[0] - v.left) / (v.right - v.left) * 480,
+                             gy: (m[1] - v.top)  / (v.bottom - v.top) * 270 };
+                }
+                var r = cv.getBoundingClientRect();
+                return { gx: (e.clientX - r.left) / r.width  * 480,
+                         gy: (e.clientY - r.top)  / r.height * 270 };
+            };
+
             var mq = window.matchMedia('(hover: none) and (pointer: coarse)');
             if (!mq.matches) return;                 // desktop -> do nothing
             var docEl = document.documentElement;
@@ -933,9 +949,8 @@
             canvas.addEventListener('click', function (e) {
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_OPTIONS) return;
-                    var r = canvas.getBoundingClientRect();
-                    var gx = ((e.clientX - r.left) / r.width) * 480;
-                    var gy = ((e.clientY - r.top) / r.height) * 270;
+                    var g = window._rb2p_canvasClickToGame(e, canvas);
+                    var gx = g.gx, gy = g.gy;
                     if (gx < BTN.x || gx > BTN.x + BTN.w) return;
                     if (gy < BTN.y || gy > BTN.y + BTN.h) return;
                     try {
@@ -1291,6 +1306,7 @@
                     }
                     if (ballCount > 0) {
                         engineMatch.engineControllerState = 2;
+                        armKickoffSweeper(ydl);
                         return true;
                     }
 
@@ -1301,6 +1317,7 @@
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
                     engineMatch.engineControllerState = 2;
+                    armKickoffSweeper(ydl);
                     return true;
                 } catch (e) {
                     console.log('[2p-rb] forceUserOffenseDrive err:', e);
@@ -1308,6 +1325,62 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
+
+            // ---- kickoff sweeper: cure the mobile GET READY!/Kick Off hang ----
+            // forceUserOffenseDrive kills obj_btn_kickoff ONCE, but on slow
+            // devices the engine spawns the button AFTER that one-shot kill.
+            // The surviving button gates obj_controller's step (the gutted
+            // dead path), the ball stays inert, and no tap can ever advance —
+            // the "GET READY! + Kick Off stuck until refresh" hang. (Refresh
+            // worked because the resume path re-ran forceUserOffenseDrive
+            // after the button existed.) This watcher runs ~20s after every
+            // drive-force and keeps the drive alive:
+            //   • any obj_btn_kickoff that appears is killed on sight;
+            //   • if NO ball has EVER spawned for this drive, the spawn is
+            //     retried (safe: the drive never started, so down/toGo are
+            //     still the fresh 1st&10 this call would set anyway);
+            //   • once a ball has been seen, the sweeper never re-forces —
+            //     a mid-drive between-plays despawn must not reset downs.
+            // A generation counter makes each new drive-force supersede any
+            // older watcher, so overlapping arms can't fight.
+            window._rb2p_kickoffSweepGen = window._rb2p_kickoffSweepGen || 0;
+            function armKickoffSweeper(yard) {
+                var gen = ++window._rb2p_kickoffSweepGen;
+                var ticks = 0, ballSeenEver = false;
+                var iv = setInterval(function () {
+                    ticks++;
+                    if (gen !== window._rb2p_kickoffSweepGen || ticks > 66) { clearInterval(iv); return; }
+                    try {
+                        if (!RB.isEngineInMatchRoom()) return;
+                        var em = RB.engineState();
+                        if (!em || em.engineUserTeamIdx == null) return;
+                        if (window._rb2p_userIsWaitingForOpponent ||
+                            window._rb2p_patPlayPending) { clearInterval(iv); return; }
+                        if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return;
+                        var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                        var sawBtn = false, balls = 0;
+                        for (var i = 0; i < all.length; i++) {
+                            var inst = all[i];
+                            if (!inst || inst._HL2 || !inst._eE2) continue;
+                            if (inst._eE2._fE2 === 'obj_btn_kickoff') { inst._HL2 = true; sawBtn = true; }
+                            else if (inst._eE2._fE2 === 'obj_ball') balls++;
+                        }
+                        if (balls > 0) ballSeenEver = true;
+                        if (sawBtn) {
+                            em.engineControllerState = 2;
+                            console.log('[2P KICKOFF-SWEEP] killed late obj_btn_kickoff (t=' +
+                                        (ticks * 300) + 'ms, balls=' + balls + ')');
+                        }
+                        // Retry the spawn every ~1.2s while the drive has never
+                        // produced a ball (the hang state).
+                        if (!ballSeenEver && balls === 0 && ticks % 4 === 0) {
+                            console.log('[2P KICKOFF-SWEEP] no ball ' + (ticks * 300) +
+                                        'ms after drive-force — retrying spawn');
+                            forceUserOffenseDrive(yard);   // re-arms; this watcher dies via gen
+                        }
+                    } catch (e) {}
+                }, 300);
+            }
             // Public alias documented in "how the hell can I not do this,
             // actually wait, now I can.md" — call this from devtools to force
             // the user offense at any signed yard line.
@@ -2738,6 +2811,33 @@
                                             em.engineDownNumber = rs.down;
                                         if (typeof rs.toGo === 'number' && rs.toGo >= 0)
                                             em.engineYardsToGo = rs.toGo;
+                                    } else if (window._rb2p_resumePatDuty) {
+                                        // V217: reloaded mid-pick-6-PAT — re-pop the
+                                        // engine PAT modal instead of parking in WAIT.
+                                        // Reuses the normal PICK6 receive path with a
+                                        // synthetic outcome whose scores match the
+                                        // already-restored floors (so the score writes
+                                        // are no-ops) — the modal + PAT guardian +
+                                        // PAT_RESULT send all arm exactly as they did
+                                        // the first time.
+                                        window._rb2p_resumePatDuty = null;
+                                        window._rb2p_userIsWaitingForOpponent = true;
+                                        (function (rsq) {
+                                            setTimeout(function () {
+                                                try {
+                                                    window._rb2p_applyOpponentOutcome({
+                                                        type: 'PICK6', yardLine: 0, ownSide: true,
+                                                        needsPAT: true,
+                                                        scoreUser: rsq.oppScore, scoreOpp: rsq.myScore,
+                                                        quarter: rsq.quarter,
+                                                        minutesLeft: rsq.minutes, secondsLeft: rsq.seconds,
+                                                        message: 'PAT re-popped after reload',
+                                                        ts: Date.now()
+                                                    });
+                                                    console.log('[2P RESUME] pick-6 PAT modal re-popped after reload');
+                                                } catch (eP) { console.log('[2P RESUME patDuty err]', eP); }
+                                            }, 1500);
+                                        })(rs);
                                     } else {
                                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
                                         window._rb2p_userIsWaitingForOpponent = true;
@@ -2963,9 +3063,8 @@
             canvas.addEventListener('click', function (e) {
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_HOME) return;
-                    var r = canvas.getBoundingClientRect();
-                    var gx = ((e.clientX - r.left) / r.width)  * 480;
-                    var gy = ((e.clientY - r.top)  / r.height) * 270;
+                    var g = window._rb2p_canvasClickToGame(e, canvas);
+                    var gx = g.gx, gy = g.gy;
                     var hit2P = gx >= BTN_2P.x && gx <= BTN_2P.x + BTN_2P.w &&
                                 gy >= BTN_2P.y && gy <= BTN_2P.y + BTN_2P.h;
                     if (!hit2P) return;
@@ -3419,6 +3518,8 @@
                             try { window._twoPlayer.send(outcome); }
                             catch (e) { console.log('[2P] send err', e); }
                             window._rb2p_patResultSentMs = Date.now();
+                            // V217: PAT resolved — clear the reload-safety duty record.
+                            if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
                             // B's side of the cascade is finished the moment
                             // the result ships — tear it down so the
                             // watchdogs re-engage for normal play.
@@ -4632,6 +4733,10 @@
                     window._rb2p_userIsWaitingForOpponent  = false;
                     window._rb2p_userOutcomeSendInProgress = false;
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                    // V217: belt & braces — the PAT is resolved, so make sure the
+                    // reload-safety duty record can't linger (the defender clears
+                    // it on send; this covers a defender that died right after).
+                    if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
                     // V168: this device just applied the pick-6 PAT_RESULT and is
                     // about to RECEIVE the kickoff + start its own drive. The kickoff
                     // cascade briefly flips _UD, which the _1c1 send-hook misreads as
@@ -6252,6 +6357,13 @@
                                 window._rb2p_patPlayStartMs      = Date.now();
                                 window._rb2p_patUserScoreAtStart = engineMatch.userScore;
                                 window._rb2p_patOppScoreAtStart  = engineMatch.opponentScore;
+                                // V217: persist "I owe a PAT" so a mid-PAT reload
+                                // can re-pop the modal instead of deadlocking.
+                                if (typeof window._rb2p_setPatDuty === 'function')
+                                    window._rb2p_setPatDuty({
+                                        scoreUser: engineMatch.userScore,
+                                        scoreOpp:  engineMatch.opponentScore
+                                    });
                                 if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('SCORER', 'PICK6 received');
                                 // Pop the engine-native PAT modal exactly
                                 // the way _hB case-0 does — but WITHOUT
@@ -8261,6 +8373,9 @@
                             ' me=' + role + ' → iHaveBall=' + window._rb2p_resumeState.iHaveBall +
                             ' yard=' + turnover.yardLine + ' isPick6=' + turnover.isPick6);
             }
+            // V217: pending pick-6 PAT duty — I owe the PAT, not a drive. The
+            // resume poll's non-offense branch re-pops the PAT modal from this.
+            if (window._rb2p_resumePatDuty) window._rb2p_resumeState.iHaveBall = false;
             hideLobby();
             var rs = window._rb2p_resumeState;
             console.log('[2P RESUME] resuming as ' + role + ' from ' +
@@ -8354,6 +8469,19 @@
                 try { localStorage.removeItem('rb2p_pendingInt'); } catch (eLR) {}   // consume once
                 var turnoverActive = turnover && turnover.resolved !== true &&
                                      (Date.now() - (Number(turnover.ts) || 0) < 25000);
+                // V217: unresolved pick-6 PAT duty. If I reloaded while MY PAT
+                // modal was up, the duty record (written at modal-pop, cleared
+                // at PAT_RESULT) is still there — resume must re-pop the PAT,
+                // not park in WAIT (the both-stuck deadlock). A pending PAT
+                // also outranks the older turnover record from the same pick-6.
+                var patDutySnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/patDuty'));
+                var patDuty = patDutySnap.val();
+                var patDutyActive = patDuty && (Date.now() - (Number(patDuty.ts) || 0) < 600000);
+                var patDutyMine = !!(patDutyActive && patDuty.role === savedRole);
+                if (patDutyMine) {
+                    window._rb2p_resumePatDuty = patDuty;
+                    console.log('[2P RESUME] pending pick-6 PAT duty found (mine) — will re-pop PAT modal');
+                }
                 // V184: the in-progress check must consider MY OWN live push, not
                 // just the opponent's. Both devices write live/{me} every 500ms
                 // while in the match. If I refresh right after LOSING possession
@@ -8366,7 +8494,7 @@
                 // is in progress" signal; resumeMatch already rebuilds state from it.
                 var oppFresh = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
                 var myFresh  = myLive  && (Date.now() - (Number(myLive.ts)  || 0) < 25000);
-                var inProgress = oppFresh || myFresh || turnoverActive;
+                var inProgress = oppFresh || myFresh || turnoverActive || patDutyMine;
                 // V131: only a FRESH final (ts within 25s) means a real game-over.
                 // A stale leftover in this reused room must NOT block resume.
                 var finalRep = finalSnap.val();
@@ -8401,7 +8529,10 @@
                     } catch (e) {}
                     gameStarted = true;   // set before enterRoom subscribes
                     enterRoom(savedRoom, savedRole, /*restoring=*/true);
-                    resumeMatch(savedRole, oppLive, myLive, turnoverActive ? turnover : null);
+                    // V217: a pending PAT duty supersedes the turnover record —
+                    // the pick-6 already resolved into a TD; what's owed is the PAT.
+                    resumeMatch(savedRole, oppLive, myLive,
+                                (turnoverActive && !patDutyMine) ? turnover : null);
                     return;
                 }
 
@@ -8801,6 +8932,24 @@
                 } catch (e) {}
                 try { localStorage.removeItem('rb2p_pendingInt'); } catch (e2) {}
             };
+            // V217: pick-6 PAT duty persistence for refresh-safety. Written the
+            // moment the defender's PAT modal pops (applyOpponentOutcome PICK6
+            // branch), cleared when PAT_RESULT ships (defender) or lands
+            // (thrower). If the defender reloads mid-PAT, tryRestore reads this
+            // record and re-pops the PAT modal instead of parking both devices
+            // in WAIT forever (the "refresh during pick-6 PAT ruins the game"
+            // deadlock). Pass null to clear.
+            window._rb2p_setPatDuty = function (extra) {
+                try {
+                    if (extra) {
+                        var rec = { role: myRole, ts: Date.now() };
+                        for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) rec[k] = extra[k];
+                        FB.set(FB.ref(db, 'rooms/' + myRoom + '/patDuty'), rec).catch(function () {});
+                    } else {
+                        FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});
+                    }
+                } catch (e) {}
+            };
             // Wire SEND to Firebase BEFORE entering the engineMatch. The local
             // bridge already mutates _twoPlayer.send once installed; we
             // chain on top of whatever's there so simulate()/sentLog still
@@ -9192,6 +9341,10 @@
             // rematch in this reused room can't resume into a stale turnover.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/turnover')).catch(function () {});
             try { localStorage.removeItem('rb2p_pendingInt'); } catch (e) {}   // V188: + local backup
+            // V217: same for a leftover pick-6 PAT duty — a rematch must not
+            // resume into a stale "you owe a PAT" record from the prior game.
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});
+            window._rb2p_resumePatDuty = null;
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
