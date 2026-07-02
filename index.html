@@ -410,6 +410,17 @@
             background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(4,10,30,.6) 100%);
         }
 
+        /* ---- V220: static main menu (no animations, all viewports) ----
+           Removes the lobby's float / glow / blink / marquee / CRT-scan/flicker
+           animations everywhere — the calmer static look the mobile build
+           already uses. Elements stay in place (ticker banner, cursor, CRT
+           overlays all remain visible, just not moving); the marquee simply
+           freezes showing its readable banner text. Mobile keeps its own rules
+           below (it fully hides the ticker/CRT); this brings desktop in line on
+           the one thing asked for — no motion. */
+        #rb-lobby, #rb-lobby * { animation: none !important; }
+        #rb-lobby .rb-cursor { opacity: 1; }
+
         /* =====================================================================
            MOBILE OVERHAUL (V214) — everything below is gated on html.rb-mobile,
            which is added at runtime ONLY for touch phones. Desktop never gets
@@ -652,7 +663,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V219<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V220<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -720,7 +731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V219</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V219</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V220</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V220</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
