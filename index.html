@@ -710,7 +710,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V228<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V229<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -778,7 +778,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V228</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V228</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V229</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V229</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1014,7 +1014,8 @@
                 } catch (e) {}
             }
             setInterval(function () {
-                if (typeof _Ec2 !== 'undefined' && _Ec2._UX3 && _Ec2._UX3.length) hookDraw();
+                // V229: null-check too — typeof passes when _Ec2 is null at boot.
+                if (typeof _Ec2 !== 'undefined' && _Ec2 && _Ec2._UX3 && _Ec2._UX3.length) hookDraw();
             }, 1000);
 
             function drawBtn(inst) {
@@ -1306,6 +1307,31 @@
             //   - Player A's engineMatch start (their first offensive drive)
             //   - After applyOpponentOutcome on every subsequent received drive
             // Idempotent: if obj_ball already exists, _eb1 is skipped.
+            // V229: _Y41 (per-player finalize, called 22x from s_set_up_play)
+            // crashes on a null singleton lookup (_jj → no live instance for
+            // obj 64/71) when the room is half-built or aged — verified root
+            // cause of forceUserOffenseDrive returning false on real phones
+            // (the throw aborted the WHOLE spawn: no ball → GET READY stall,
+            // only a reload recovered). Per-player try/catch: one bad player
+            // no longer kills the other 21 + the ball. Engine top-level
+            // functions are true globals, so reassigning rebinds every caller.
+            try {
+                if (typeof _Y41 === 'function' && !_Y41.__rb2pWrapped) {
+                    var __origY41 = _Y41;
+                    _Y41 = function (_, t) {
+                        try { return __origY41(_, t); }
+                        catch (eY) {
+                            try {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                    'Y41 ERR ' + String((eY && eY.message) || eY).slice(0, 48));
+                            } catch (eL) {}
+                            return 0;
+                        }
+                    };
+                    _Y41.__rb2pWrapped = true;
+                }
+            } catch (eW) {}
+
             function forceUserOffenseDrive(yardLine) {
                 try {
                     var engineMatch = RB.engineState();
@@ -1417,6 +1443,12 @@
                     return true;
                 } catch (e) {
                     console.log('[2p-rb] forceUserOffenseDrive err:', e);
+                    // V229: this catch was SWALLOWING the real reason the spawn
+                    // failed (invisible on phones) — surface it in the diag.
+                    try {
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'force ERR ' + String((e && e.message) || e).slice(0, 56));
+                    } catch (eL) {}
                     return false;
                 }
             }
@@ -3206,12 +3238,18 @@
 
             // -------- Install hooks --------
             setInterval(function () {
-                if (typeof _Ec2 !== 'undefined' && _Ec2._UX3 && _Ec2._UX3.length) {
+                // V229: `typeof X !== 'undefined'` passes when X is NULL (the
+                // engine initializes these singletons as null until boot
+                // completes) — `null._GL2` then threw UNCAUGHT every 500ms
+                // during a slow mobile boot. This was the uncaught
+                // "null is not an object (evaluating '_Sc2...')" x3 captured
+                // on-device at match start. Null-check both.
+                if (typeof _Ec2 !== 'undefined' && _Ec2 && _Ec2._UX3 && _Ec2._UX3.length) {
                     hideOnHome('obj_matchline');
                     hideOnHome('obj_division');
                     hookBtn();
                 }
-                if (typeof _Sc2 !== 'undefined' && _Sc2._GL2 && _Sc2._GL2._oq2) {
+                if (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) {
                     hideCont();
                     recenterHomeStats();
                 }
@@ -8338,21 +8376,31 @@
             var playGameBtn = document.getElementById('rb-play-game');
             var pgDiag = document.getElementById('rb-pg-diag');
             var stuckPolls = 0;
+            var autoRecoverNextMs = 0;   // V229 auto-recovery throttle
 
             // ---- V228 diag log: ring buffer persisted to sessionStorage so the
             //      tail SURVIVES the auto-reload rescue (the "why" was getting
             //      wiped by the very reload that recovered the game). ----
             var DIAG_KEY = 'rb2p_diaglog';
+            var diagLastMsg = null, diagLastCount = 0;
             function diagReadLog() {
                 try { return JSON.parse(sessionStorage.getItem(DIAG_KEY) || '[]'); } catch (e) { return []; }
             }
             function diagLog(msg) {
                 try {
                     var t = new Date();
-                    var line = ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2) +
-                               ' ' + String(msg).slice(0, 64);
+                    var text = String(msg).slice(0, 120);
+                    var ts = ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2);
                     var arr = diagReadLog();
-                    arr.push(line);
+                    // Dedupe runs of the same message ("REJ Decoding failed" x30
+                    // was flushing the interesting lines out of the buffer).
+                    if (text === diagLastMsg && arr.length) {
+                        diagLastCount++;
+                        arr[arr.length - 1] = ts + ' ' + text + ' x' + diagLastCount;
+                    } else {
+                        diagLastMsg = text; diagLastCount = 1;
+                        arr.push(ts + ' ' + text);
+                    }
                     while (arr.length > 10) arr.shift();
                     sessionStorage.setItem(DIAG_KEY, JSON.stringify(arr));
                     console.log('[2P DIAG] ' + msg);
@@ -8366,18 +8414,63 @@
             // Uncaught engine errors are the prime suspect for the failed in-place
             // spawn AND the mid-play freeze — capture them all.
             window.addEventListener('error', function (ev) {
-                diagLog('ERR ' + String(ev.message).slice(0, 56) +
-                        (ev.lineno ? ' @' + ev.lineno : ''));
+                // Full message + the top stack frame (function@file:line) — the
+                // V228 56-char cap hid the crashing expression AND the site.
+                var frame = '';
+                try {
+                    var st = (ev.error && ev.error.stack) || '';
+                    var lines = st.split('\n');
+                    frame = (lines[1] || lines[0] || '').replace(/@.*\//, '@').trim().slice(0, 48);
+                } catch (eS) {}
+                diagLog('ERR ' + String(ev.message).slice(0, 110) +
+                        (ev.lineno ? ' @' + ev.lineno : '') +
+                        (frame ? ' | ' + frame : ''));
             });
             window.addEventListener('unhandledrejection', function (ev) {
                 var r = ev && ev.reason;
-                diagLog('REJ ' + String((r && r.message) || r).slice(0, 56));
+                diagLog('REJ ' + String((r && r.message) || r).slice(0, 80));
             });
             // fps via our own rAF loop: at a freeze, fps>0 = engine LOGIC stuck
             // (browser fine), fps 0 = the browser throttled/killed the frame loop.
             var rafCount = 0, diagFps = -1;
             (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
             setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
+            // Active engine overlay buttons (kickoff / punt / FG / ...) — the
+            // 4th-down freeze suspect list. Shared by the diag readout and the
+            // tap trace.
+            function listActiveButtons() {
+                var names = [];
+                try {
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2) continue;
+                        var n = inst._eE2._fE2;
+                        if (n && n.indexOf('obj_btn') === 0 && names.length < 4)
+                            names.push(n.replace('obj_btn_', ''));
+                    }
+                } catch (e) {}
+                return names;
+            }
+            // Tap trace: whenever the user taps the canvas WHILE engine overlay
+            // buttons are up, log raw coords + viewport + rotation state. If a
+            // freeze is "button never receives the tap", this shows the taps
+            // arriving (or not) and where.
+            (function () {
+                var cv = document.getElementById('canvas');
+                if (!cv) return;
+                cv.addEventListener('pointerdown', function (e) {
+                    try {
+                        if (!document.documentElement.classList.contains('rb-in-match')) return;
+                        var names = listActiveButtons();
+                        if (!names.length) return;
+                        diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
+                                ' vp' + window.innerWidth + 'x' + window.innerHeight +
+                                (document.documentElement.classList.contains('rb-rot90') ? ' r90' : '') +
+                                ' btns:' + names.join(','));
+                    } catch (eT) {}
+                }, { passive: true });
+            })();
             function pollStuckKickoff() {
                 var stuck = false;
                 // --- gather EVERY signal independently, so the diagnostic can
@@ -8414,6 +8507,15 @@
                 var shown = stuckPolls >= 3;
                 document.documentElement.classList.toggle('rb-stuck-kickoff', shown);
 
+                // V229: AUTO-recover — the stall should never need a human tap.
+                // Same recovery the button runs, fired as soon as the stuck
+                // state is confirmed, re-armed at most every 8s while it lasts.
+                // The button stays as a manual backup.
+                if (shown && Date.now() >= autoRecoverNextMs) {
+                    autoRecoverNextMs = Date.now() + 8000;
+                    runPlayGameRecovery('auto');
+                }
+
                 // --- write the live readout (temporary V228 diagnostic) ---
                 if (pgDiag) {
                     var f = function (name, ok) {
@@ -8424,24 +8526,30 @@
                     };
                     var dn = em ? em.engineDownNumber : '?';
                     var yd = em ? em.engineYardsToGo : '?';
+                    if (typeof yd === 'number') yd = Math.round(yd * 10) / 10;
                     var clk = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : '?';
+                    var btnNames = listActiveButtons();
                     var tail = diagReadLog().slice(-5).map(esc).join('\n');
                     pgDiag.innerHTML =
-                        'V228 DIAG  fps:' + diagFps + '\n' +
+                        'V229 DIAG  fps:' + diagFps + '\n' +
                         f('match', g_match) + ' ' + f('room', g_room) + ' ' + f('!wait', g_wait) + ' ' +
                         f('!pat', g_pat) + ' ' + f('supp', g_supp) + '\n' +
                         'team:' + teamIdx + ' kp:' + kp + ' ball:' + balls + ' ' + f('!ko', !koBtn) + '\n' +
-                        'dn:' + dn + ' ytg:' + yd + ' clk:' + clk + '\n' +
+                        'dn:' + dn + ' ytg:' + yd + ' clk:' + clk +
+                        ' btns:' + (btnNames.length ? esc(btnNames.join(',')) : '-') + '\n' +
                         '<span class="' + (shown ? 'good' : 'bad') + '">stuck:' + (stuck ? 1 : 0) +
                         ' polls:' + stuckPolls + ' btn:' + (shown ? 1 : 0) + '</span>\n' +
                         '--- LOG (survives reload) ---\n' + tail;
                 }
             }
             setInterval(pollStuckKickoff, 700);
-            if (playGameBtn) playGameBtn.addEventListener('click', function () {
+            // V229: one recovery routine, two triggers — the poller fires it
+            // automatically when the stall is confirmed (no human tap needed),
+            // and the button remains as a manual backup.
+            function runPlayGameRecovery(src) {
                 try {
                     var em = window.RB && RB.engineState && RB.engineState();
-                    diagLog('press kp=' + (em && em.engineControllerState) +
+                    diagLog(src + ' kp=' + (em && em.engineControllerState) +
                             ' dn=' + (em && em.engineDownNumber) +
                             ' clk=' + (em && em.engineMinutesLeft) + ':' + (em && em.engineSecondsLeft));
                     // Vanish the instant it's pressed, and don't let the poller
@@ -8460,7 +8568,7 @@
                         else if (pgInst._eE2._fE2 === 'obj_btn_kickoff') pgKo = true;
                     }
                     if (pgBalls > 0 && !pgKo && em && em.engineControllerState === 2) {
-                        diagLog('drive healthy — press ignored');
+                        diagLog('drive healthy — ' + src + ' ignored');
                         return;
                     }
                     window._rb2p_userIsWaitingForOpponent = false;
@@ -8502,6 +8610,9 @@
                         } catch (eF) {}
                     }, 2500);
                 } catch (e) { console.log('[2P PLAY-GAME err]', e); }
+            }
+            if (playGameBtn) playGameBtn.addEventListener('click', function () {
+                runPlayGameRecovery('press');
             });
         })();
         if ($leaveGame) {
