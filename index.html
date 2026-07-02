@@ -614,7 +614,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V217<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V218<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -682,7 +682,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V217</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V217</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V218</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V218</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1349,7 +1349,7 @@
                 var ticks = 0, ballSeenEver = false;
                 var iv = setInterval(function () {
                     ticks++;
-                    if (gen !== window._rb2p_kickoffSweepGen || ticks > 66) { clearInterval(iv); return; }
+                    if (gen !== window._rb2p_kickoffSweepGen || ticks > 200) { clearInterval(iv); return; }
                     try {
                         if (!RB.isEngineInMatchRoom()) return;
                         var em = RB.engineState();
@@ -2770,9 +2770,9 @@
                         var pollR = setInterval(function () {
                             triesR++;
                             try {
-                                if (!RB.isEngineInMatchRoom()) { if (triesR > 400) clearInterval(pollR); return; }
+                                if (!RB.isEngineInMatchRoom()) { if (triesR > 2400) clearInterval(pollR); return; }
                                 var em = RB.engineState();
-                                if (!em || em.engineUserTeamIdx == null) { if (triesR > 400) clearInterval(pollR); return; }
+                                if (!em || em.engineUserTeamIdx == null) { if (triesR > 2400) clearInterval(pollR); return; }
                                 // V178: re-assert score & quarter as monotonic FLOORS
                                 // every tick for a ~3s grace window. The engine's
                                 // opening inits Q1 / 0-0 and the live-sync may push a
@@ -2853,7 +2853,7 @@
                                 // Hold the floors for ~3s (60 × 50ms) after the first
                                 // restore so the opening can't clobber them, then stop.
                                 if (resumedOnce && ++holdTicks >= 60) clearInterval(pollR);
-                            } catch (e) { if (triesR > 400) clearInterval(pollR); }
+                            } catch (e) { if (triesR > 2400) clearInterval(pollR); }
                         }, 50);
                         return;
                     }
@@ -2878,12 +2878,12 @@
                             triesA++;
                             try {
                                 if (!RB.isEngineInMatchRoom()) {
-                                    if (triesA > 400) clearInterval(pollA);
+                                    if (triesA > 2400) clearInterval(pollA);
                                     return;
                                 }
                                 var engineMatch = RB.engineState();
                                 if (!engineMatch || engineMatch.engineUserTeamIdx == null) {
-                                    if (triesA > 400) clearInterval(pollA);
+                                    if (triesA > 2400) clearInterval(pollA);
                                     return;
                                 }
                                 // forceUserOffenseDrive: kills obj_btn_kickoff,
@@ -2901,15 +2901,17 @@
                                 // Receiver's own X = NEGATIVE yardLine.
                                 var openingYard = window._rb2p_kickoffReturnYard();
                                 if (!forceUserOffenseDrive(openingYard)) {
-                                    if (triesA > 400) clearInterval(pollA);
+                                    if (triesA > 2400) clearInterval(pollA);
                                     return;
                                 }
                                 window._rb2p_userIsWaitingForOpponent = false;
                                 window._rb2p_userOutcomeSendInProgress      = false;
                                 window._rb2p_lastOpponentOutcomeApplyMs         = Date.now();
                                 clearInterval(pollA);
+                                console.log('[2P START] A opening drive forced after ~' +
+                                            (triesA * 50) + 'ms (yard=' + openingYard + ')');
                             } catch (e) {
-                                if (triesA > 400) clearInterval(pollA);
+                                if (triesA > 2400) clearInterval(pollA);
                             }
                         }, 50);
                     } else if (role === 'b') {
@@ -2926,19 +2928,19 @@
                             tries++;
                             try {
                                 if (!RB.isEngineInMatchRoom()) {
-                                    if (tries > 400) clearInterval(poll);
+                                    if (tries > 2400) clearInterval(poll);
                                     return;
                                 }
                                 var engineMatch = RB.engineState();
                                 if (!engineMatch || engineMatch.engineUserTeamIdx == null) {
-                                    if (tries > 400) clearInterval(poll);
+                                    if (tries > 2400) clearInterval(poll);
                                     return;
                                 }
                                 engineMatch.enginePossessingTeamIdx = engineMatch.engineOpponentTeamIdx;   // opponent has ball
                                 window._rb2p_userIsWaitingForOpponent = true;
                                 clearInterval(poll);
                             } catch (e) {
-                                if (tries > 400) clearInterval(poll);
+                                if (tries > 2400) clearInterval(poll);
                             }
                         }, 50);
                     }
@@ -4930,8 +4932,33 @@
                         if (em.engineDownNumber !== 6) {
                             em.engineDownNumber = 6;
                             em.engineYardsToGo  = 2;
+                            window._rb2p_patClobberCount = (window._rb2p_patClobberCount || 0) + 1;
                             console.warn('[2P PAT GUARD] _t11 clobbered mid-PAT — re-asserted 6');
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('_t11 clobber re-asserted');
+                            // V218: resolution-loop breaker. A missed PAT after a
+                            // reload-resume can land the FSM on a state the miss
+                            // detector above doesn't cover (not Vy 1/22, possession
+                            // never flips) — the engine then re-fires
+                            // BALL_INCOMPLETE forever while this branch re-asserts
+                            // _t11=6, each fight incrementing this counter (the
+                            // user-reported post-resume freeze). A NORMAL PAT sees
+                            // 0-1 clobbers total and an idle modal sees none, so a
+                            // long stream well after the play started can only be
+                            // the loop: the scene already played out scoreless.
+                            // Resolve it as the miss it is (+0 — the human played
+                            // the scene; this reports its outcome, no dice roll).
+                            if (window._rb2p_patClobberCount >= 12 &&
+                                Date.now() - (window._rb2p_patPlayStartMs || 0) > 8000) {
+                                window._rb2p_patPlayPending  = false;
+                                window._rb2p_patPlayResolved = true;
+                                window._rb2p_patResolvedMs   = Date.now();
+                                window._rb2p_patResultPoints = 0;
+                                console.warn('[2P PAT GUARD] resolution loop broken after ' +
+                                             window._rb2p_patClobberCount + ' clobber re-asserts — ' +
+                                             'PAT resolved: missed (played-out scene never credited)');
+                                if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                                    'PAT loop broken → missed (+0)');
+                            }
                         }
                         return;
                     }
@@ -6355,6 +6382,7 @@
                                 window._rb2p_patPlayPending      = true;
                                 window._rb2p_patPlayResolved     = false;
                                 window._rb2p_patPlayStartMs      = Date.now();
+                                window._rb2p_patClobberCount     = 0;   // V218: loop-breaker counter
                                 window._rb2p_patUserScoreAtStart = engineMatch.userScore;
                                 window._rb2p_patOppScoreAtStart  = engineMatch.opponentScore;
                                 // V217: persist "I owe a PAT" so a mid-PAT reload
