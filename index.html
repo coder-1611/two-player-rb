@@ -492,17 +492,16 @@
         html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
         html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
 
-        /* ---- PLAY GAME rescue button (stuck GET READY screen) ----
-           Shown automatically when the stuck state is detected, and ALSO
-           always available from the expanded ≡ HUD cluster as a manual
-           override (in case a stuck variant evades detection). */
+        /* ---- PLAY GAME button (GET READY / pre-play, top-center) ----
+           Appears on its OWN at the top of the screen whenever the play isn't
+           live yet (the GET READY / Kick Off moment) — no chip tap needed —
+           and vanishes the instant it's pressed. */
         #rb-play-game { display: none; }
-        html.rb-mobile.rb-in-match.rb-hud-open #rb-play-game,
         html.rb-mobile.rb-stuck-kickoff #rb-play-game {
             display: block;
             position: fixed; z-index: 10002;
-            top: 8px; left: 50%; transform: translateX(-50%);
-            padding: 10px 22px;
+            top: 6px; left: 50%; transform: translateX(-50%);
+            padding: 9px 26px;
             font-family: monospace; font-weight: bold; font-size: 15px;
             letter-spacing: 2px; line-height: 1;
             color: #0a1838; background: #3cff7a;
@@ -511,7 +510,6 @@
             cursor: pointer;
             -webkit-tap-highlight-color: transparent; touch-action: manipulation;
         }
-        html.rb-mobile.rb-in-match.rb-hud-open #rb-play-game:active,
         html.rb-mobile.rb-stuck-kickoff #rb-play-game:active { transform: translateX(-50%) scale(.94); }
 
         /* the three overlay elements: compact + clustered under the toggle */
@@ -690,7 +688,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V225<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V226<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -758,7 +756,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V225</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V225</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V226</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V226</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8323,7 +8321,8 @@
                     if (document.documentElement.classList.contains('rb-in-match') &&
                         window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom() &&
                         window._rb2p_userIsWaitingForOpponent !== true &&
-                        window._rb2p_patPlayPending !== true) {
+                        window._rb2p_patPlayPending !== true &&
+                        Date.now() >= (window._rb2p_pgSuppressUntil || 0)) {
                         var em = RB.engineState();
                         if (em && em.engineUserTeamIdx != null) {
                             var balls = 0, koBtn = false;
@@ -8334,17 +8333,21 @@
                                 if (inst._eE2._fE2 === 'obj_ball') balls++;
                                 else if (inst._eE2._fE2 === 'obj_btn_kickoff') koBtn = true;
                             }
-                            // Stuck = drive never spawned (no ball) OR the engine's
-                            // kickoff staging survived (obj_btn_kickoff gates the
-                            // controller — the exact "GET READY + Kick Off" screen;
-                            // a ball may exist but the play is inert).
-                            stuck = (balls === 0) || koBtn;
+                            // The play is NOT live (the GET READY / Kick Off moment)
+                            // when any of these hold: the drive never spawned (no
+                            // ball), the engine's kickoff staging survived
+                            // (obj_btn_kickoff), or the controller isn't in the
+                            // active-play state (kp !== 2 → the ball's step is inert,
+                            // taps do nothing). Covers the ball-present-but-gated
+                            // GET READY that the no-ball check alone missed.
+                            stuck = (balls === 0) || koBtn || (em.engineControllerState !== 2);
                         }
                     }
                 } catch (e) { stuck = false; }
                 stuckPolls = stuck ? stuckPolls + 1 : 0;
-                // 3 consecutive polls (~2.1s) so the between-plays respawn gap
-                // and normal transitions never flash the button.
+                // 3 consecutive polls (~2.1s) so a normal between-plays reset
+                // never flashes the button; the GET READY state persists until
+                // pressed, so the small delay is invisible there.
                 document.documentElement.classList.toggle('rb-stuck-kickoff', stuckPolls >= 3);
             }
             setInterval(pollStuckKickoff, 700);
@@ -8354,9 +8357,13 @@
                     console.log('[2P PLAY-GAME] pressed — kp=' + (em && em.engineControllerState) +
                                 ' down=' + (em && em.engineDownNumber) +
                                 ' clock=' + (em && em.engineMinutesLeft) + ':' + (em && em.engineSecondsLeft));
-                    // Manual press (via the HUD cluster) while the drive is
-                    // actually healthy: do nothing — forceUserOffenseDrive
-                    // would reset down/distance mid-drive.
+                    // Vanish the instant it's pressed, and don't let the poller
+                    // re-show it for a few seconds while the drive spawns.
+                    stuckPolls = 0;
+                    document.documentElement.classList.remove('rb-stuck-kickoff');
+                    window._rb2p_pgSuppressUntil = Date.now() + 4000;
+                    // If the drive is actually healthy already, do nothing else —
+                    // forceUserOffenseDrive would reset down/distance mid-drive.
                     var pgBalls = 0, pgKo = false;
                     var pgAll = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var pgI = 0; pgI < pgAll.length; pgI++) {
@@ -8367,7 +8374,6 @@
                     }
                     if (pgBalls > 0 && !pgKo && em && em.engineControllerState === 2) {
                         console.log('[2P PLAY-GAME] drive is healthy — ignored');
-                        document.documentElement.classList.remove('rb-hud-open');
                         return;
                     }
                     window._rb2p_userIsWaitingForOpponent = false;
@@ -8377,8 +8383,6 @@
                         ? window._rb2p_kickoffReturnYard() : -20;
                     var ok = window._rb2p_forceUserOffenseDrive && window._rb2p_forceUserOffenseDrive(y);
                     console.log('[2P PLAY-GAME] forceUserOffenseDrive(' + y + ') -> ' + ok);
-                    stuckPolls = 0;
-                    document.documentElement.classList.remove('rb-stuck-kickoff');
                     // Fallback: if the drive STILL hasn't spawned shortly after,
                     // the engine state is beyond an in-place repair — do the one
                     // thing that always recovers it: reload into the resume flow
