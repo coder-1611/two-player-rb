@@ -457,13 +457,47 @@
         html.rb-mobile #rb-lobby #rb-ready:active:not(:disabled),
         html.rb-mobile #rb-lobby #rb-leave:active:not(:disabled) { transform: translate(3px,3px); box-shadow: 3px 3px 0 #0a1838; }
 
-        /* ---- bigger, finger-friendly tap targets (kept compact) ---- */
-        html.rb-mobile .cheat-btn { padding: 10px 16px; min-height: 44px; font-size: 15px; }
-        html.rb-mobile #rb-leave-game { top: 10px; left: 10px; }
-        html.rb-mobile #rb-roster-view { top: 10px; right: 10px; }
         html.rb-mobile #rb-lobby input,
         html.rb-mobile #rb-lobby .rb-join-btn,
         html.rb-mobile #rb-lobby .diff-btn { min-height: 44px; }
+
+        /* ============ Mobile in-game HUD — collapsible overlay cluster ============
+           On phones the LEAVE / ROSTER buttons + the RM/YOU/DIF info badge sat
+           full-size over the canvas and covered the scoreboard + player names.
+           On mobile they're hidden behind one tiny toggle chip (#rb-hud-toggle);
+           tapping it expands a compact cluster in the same corner. Desktop keeps
+           the original always-visible buttons (the toggle is display:none). */
+        #rb-hud-toggle { display: none; }
+        html.rb-mobile.rb-in-match #rb-hud-toggle {
+            display: flex; align-items: center; justify-content: center;
+            position: fixed; z-index: 9998; top: 8px; left: 8px;
+            width: 34px; height: 34px; padding: 0;
+            font-size: 16px; line-height: 1; font-family: monospace;
+            color: #ffd23c; background: rgba(10,10,20,0.7);
+            border: 2px solid #ffd23c; border-radius: 8px;
+            opacity: 0.7; cursor: pointer;
+            -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+        }
+        html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
+        html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
+
+        /* the three overlay elements: compact + clustered under the toggle */
+        html.rb-mobile #rb-leave-game,
+        html.rb-mobile #rb-roster-view {
+            top: 48px; left: 8px; right: auto;
+            min-height: 0; padding: 7px 12px; font-size: 12px; opacity: 0.95;
+        }
+        html.rb-mobile #rb-roster-view { top: 84px; }
+        html.rb-mobile #rb-fb-badge {
+            left: 8px !important; bottom: auto !important; top: 120px !important;
+            max-width: 44vw; font-size: 9px !important; letter-spacing: 1px !important;
+            padding: 4px 7px !important; white-space: normal; line-height: 1.35;
+            opacity: 0.9;
+        }
+        /* collapsed (default on mobile): only the toggle shows */
+        html.rb-mobile:not(.rb-hud-open) #rb-leave-game,
+        html.rb-mobile:not(.rb-hud-open) #rb-roster-view,
+        html.rb-mobile:not(.rb-hud-open) #rb-fb-badge { display: none !important; }
 
         /* ---- lobby fully expanded, no scroll, desktop-like composition ---- */
         html.rb-mobile #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"],
@@ -533,6 +567,10 @@
 
     <button id="rb-leave-game" class="cheat-btn" title="Leave the game and return to the lobby">LEAVE</button>
     <button id="rb-roster-view" class="cheat-btn" title="View your team's roster">ROSTER</button>
+    <!-- Mobile-only: tiny toggle that collapses the LEAVE/ROSTER/info overlays
+         into one small chip so they stop blocking the scoreboard + player names.
+         Hidden on desktop (CSS). Tapping it expands the cluster. -->
+    <button id="rb-hud-toggle" type="button" aria-label="Show game controls">&#9776;</button>
 
     <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
     <div id="rb-roster-overlay">
@@ -614,7 +652,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V218<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V219<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -682,7 +720,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V218</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V218</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V219</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V219</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8208,7 +8246,28 @@
             if ($leaveGame)   $leaveGame.style.display   = on ? 'block' : 'none';
             if ($rosterView)  $rosterView.style.display  = on ? 'block' : 'none';
             if (!on) hideRosterOverlay();   // never leave the overlay up outside a match
+            // Mobile HUD: the toggle chip exists only during a match, and each
+            // match starts COLLAPSED so the overlays never cover the scoreboard.
+            try {
+                var de = document.documentElement;
+                de.classList.toggle('rb-in-match', !!on);
+                if (!on) de.classList.remove('rb-hud-open');
+            } catch (e) {}
         }
+        // Mobile HUD toggle: flip the expanded/collapsed state of the overlay
+        // cluster. DOM click mapping works through the forced-landscape rotation
+        // for free (real DOM element), so no engine coord remap is needed here.
+        (function () {
+            var hudToggle = document.getElementById('rb-hud-toggle');
+            if (hudToggle) hudToggle.addEventListener('click', function () {
+                document.documentElement.classList.toggle('rb-hud-open');
+            });
+            // Tapping ROSTER opens the roster overlay — collapse the cluster
+            // behind it so it isn't floating over the card.
+            if ($rosterView) $rosterView.addEventListener('click', function () {
+                document.documentElement.classList.remove('rb-hud-open');
+            });
+        })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
                 if (!window.confirm('Leave the game and return to the lobby?')) return;
