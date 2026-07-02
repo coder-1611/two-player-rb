@@ -512,14 +512,14 @@
         }
         html.rb-mobile.rb-stuck-kickoff #rb-play-game:active { transform: translateX(-50%) scale(.94); }
 
-        /* V227 DIAGNOSTIC readout — visible on mobile during a match. Rides the
+        /* V228 DIAGNOSTIC readout — visible on mobile during a match. Rides the
            forced-landscape rotation like every other fixed element. Temporary. */
         #rb-pg-diag { display: none; }
         html.rb-mobile.rb-in-match #rb-pg-diag {
             display: block;
             position: fixed; z-index: 10003;
             top: 4px; right: 4px;
-            max-width: 46vw;
+            max-width: 72vw;
             padding: 4px 6px;
             font-family: monospace; font-size: 9px; line-height: 1.25;
             font-weight: bold; white-space: pre;
@@ -710,7 +710,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V227<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V228<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -778,7 +778,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V227</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V227</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V228</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V228</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8338,6 +8338,46 @@
             var playGameBtn = document.getElementById('rb-play-game');
             var pgDiag = document.getElementById('rb-pg-diag');
             var stuckPolls = 0;
+
+            // ---- V228 diag log: ring buffer persisted to sessionStorage so the
+            //      tail SURVIVES the auto-reload rescue (the "why" was getting
+            //      wiped by the very reload that recovered the game). ----
+            var DIAG_KEY = 'rb2p_diaglog';
+            function diagReadLog() {
+                try { return JSON.parse(sessionStorage.getItem(DIAG_KEY) || '[]'); } catch (e) { return []; }
+            }
+            function diagLog(msg) {
+                try {
+                    var t = new Date();
+                    var line = ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2) +
+                               ' ' + String(msg).slice(0, 64);
+                    var arr = diagReadLog();
+                    arr.push(line);
+                    while (arr.length > 10) arr.shift();
+                    sessionStorage.setItem(DIAG_KEY, JSON.stringify(arr));
+                    console.log('[2P DIAG] ' + msg);
+                } catch (e) {}
+            }
+            window._rb2p_diagLog = diagLog;
+            (function () {
+                var lastR = Number(sessionStorage.getItem('rb2p_pg_reload') || 0);
+                diagLog('boot' + (Date.now() - lastR < 15000 ? ' (post PG-reload)' : ''));
+            })();
+            // Uncaught engine errors are the prime suspect for the failed in-place
+            // spawn AND the mid-play freeze — capture them all.
+            window.addEventListener('error', function (ev) {
+                diagLog('ERR ' + String(ev.message).slice(0, 56) +
+                        (ev.lineno ? ' @' + ev.lineno : ''));
+            });
+            window.addEventListener('unhandledrejection', function (ev) {
+                var r = ev && ev.reason;
+                diagLog('REJ ' + String((r && r.message) || r).slice(0, 56));
+            });
+            // fps via our own rAF loop: at a freeze, fps>0 = engine LOGIC stuck
+            // (browser fine), fps 0 = the browser throttled/killed the frame loop.
+            var rafCount = 0, diagFps = -1;
+            (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
+            setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
             function pollStuckKickoff() {
                 var stuck = false;
                 // --- gather EVERY signal independently, so the diagnostic can
@@ -8374,27 +8414,36 @@
                 var shown = stuckPolls >= 3;
                 document.documentElement.classList.toggle('rb-stuck-kickoff', shown);
 
-                // --- write the live readout (temporary V227 diagnostic) ---
+                // --- write the live readout (temporary V228 diagnostic) ---
                 if (pgDiag) {
                     var f = function (name, ok) {
                         return '<span class="' + (ok ? 'good' : 'bad') + '">' + name + ':' + (ok ? 1 : 0) + '</span>';
                     };
+                    var esc = function (s) {
+                        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                    };
+                    var dn = em ? em.engineDownNumber : '?';
+                    var yd = em ? em.engineYardsToGo : '?';
+                    var clk = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : '?';
+                    var tail = diagReadLog().slice(-5).map(esc).join('\n');
                     pgDiag.innerHTML =
-                        'V227 DIAG\n' +
-                        f('match', g_match) + ' ' + f('room', g_room) + ' ' + f('!wait', g_wait) + '\n' +
-                        f('!pat', g_pat) + ' ' + f('supp', g_supp) + ' team:' + teamIdx + '\n' +
-                        'kp:' + kp + ' ball:' + balls + ' ' + f('!ko', !koBtn) + '\n' +
+                        'V228 DIAG  fps:' + diagFps + '\n' +
+                        f('match', g_match) + ' ' + f('room', g_room) + ' ' + f('!wait', g_wait) + ' ' +
+                        f('!pat', g_pat) + ' ' + f('supp', g_supp) + '\n' +
+                        'team:' + teamIdx + ' kp:' + kp + ' ball:' + balls + ' ' + f('!ko', !koBtn) + '\n' +
+                        'dn:' + dn + ' ytg:' + yd + ' clk:' + clk + '\n' +
                         '<span class="' + (shown ? 'good' : 'bad') + '">stuck:' + (stuck ? 1 : 0) +
-                        ' polls:' + stuckPolls + ' btn:' + (shown ? 1 : 0) + '</span>';
+                        ' polls:' + stuckPolls + ' btn:' + (shown ? 1 : 0) + '</span>\n' +
+                        '--- LOG (survives reload) ---\n' + tail;
                 }
             }
             setInterval(pollStuckKickoff, 700);
             if (playGameBtn) playGameBtn.addEventListener('click', function () {
                 try {
                     var em = window.RB && RB.engineState && RB.engineState();
-                    console.log('[2P PLAY-GAME] pressed — kp=' + (em && em.engineControllerState) +
-                                ' down=' + (em && em.engineDownNumber) +
-                                ' clock=' + (em && em.engineMinutesLeft) + ':' + (em && em.engineSecondsLeft));
+                    diagLog('press kp=' + (em && em.engineControllerState) +
+                            ' dn=' + (em && em.engineDownNumber) +
+                            ' clk=' + (em && em.engineMinutesLeft) + ':' + (em && em.engineSecondsLeft));
                     // Vanish the instant it's pressed, and don't let the poller
                     // re-show it for a few seconds while the drive spawns.
                     stuckPolls = 0;
@@ -8411,7 +8460,7 @@
                         else if (pgInst._eE2._fE2 === 'obj_btn_kickoff') pgKo = true;
                     }
                     if (pgBalls > 0 && !pgKo && em && em.engineControllerState === 2) {
-                        console.log('[2P PLAY-GAME] drive is healthy — ignored');
+                        diagLog('drive healthy — press ignored');
                         return;
                     }
                     window._rb2p_userIsWaitingForOpponent = false;
@@ -8419,8 +8468,14 @@
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                     var y = (typeof window._rb2p_kickoffReturnYard === 'function')
                         ? window._rb2p_kickoffReturnYard() : -20;
-                    var ok = window._rb2p_forceUserOffenseDrive && window._rb2p_forceUserOffenseDrive(y);
-                    console.log('[2P PLAY-GAME] forceUserOffenseDrive(' + y + ') -> ' + ok);
+                    // Capture the spawn result AND any engine throw — this is the
+                    // exact "why" the reload fallback has been masking.
+                    var ok = false, forceErr = null;
+                    try {
+                        ok = window._rb2p_forceUserOffenseDrive && window._rb2p_forceUserOffenseDrive(y);
+                    } catch (eS) { forceErr = eS; }
+                    diagLog('force(' + y + ')->' + ok +
+                            (forceErr ? ' THREW ' + String((forceErr && forceErr.message) || forceErr).slice(0, 44) : ''));
                     // Fallback: if the drive STILL hasn't spawned shortly after,
                     // the engine state is beyond an in-place repair — do the one
                     // thing that always recovers it: reload into the resume flow
@@ -8434,14 +8489,14 @@
                                 var inst = all[i];
                                 if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') balls++;
                             }
-                            if (balls > 0) return;   // recovered in place
+                            if (balls > 0) { diagLog('recovered in place (ball spawned)'); return; }
                             var lastR = Number(sessionStorage.getItem('rb2p_pg_reload') || 0);
                             if (Date.now() - lastR < 60000) {
-                                console.warn('[2P PLAY-GAME] still stuck but reloaded <60s ago — leaving button up');
+                                diagLog('still stuck, reload<60s ago — button stays');
                                 return;
                             }
                             sessionStorage.setItem('rb2p_pg_reload', String(Date.now()));
-                            console.warn('[2P PLAY-GAME] in-place spawn failed — reloading into resume flow');
+                            diagLog('in-place spawn FAILED -> auto-reload');
                             playGameBtn.textContent = 'RESTARTING…';
                             setTimeout(function () { location.reload(); }, 250);
                         } catch (eF) {}
