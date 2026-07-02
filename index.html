@@ -512,6 +512,24 @@
         }
         html.rb-mobile.rb-stuck-kickoff #rb-play-game:active { transform: translateX(-50%) scale(.94); }
 
+        /* V227 DIAGNOSTIC readout — visible on mobile during a match. Rides the
+           forced-landscape rotation like every other fixed element. Temporary. */
+        #rb-pg-diag { display: none; }
+        html.rb-mobile.rb-in-match #rb-pg-diag {
+            display: block;
+            position: fixed; z-index: 10003;
+            top: 4px; right: 4px;
+            max-width: 46vw;
+            padding: 4px 6px;
+            font-family: monospace; font-size: 9px; line-height: 1.25;
+            font-weight: bold; white-space: pre;
+            color: #eaffea; background: rgba(4,12,28,.82);
+            border: 1px solid #3cff7a; border-radius: 5px;
+            pointer-events: none;
+        }
+        html.rb-mobile.rb-in-match #rb-pg-diag .bad  { color: #ff5a5a; }
+        html.rb-mobile.rb-in-match #rb-pg-diag .good { color: #3cff7a; }
+
         /* the three overlay elements: compact + clustered under the toggle */
         html.rb-mobile #rb-leave-game,
         html.rb-mobile #rb-roster-view {
@@ -607,6 +625,10 @@
          runs the same drive-force a refresh would trigger. DOM button, so the
          tap maps through the forced-landscape rotation reliably. -->
     <button id="rb-play-game" type="button">&#9654; PLAY GAME</button>
+    <!-- V227 DIAGNOSTIC: live readout of the 5 gate conditions the PLAY GAME
+         poller checks, so we can see on a real phone WHICH gate is false at the
+         GET READY stall. Shown on mobile during a match. Temporary. -->
+    <div id="rb-pg-diag"></div>
 
     <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
     <div id="rb-roster-overlay">
@@ -688,7 +710,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V226<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V227<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -756,7 +778,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V226</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V226</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V227</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V227</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8314,41 +8336,57 @@
             // + the flag resets pollA does). The poller keeps watching, so if
             // one press doesn't take, the button stays and can be pressed again.
             var playGameBtn = document.getElementById('rb-play-game');
+            var pgDiag = document.getElementById('rb-pg-diag');
             var stuckPolls = 0;
             function pollStuckKickoff() {
                 var stuck = false;
+                // --- gather EVERY signal independently, so the diagnostic can
+                //     report which gate is false even when the outer gate blocks ---
+                var g_match = false, g_room = false, g_wait = false, g_pat = false, g_supp = false;
+                var em = null, emOk = false, balls = -1, koBtn = false, kp = null, teamIdx = null;
                 try {
-                    if (document.documentElement.classList.contains('rb-in-match') &&
-                        window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom() &&
-                        window._rb2p_userIsWaitingForOpponent !== true &&
-                        window._rb2p_patPlayPending !== true &&
-                        Date.now() >= (window._rb2p_pgSuppressUntil || 0)) {
-                        var em = RB.engineState();
-                        if (em && em.engineUserTeamIdx != null) {
-                            var balls = 0, koBtn = false;
-                            var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                            for (var i = 0; i < all.length; i++) {
-                                var inst = all[i];
-                                if (!inst || inst._HL2 || !inst._eE2) continue;
-                                if (inst._eE2._fE2 === 'obj_ball') balls++;
-                                else if (inst._eE2._fE2 === 'obj_btn_kickoff') koBtn = true;
-                            }
-                            // The play is NOT live (the GET READY / Kick Off moment)
-                            // when any of these hold: the drive never spawned (no
-                            // ball), the engine's kickoff staging survived
-                            // (obj_btn_kickoff), or the controller isn't in the
-                            // active-play state (kp !== 2 → the ball's step is inert,
-                            // taps do nothing). Covers the ball-present-but-gated
-                            // GET READY that the no-ball check alone missed.
-                            stuck = (balls === 0) || koBtn || (em.engineControllerState !== 2);
+                    g_match = document.documentElement.classList.contains('rb-in-match');
+                    g_room  = !!(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom());
+                    g_wait  = window._rb2p_userIsWaitingForOpponent !== true;
+                    g_pat   = window._rb2p_patPlayPending !== true;
+                    g_supp  = Date.now() >= (window._rb2p_pgSuppressUntil || 0);
+                    try { em = window.RB && RB.engineState && RB.engineState(); } catch (e) { em = null; }
+                    if (em) {
+                        teamIdx = em.engineUserTeamIdx;
+                        kp = em.engineControllerState;
+                        emOk = teamIdx != null;
+                    }
+                    if (g_match && g_room && g_wait && g_pat && g_supp && emOk) {
+                        balls = 0;
+                        var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                        for (var i = 0; i < all.length; i++) {
+                            var inst = all[i];
+                            if (!inst || inst._HL2 || !inst._eE2) continue;
+                            if (inst._eE2._fE2 === 'obj_ball') balls++;
+                            else if (inst._eE2._fE2 === 'obj_btn_kickoff') koBtn = true;
                         }
+                        // NOT live (GET READY / Kick Off) when: no ball spawned,
+                        // kickoff staging survived, or controller not in active play.
+                        stuck = (balls === 0) || koBtn || (kp !== 2);
                     }
                 } catch (e) { stuck = false; }
                 stuckPolls = stuck ? stuckPolls + 1 : 0;
-                // 3 consecutive polls (~2.1s) so a normal between-plays reset
-                // never flashes the button; the GET READY state persists until
-                // pressed, so the small delay is invisible there.
-                document.documentElement.classList.toggle('rb-stuck-kickoff', stuckPolls >= 3);
+                var shown = stuckPolls >= 3;
+                document.documentElement.classList.toggle('rb-stuck-kickoff', shown);
+
+                // --- write the live readout (temporary V227 diagnostic) ---
+                if (pgDiag) {
+                    var f = function (name, ok) {
+                        return '<span class="' + (ok ? 'good' : 'bad') + '">' + name + ':' + (ok ? 1 : 0) + '</span>';
+                    };
+                    pgDiag.innerHTML =
+                        'V227 DIAG\n' +
+                        f('match', g_match) + ' ' + f('room', g_room) + ' ' + f('!wait', g_wait) + '\n' +
+                        f('!pat', g_pat) + ' ' + f('supp', g_supp) + ' team:' + teamIdx + '\n' +
+                        'kp:' + kp + ' ball:' + balls + ' ' + f('!ko', !koBtn) + '\n' +
+                        '<span class="' + (shown ? 'good' : 'bad') + '">stuck:' + (stuck ? 1 : 0) +
+                        ' polls:' + stuckPolls + ' btn:' + (shown ? 1 : 0) + '</span>';
+                }
             }
             setInterval(pollStuckKickoff, 700);
             if (playGameBtn) playGameBtn.addEventListener('click', function () {
