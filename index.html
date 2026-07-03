@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V235<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V236<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V235</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V235</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V236</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V236</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1302,6 +1302,44 @@
                     _Y41.__rb2pWrapped = true;
                 }
             } catch (eW) {}
+
+            // V236: _Iy (s_set_up_button_kickoff) guard. Real-2P harness run
+            // proved the WAITING player sits on a fully live GET READY staging
+            // screen (kp:1 + tappable Kick Off button) for the whole opposing
+            // drive — the bridge never suppressed it. And on phones (where
+            // damaged rooms never purge corpses) every re-created button ends
+            // up a painted ghost. Kill the source: the button must never be
+            // built while this device is WAITING, nor while a drive is already
+            // live. The genuine fallback case (spawn failed: no ball, kp
+            // rolled back, not waiting) still passes through.
+            try {
+                if (typeof _Iy === 'function' && !_Iy.__rb2pWrapped) {
+                    var __origIy = _Iy;
+                    _Iy = function (_, t) {
+                        try {
+                            if (window._rb2p_userIsWaitingForOpponent === true) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('Iy suppressed (waiting)');
+                                return 0;
+                            }
+                            if (window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom()) {
+                                var em = RB.engineState && RB.engineState();
+                                if (em && em.engineControllerState === 2) {
+                                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                    for (var i = 0; i < all.length; i++) {
+                                        var inst = all[i];
+                                        if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') {
+                                            if (window._rb2p_diagLog) window._rb2p_diagLog('Iy suppressed (drive live)');
+                                            return 0;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (eG) {}
+                        return __origIy(_, t);
+                    };
+                    _Iy.__rb2pWrapped = true;
+                }
+            } catch (eI) {}
 
             function forceUserOffenseDrive(yardLine) {
                 try {
@@ -8594,9 +8632,14 @@
                     var em = window.RB && RB.engineState && RB.engineState();
                     if (em) { kp = em.engineControllerState; vy = em.engineDriveFsmStage;
                               z7 = em.rawEngineMatch._7z; }
+                    var waiting = window._rb2p_userIsWaitingForOpponent === true;
                     var healedNow = false;
                     var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var i = 0; i < all.length; i++) {
+                    // First pass: counts + heal. Corpses are FULLY purged (V236:
+                    // spliced out of the instance list — phones' damaged rooms
+                    // never run the engine's own purge, so we do it for them;
+                    // every engine dispatcher skips _HL2 instances anyway).
+                    for (var i = all.length - 1; i >= 0; i--) {
                         var inst = all[i];
                         if (!inst || !inst._eE2) continue;
                         var n = inst._eE2._fE2;
@@ -8604,22 +8647,42 @@
                         else if (n === 'obj_btn_kickoff') {
                             if (inst._HL2) {
                                 ghost++;
-                                // V234 SELF-HEAL: a corpse that still paints (its
-                                // _cr destroy threw → raw-kill fallback) is exactly
-                                // the on-device "stuck Receive" screen. Stop its
-                                // draw+step; no tap required.
-                                if (inst._g2 !== 0) {
-                                    try { inst._g2 = 0; healedNow = true;
-                                          diagLog('auto de-ghosted corpse btn'); } catch (eD) {}
-                                }
+                                try {
+                                    if (inst._g2 !== 0) { inst._g2 = 0; healedNow = true; }
+                                    all.splice(i, 1);   // manual purge
+                                    diagLog('purged corpse btn');
+                                } catch (eD) {}
+                            } else if (waiting) {
+                                // V236: the WAITING side must never show the
+                                // staging screen (real-2P harness: B sat on a
+                                // LIVE tappable Kick Off button all drive).
+                                try {
+                                    try { _cr(inst); } catch (eC) { inst._HL2 = true; }
+                                    inst._g2 = 0;
+                                    all.splice(i, 1);
+                                    healedNow = true;
+                                    diagLog('suppressed staging btn (waiting side)');
+                                } catch (eS) {}
                             } else live++;
                         }
                     }
-                    // Only while actively healing a corpse: the stale "GET READY!"
-                    // banner belongs to the same corrupted staging screen. __b1 is
-                    // reused for play-by-play banners, so never clear it otherwise.
-                    if (healedNow && em && ball > 0 && em.rawEngineMatch.__b1) {
-                        try { em.rawEngineMatch.__b1 = ''; diagLog('cleared stale GET READY banner'); } catch (eBnr) {}
+                    // Banner: clear ONLY the exact localized GET READY string —
+                    // __b1 also carries play-by-play banners. Clear it when this
+                    // side is waiting, or when a drive is live under it.
+                    if (em && em.rawEngineMatch.__b1) {
+                        try {
+                            if (window.__rbGetReadyStr === undefined) {
+                                try { window.__rbGetReadyStr = String(_XP(_Xi(em.rawEngineMatch, _Sc2, 'match_GetReady'))); }
+                                catch (eX) { window.__rbGetReadyStr = null; }
+                            }
+                            var b1now = String(em.rawEngineMatch.__b1);
+                            if ((window.__rbGetReadyStr && b1now === window.__rbGetReadyStr &&
+                                 (waiting || (ball > 0 && kp === 2))) ||
+                                (healedNow && ball > 0)) {
+                                em.rawEngineMatch.__b1 = '';
+                                diagLog('cleared GET READY banner');
+                            }
+                        } catch (eBnr) {}
                     }
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
                 } catch (e) {}
