@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V233<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V234<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V233</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V233</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V234</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V234</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1337,6 +1337,12 @@
                             if (!inst || inst._HL2) continue;
                             if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
                                 try { _cr(inst); } catch (eK) { inst._HL2 = true; }
+                                // V234: _cr's destroy-event dispatch can THROW in a
+                                // damaged room (seen on-device) — the fallback raw
+                                // kill then left a PAINTED corpse. _g2 = 0 makes the
+                                // engine skip draw+step unconditionally (same
+                                // mechanism hideCont uses), so no corpse can render.
+                                try { inst._g2 = 0; } catch (eV) {}
                             }
                         }
                     }
@@ -1469,6 +1475,12 @@
                         return false;
                     }
                     killKickoffButtons();
+                    // V234: the "GET READY!" banner (controller __b1, set at match
+                    // create) is only cleared by the engine's own kickoff flow,
+                    // which the bridge bypasses — on-device it stayed painted over
+                    // a LIVE drive, making the game look stuck. Staging is over
+                    // once the drive spawned: clear it.
+                    try { engineMatch.rawEngineMatch.__b1 = ''; } catch (eB) {}
 
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
@@ -1546,6 +1558,7 @@
                                 // V232: proper destroy — a raw _HL2 mark leaves a
                                 // painted-but-dead ghost button (see forceUserOffenseDrive).
                                 try { _cr(inst); } catch (eK) { inst._HL2 = true; }
+                                try { inst._g2 = 0; } catch (eV) {}   // V234: never paint a corpse
                                 sawBtn = true;
                             }
                             else if (inst._eE2._fE2 === 'obj_ball') balls++;
@@ -7788,6 +7801,7 @@
                                 inst._eE2._fE2 === 'obj_btn_kickoff') {
                                 // V232: proper destroy (no painted ghost)
                                 try { _cr(inst); } catch (eK) { inst._HL2 = true; }
+                                try { inst._g2 = 0; } catch (eV) {}   // V234: never paint a corpse
                             }
                         }
                     } catch (eH) {}
@@ -8514,13 +8528,42 @@
                 }
             } catch (eK) {}
 
+            // V234: any obj_btn_kickoff instance, live or corpse (_HL2 ghost)
+            function anyKickoffButtons() {
+                var out = [];
+                try {
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (inst && inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') out.push(inst);
+                    }
+                } catch (e) {}
+                return out;
+            }
+
             // -- THE TAP-BRIDGE --
             var canvasEl = document.getElementById('canvas');
             if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
                     var btns = liveKickoffButtons();
-                    if (!btns.length) return;   // nothing to bridge, zero overhead in play
+                    if (!btns.length) {
+                        // V234: taps on a painted CORPSE were silently ignored
+                        // (on-device evidence: zero tap lines while a ghost was
+                        // visible). De-ghost it on tap and say so.
+                        var ghosts = anyKickoffButtons();
+                        if (ghosts.length) {
+                            for (var gi = 0; gi < ghosts.length; gi++) {
+                                try { ghosts[gi]._g2 = 0; } catch (eG) {}
+                            }
+                            try {
+                                var emT = window.RB && RB.engineState && RB.engineState();
+                                if (emT && emT.rawEngineMatch.__b1) emT.rawEngineMatch.__b1 = '';
+                            } catch (eB2) {}
+                            diagLog('tap on corpse btn — de-ghosted; game should be live, tap field');
+                        }
+                        return;
+                    }
                     var g = pageToGui(e.pageX, e.pageY);
                     var b = btns[0], PAD = 16;
                     var hit = g.gx >= b.x - PAD && g.gx <= b.x + (b._8l1 || 96) + PAD &&
@@ -8542,7 +8585,7 @@
                 } catch (eT) {}
             }, { capture: true, passive: true });
 
-            // -- heartbeat readout --
+            // -- heartbeat readout + V234 corpse self-healer --
             var diagEl = document.getElementById('rb-diag');
             setInterval(function () {
                 if (!diagEl) return;
@@ -8551,13 +8594,32 @@
                     var em = window.RB && RB.engineState && RB.engineState();
                     if (em) { kp = em.engineControllerState; vy = em.engineDriveFsmStage;
                               z7 = em.rawEngineMatch._7z; }
+                    var healedNow = false;
                     var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
                         if (!inst || !inst._eE2) continue;
                         var n = inst._eE2._fE2;
                         if (n === 'obj_ball' && !inst._HL2) ball++;
-                        else if (n === 'obj_btn_kickoff') { if (inst._HL2) ghost++; else live++; }
+                        else if (n === 'obj_btn_kickoff') {
+                            if (inst._HL2) {
+                                ghost++;
+                                // V234 SELF-HEAL: a corpse that still paints (its
+                                // _cr destroy threw → raw-kill fallback) is exactly
+                                // the on-device "stuck Receive" screen. Stop its
+                                // draw+step; no tap required.
+                                if (inst._g2 !== 0) {
+                                    try { inst._g2 = 0; healedNow = true;
+                                          diagLog('auto de-ghosted corpse btn'); } catch (eD) {}
+                                }
+                            } else live++;
+                        }
+                    }
+                    // Only while actively healing a corpse: the stale "GET READY!"
+                    // banner belongs to the same corrupted staging screen. __b1 is
+                    // reused for play-by-play banners, so never clear it otherwise.
+                    if (healedNow && em && ball > 0 && em.rawEngineMatch.__b1) {
+                        try { em.rawEngineMatch.__b1 = ''; diagLog('cleared stale GET READY banner'); } catch (eBnr) {}
                     }
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
                 } catch (e) {}
