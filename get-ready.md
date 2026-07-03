@@ -1,10 +1,9 @@
 # GET READY — full research: why the kickoff screen breaks on phones
 
-Status: **OPEN** (V234, 2026-07-03). Five real defects found and fixed along the
-way; phones still show the staging screen. This doc is the complete, evidence-only
-record: the engine mechanics, every verified root cause, what is exonerated, the
-one methodological hole that explains why "verified" builds kept failing
-on-device, and the ranked path to closure.
+Status: **FIX SHIPPED — V236 (f19246b), 2026-07-03, awaiting device confirmation.**
+The §9 closure plan was executed the same day: the real-2P instrumented run
+(§7's missing experiment) found the last mechanism, and V236 closes it. See
+§11 for the result. Earlier sections are the investigation record.
 
 ---
 
@@ -247,6 +246,37 @@ two pages. They are the reproduction vehicle.
 4. **Separately**: chase the still-occurring on-device early `_Y41` crash
    ("undefined value in expression" seen shielded in V233) — capture its
    stack in the diag; it marks whatever still damages the room at boot.
+
+## 11. RESOLUTION (V236) — what the real-2P run found and what shipped
+
+Executing §9.1 (`repro-real2p.js`: two mobile-emulated CPU-throttled pages,
+real Firebase, `_Iy`/`_cr` caller stacks, controller counter) found:
+
+- **The WAITING player sits on a fully LIVE GET READY staging screen** —
+  `kp:1`, tappable Kick Off button, for the entire opposing drive. The bridge
+  parked role B's engine but never suppressed its staging UI. Every "waiting"
+  period on every device shows a fake, functional-looking kickoff screen.
+- `_Iy`'s only caller at match start is the controller CREATE (`_Z6` @66218)
+  — the button is built before the bridge even sets the waiting flag, so no
+  wrapper alone can prevent it; active suppression is required.
+- Zombie-controller hypothesis: **disproven** (ctl:1 on both pages throughout).
+- In healthy rooms the engine purges destroyed buttons instantly; phones'
+  damaged rooms don't (§4.5) — so each staging cycle there accumulates painted
+  corpses (the V234 churn log).
+
+V236 ships four layers:
+1. `_Iy` wrapped: no-op while this device is WAITING or while a drive is live
+   (ball + kp==2). Genuine failed-spawn fallback still builds the button.
+2. Heartbeat purges corpses outright (splice from `_oq2` — the manual version
+   of the purge phones fail to run; safe: all dispatchers skip `_HL2`).
+3. WAIT side: any live staging button destroyed + purged on sight; the waiting
+   player sees only the WAITING FOR OPPONENT overlay (screenshot-verified).
+4. GET READY banner cleared by exact localized-string match when waiting or
+   when a drive is live under it — directly covers the on-device
+   `ball:1 kp:2 + banner` stall state.
+
+Verified: real-2P run clean on both sides for a full drive; v233 suite 9/9;
+v234 corpse suite; PAT 37/37.
 
 ## 10. Repro/verification commands
 
