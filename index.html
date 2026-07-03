@@ -492,6 +492,22 @@
         html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
         html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
 
+        /* V233 one-shot diagnostic — mobile, in-match. Persists across the
+           auto-reload; one screenshot of this box is a full incident report. */
+        #rb-diag { display: none; }
+        html.rb-mobile.rb-in-match #rb-diag {
+            display: block;
+            position: fixed; z-index: 10003;
+            top: 4px; right: 4px;
+            max-width: 72vw;
+            padding: 4px 6px;
+            font-family: monospace; font-size: 9px; line-height: 1.25;
+            font-weight: bold; white-space: pre;
+            color: #eaffea; background: rgba(4,12,28,.82);
+            border: 1px solid #3cff7a; border-radius: 5px;
+            pointer-events: none;
+        }
+
         /* the three overlay elements: compact + clustered under the toggle */
         html.rb-mobile #rb-leave-game,
         html.rb-mobile #rb-roster-view {
@@ -582,6 +598,8 @@
          into one small chip so they stop blocking the scoreboard + player names.
          Hidden on desktop (CSS). Tapping it expands the cluster. -->
     <button id="rb-hud-toggle" type="button" aria-label="Show game controls">&#9776;</button>
+    <!-- V233 one-shot diagnostic readout (mobile, in-match; see CSS). -->
+    <div id="rb-diag"></div>
 
     <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
     <div id="rb-roster-overlay">
@@ -663,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V232<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V233<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -731,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V232</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V232</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V233</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V233</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1276,6 +1294,8 @@
                         catch (eY) {
                             if (++__y41Errs <= 3) console.warn('[2p-rb] _Y41 crash shielded (#' +
                                 __y41Errs + '):', (eY && eY.message) || eY);
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'Y41 shielded ' + String((eY && eY.message) || eY).slice(0, 50));
                             return 0;
                         }
                     };
@@ -1429,6 +1449,8 @@
                     } catch (eS) {
                         rollBackFieldState();
                         console.log('[2p-rb] forceUserOffenseDrive spawn crashed (rolled back):', eS);
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'force CRASH ' + String((eS && eS.message) || eS).slice(0, 60));
                         return false;
                     }
                     // Confirm the spawn actually produced a ball before killing
@@ -1443,6 +1465,7 @@
                     if (spawnedBall === 0) {
                         rollBackFieldState();
                         console.log('[2p-rb] forceUserOffenseDrive: spawn completed but no ball — rolled back');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('force NO-BALL (rolled back)');
                         return false;
                     }
                     killKickoffButtons();
@@ -1477,6 +1500,7 @@
                     if (Date.now() - lastR < 60000) return;
                     sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
                     console.warn('[2p-rb] opening spawn poisoned (' + tag + ') — reloading into resume flow');
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('POISONED (' + tag + ') -> auto-reload');
                     setTimeout(function () { location.reload(); }, 200);
                 } catch (eL) {}
             }
@@ -8401,6 +8425,150 @@
             if ($rosterView) $rosterView.addEventListener('click', function () {
                 document.documentElement.classList.remove('rb-hud-open');
             });
+        })();
+
+        // ==== V233 one-shot diagnostic + DOM tap-bridge ====================
+        // Two jobs:
+        //  (1) An on-screen, reload-surviving incident log — one phone
+        //      screenshot answers everything (force errors w/ stack, taps
+        //      raw→GUI→hit verdict, _Ky fires, reloads, shield catches).
+        //  (2) THE FIX for the last untestable failure mode: if the engine's
+        //      GUI-mouse never registers taps on real iOS, even a LIVE
+        //      Receive button stays deaf. The tap-bridge catches the tap at
+        //      the DOM level, maps it with our own rotation math, and calls
+        //      the button's engine handler (_Ky) DIRECTLY — the engine's
+        //      touch plumbing is no longer in the path at all.
+        (function () {
+            var DIAG_KEY = 'rb2p_diag233';
+            var lastMsg = null, lastCount = 0;
+            function readLog() {
+                try { return JSON.parse(sessionStorage.getItem(DIAG_KEY) || '[]'); } catch (e) { return []; }
+            }
+            function diagLog(msg) {
+                try {
+                    var t = new Date();
+                    var text = String(msg).slice(0, 120);
+                    var ts = ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2);
+                    var arr = readLog();
+                    if (text === lastMsg && arr.length) {
+                        lastCount++;
+                        arr[arr.length - 1] = ts + ' ' + text + ' x' + lastCount;
+                    } else {
+                        lastMsg = text; lastCount = 1;
+                        arr.push(ts + ' ' + text);
+                    }
+                    while (arr.length > 11) arr.shift();
+                    sessionStorage.setItem(DIAG_KEY, JSON.stringify(arr));
+                    console.log('[2P DIAG] ' + msg);
+                } catch (e) {}
+            }
+            window._rb2p_diagLog = diagLog;
+            (function () {
+                var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
+                diagLog('boot' + (Date.now() - lastR < 20000 ? ' (post auto-reload)' : ''));
+            })();
+            window.addEventListener('error', function (ev) {
+                var frame = '';
+                try {
+                    var lines = ((ev.error && ev.error.stack) || '').split('\n');
+                    frame = (lines[1] || lines[0] || '').replace(/@.*\//, '@').trim().slice(0, 44);
+                } catch (eS) {}
+                diagLog('ERR ' + String(ev.message).slice(0, 100) +
+                        (ev.lineno ? ' @' + ev.lineno : '') + (frame ? ' | ' + frame : ''));
+            });
+            window.addEventListener('unhandledrejection', function (ev) {
+                var r = ev && ev.reason;
+                diagLog('REJ ' + String((r && r.message) || r).slice(0, 70));
+            });
+
+            // -- shared helpers --
+            function liveKickoffButtons() {
+                var out = [];
+                try {
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') out.push(inst);
+                    }
+                } catch (e) {}
+                return out;
+            }
+            // screen(page coords) -> engine GUI coords, honoring the forced
+            // rotation. Inverse of the harness-verified GUI->screen map.
+            function pageToGui(px, py) {
+                var iw = window.innerWidth, ih = window.innerHeight;
+                if (!document.documentElement.classList.contains('rb-rot90'))
+                    return { gx: px / iw * 853, gy: py / ih * 480 };
+                return { gx: (ih - py) / ih * 853, gy: px / iw * 480 };
+            }
+
+            // -- proof-of-click: log whenever the engine's own path fires _Ky --
+            try {
+                if (typeof _Ky === 'function' && !_Ky.__rb2pWrapped) {
+                    var __origKy = _Ky;
+                    _Ky = function (_, t) {
+                        diagLog('KY fired (kickoff button clicked)');
+                        return __origKy(_, t);
+                    };
+                    _Ky.__rb2pWrapped = true;
+                }
+            } catch (eK) {}
+
+            // -- THE TAP-BRIDGE --
+            var canvasEl = document.getElementById('canvas');
+            if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    var btns = liveKickoffButtons();
+                    if (!btns.length) return;   // nothing to bridge, zero overhead in play
+                    var g = pageToGui(e.pageX, e.pageY);
+                    var b = btns[0], PAD = 16;
+                    var hit = g.gx >= b.x - PAD && g.gx <= b.x + (b._8l1 || 96) + PAD &&
+                              g.gy >= b.y - PAD && g.gy <= b.y + (b._VI || 32) + PAD;
+                    diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
+                            '->gui ' + Math.round(g.gx) + ',' + Math.round(g.gy) +
+                            ' btn(' + b.x + ',' + b.y + ') ' + (hit ? 'HIT' : 'miss'));
+                    // Let the engine's own handling win if it works: check a beat
+                    // later whether the button is still alive; if so, fire direct.
+                    if (hit) setTimeout(function () {
+                        try {
+                            if (b._HL2) { diagLog('engine handled the tap itself'); return; }
+                            var mx = -1, my = -1;
+                            try { mx = Math.round(_m01(0)); my = Math.round(_o01(0)); } catch (eM) {}
+                            diagLog('engine gui-mouse says ' + mx + ',' + my + ' — firing KY direct');
+                            _Ky(b, b);
+                        } catch (eF) { diagLog('KY direct ERR ' + String((eF && eF.message) || eF).slice(0, 60)); }
+                    }, 350);
+                } catch (eT) {}
+            }, { capture: true, passive: true });
+
+            // -- heartbeat readout --
+            var diagEl = document.getElementById('rb-diag');
+            setInterval(function () {
+                if (!diagEl) return;
+                var kp = '?', vy = '?', z7 = '?', ball = 0, live = 0, ghost = 0, gmx = '?', gmy = '?';
+                try {
+                    var em = window.RB && RB.engineState && RB.engineState();
+                    if (em) { kp = em.engineControllerState; vy = em.engineDriveFsmStage;
+                              z7 = em.rawEngineMatch._7z; }
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || !inst._eE2) continue;
+                        var n = inst._eE2._fE2;
+                        if (n === 'obj_ball' && !inst._HL2) ball++;
+                        else if (n === 'obj_btn_kickoff') { if (inst._HL2) ghost++; else live++; }
+                    }
+                    try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
+                } catch (e) {}
+                var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+                diagEl.innerHTML =
+                    'V233 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 + '\n' +
+                    'gui-mouse:' + gmx + ',' + gmy + '\n' +
+                    '--- LOG (survives reload) ---\n' +
+                    readLog().slice(-8).map(esc).join('\n');
+            }, 700);
         })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
