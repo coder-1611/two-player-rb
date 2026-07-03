@@ -492,25 +492,6 @@
         html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
         html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
 
-        /* V230: plain guidance for the stuck GET READY screen — a small static
-           hint during matches on mobile. A refresh always recovers the game
-           (the resume flow re-forces the drive). No detection, no buttons. */
-        #rb-refresh-hint { display: none; }
-        /* V231: hide the hint once the play is actually live (rb-play-live is
-           toggled by a tiny display-only watcher below) */
-        html.rb-play-live #rb-refresh-hint { display: none !important; }
-        html.rb-mobile.rb-in-match #rb-refresh-hint {
-            display: block;
-            position: fixed; z-index: 9997;
-            top: 6px; left: 50%; transform: translateX(-50%);
-            padding: 4px 10px;
-            font-family: monospace; font-size: 10px; font-weight: bold;
-            letter-spacing: 1px; line-height: 1.2; white-space: nowrap;
-            color: #ffd23c; background: rgba(10,10,20,0.65);
-            border: 1px solid rgba(255,210,60,0.5); border-radius: 6px;
-            opacity: 0.8; pointer-events: none;
-        }
-
         /* the three overlay elements: compact + clustered under the toggle */
         html.rb-mobile #rb-leave-game,
         html.rb-mobile #rb-roster-view {
@@ -601,8 +582,6 @@
          into one small chip so they stop blocking the scoreboard + player names.
          Hidden on desktop (CSS). Tapping it expands the cluster. -->
     <button id="rb-hud-toggle" type="button" aria-label="Show game controls">&#9776;</button>
-    <!-- V230: static hint — if the game hangs on GET READY, a refresh recovers it. -->
-    <div id="rb-refresh-hint">STUCK ON GET READY? REFRESH THE PAGE</div>
 
     <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
     <div id="rb-roster-overlay">
@@ -684,7 +663,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V231<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V232<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -752,7 +731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V231</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V231</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V232</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V232</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1280,10 +1259,38 @@
             //   - Player A's engineMatch start (their first offensive drive)
             //   - After applyOpponentOutcome on every subsequent received drive
             // Idempotent: if obj_ball already exists, _eb1 is skipped.
+
+            // V232: _Y41 (per-player finalize, 22 calls per s_set_up_play)
+            // crashes on null singleton lookups (_jj → no live instance for
+            // obj 64/71) in a half-built or aged room — ONE throw aborts the
+            // whole 22-player+ball spawn (harness-verified: this is the GET
+            // READY stall's spawn failure). Per-player try/catch shield: one
+            // bad player no longer kills the spawn. Engine top-level functions
+            // are true globals, so reassigning rebinds every caller.
+            try {
+                if (typeof _Y41 === 'function' && !_Y41.__rb2pWrapped) {
+                    var __origY41 = _Y41;
+                    var __y41Errs = 0;
+                    _Y41 = function (_, t) {
+                        try { return __origY41(_, t); }
+                        catch (eY) {
+                            if (++__y41Errs <= 3) console.warn('[2p-rb] _Y41 crash shielded (#' +
+                                __y41Errs + '):', (eY && eY.message) || eY);
+                            return 0;
+                        }
+                    };
+                    _Y41.__rb2pWrapped = true;
+                }
+            } catch (eW) {}
+
             function forceUserOffenseDrive(yardLine) {
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
+                    // V232: resolve the spawner FIRST — a clean bail must happen
+                    // before ANY state is touched.
+                    var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
+                    if (typeof setUpPlay !== 'function') return false;
                     // V140: user is on offense again → re-enable the MAX defender
                     // speed bump (cleared after a turnover so the return ran normal).
                     window._rb2p_intReturnActive = false;
@@ -1292,14 +1299,25 @@
                     window._rb2p_pick6SentThisPossession = false;
                     // V192: re-arm the per-play INT-credit dedup for this drive.
                     window._rb2p_intCreditedThisPlay = false;
-                    // Drop any lingering kickoff button — it gates the
-                    // controller's step and would re-trigger the dead path.
                     var allInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var i = 0; i < allInstances.length; i++) {
-                        var inst = allInstances[i];
-                        if (!inst || inst._HL2) continue;
-                        if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
-                            inst._HL2 = true;
+                    // V232 GHOST-BUTTON FIX: the kickoff "Receive" button is NOT
+                    // killed up front anymore. The old order killed it (raw
+                    // `_HL2 = true`) and THEN spawned; when the spawn crashed the
+                    // player stared at a corpse — GameMaker still PAINTS
+                    // `_HL2`-marked instances but never runs their step, so the
+                    // visible button ignored every tap (harness-verified:
+                    // ghost:1/live:0, trusted tap at its rect → nothing). The
+                    // button now dies only AFTER a confirmed spawn, and via the
+                    // engine's real destroy (_cr) so no corpse is ever painted.
+                    // It must still die then: a surviving button gates
+                    // obj_controller's step (the gutted AI-kickoff path).
+                    function killKickoffButtons() {
+                        for (var i = 0; i < allInstances.length; i++) {
+                            var inst = allInstances[i];
+                            if (!inst || inst._HL2) continue;
+                            if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
+                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
+                            }
                         }
                     }
                     // Snapshot scores at drive-start so the _1c1 wrapper can
@@ -1307,6 +1325,30 @@
                     // offensive drive) and PAT-eligibility (user scored 6).
                     window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
                     window._rb2p_opponentScoreAtDriveStart  = engineMatch.opponentScore;
+                    // V232: snapshot everything mutated below so a failed spawn
+                    // rolls back cleanly — leaving the engine's native kickoff
+                    // staging (kp=1 + live tappable button) playable instead of
+                    // a poisoned half-state.
+                    var fieldSnap = {
+                        poss: engineMatch.enginePossessingTeamIdx,
+                        down: engineMatch.engineDownNumber,
+                        ytg:  engineMatch.engineYardsToGo,
+                        ydl:  engineMatch.engineYardLineSigned,
+                        dir:  engineMatch.engineDriveDirection,
+                        vy:   engineMatch.engineDriveFsmStage,
+                        kp:   engineMatch.engineControllerState
+                    };
+                    function rollBackFieldState() {
+                        try {
+                            engineMatch.enginePossessingTeamIdx = fieldSnap.poss;
+                            engineMatch.engineDownNumber        = fieldSnap.down;
+                            engineMatch.engineYardsToGo         = fieldSnap.ytg;
+                            engineMatch.engineYardLineSigned    = fieldSnap.ydl;
+                            engineMatch.engineDriveDirection    = fieldSnap.dir;
+                            engineMatch.engineDriveFsmStage     = fieldSnap.vy;
+                            engineMatch.engineControllerState   = fieldSnap.kp;
+                        } catch (eR) {}
+                    }
 
                     // Field state for a fresh 1st & 10.
                     // yardLine is signed yards from MIDFIELD: negative = own half
@@ -1375,14 +1417,35 @@
                         if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') ballCount++;
                     }
                     if (ballCount > 0) {
+                        killKickoffButtons();
                         engineMatch.engineControllerState = 2;
                         armKickoffSweeper(ydl);
                         return true;
                     }
 
-                    var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
-                    if (typeof setUpPlay !== 'function') return false;
-                    setUpPlay(engineMatch.rawEngineMatch, _Sc2, 0);
+                    // V232: spawn FIRST; the button dies only on confirmed success.
+                    try {
+                        setUpPlay(engineMatch.rawEngineMatch, _Sc2, 0);
+                    } catch (eS) {
+                        rollBackFieldState();
+                        console.log('[2p-rb] forceUserOffenseDrive spawn crashed (rolled back):', eS);
+                        return false;
+                    }
+                    // Confirm the spawn actually produced a ball before killing
+                    // the native button — a silent no-ball "success" must also
+                    // leave the staging playable.
+                    var spawnedBall = 0;
+                    var nowInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var k = 0; k < nowInstances.length; k++) {
+                        var nb = nowInstances[k];
+                        if (nb && !nb._HL2 && nb._eE2 && nb._eE2._fE2 === 'obj_ball') spawnedBall++;
+                    }
+                    if (spawnedBall === 0) {
+                        rollBackFieldState();
+                        console.log('[2p-rb] forceUserOffenseDrive: spawn completed but no ball — rolled back');
+                        return false;
+                    }
+                    killKickoffButtons();
 
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
@@ -1395,6 +1458,29 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
+
+            // V232: poisoned-spawn recovery. Harness-proven: once the FIRST
+            // spawn of a match crashes, every later s_set_up_play throws too
+            // (GML _ZC2) — the room is unrecoverable in place; ONLY a reload
+            // (fresh room + resume flow) fixes it. That's the one case where
+            // the manual-refresh behavior is automated: after ~3s of
+            // consecutive opening-spawn failures, reload once (max once/min).
+            var openingSpawnFails = 0;
+            function noteOpeningSpawnResult(ok, tag) {
+                if (ok) { openingSpawnFails = 0; return; }
+                openingSpawnFails++;
+                var need = window._rb2p_spawnReloadAfterFails || 60;   // 60 × 50ms ≈ 3s
+                if (openingSpawnFails < need) return;
+                openingSpawnFails = 0;
+                try {
+                    var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
+                    if (Date.now() - lastR < 60000) return;
+                    sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
+                    console.warn('[2p-rb] opening spawn poisoned (' + tag + ') — reloading into resume flow');
+                    setTimeout(function () { location.reload(); }, 200);
+                } catch (eL) {}
+            }
+            window._rb2p_noteOpeningSpawnResult = noteOpeningSpawnResult;
 
             // ---- kickoff sweeper: cure the mobile GET READY!/Kick Off hang ----
             // forceUserOffenseDrive kills obj_btn_kickoff ONCE, but on slow
@@ -1432,7 +1518,12 @@
                         for (var i = 0; i < all.length; i++) {
                             var inst = all[i];
                             if (!inst || inst._HL2 || !inst._eE2) continue;
-                            if (inst._eE2._fE2 === 'obj_btn_kickoff') { inst._HL2 = true; sawBtn = true; }
+                            if (inst._eE2._fE2 === 'obj_btn_kickoff') {
+                                // V232: proper destroy — a raw _HL2 mark leaves a
+                                // painted-but-dead ghost button (see forceUserOffenseDrive).
+                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
+                                sawBtn = true;
+                            }
                             else if (inst._eE2._fE2 === 'obj_ball') balls++;
                         }
                         if (balls > 0) ballSeenEver = true;
@@ -2876,7 +2967,13 @@
                                         // the yard line; we overwrite down/toGo right after.
                                         var resumeYard = (typeof rs.yardLine === 'number')
                                             ? rs.yardLine : window._rb2p_kickoffReturnYard();
-                                        forceUserOffenseDrive(resumeYard);
+                                        // V232: the resume force can fail too (poisoned
+                                        // boot). Retry next tick instead of silently
+                                        // proceeding without a drive; the shared counter
+                                        // reloads once if the room is truly poisoned.
+                                        var resumeForceOk = forceUserOffenseDrive(resumeYard);
+                                        noteOpeningSpawnResult(resumeForceOk, 'resume');
+                                        if (!resumeForceOk) return;
                                         if (typeof rs.down === 'number' && rs.down >= 1 && rs.down <= 4)
                                             em.engineDownNumber = rs.down;
                                         if (typeof rs.toGo === 'number' && rs.toGo >= 0)
@@ -2971,9 +3068,11 @@
                                 // Receiver's own X = NEGATIVE yardLine.
                                 var openingYard = window._rb2p_kickoffReturnYard();
                                 if (!forceUserOffenseDrive(openingYard)) {
+                                    noteOpeningSpawnResult(false, 'pollA');   // V232: poisoned-room reload path
                                     if (triesA > 2400) clearInterval(pollA);
                                     return;
                                 }
+                                noteOpeningSpawnResult(true, 'pollA');
                                 window._rb2p_userIsWaitingForOpponent = false;
                                 window._rb2p_userOutcomeSendInProgress      = false;
                                 window._rb2p_lastOpponentOutcomeApplyMs         = Date.now();
@@ -7662,7 +7761,10 @@
                         for (var i = 0; i < insts.length; i++) {
                             var inst = insts[i];
                             if (inst && !inst._HL2 && inst._eE2 &&
-                                inst._eE2._fE2 === 'obj_btn_kickoff') inst._HL2 = true;
+                                inst._eE2._fE2 === 'obj_btn_kickoff') {
+                                // V232: proper destroy (no painted ghost)
+                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
+                            }
                         }
                     } catch (eH) {}
                     if (++hn > 90) { clearInterval(hiv); window._rb2p_otResumeHoldActive = false; }
@@ -8299,33 +8401,6 @@
             if ($rosterView) $rosterView.addEventListener('click', function () {
                 document.documentElement.classList.remove('rb-hud-open');
             });
-
-            // V231: display-only watcher for the refresh hint — hide it once
-            // the play is actually live (ball spawned + controller active),
-            // show it again only if the pre-start state persists ~3s (so a
-            // brief between-plays reset never flashes it back). Touches
-            // NOTHING in the engine; it only toggles a CSS class.
-            var hintDeadPolls = 0;
-            setInterval(function () {
-                var live = false;
-                try {
-                    if (document.documentElement.classList.contains('rb-in-match') &&
-                        window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom()) {
-                        var em = RB.engineState();
-                        if (em && em.engineControllerState === 2) {
-                            var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                            for (var i = 0; i < all.length; i++) {
-                                var inst = all[i];
-                                if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') { live = true; break; }
-                            }
-                        }
-                    }
-                } catch (e) {}
-                hintDeadPolls = live ? 0 : hintDeadPolls + 1;
-                // live → hide instantly; not-live → re-show only after 3 polls
-                if (live) document.documentElement.classList.add('rb-play-live');
-                else if (hintDeadPolls >= 3) document.documentElement.classList.remove('rb-play-live');
-            }, 1000);
         })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
