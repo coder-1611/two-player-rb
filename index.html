@@ -496,6 +496,9 @@
            hint during matches on mobile. A refresh always recovers the game
            (the resume flow re-forces the drive). No detection, no buttons. */
         #rb-refresh-hint { display: none; }
+        /* V231: hide the hint once the play is actually live (rb-play-live is
+           toggled by a tiny display-only watcher below) */
+        html.rb-play-live #rb-refresh-hint { display: none !important; }
         html.rb-mobile.rb-in-match #rb-refresh-hint {
             display: block;
             position: fixed; z-index: 9997;
@@ -681,7 +684,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V230<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V231<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +752,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V230</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V230</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V231</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V231</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8296,6 +8299,33 @@
             if ($rosterView) $rosterView.addEventListener('click', function () {
                 document.documentElement.classList.remove('rb-hud-open');
             });
+
+            // V231: display-only watcher for the refresh hint — hide it once
+            // the play is actually live (ball spawned + controller active),
+            // show it again only if the pre-start state persists ~3s (so a
+            // brief between-plays reset never flashes it back). Touches
+            // NOTHING in the engine; it only toggles a CSS class.
+            var hintDeadPolls = 0;
+            setInterval(function () {
+                var live = false;
+                try {
+                    if (document.documentElement.classList.contains('rb-in-match') &&
+                        window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom()) {
+                        var em = RB.engineState();
+                        if (em && em.engineControllerState === 2) {
+                            var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                            for (var i = 0; i < all.length; i++) {
+                                var inst = all[i];
+                                if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') { live = true; break; }
+                            }
+                        }
+                    }
+                } catch (e) {}
+                hintDeadPolls = live ? 0 : hintDeadPolls + 1;
+                // live → hide instantly; not-live → re-show only after 3 polls
+                if (live) document.documentElement.classList.add('rb-play-live');
+                else if (hintDeadPolls >= 3) document.documentElement.classList.remove('rb-play-live');
+            }, 1000);
         })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
