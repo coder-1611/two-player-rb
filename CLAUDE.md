@@ -102,3 +102,26 @@ If a future change makes the bridge add points without a human
 having played the scene that earned them, that's a regression of
 this rule — fix it by routing the play to the correct device's
 canvas instead.
+
+## Verification ladder for mobile/staging bugs (PERMANENT, added V238)
+
+The GET READY saga (V224-V236, see get-ready.md) proved that harness green
+does NOT mean phone green. For any change touching match start, staging,
+input, or spawn paths, climb this ladder before claiming a fix:
+
+1. `H.enterMatch` (vs-KC) harness — fast unit-level check ONLY. Never
+   sufficient by itself: it does not run the Firebase 2P flow at all.
+2. `e2e/two-player.js` — the REAL flow (two pages, real Firebase, roles
+   a+b). Mobile-emulate both pages + `Emulation.setCPUThrottlingRate`.
+   Mandatory for anything in this bug class.
+3. Playwright WebKit (installed in the scratchpad `pw/`) — real Safari
+   engine; catches WebKit-vs-Chromium divergence (e.g. the corpse-purge
+   behavior Chrome could never reproduce).
+4. Real device telemetry — the V238 diag streams to
+   `https://realretrobowl2p-default-rtdb.firebaseio.com/diag/*.json`
+   (room_role_session keys) every 5s during matches. After the user plays,
+   read the sessions with curl instead of asking for screenshots. Clean up
+   test entries after reading.
+
+Claim "fixed" only at rung 4, or rung 2+3 with an explicit note that
+device confirmation is pending.

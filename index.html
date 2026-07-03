@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V237<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V238<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V237</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V237</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V238</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V238</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8623,6 +8623,31 @@
                 } catch (eT) {}
             }, { capture: true, passive: true });
 
+            // V238 TELEMETRY: stream the diag (state line + reload-surviving
+            // log) to the game's own Firebase DB every 5s during a match, so
+            // real phone sessions are readable remotely — no more screenshots.
+            // Tiny writes, match-time only, keyed room_role_session.
+            var telemetrySess = Math.random().toString(36).slice(2, 7);
+            setInterval(function () {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    var room = '', role = '';
+                    try { room = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
+                    try { role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : ''; } catch (e) {}
+                    var key = ((room || 'noroom') + '_' + (role || 'x') + '_' + telemetrySess)
+                        .replace(/[^A-Za-z0-9_-]/g, '');
+                    var el = document.getElementById('rb-diag');
+                    fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/diag/' + key + '.json', {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            ts: Date.now(),
+                            ua: navigator.userAgent.slice(0, 90),
+                            diag: ((el && el.innerText) || '').slice(0, 1500)
+                        })
+                    }).catch(function () {});
+                } catch (e) {}
+            }, 5000);
+
             // -- heartbeat readout + V234 corpse self-healer --
             var diagEl = document.getElementById('rb-diag');
             setInterval(function () {
@@ -8688,7 +8713,7 @@
                 } catch (e) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V233 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V238 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 + '\n' +
                     'gui-mouse:' + gmx + ',' + gmy + '\n' +
                     '--- LOG (survives reload) ---\n' +
