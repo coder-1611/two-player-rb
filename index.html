@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V239<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V240<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V239</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V239</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V240</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V240</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8683,6 +8683,7 @@
             setInterval(function () {
                 if (!diagEl) return;
                 var kp = '?', vy = '?', z7 = '?', ball = 0, live = 0, ghost = 0, gmx = '?', gmy = '?';
+                var ctl = 0, pops = 0, b1out = '';
                 try {
                     var em = window.RB && RB.engineState && RB.engineState();
                     if (em) { kp = em.engineControllerState; vy = em.engineDriveFsmStage;
@@ -8703,10 +8704,20 @@
                         else if (n === 'obj_btn_kickoff') {
                             if (inst._HL2) {
                                 ghost++;
-                                if (inst._g2 !== 0) {
-                                    try { inst._g2 = 0; healedNow = true;
-                                          diagLog('de-ghosted corpse btn'); } catch (eD) {}
-                                }
+                                // V240: on-device proof (de-ghosted x76): the
+                                // engine's staging code RE-SHOWS the corpse every
+                                // frame (it still holds the instance id), so a
+                                // _g2=0 written every 700ms loses 59 frames in 60.
+                                // POSITION survives the re-show — park the corpse
+                                // far off-screen once; _g2=0 stays as belt.
+                                try {
+                                    if (inst.x > -1000) {
+                                        inst.x = -2000; inst.y = -2000;
+                                        healedNow = true;
+                                        diagLog('corpse btn parked off-screen');
+                                    }
+                                    if (inst._g2 !== 0) inst._g2 = 0;
+                                } catch (eD) {}
                             } else if (waiting) {
                                 // V236: the WAITING side must never show the
                                 // staging screen (real-2P harness: B sat on a
@@ -8714,44 +8725,76 @@
                                 try {
                                     try { _cr(inst); } catch (eC) { inst._HL2 = true; }
                                     inst._g2 = 0;
+                                    inst.x = -2000; inst.y = -2000;   // V240: survive re-shows
                                     healedNow = true;
                                     diagLog('suppressed staging btn (waiting side)');
                                 } catch (eS) {}
                             } else live++;
                         }
                     }
-                    // Banner: clear the GET READY staging banner when this side
-                    // is waiting or a drive is live under it. V239: exact-string
-                    // match plus a plain-text fallback (the _Xi lookup can fail
-                    // silently, which left the banner painted on-device).
-                    if (em && em.rawEngineMatch.__b1) {
-                        try {
-                            if (window.__rbGetReadyStr === undefined) {
-                                try { window.__rbGetReadyStr = String(_XP(_Xi(em.rawEngineMatch, _Sc2, 'match_GetReady'))); }
-                                catch (eX) { window.__rbGetReadyStr = null; }
-                            }
-                            var b1now = String(em.rawEngineMatch.__b1);
-                            var isGetReady = (window.__rbGetReadyStr && b1now === window.__rbGetReadyStr) ||
-                                             /get\s*ready/i.test(b1now);
+                    // Banner sweep — V240: over EVERY controller instance (not
+                    // just the one engineState happens to read), with exact-
+                    // string + plain-text GET READY matching. Also counts
+                    // controllers for the diag header.
+                    try {
+                        if (window.__rbGetReadyStr === undefined && em) {
+                            try { window.__rbGetReadyStr = String(_XP(_Xi(em.rawEngineMatch, _Sc2, 'match_GetReady'))); }
+                            catch (eX) { window.__rbGetReadyStr = null; }
+                        }
+                        var cs = _si(71);
+                        for (var ck in cs) {
+                            if (!cs.hasOwnProperty(ck)) continue;
+                            ctl++;
+                            var cInst = cs[ck];
+                            var cb1 = String(cInst.__b1 || '');
+                            if (!cb1) continue;
+                            if (!b1out) b1out = cb1.slice(0, 12);
+                            var isGetReady = (window.__rbGetReadyStr && cb1 === window.__rbGetReadyStr) ||
+                                             /get\s*ready/i.test(cb1);
                             if ((isGetReady && (waiting || (ball > 0 && kp === 2))) ||
                                 (healedNow && ball > 0)) {
-                                em.rawEngineMatch.__b1 = '';
+                                cInst.__b1 = '';
+                                if (b1out === cb1.slice(0, 12)) b1out = '';
                                 diagLog('cleared GET READY banner');
                             }
-                        } catch (eBnr) {}
-                    }
+                        }
+                    } catch (eBnr) {}
+                    // V240: kill NON-PAT popups while a 2P match is active. The
+                    // welcome/intro popup (fresh save — phones lose site storage
+                    // often) gates ALL engine button input (_y2 early-returns on
+                    // any object-46 instance) and blocked B's engine from ever
+                    // reaching the match. PAT modals (script ids 100367/100369)
+                    // are the only in-match popups the 2P design wants.
+                    try {
+                        if (typeof window._rb2p_enumeratePopupInstances === 'function') {
+                            var pl = window._rb2p_enumeratePopupInstances() || [];
+                            pops = pl.length;
+                            if (pops && window._rb2p_patPlayPending !== true) {
+                                var hasPat = false;
+                                for (var pi = 0; pi < pl.length; pi++)
+                                    if (pl[pi] && (pl[pi]._0G === 100367 || pl[pi]._0G === 100369)) { hasPat = true; break; }
+                                if (!hasPat) {
+                                    for (var pj = 0; pj < pl.length; pj++) {
+                                        try { _cr(pl[pj]); } catch (eP1) { try { pl[pj]._HL2 = true; } catch (eP2) {} }
+                                        try { pl[pj]._g2 = 0; pl[pj].x = -2000; pl[pj].y = -2000; } catch (eP3) {}
+                                    }
+                                    diagLog('killed non-PAT popup x' + pops);
+                                    pops = 0;
+                                }
+                            }
+                        }
+                    } catch (ePp) {}
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
                 } catch (e) {}
-                var b1out = '';
-                try { b1out = String((em && em.rawEngineMatch.__b1) || '').slice(0, 12); } catch (eB1) {}
                 var clkout = '';
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V239 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V240 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + '\n' +
-                    'gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
+                    'ctl:' + ctl + ' pop:' + pops +
+                    ' gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
                     ' b1:' + (b1out ? esc(b1out) : '-') + '\n' +
                     '--- LOG (survives reload) ---\n' +
                     readLog().slice(-8).map(esc).join('\n');
