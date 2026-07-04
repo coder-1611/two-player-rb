@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V240<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V241<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V240</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V240</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V241</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V241</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8790,9 +8790,10 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V240 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V241 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
-                    ' fps:' + diagFps + '\n' +
+                    ' fps:' + diagFps + ' eng:' + engPerSec +
+                    (engKicks ? ' kicks:' + engKicks : '') + '\n' +
                     'ctl:' + ctl + ' pop:' + pops +
                     ' gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
                     ' b1:' + (b1out ? esc(b1out) : '-') + '\n' +
@@ -8804,6 +8805,55 @@
             var rafCount = 0, diagFps = -1;
             (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
             setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
+
+            // ==== V241 ENGINE-LOOP WATCHDOG =============================
+            // Phone A telemetry (room FXHF): fps:60 but a FROZEN canvas over
+            // live engine state (ball:1, 22 players spawned, empty field in
+            // the snapshot) — the engine's tick chain (rAF -> _fi5 -> _Gi5 ->
+            // reschedule) had died while the page itself stayed healthy. The
+            // chain's states survive, so calling _fi5() re-arms it. Watchdog:
+            // count real engine ticks by wrapping _Gi5; if they flatline
+            // while a match is active, kick _fi5(). Self-regulating: a live
+            // chain keeps the counter fresh so the watchdog abstains; if rAF
+            // is dead entirely, the 50ms interval itself drives ~20fps.
+            var engTicks = 0, engPerSec = -1, lastChainMs = Date.now(), engKicks = 0;
+            var kickInProgress = false;
+            try {
+                if (typeof _Gi5 === 'function' && !_Gi5.__rb2pWrapped) {
+                    var __origGi5 = _Gi5;
+                    _Gi5 = function () {
+                        engTicks++;
+                        // Only CHAIN-originated ticks count as liveness — a
+                        // kicked tick must not silence the watchdog, or a
+                        // fully-dead rAF degrades to ~2 ticks/s instead of ~20.
+                        if (!kickInProgress) lastChainMs = Date.now();
+                        return __origGi5.apply(this, arguments);
+                    };
+                    _Gi5.__rb2pWrapped = true;
+                }
+            } catch (eGW) {}
+            setInterval(function () { engPerSec = engTicks; engTicks = 0; }, 1000);
+            window._rb2p_engPerSec = function () { return engPerSec; };
+            var lastKickLogMs = 0;
+            setInterval(function () {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    if (Date.now() - lastChainMs < 400) return;   // real chain alive
+                    if (typeof _fi5 !== 'function') return;
+                    engKicks++;
+                    if (Date.now() - lastKickLogMs > 5000) {
+                        lastKickLogMs = Date.now();
+                        diagLog('ENGINE LOOP DEAD — kicking _fi5 (kicks=' + engKicks + ')');
+                    }
+                    kickInProgress = true;
+                    try { _fi5(); } finally { kickInProgress = false; }
+                } catch (eK) {
+                    if (Date.now() - lastKickLogMs > 5000) {
+                        lastKickLogMs = Date.now();
+                        diagLog('engine kick ERR ' + String((eK && eK.message) || eK).slice(0, 60));
+                    }
+                }
+            }, 50);
         })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
