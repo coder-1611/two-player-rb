@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V241<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V242<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V241</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V241</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V242</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V242</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8790,9 +8790,10 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V241 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V242 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
+                    ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
                     (engKicks ? ' kicks:' + engKicks : '') + '\n' +
                     'ctl:' + ctl + ' pop:' + pops +
                     ' gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
@@ -8805,6 +8806,59 @@
             var rafCount = 0, diagFps = -1;
             (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
             setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
+
+            // ==== V242 WEBGL CONTEXT-LOSS GUARD =========================
+            // The V241 telemetry produced an IMPOSSIBLE frame: eng:60 (engine
+            // drawing every frame), live state (ball + 22 players, corpse
+            // parked off-screen, banner swept) — yet the canvas still showed
+            // the old staging panels on an empty field. Only one mechanism
+            // paints that: the WebGL context was LOST (phones kill GPU
+            // contexts under memory pressure), the screen froze on the last
+            // presented frame, and the game kept running blind. It also
+            // explains the user's day-one observation that a refresh always
+            // fixes it: a reload mints a fresh GPU context. Detect the loss
+            // (event + per-beat probe) and reload into the resume flow.
+            function rbGL() {
+                try {
+                    if (!window.__rbGL) {
+                        var cEl = document.getElementById('canvas');
+                        window.__rbGL = cEl && (cEl.getContext('webgl') || cEl.getContext('experimental-webgl'));
+                    }
+                } catch (eGl) {}
+                return window.__rbGL || null;
+            }
+            window._rb2p_glStatus = function () {
+                var g = rbGL();
+                if (!g) return 'none';
+                try { return g.isContextLost() ? 'LOST' : 'ok'; } catch (e) { return '?'; }
+            };
+            function glLostRecover(src) {
+                diagLog('WEBGL CONTEXT LOST (' + src + ')');
+                try {
+                    var lastR = Number(sessionStorage.getItem('rb2p_gl_reload') || 0);
+                    if (Date.now() - lastR < 45000) return;
+                    sessionStorage.setItem('rb2p_gl_reload', String(Date.now()));
+                    diagLog('reloading for a fresh GL context');
+                    setTimeout(function () { location.reload(); }, 400);
+                } catch (eR) {}
+            }
+            (function () {
+                var cEl = document.getElementById('canvas');
+                if (!cEl) return;
+                cEl.addEventListener('webglcontextlost', function (ev) {
+                    try { ev.preventDefault(); } catch (eP) {}
+                    glLostRecover('event');
+                }, false);
+                cEl.addEventListener('webglcontextrestored', function () {
+                    diagLog('webgl context RESTORED');
+                }, false);
+            })();
+            setInterval(function () {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    if (window._rb2p_glStatus() === 'LOST') glLostRecover('probe');
+                } catch (e) {}
+            }, 1500);
 
             // ==== V241 ENGINE-LOOP WATCHDOG =============================
             // Phone A telemetry (room FXHF): fps:60 but a FROZEN canvas over
