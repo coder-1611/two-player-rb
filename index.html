@@ -568,6 +568,20 @@
             transform-origin: left top;
             transform: rotate(-90deg);
             overflow: hidden;
+            will-change: transform;
+        }
+        /* V246: a WebGL canvas inside a transformed <body> is the exact setup
+           where phone compositors detach the canvas layer after a heavy GPU
+           event (the match-room switch): the game keeps rendering into the
+           buffer but the screen shows a stale frame — the GET READY stall
+           (device telemetry: eng:60 fps:60 gl:ok while the user sees frozen
+           staging panels, and the canvas-readback snapshot differed from what
+           the user's screen showed). Force the canvas onto its OWN compositor
+           layer so it can't be flattened into the rotated body's layer. */
+        html.rb-mobile #canvas {
+            will-change: transform;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
         }
         /* In rotated mode the visual "width" is the viewport HEIGHT, so vw-based
            font clamps under-size — swap them to vh. */
@@ -681,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V245<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V246<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V245</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V245</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V246</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V246</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -834,7 +848,9 @@
                 s.setProperty('margin', '0', 'important');
                 s.setProperty('max-width', 'none', 'important');
                 s.setProperty('max-height', 'none', 'important');
-                s.setProperty('transform', 'none', 'important');
+                // V246: identity 3D transform (NOT 'none') keeps the canvas on
+                // its own compositor layer — see the html.rb-mobile #canvas CSS.
+                s.setProperty('transform', 'translateZ(0)', 'important');
 
                 // virtual un-rotated rect the engine's _No2 override consumes so
                 // its getBoundingClientRect-based tap mapping stays correct.
@@ -8803,12 +8819,40 @@
                         }
                     } catch (ePp) {}
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
+                    // V246: compositor un-freezer (mobile only). Root cause of
+                    // the GET READY stall: the phone compositor freezes the
+                    // rotated canvas layer at the match-room switch while the
+                    // engine keeps running (eng/fps 60, snapshot != screen).
+                    // On match entry rebuild the layer outright (display flip
+                    // forces the compositor to recreate it — synchronous, no
+                    // visible frame is lost), then keep it validated with an
+                    // identity-transform nudge every tick.
+                    try {
+                        if (document.documentElement.classList.contains('rb-mobile')) {
+                            var cvsF = document.getElementById('canvas');
+                            var imF = false;
+                            try { imF = RB.isEngineInMatchRoom() === true; } catch (eIm) {}
+                            if (cvsF && imF && window.__rbWasInMatch !== true) {
+                                [0, 1000, 2500].forEach(function (d) { setTimeout(function () {
+                                    try { cvsF.style.display = 'none'; void cvsF.offsetHeight;
+                                          cvsF.style.display = ''; } catch (eRb) {}
+                                }, d); });
+                                diagLog('canvas layer rebuilt (match entry)');
+                            }
+                            window.__rbWasInMatch = imF;
+                            if (cvsF && imF) {
+                                window.__rbNudge = !window.__rbNudge;
+                                cvsF.style.setProperty('transform',
+                                    window.__rbNudge ? 'translateZ(0) scale(1)' : 'translateZ(0)', 'important');
+                            }
+                        }
+                    } catch (eCz) {}
                 } catch (e) {}
                 var clkout = '';
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V245 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V246 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +

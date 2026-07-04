@@ -28,3 +28,36 @@ playwright install webkit if missing).
 - CPU-hog (main-thread stalls) DURING match-room construction in the 2P flow
 - GPU/memory pressure; back-to-back matches in one session; second match after
   a completed one
+
+## pw-phone.js — phone-fidelity env (V246 era)
+
+Observation-only (NO input ever — per user directive: "the GET READY screen
+being there itself means it doesn't work"). Dials, combinable:
+
+- `HOG=0..95` + `SLICE=ms` — main-thread CPU starvation from boot (big SLICE
+  = long janky freezes). `HOG=0` = healthy baseline.
+- `BG=1` — iOS screen-lock sim after READY: rAF suspended + intervals ~1Hz +
+  document.hidden faked, 20s, then foreground.
+- `NET=1` — network dropped for the same 20s window (radio off on lock).
+- `FRESH=1` — localStorage/IndexedDB wiped at boot (iOS evicts site data).
+
+Verdict = does the offense side still show GET READY/staging at t+30s
+(engine state + diag box + screenshot) vs the recorded healthy baseline
+(play field, banner clears ~3s, btn:0).
+
+### Results (all CLEAN — none reproduced the stall)
+HOG=70 · HOG=90/SLICE=250 (12fps) · BG=1 (fps:0 + watchdog kicks, exactly the
+phone's telemetry signature, then full recovery) · BG=1+NET=1 · FRESH+HOG=70.
+
+### Root-cause conclusion (V246)
+Everything engine-side is eliminated; the one device fact no env can copy is
+the phone GPU compositor. Device evidence: eng:60 fps:60 gl:ok ball:1 while
+the user sees frozen staging panels, AND the canvas-readback telemetry
+snapshot differed from what the user reported seeing → the game renders,
+the SCREEN doesn't update: the compositor froze the canvas layer. Trigger
+setup: WebGL canvas inside the rotate(-90deg) transformed <body> (rb-rot90),
+poked by the engine's Application Surface resize at match entry.
+V246 fix: own compositor layer for the canvas (will-change + translateZ(0),
+layout() no longer sets transform:none), display-flip layer rebuild at
+match entry, identity-transform nudge every diag tick. Headless cannot
+verify the fix (no phone compositor) — device confirmation pending.
