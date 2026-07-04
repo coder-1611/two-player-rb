@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V238<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V239<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V238</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V238</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V239</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V239</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8581,9 +8581,19 @@
 
             // -- THE TAP-BRIDGE --
             var canvasEl = document.getElementById('canvas');
+            var lastTapLogMs = 0;
             if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    // V239: log EVERY in-match tap (throttled 1/s) — during the
+                    // on-device stall taps were invisible because logging was
+                    // gated on button existence.
+                    if (Date.now() - lastTapLogMs > 1000) {
+                        lastTapLogMs = Date.now();
+                        var gAll = pageToGui(e.pageX, e.pageY);
+                        diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
+                                '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy));
+                    }
                     var btns = liveKickoffButtons();
                     if (!btns.length) {
                         // V234: taps on a painted CORPSE were silently ignored
@@ -8628,22 +8638,42 @@
             // real phone sessions are readable remotely — no more screenshots.
             // Tiny writes, match-time only, keyed room_role_session.
             var telemetrySess = Math.random().toString(36).slice(2, 7);
+            var telemetryTick = 0;
             setInterval(function () {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    telemetryTick++;
                     var room = '', role = '';
                     try { room = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
                     try { role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : ''; } catch (e) {}
                     var key = ((room || 'noroom') + '_' + (role || 'x') + '_' + telemetrySess)
                         .replace(/[^A-Za-z0-9_-]/g, '');
                     var el = document.getElementById('rb-diag');
+                    var body = {
+                        ts: Date.now(),
+                        ua: navigator.userAgent.slice(0, 90),
+                        diag: ((el && el.innerText) || '').slice(0, 1500)
+                    };
+                    // V239: refresh a small snapshot of the ACTUAL canvas every
+                    // 3rd tick (~15s) — what the player really sees, remotely.
+                    // Cached + sent on EVERY tick (PUT replaces the whole entry).
+                    if (telemetryTick % 3 === 1 || !window.__rbLastShot) {
+                        try {
+                            var src = document.getElementById('canvas');
+                            if (src && src.width) {
+                                var c = document.createElement('canvas');
+                                var w = 214, h = Math.max(1, Math.round(src.height / src.width * w));
+                                c.width = w; c.height = h;
+                                c.getContext('2d').drawImage(src, 0, 0, w, h);
+                                var du = c.toDataURL('image/jpeg', 0.5);
+                                if (du && du.length > 200) window.__rbLastShot = du;
+                            }
+                        } catch (eS) { body.shotErr = String((eS && eS.message) || eS).slice(0, 60); }
+                    }
+                    if (window.__rbLastShot) body.shot = window.__rbLastShot;
                     fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/diag/' + key + '.json', {
                         method: 'PUT',
-                        body: JSON.stringify({
-                            ts: Date.now(),
-                            ua: navigator.userAgent.slice(0, 90),
-                            diag: ((el && el.innerText) || '').slice(0, 1500)
-                        })
+                        body: JSON.stringify(body)
                     }).catch(function () {});
                 } catch (e) {}
             }, 5000);
@@ -8660,11 +8690,12 @@
                     var waiting = window._rb2p_userIsWaitingForOpponent === true;
                     var healedNow = false;
                     var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    // First pass: counts + heal. Corpses are FULLY purged (V236:
-                    // spliced out of the instance list — phones' damaged rooms
-                    // never run the engine's own purge, so we do it for them;
-                    // every engine dispatcher skips _HL2 instances anyway).
-                    for (var i = all.length - 1; i >= 0; i--) {
+                    // First pass: counts + heal. V239: NO list splicing — the
+                    // V236 splice removed corpses from the only list the diag
+                    // can see while the layer renderer keeps its own, so
+                    // telemetry could report btn:0 with a corpse still painted.
+                    // _g2 = 0 (+_HL2) is the whole cure; corpses stay countable.
+                    for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
                         if (!inst || !inst._eE2) continue;
                         var n = inst._eE2._fE2;
@@ -8672,11 +8703,10 @@
                         else if (n === 'obj_btn_kickoff') {
                             if (inst._HL2) {
                                 ghost++;
-                                try {
-                                    if (inst._g2 !== 0) { inst._g2 = 0; healedNow = true; }
-                                    all.splice(i, 1);   // manual purge
-                                    diagLog('purged corpse btn');
-                                } catch (eD) {}
+                                if (inst._g2 !== 0) {
+                                    try { inst._g2 = 0; healedNow = true;
+                                          diagLog('de-ghosted corpse btn'); } catch (eD) {}
+                                }
                             } else if (waiting) {
                                 // V236: the WAITING side must never show the
                                 // staging screen (real-2P harness: B sat on a
@@ -8684,16 +8714,16 @@
                                 try {
                                     try { _cr(inst); } catch (eC) { inst._HL2 = true; }
                                     inst._g2 = 0;
-                                    all.splice(i, 1);
                                     healedNow = true;
                                     diagLog('suppressed staging btn (waiting side)');
                                 } catch (eS) {}
                             } else live++;
                         }
                     }
-                    // Banner: clear ONLY the exact localized GET READY string —
-                    // __b1 also carries play-by-play banners. Clear it when this
-                    // side is waiting, or when a drive is live under it.
+                    // Banner: clear the GET READY staging banner when this side
+                    // is waiting or a drive is live under it. V239: exact-string
+                    // match plus a plain-text fallback (the _Xi lookup can fail
+                    // silently, which left the banner painted on-device).
                     if (em && em.rawEngineMatch.__b1) {
                         try {
                             if (window.__rbGetReadyStr === undefined) {
@@ -8701,8 +8731,9 @@
                                 catch (eX) { window.__rbGetReadyStr = null; }
                             }
                             var b1now = String(em.rawEngineMatch.__b1);
-                            if ((window.__rbGetReadyStr && b1now === window.__rbGetReadyStr &&
-                                 (waiting || (ball > 0 && kp === 2))) ||
+                            var isGetReady = (window.__rbGetReadyStr && b1now === window.__rbGetReadyStr) ||
+                                             /get\s*ready/i.test(b1now);
+                            if ((isGetReady && (waiting || (ball > 0 && kp === 2))) ||
                                 (healedNow && ball > 0)) {
                                 em.rawEngineMatch.__b1 = '';
                                 diagLog('cleared GET READY banner');
@@ -8711,14 +8742,25 @@
                     }
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
                 } catch (e) {}
+                var b1out = '';
+                try { b1out = String((em && em.rawEngineMatch.__b1) || '').slice(0, 12); } catch (eB1) {}
+                var clkout = '';
+                try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V238 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
-                    ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 + '\n' +
-                    'gui-mouse:' + gmx + ',' + gmy + '\n' +
+                    'V239 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
+                    ' fps:' + diagFps + '\n' +
+                    'gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
+                    ' b1:' + (b1out ? esc(b1out) : '-') + '\n' +
                     '--- LOG (survives reload) ---\n' +
                     readLog().slice(-8).map(esc).join('\n');
             }, 700);
+            // V239: fps counter (dropped in the V233 rewrite; decisive for
+            // telling "render dead" from "logic stuck" remotely)
+            var rafCount = 0, diagFps = -1;
+            (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
+            setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
         })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
