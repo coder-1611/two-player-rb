@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V246<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V247<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V246</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V246</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V247</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V247</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1328,11 +1328,29 @@
             // built while this device is WAITING, nor while a drive is already
             // live. The genuine fallback case (spawn failed: no ball, kp
             // rolled back, not waiting) still passes through.
+            // V247: the ONE legitimate case where the WAITING device must build
+            // and keep staging UI — the pick-6 SCORER playing the PAT (the
+            // PICK6 receive branch deliberately leaves waiting=true, see
+            // scorerPlayingPat at the WAIT-cover). Every waiting-side killer
+            // MUST honor this exception: the V246-era PAT freeze (B frozen
+            // right after the 1pt/2pt click, sometimes mid-snap) was the _Iy
+            // guard + the 700ms staging sweep shredding the legit PAT scene.
+            window._rb2p_scorerPlayingPat = function () {
+                return window._rb2p_pickSixThisDeviceIsThrower !== true &&
+                       (window._rb2p_pickSixPatCascadeActive === true ||
+                        window._rb2p_patPlayPending === true);
+            };
             try {
                 if (typeof _Iy === 'function' && !_Iy.__rb2pWrapped) {
                     var __origIy = _Iy;
                     _Iy = function (_, t) {
                         try {
+                            // V247: pick-6 PAT on this device — the button is
+                            // legitimate; bypass BOTH suppression clauses.
+                            if (window._rb2p_scorerPlayingPat()) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('Iy allowed (PAT play)');
+                                return __origIy(_, t);
+                            }
                             if (window._rb2p_userIsWaitingForOpponent === true) {
                                 if (window._rb2p_diagLog) window._rb2p_diagLog('Iy suppressed (waiting)');
                                 return 0;
@@ -8723,6 +8741,9 @@
                     if (em) { kp = em.engineControllerState; vy = em.engineDriveFsmStage;
                               z7 = em.rawEngineMatch._7z; }
                     var waiting = window._rb2p_userIsWaitingForOpponent === true;
+                    // V247: pick-6 PAT exception — the scorer plays the PAT
+                    // while flagged waiting; nothing below may kill its UI.
+                    var patPlay = !!(window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat());
                     var healedNow = false;
                     var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     // First pass: counts + heal. V239: NO list splicing — the
@@ -8752,10 +8773,11 @@
                                     }
                                     if (inst._g2 !== 0) inst._g2 = 0;
                                 } catch (eD) {}
-                            } else if (waiting) {
+                            } else if (waiting && !patPlay) {
                                 // V236: the WAITING side must never show the
                                 // staging screen (real-2P harness: B sat on a
                                 // LIVE tappable Kick Off button all drive).
+                                // V247: except while playing the pick-6 PAT.
                                 try {
                                     try { _cr(inst); } catch (eC) { inst._HL2 = true; }
                                     inst._g2 = 0;
@@ -8785,8 +8807,9 @@
                             if (!b1out) b1out = cb1.slice(0, 12);
                             var isGetReady = (window.__rbGetReadyStr && cb1 === window.__rbGetReadyStr) ||
                                              /get\s*ready/i.test(cb1);
-                            if ((isGetReady && (waiting || (ball > 0 && kp === 2))) ||
-                                (healedNow && ball > 0)) {
+                            if (!patPlay &&
+                                ((isGetReady && (waiting || (ball > 0 && kp === 2))) ||
+                                 (healedNow && ball > 0))) {
                                 cInst.__b1 = '';
                                 if (b1out === cb1.slice(0, 12)) b1out = '';
                                 diagLog('cleared GET READY banner');
@@ -8852,7 +8875,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V246 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V247 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
