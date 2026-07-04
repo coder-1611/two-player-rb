@@ -681,7 +681,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V243<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V244<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -749,7 +749,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V243</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V243</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V244</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V244</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8585,7 +8585,6 @@
             if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
-                    if (window._rb2p_noteBlindTap) window._rb2p_noteBlindTap();   // V243
                     // V239: log EVERY in-match tap (throttled 1/s) — during the
                     // on-device stall taps were invisible because logging was
                     // gated on button existence.
@@ -8809,7 +8808,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V243 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V244 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -8826,40 +8825,9 @@
             (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
             setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
 
-            // ==== V243 LIVE-BLIND STALL ESCAPE ==========================
-            // The one recovery that has ALWAYS worked on the phones is a
-            // refresh. V242 telemetry (session YAOE): drive live (ball, kp:2,
-            // eng:60, gl:ok) while the canvas shows stale staging and the
-            // player taps uselessly — the game never receives a snap, the
-            // clock never starts. Detect exactly that signature — drive live
-            // for >8s, clock never moved, >=5 player taps — and do the
-            // refresh FOR the player (resume flow restores the match).
-            var blindLiveSinceMs = 0, blindTapCount = 0, blindClk0 = null;
-            window._rb2p_noteBlindTap = function () { blindTapCount++; };
-            setInterval(function () {
-                try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) return;
-                    var em = window.RB && RB.engineState && RB.engineState();
-                    if (!em || em.engineControllerState !== 2) { blindLiveSinceMs = 0; blindTapCount = 0; blindClk0 = null; return; }
-                    var haveBall = false;
-                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var i = 0; i < all.length; i++) {
-                        var inst = all[i];
-                        if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') { haveBall = true; break; }
-                    }
-                    if (!haveBall) { blindLiveSinceMs = 0; blindTapCount = 0; blindClk0 = null; return; }
-                    var clkNow = em.engineMinutesLeft + ':' + em.engineSecondsLeft;
-                    if (!blindLiveSinceMs) { blindLiveSinceMs = Date.now(); blindTapCount = 0; blindClk0 = clkNow; return; }
-                    if (clkNow !== blindClk0) { blindLiveSinceMs = 0; blindTapCount = 0; blindClk0 = null; return; }   // play started — healthy
-                    if (Date.now() - blindLiveSinceMs > 8000 && blindTapCount >= 5) {
-                        var lastR = Number(sessionStorage.getItem('rb2p_blind_reload') || 0);
-                        if (Date.now() - lastR < 45000) return;
-                        sessionStorage.setItem('rb2p_blind_reload', String(Date.now()));
-                        diagLog('LIVE-BLIND STALL (' + blindTapCount + ' dead taps) — auto-refreshing');
-                        setTimeout(function () { location.reload(); }, 400);
-                    }
-                } catch (e) {}
-            }, 1000);
+            // (V244: the V243 "live-blind stall escape" is REMOVED at the
+            // user's direction — its auto-reload fired around possession
+            // switches and desynced both devices into permanent WAIT.)
 
             // ==== V242 WEBGL CONTEXT-LOSS GUARD =========================
             // The V241 telemetry produced an IMPOSSIBLE frame: eng:60 (engine
