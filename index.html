@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V253<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V254<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V253</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V253</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V254</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V254</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5122,7 +5122,30 @@
                     if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
                         ' scoreOpp=' + outcome.scoreOpp + ')');
-                    if (wasInCascade) {
+                    // V254: the old gate was `wasInCascade` — but the cascade
+                    // has a 60s hard timeout, and a B who refreshed + re-popped
+                    // + played the PAT easily takes longer than that. A then
+                    // applied the scores and DID NOTHING → both devices parked
+                    // in WAIT forever (the "froze a constant time after
+                    // choosing 1pt/2pt" report: B's guardian ships the
+                    // synthetic PAT_RESULT 5s after resolution, A ignores it).
+                    // The gate's real intent is "don't restart a drive that's
+                    // already running" — so test exactly that.
+                    var alreadyDriving = false;
+                    try {
+                        if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
+                            engineMatch.engineControllerState === 2) {
+                            var allAD = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                            for (var iAD = 0; iAD < allAD.length; iAD++) {
+                                var xAD = allAD[iAD];
+                                if (xAD && !xAD._HL2 && xAD._eE2 && xAD._eE2._fE2 === 'obj_ball') {
+                                    alreadyDriving = true; break;
+                                }
+                            }
+                        }
+                    } catch (eAD) {}
+                    if (!alreadyDriving) {
+                        if (!wasInCascade) console.log('[2P PICK6] PAT_RESULT after cascade timeout — forcing drive anyway (V254)');
                         var yard = window._rb2p_kickoffReturnYard();
                         // V169: break the post-pick-6 COMM_STAGE_DRIVE (Vy=4) FREEZE.
                         // The engine parks A's kickoff-return drive on the gutted
@@ -9010,7 +9033,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V253 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V254 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
