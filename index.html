@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V251<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V252<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V251</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V251</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V252</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V252</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3115,9 +3115,44 @@
                                         // the first time.
                                         window._rb2p_resumePatDuty = null;
                                         window._rb2p_userIsWaitingForOpponent = true;
+                                        // V252: fire-and-forget re-pop FAILED on device —
+                                        // telemetry (WMPL_b): 5 popup instances existed but
+                                        // the user's canvas showed a blank field (modal
+                                        // never painted / got eaten; engine loop also died
+                                        // twice right after the pop). VERIFY a modal is
+                                        // actually alive and VISIBLE, and retry the pop
+                                        // until it is (up to ~20s), logging each attempt
+                                        // into the reload-surviving diag ring.
                                         (function (rsq) {
-                                            setTimeout(function () {
+                                            var patTries = 0;
+                                            var patIv = setInterval(function () {
                                                 try {
+                                                    patTries++;
+                                                    var pl = (window._rb2p_enumeratePopupInstances &&
+                                                              window._rb2p_enumeratePopupInstances()) || [];
+                                                    var visible = false;
+                                                    for (var i = 0; i < pl.length; i++) {
+                                                        var p = pl[i];
+                                                        if (p && !p._HL2 && p._g2 !== 0 && p.x > -1000) { visible = true; break; }
+                                                    }
+                                                    if (visible) {
+                                                        clearInterval(patIv);
+                                                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                                            'PAT modal visible (try ' + patTries + ')');
+                                                        return;
+                                                    }
+                                                    if (patTries > 12) {
+                                                        clearInterval(patIv);
+                                                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                                            'PAT re-pop gave up after ' + patTries + ' tries');
+                                                        return;
+                                                    }
+                                                    // park any dead popup corpses so retries
+                                                    // can't stack painted ghosts
+                                                    for (var j = 0; j < pl.length; j++) {
+                                                        var q = pl[j];
+                                                        if (q && (q._HL2 || q._g2 === 0)) { q.x = -2000; q.y = -2000; }
+                                                    }
                                                     window._rb2p_applyOpponentOutcome({
                                                         type: 'PICK6', yardLine: 0, ownSide: true,
                                                         needsPAT: true,
@@ -3127,9 +3162,15 @@
                                                         message: 'PAT re-popped after reload',
                                                         ts: Date.now()
                                                     });
-                                                    console.log('[2P RESUME] pick-6 PAT modal re-popped after reload');
-                                                } catch (eP) { console.log('[2P RESUME patDuty err]', eP); }
-                                            }, 1500);
+                                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                                        'PAT re-pop attempt ' + patTries);
+                                                    console.log('[2P RESUME] pick-6 PAT re-pop attempt ' + patTries);
+                                                } catch (eP) {
+                                                    console.log('[2P RESUME patDuty err]', eP);
+                                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                                        'PAT re-pop err: ' + String(eP && eP.message).slice(0, 40));
+                                                }
+                                            }, 1600);
                                         })(rs);
                                     } else {
                                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
@@ -8936,7 +8977,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V251 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V252 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
