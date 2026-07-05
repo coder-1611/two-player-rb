@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V250<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V251<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V250</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V250</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V251</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V251</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -6639,6 +6639,12 @@
                         window._rb2p_userIsWaitingForOpponent = true;
                         window._rb2p_userOutcomeSendInProgress = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+                        // V251: ACK the refresh-safety turnover record for
+                        // PICK6 too — V248 only ACKed the plain-INT branch,
+                        // so a B refresh around a pick-6 found an un-acked
+                        // record and resumed into the wrong flow.
+                        if (typeof window._rb2p_ackTurnoverApplied === 'function')
+                            window._rb2p_ackTurnoverApplied();
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
 
                         if (outcome.needsPAT === true) {
@@ -8930,7 +8936,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V250 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V251 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9354,6 +9360,13 @@
                                        (Date.now() - (Number(turnover.ts) || 0) < 120000) &&
                                        !(myLive && myLive.iHaveBall === true &&
                                          (Number(myLive.ts) || 0) >= (Number(turnover.ts) || 0)));
+                // V251: an un-applied PICK-6 record is NOT "my ball at the
+                // pick spot" — the receiver is owed the +6 PAT scene, and the
+                // thrower is parked waiting for PAT_RESULT. Route it through
+                // the PAT-duty resume path (re-pops the engine PAT modal)
+                // instead of handing B a plain drive.
+                var pick6ForMe = !!(turnoverForMe && turnover.isPick6 === true);
+                if (pick6ForMe) turnoverForMe = false;
                 if (turnoverForMe) console.log('[2P RESUME] un-applied INT addressed to me — ' +
                                                'taking possession at yard ' + turnover.yardLine);
                 // V217: unresolved pick-6 PAT duty. If I reloaded while MY PAT
@@ -9368,6 +9381,14 @@
                 if (patDutyMine) {
                     window._rb2p_resumePatDuty = patDuty;
                     console.log('[2P RESUME] pending pick-6 PAT duty found (mine) — will re-pop PAT modal');
+                } else if (pick6ForMe) {
+                    // V251: no duty record (reload landed before the modal
+                    // popped) but an un-applied pick-6 addressed to me —
+                    // synthesize the duty so the same re-pop path runs.
+                    window._rb2p_resumePatDuty = { role: savedRole, ts: Number(turnover.ts) || Date.now(),
+                                                   synthetic: 'pick6-turnover' };
+                    patDutyMine = true;
+                    console.log('[2P RESUME] un-applied PICK6 addressed to me — routing to PAT-duty re-pop');
                 }
                 // V184: the in-progress check must consider MY OWN live push, not
                 // just the opponent's. Both devices write live/{me} every 500ms
