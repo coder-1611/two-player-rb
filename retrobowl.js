@@ -76406,6 +76406,19 @@ function _hp2(_) {
             break;
         case "pointerdown":
         case "MSPointerDown":
+            /* V250: STUCK-SLOT self-heal — THE mobile dead-input root cause.
+               Click state is only ever written from slot 0. If a touch's
+               pointerup is lost (phone room-transition / gesture steal),
+               slot 0 stays occupied by the dead pointerId forever and every
+               later touch allocates slot 1+ → the engine registers NO taps
+               and gui-mouse freezes, while DOM listeners still see input
+               (device telemetry: gui-mouse pinned at 0,24 through the GET
+               READY hang; repro: e2e/webkit/pw-hang8.js). Mice self-heal
+               because mousemove forces slot 0 — phones have no mouse. A
+               new PRIMARY touch means no other touch is legitimately in
+               progress, so purge all slots before allocating. */
+            if (_.isPrimary && "mouse" != _.pointerType)
+                for (var _rbSi = 0; _rbSi < _Bo2.length; _rbSi++) _Bo2[_rbSi] = -1;
             t = _Xo2(_.pointerId),
                 i = "start";
             break;

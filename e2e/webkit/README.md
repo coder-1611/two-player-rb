@@ -89,3 +89,23 @@ FIX (V249, verified in this env — same glitch now plays green 36s):
   3. Heartbeat self-heal: degenerate canvas buffer, collapsed element
      rect, or non-finite __rbVirt → re-run layout() (index.html).
 Regressions green: pw-resume both phases, pw-phone baseline, pick-6 37/37.
+
+## V250 — THE DEAD-INPUT ROOT CAUSE: stuck pointer slot (pw-hang8.js)
+
+No-gimmick repro (pw-hang8.js, deterministic): one lost pointerup on the
+canvas (slot 0 keeps the dead pointerId) → EVERY later touch allocates
+slot 1+ → the engine registers no taps and gui-mouse freezes, while DOM
+listeners still log every tap. That is byte-for-byte the phone stall's
+input signature (device gui-mouse pinned at 0,24 while the tap-bridge
+logged taps). Mice self-heal (mousemove forces slot 0) — phones have no
+mouse, so the wedge is PERMANENT until refresh; that's why it fails on
+all phones/all mobile browsers and never on desktop, and why refresh
+always fixes it. The painted "GET READY" is the killed staging button's
+ghost (phones don't purge corpses) over a live field.
+Fix (retrobowl.js _hp2 pointerdown): a new PRIMARY touch purges all
+slots before allocating (no other touch can legitimately be mid-press).
+Verified: pre-fix 4/4 real taps invisible to the engine; post-fix all
+taps tracked. Regressions green (resume drags, 2P baseline, hang4
+resize-poison, pick-6 37/37).
+Keyboard-lifecycle sweep (pw-hang6.js) + silent dvh drift (pw-hang7.js)
+both eliminated on old + new builds.
