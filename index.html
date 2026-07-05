@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V252<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V253<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V252</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V252</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V253</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V253</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3123,36 +3123,69 @@
                                         // actually alive and VISIBLE, and retry the pop
                                         // until it is (up to ~20s), logging each attempt
                                         // into the reload-surviving diag ring.
+                                        // V253: the V252 loop STACKED modals — attempt 1's
+                                        // modal can be alive-but-invisible (the blank-field
+                                        // gremlin), attempt 2 pops a second one on top, the
+                                        // user answers the visible one, and the leftover
+                                        // live instances gate the engine → frozen right
+                                        // after the 1PT/2PT click (device log: attempt 1,
+                                        // attempt 2, visible try 3, tap, freeze). Rules now:
+                                        // HARD-KILL every popup instance before each re-pop
+                                        // (attempts can never stack), and stand down the
+                                        // moment the user answers (popups went present →
+                                        // gone, or the PAT resolved).
                                         (function (rsq) {
-                                            var patTries = 0;
+                                            var patTries = 0, prevLive = -1;
                                             var patIv = setInterval(function () {
                                                 try {
-                                                    patTries++;
+                                                    if (window._rb2p_patPlayResolved === true ||
+                                                        (patTries > 0 && window._rb2p_patPlayPending !== true)) {
+                                                        clearInterval(patIv);
+                                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT answered — re-pop loop done');
+                                                        return;
+                                                    }
                                                     var pl = (window._rb2p_enumeratePopupInstances &&
                                                               window._rb2p_enumeratePopupInstances()) || [];
-                                                    var visible = false;
+                                                    var liveN = 0, visible = false;
                                                     for (var i = 0; i < pl.length; i++) {
                                                         var p = pl[i];
-                                                        if (p && !p._HL2 && p._g2 !== 0 && p.x > -1000) { visible = true; break; }
+                                                        if (!p || p._HL2) continue;
+                                                        liveN++;
+                                                        if (p._g2 !== 0 && p.x > -1000) visible = true;
                                                     }
+                                                    // popups were up and are now gone while the
+                                                    // PAT is still pending = the user clicked and
+                                                    // the scene is playing — do NOT re-pop.
+                                                    if (patTries > 0 && prevLive > 0 && liveN === 0) {
+                                                        clearInterval(patIv);
+                                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT modal answered (scene live)');
+                                                        return;
+                                                    }
+                                                    prevLive = liveN;
                                                     if (visible) {
                                                         clearInterval(patIv);
                                                         if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                            'PAT modal visible (try ' + patTries + ')');
+                                                            'PAT modal visible (try ' + (patTries + 1) + ')');
                                                         return;
                                                     }
-                                                    if (patTries > 12) {
+                                                    if (patTries >= 12) {
                                                         clearInterval(patIv);
                                                         if (window._rb2p_diagLog) window._rb2p_diagLog(
                                                             'PAT re-pop gave up after ' + patTries + ' tries');
                                                         return;
                                                     }
-                                                    // park any dead popup corpses so retries
-                                                    // can't stack painted ghosts
+                                                    patTries++;
+                                                    // hard-kill EVERYTHING popup-shaped (live,
+                                                    // invisible, corpse) so this attempt starts
+                                                    // from zero — no stacking, no lingering
+                                                    // instances gating the engine.
                                                     for (var j = 0; j < pl.length; j++) {
                                                         var q = pl[j];
-                                                        if (q && (q._HL2 || q._g2 === 0)) { q.x = -2000; q.y = -2000; }
+                                                        if (!q) continue;
+                                                        try { if (!q._HL2) _cr(q); } catch (eC) { try { q._HL2 = true; } catch (eH) {} }
+                                                        try { q._g2 = 0; q.x = -2000; q.y = -2000; } catch (eV) {}
                                                     }
+                                                    window._rb2p_userPatPopupRefs = null;
                                                     window._rb2p_applyOpponentOutcome({
                                                         type: 'PICK6', yardLine: 0, ownSide: true,
                                                         needsPAT: true,
@@ -8977,7 +9010,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V252 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V253 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
