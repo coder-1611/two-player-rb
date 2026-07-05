@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V254<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V255<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V254</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V254</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V255</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V255</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4450,8 +4450,15 @@
                             // go to WAIT, not spawn a drive.
                             if (window._rb2p_pickSixPatCascadeActive === true &&
                                 window._rb2p_pickSixThisDeviceIsThrower !== true) {
-                                var emP = RB.engineState();
-                                var patPending = emP && emP.engineDownNumber === 6 &&
+                                // V255: judge "PAT still pending" by the BRIDGE's
+                                // sticky flag, NOT engineDownNumber — the engine
+                                // resets _t11 during response processing (the V57
+                                // clobber), so the 2-PT click's _eb1 could arrive
+                                // while down!=6 and get blocked → the goal-line
+                                // snap never spawned on a resumed room (mannequin
+                                // scene; guardian force-missed it ~8s later — the
+                                // "freezes a constant time after choosing" bug).
+                                var patPending = window._rb2p_patPlayPending === true &&
                                                  window._rb2p_patPlayResolved !== true;
                                 if (patPending) return origEb1.apply(this, arguments);
                                 if (Date.now() - lastSpawnGateLogMs > 1000) {
@@ -6771,6 +6778,20 @@
                                 // the fresh TD scene left the ball on the goal line.
                                 engineMatch.engineYardLineSigned   = 48;
                                 engineMatch.engineControllerState  = 2;
+                                // V255: on a RESUMED room the drive FSM is still
+                                // at stage 0 and drives are un-armed — the modal
+                                // paints but the engine never processes the
+                                // 1PT/2PT click and the 2-pt goal-line scene is
+                                // a mannequin (device: vy:0, taps logged, nothing
+                                // responds; repro: e2e/webkit/pw-pat-click.js).
+                                // Arm the stage the live mid-game flow already
+                                // has (no-op there: vy>=2 and _Nb1>=1 mid-match).
+                                if (Number(engineMatch.engineDriveFsmStage) < 2)
+                                    engineMatch.engineDriveFsmStage = 2;
+                                try {
+                                    var rawP6 = engineMatch.rawEngineMatch;
+                                    if (Number(rawP6._Nb1) < 1) rawP6._Nb1 = 1;
+                                } catch (eNb) {}
                                 // V57: bridge-side sticky PAT state. The
                                 // engine's own marker (_t11) gets reset by
                                 // s_action_result's epilogue and can be
@@ -9033,7 +9054,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V254 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V255 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
