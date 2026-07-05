@@ -61,3 +61,31 @@ V246 fix: own compositor layer for the canvas (will-change + translateZ(0),
 layout() no longer sets transform:none), display-flip layer rebuild at
 match entry, identity-transform nudge every diag tick. Headless cannot
 verify the fix (no phone compositor) — device confirmation pending.
+
+## THE GET READY HANG — REPRODUCED + ROOT CAUSE + FIX (V249)
+
+Repro: `node pw-hang4.js --w 0 --h 0` (pre-V249 build) — deterministic,
+3/3 runs: >36s frozen frame over a live drive (state: inMatch, ball:1,
+kp:2, clk parked; watchdog kicks climbing) after a resize event lands
+while window.innerWidth/innerHeight are degenerate (phone lock /
+app-switch / toolbar transition), which the __bg lock gate + __glitch
+injector simulate. pw-hang.js (lock-only), pw-hang2.js (duplicate tab),
+pw-hang3.js (pixel-verdict + hog) are the eliminated escalations.
+
+ROOT CAUSE (caught by instrumentation, hang4 state dump):
+  css:"0px/0px"  virt:"NaNxNaN"  — the mobile bootstrap's layout()
+consumed the degenerate dims and wrote 0px canvas CSS + a zeroed/NaN
+__rbVirt. Screen = stale composited frame (the GET READY staging screen
+on a phone); input = NaN tap mapping (device telemetry's gui-mouse
+pinned at 0,24). Engine/logic/Firebase healthy throughout — which is
+why every engine-side theory (compositor, loops, GL, WebKit input,
+zombies) tested clean. layout() was event-driven with no validation and
+no retry, so one poisoned resize was permanent until the user refreshed.
+
+FIX (V249, verified in this env — same glitch now plays green 36s):
+  1. layout() rejects dims < 100 and self-retries (index.html).
+  2. _tI2/_uI2 clamp to last-good dims (retrobowl.js) — engine-side hole
+     where innerWidth=0 passed the "is a number" check into canvas.width.
+  3. Heartbeat self-heal: degenerate canvas buffer, collapsed element
+     rect, or non-finite __rbVirt → re-run layout() (index.html).
+Regressions green: pw-resume both phases, pw-phone baseline, pick-6 37/37.

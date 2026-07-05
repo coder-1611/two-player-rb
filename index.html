@@ -695,7 +695,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V248<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V249<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +763,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V248</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V248</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V249</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V249</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -829,12 +829,28 @@
                 var canvas = document.getElementById('canvas');
                 if (!canvas) return;
                 var rot = portraitMQ.matches;
-                docEl.classList.toggle('rb-rot90', rot);
 
                 var bw = canvas.width || 853, bh = canvas.height || 480;
                 // logical landscape viewport (swapped when rotated)
                 var LW = rot ? window.innerHeight : window.innerWidth;
                 var LH = rot ? window.innerWidth  : window.innerHeight;
+                // V249: THE mobile GET READY hang root cause. A resize event
+                // delivered while the window reports degenerate dimensions
+                // (screen lock / app switch / Safari toolbar transitions)
+                // made this function write canvas CSS of 0px and a zeroed
+                // __rbVirt — freezing the visible frame (stale composited
+                // layer, typically the GET READY staging screen) AND killing
+                // the tap remap (NaN coords; device telemetry showed
+                // gui-mouse pinned at 0,24) while the engine ran healthily
+                // underneath. Repro: e2e/webkit/pw-hang4.js. NEVER consume
+                // degenerate dims: keep the last good layout and retry until
+                // the browser reports something sane.
+                if (!(LW >= 100) || !(LH >= 100)) {
+                    clearTimeout(window.__rbLayoutRetryT);
+                    window.__rbLayoutRetryT = setTimeout(layout, 400);
+                    return;
+                }
+                docEl.classList.toggle('rb-rot90', rot);
                 var scale = Math.max(LW / bw, LH / bh);   // COVER (no black bars)
                 var cw = bw * scale, ch = bh * scale;
                 var ox = (LW - cw) / 2, oy = (LH - ch) / 2;
@@ -858,6 +874,7 @@
             }
 
             window.addEventListener('resize', layout);
+            window.__rbLayoutNow = layout;   // V249: heartbeat self-heal hook
             window.addEventListener('orientationchange', function () { setTimeout(layout, 60); });
             if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', layout);
             document.addEventListener('DOMContentLoaded', layout);
@@ -8877,12 +8894,43 @@
                             }
                         }
                     } catch (eCz) {}
+                    // V249: degenerate-canvas self-heal. A resize delivered
+                    // during a phone lock/app-switch used to zero the canvas
+                    // buffer + app surface (render dies forever, logic keeps
+                    // running — the GET READY hang, repro: e2e/webkit/
+                    // pw-hang4.js). The engine-side clamp (_tI2/_uI2) stops
+                    // the zeroing at the source; this heals any device that
+                    // still ends up with a degenerate buffer.
+                    try {
+                        var cvsZ = document.getElementById('canvas');
+                        if (cvsZ && (cvsZ.width < 100 || cvsZ.height < 100)) {
+                            cvsZ.width  = window.__rbLastGoodW || 853;
+                            cvsZ.height = window.__rbLastGoodH || 480;
+                            try { window.dispatchEvent(new Event('resize')); } catch (eRz) {}
+                            diagLog('degenerate canvas buffer healed');
+                        }
+                        // V249: collapsed ELEMENT (0px CSS from a degenerate
+                        // layout()) or poisoned __rbVirt — re-run layout now
+                        // that dims may be sane again.
+                        if (cvsZ && document.documentElement.classList.contains('rb-mobile')) {
+                            var rZ = cvsZ.getBoundingClientRect();
+                            var vZ = window.__rbVirt;
+                            var virtBad = vZ && (!isFinite(vZ.right - vZ.left) ||
+                                                 (vZ.right - vZ.left) < 100);
+                            if ((rZ.width < 100 || rZ.height < 100 || virtBad) &&
+                                typeof window.__rbLayoutNow === 'function') {
+                                window.__rbLayoutNow();
+                                var r2Z = cvsZ.getBoundingClientRect();
+                                if (r2Z.width >= 100) diagLog('collapsed canvas layout healed');
+                            }
+                        }
+                    } catch (eZb) {}
                 } catch (e) {}
                 var clkout = '';
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V248 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V249 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +

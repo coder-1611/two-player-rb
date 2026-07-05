@@ -136043,15 +136043,26 @@ function _l35() {
 }
 function _tI2() {
     var _ = 640;
-    if (document.documentElement.classList.contains("rb-rot90")) return window.innerHeight || document.documentElement.clientHeight || 844;
-    return "number" == typeof window.innerWidth ? _ = window.innerWidth : document.documentElement && document.documentElement.clientWidth ? _ = document.documentElement.clientWidth : document.body && document.body.clientWidth && (_ = document.body.clientWidth),
-        _
+    if (document.documentElement.classList.contains("rb-rot90")) _ = window.innerHeight || document.documentElement.clientHeight || 844;
+    else "number" == typeof window.innerWidth ? _ = window.innerWidth : document.documentElement && document.documentElement.clientWidth ? _ = document.documentElement.clientWidth : document.body && document.body.clientWidth && (_ = document.body.clientWidth);
+    /* V249: a resize delivered while the window reports degenerate dims
+       (phone screen lock / app switch / toolbar transition) used to flow
+       0 into canvas.width + the app surface + the camera — rendering died
+       PERMANENTLY while game logic kept running (the mobile GET READY
+       hang, reproduced in e2e/webkit/pw-hang4.js). Never return a
+       degenerate dimension; fall back to the last good one. */
+    if (!(_ >= 100)) _ = window.__rbLastGoodW || 853;
+    window.__rbLastGoodW = _;
+    return _
 }
 function _uI2() {
     var _ = 480;
-    if (document.documentElement.classList.contains("rb-rot90")) return window.innerWidth || document.documentElement.clientWidth || 390;
-    return "number" == typeof window.innerHeight ? _ = window.innerHeight : document.documentElement && document.documentElement.clientHeight ? _ = document.documentElement.clientHeight : document.body && document.body.clientHeight && (_ = document.body.clientHeight),
-        _
+    if (document.documentElement.classList.contains("rb-rot90")) _ = window.innerWidth || document.documentElement.clientWidth || 390;
+    else "number" == typeof window.innerHeight ? _ = window.innerHeight : document.documentElement && document.documentElement.clientHeight ? _ = document.documentElement.clientHeight : document.body && document.body.clientHeight && (_ = document.body.clientHeight);
+    /* V249: see _tI2 — same degenerate-resize clamp. */
+    if (!(_ >= 100)) _ = window.__rbLastGoodH || 480;
+    window.__rbLastGoodH = _;
+    return _
 }
 function _9j5() {
     _No2(canvas, _Oo2),
