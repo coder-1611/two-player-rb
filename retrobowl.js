@@ -76368,6 +76368,7 @@ function _0p2(_) {
             _.type) {
                 case "touchstart":
                 case "touchmove":
+                    "touchstart" == _.type && (window.__rbTapLatch = 2),
                     _bp2 = 1;
                     break;
                 case "touchcancel":
@@ -76448,6 +76449,7 @@ function _hp2(_) {
             i) {
                 case "start":
                 case "move":
+                    "start" == i && "mouse" != _.pointerType && (window.__rbTapLatch = 2),
                     _ip2 = 0,
                         "mouse" == _.pointerType && (_ip2 = _.button),
                         -1 != _.button && (2 == _ip2 ? _ip2 = 1 : 1 == _ip2 && (_ip2 = 2),
@@ -121533,6 +121535,15 @@ function _ZN4() {
         this._J53 = _9p2,
         this._K53 = _ap2,
         this._WN4 = _bp2,
+        // V259 sub-frame tap latch: a touch down+up landing entirely between
+        // two engine steps (fast tap; or iOS pausing the loop while a
+        // stationary finger is down) leaves no edge for this polled bitmask,
+        // so engine buttons (PAT 1PT/2PT modal) never see the click. The
+        // input handlers arm __rbTapLatch=2 on touch-down; here we force one
+        // full step of button-1 held, then let it release the next step.
+        // Mouse input never arms the latch — desktop behavior unchanged.
+        window.__rbTapLatch === 2 ? (this._WN4 |= 1, window.__rbTapLatch = 1)
+            : window.__rbTapLatch === 1 && (window.__rbTapLatch = 0),
         0 != (1 & this._WN4) ? (this._hn2[0] = 1,
             0 != (1 & (this._XN4 ^ this._WN4)) && (this._cn2[0] = 1)) : (this._hn2[0] = 0,
                 0 != (1 & (this._XN4 ^ this._WN4)) && (this._gn2[0] = 1)),
