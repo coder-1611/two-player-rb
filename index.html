@@ -712,7 +712,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V263<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V264<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -780,7 +780,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V263</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V263</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V264</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V264</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8814,6 +8814,7 @@
             }
             window._rb2p_diagLog = diagLog;
             (function () {
+                window.__rbBootMs = Date.now();
                 var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
                 diagLog('boot' + (Date.now() - lastR < 20000 ? ' (post auto-reload)' : ''));
             })();
@@ -9192,7 +9193,11 @@
                         // V263: BLFY showed iOS escalates the 1Hz throttle to a
                         // FULL freeze ~20s after entry — the 25s trigger never
                         // got to run. Fire inside the 1Hz window instead.
+                        // V264: only recover while VISIBLE — a reload fired on a
+                        // hidden (locked) page comes up suspended and can't
+                        // rejoin (KRXI_b_aunz1); the unlock handler covers it.
                         if (inMH && em && Number(vy) === 0 && ball === 0 &&
+                            document.visibilityState === 'visible' &&
                             (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0 &&
                             engKicks >= 5 &&
                             Date.now() - window.__rbMatchEnterMs > 12000) {
@@ -9270,12 +9275,13 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V263 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V264 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
                     ' pat:' + (window._rb2p_patPlayPending === true ? 'P'
                         : window._rb2p_patPlayResolved === true ? 'R' : '-') +
+                    ' vis:' + (document.hidden ? 'H' : 'V') +
                     (engKicks ? ' kicks:' + engKicks : '') + '\n' +
                     'ctl:' + ctl + ' pop:' + pops +
                     ' gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
@@ -9420,7 +9426,12 @@
             var wakeL = null, wakeLPending = false, hiddenAtMs = 0;
             setInterval(function () {
                 try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    // V264: hold the lock from page load on MOBILE, not just
+                    // in-match. KRXI: the waiting phone AUTO-LOCKED during the
+                    // lobby/READY wait (vis:HIDDEN 2s before match entry) —
+                    // the in-match-only lock never had a chance to engage.
+                    if (!document.documentElement.classList.contains('rb-in-match') &&
+                        !document.documentElement.classList.contains('rb-mobile')) return;
                     if (wakeL || wakeLPending) return;
                     if (!('wakeLock' in navigator)) return;
                     if (document.visibilityState !== 'visible') return;
@@ -9448,6 +9459,41 @@
                         hiddenAtMs = 0;
                         diagLog('vis: visible' + (hidS ? ' (hidden ' + hidS + 's)' : ''));
                         try { if (window.__rbLayoutNow) window.__rbLayoutNow(); } catch (eL) {}
+                        // V264 HEAL-ON-UNLOCK. KRXI: the match wedged while the
+                        // page was hidden (auto-lock), and the hidden AUTO-
+                        // RECOVER reload couldn't rejoin while suspended. The
+                        // moment the screen returns: if we should be in a match
+                        // but aren't in a healthy one, reload into the proven
+                        // resume flow. Mobile-only; cooldown + cap stop loops.
+                        try {
+                            if (document.documentElement.classList.contains('rb-mobile')) {
+                                var roomVR = '';
+                                try { roomVR = sessionStorage.getItem('rb_room') || ''; } catch (eR1) {}
+                                if (roomVR) {
+                                    var inMVR = document.documentElement.classList.contains('rb-in-match');
+                                    var wedgedVR = false;
+                                    try {
+                                        var emVR = RB.engineState();
+                                        wedgedVR = inMVR && emVR &&
+                                            Number(emVR.engineDriveFsmStage) === 0 &&
+                                            (emVR.userScore | 0) === 0 && (emVR.opponentScore | 0) === 0 &&
+                                            Date.now() - (window.__rbMatchEnterMs || Date.now()) > 12000;
+                                    } catch (eW1) {}
+                                    var bootAge = Date.now() - (window.__rbBootMs || Date.now());
+                                    if (wedgedVR || (!inMVR && bootAge > 20000)) {
+                                        var vrTs = Number(sessionStorage.getItem('rb2p_vr_ts') || 0);
+                                        var vrN  = Number(sessionStorage.getItem('rb2p_vr_n') || 0);
+                                        if (Date.now() - vrTs > 30000 && vrN < 5) {
+                                            sessionStorage.setItem('rb2p_vr_ts', String(Date.now()));
+                                            sessionStorage.setItem('rb2p_vr_n', String(vrN + 1));
+                                            diagLog('VIS-RECOVER: reload on unlock (' +
+                                                    (wedgedVR ? 'wedged' : 'not-in-match') + ')');
+                                            setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 300);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (eVR) {}
                     } else {
                         hiddenAtMs = Date.now();
                         diagLog('vis: HIDDEN');
