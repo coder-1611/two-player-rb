@@ -436,9 +436,18 @@
             overscroll-behavior: none;
             -webkit-tap-highlight-color: transparent;
             -webkit-touch-callout: none;
-            touch-action: manipulation;
+            /* V256: was `manipulation`, which still PERMITS panning. iOS
+               suspends the whole page's rAF while a touch is in scroll/pan
+               arbitration — and it honors touch-action poorly inside the
+               rotated (transformed) body. Long press-holds (the PAT kick
+               meter) and careful drags sat in that arbitration = screen
+               frozen while the finger is down (device telemetry: fps:0,
+               taps still logging, engine watchdog kicking). Nothing on a
+               phone may ever scroll: total none. */
+            touch-action: none;
         }
         html.rb-mobile #canvas { touch-action: none; }
+        html.rb-mobile #rb-diag, html.rb-mobile #rb-hud-toggle { touch-action: none; }
         html.rb-mobile #gm4html5_div_id { margin: 0 !important; }
         html.rb-mobile .cheat-btn,
         html.rb-mobile #rb-lobby button,
@@ -695,7 +704,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V255<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V256<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -763,7 +772,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V255</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V255</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V256</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V256</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -834,6 +843,18 @@
                 // logical landscape viewport (swapped when rotated)
                 var LW = rot ? window.innerHeight : window.innerWidth;
                 var LH = rot ? window.innerWidth  : window.innerHeight;
+                // V256: measure the home-indicator inset once (probe lives on
+                // <html>, which is never CSS-rotated, so the rect is honest).
+                if (window.__rbSafeB === undefined) {
+                    try {
+                        var sp = document.createElement('div');
+                        sp.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;visibility:hidden;' +
+                                           'height:env(safe-area-inset-bottom,0px);pointer-events:none;';
+                        document.documentElement.appendChild(sp);
+                        window.__rbSafeB = Math.min(40, sp.getBoundingClientRect().height || 0);
+                        sp.parentNode.removeChild(sp);
+                    } catch (eSB) { window.__rbSafeB = 0; }
+                }
                 // V249: THE mobile GET READY hang root cause. A resize event
                 // delivered while the window reports degenerate dimensions
                 // (screen lock / app switch / Safari toolbar transitions)
@@ -854,6 +875,12 @@
                 var scale = Math.max(LW / bw, LH / bh);   // COVER (no black bars)
                 var cw = bw * scale, ch = bh * scale;
                 var ox = (LW - cw) / 2, oy = (LH - ch) / 2;
+                // V256: in rotated mode the logical-LEFT edge is the phone's
+                // physical BOTTOM — the home-indicator system-gesture zone,
+                // where the PAT kick meter lands. The system swipe cannot be
+                // disabled from a web page, so shift the game content off
+                // that edge (the plan-sanctioned thin margin).
+                if (rot && window.__rbSafeB > 0) ox += window.__rbSafeB;
 
                 var s = canvas.style;
                 s.setProperty('position', 'fixed', 'important');
@@ -872,6 +899,27 @@
                 // its getBoundingClientRect-based tap mapping stays correct.
                 window.__rbVirt = { left: ox, top: oy, right: ox + cw, bottom: oy + ch, sx: scale, sy: scale };
             }
+
+            // V256: definitive gesture-proofing. iOS pauses the page's rAF
+            // while a touch is in scroll/system-gesture arbitration — the
+            // frozen-under-finger family (PAT kick-meter holds, careful snap
+            // drags). A CANCELED first touchmove ends the arbitration
+            // outright (works even where touch-action is mis-honored inside
+            // the rotated body). Lobby taps/typing are untouched: only
+            // touchMOVE is canceled, and only outside form fields.
+            document.addEventListener('touchmove', function (e) {
+                try {
+                    var t = e.target;
+                    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+                    // scrollable overlays (roster view / lobby column) keep
+                    // native scrolling — everything else is game surface
+                    if (t && t.closest && t.closest('#rb-roster-overlay, #rb-roster-body, .rb-screen')) return;
+                    e.preventDefault();
+                } catch (eT) {}
+            }, { passive: false });
+            document.addEventListener('gesturestart', function (e) {
+                try { e.preventDefault(); } catch (eG) {}
+            }, { passive: false });
 
             window.addEventListener('resize', layout);
             window.__rbLayoutNow = layout;   // V249: heartbeat self-heal hook
@@ -9054,7 +9102,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V255 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V256 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
