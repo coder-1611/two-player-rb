@@ -704,7 +704,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V256<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V257<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -772,7 +772,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V256</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V256</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V257</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V257</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5223,6 +5223,46 @@
                         }
                         if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
                         console.log('[2P PICK6] PAT_RESULT applied — A kicking off (holding kp=2 to start the drive)');
+                        // V257: the one-shot force FAILED on device when the
+                        // PAT_RESULT arrived while this phone was backgrounded
+                        // (telemetry: A stuck at vy:4 kp:1 ball:0, loop dead,
+                        // kicks climbing — the drive never spawned and nothing
+                        // retried). Retry until the ball actually exists, the
+                        // room changed hands, or ~45s passes; heals on wake
+                        // because intervals run (throttled) in background.
+                        (function (yard0) {
+                            var krTries = 0;
+                            var krIv = setInterval(function () {
+                                try {
+                                    krTries++;
+                                    if (krTries > 30) { clearInterval(krIv); return; }
+                                    var emK = RB.engineState();
+                                    if (!emK || emK.engineUserTeamIdx == null) return;
+                                    if (window._rb2p_userIsWaitingForOpponent === true) { clearInterval(krIv); return; }
+                                    if (emK.enginePossessingTeamIdx !== emK.engineUserTeamIdx &&
+                                        emK.engineControllerState === 2) { clearInterval(krIv); return; }
+                                    var ballK = 0;
+                                    var allK = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                    for (var ik = 0; ik < allK.length; ik++) {
+                                        var xk = allK[ik];
+                                        if (xk && !xk._HL2 && xk._eE2 && xk._eE2._fE2 === 'obj_ball') { ballK++; break; }
+                                    }
+                                    if (ballK > 0) { clearInterval(krIv); return; }
+                                    // V169 pre-clear + re-force
+                                    try {
+                                        var rawK = emK.rawEngineMatch;
+                                        try { rawK._831 = ''; rawK.__b1 = ''; } catch (eC2) {}
+                                        emK.engineMainCommentaryText = '';
+                                        emK.engineSubCommentaryText  = '';
+                                        try { if (Number(rawK._Nb1) < 1) rawK._Nb1 = 1; } catch (eN2) {}
+                                    } catch (ePre2) {}
+                                    var okK = window._rb2p_forceUserOffenseDrive(yard0);
+                                    if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                        'post-PAT drive retry ' + krTries + (okK ? ' OK' : ' fail'));
+                                } catch (eKR) {}
+                            }, 1500);
+                        })(yard);
                     } else {
                         console.log('[2P PICK6] PAT_RESULT applied (scores only — drive already running)');
                     }
@@ -9102,7 +9142,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V256 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V257 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9116,8 +9156,32 @@
             // V239: fps counter (dropped in the V233 rewrite; decisive for
             // telling "render dead" from "logic stuck" remotely)
             var rafCount = 0, diagFps = -1;
-            (function rafTick() { rafCount++; requestAnimationFrame(rafTick); })();
+            (function rafTick() { rafCount++; window.__rbRafMono = (window.__rbRafMono || 0) + 1;
+                requestAnimationFrame(rafTick); })();
             setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
+            // V257: measure rAF DURING each touch-hold — the one number that
+            // separates "iOS froze the page under the finger" (frames ~0 for
+            // the hold) from "engine/scene ignored the input" (frames ~60/s).
+            try {
+                var cvsH = document.getElementById('canvas');
+                if (cvsH) {
+                    var holdT0 = 0, holdF0 = 0;
+                    cvsH.addEventListener('pointerdown', function () {
+                        holdT0 = Date.now(); holdF0 = window.__rbRafMono || 0;
+                    }, { capture: true, passive: true });
+                    var holdEnd = function (tag) { return function () {
+                        if (!holdT0) return;
+                        var ms = Date.now() - holdT0;
+                        var fr = (window.__rbRafMono || 0) - holdF0;
+                        holdT0 = 0;
+                        if (ms > 250) diagLog('hold ' + ms + 'ms ' + fr + 'f' +
+                                              (tag ? ' ' + tag : '') +
+                                              (fr < ms / 50 ? ' <-- rAF SUSPENDED DURING HOLD' : ''));
+                    }; };
+                    cvsH.addEventListener('pointerup', holdEnd(''), { capture: true, passive: true });
+                    cvsH.addEventListener('pointercancel', holdEnd('CANCEL'), { capture: true, passive: true });
+                }
+            } catch (eHm) {}
 
             // (V244: the V243 "live-blind stall escape" is REMOVED at the
             // user's direction — its auto-reload fired around possession
