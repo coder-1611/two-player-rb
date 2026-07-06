@@ -704,7 +704,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V259<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V260<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -772,7 +772,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V259</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V259</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V260</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V260</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5379,6 +5379,7 @@
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = userDelta;
                             console.log('[2P PAT GUARD] PAT resolved: +' + userDelta + ' (made)');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved +' + userDelta);
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('PAT made: +' + userDelta);
                             return;
                         }
@@ -5408,6 +5409,7 @@
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = 0;
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved: missed');
                             console.log('[2P PAT GUARD] PAT resolved: missed (Vy=' +
                                         em.engineDriveFsmStage + ', possessionFlipped=' +
                                         patKickoffFlippedAway + ')');
@@ -5470,6 +5472,7 @@
                     // does). If it never fires, send synthetically.
                     if (Date.now() - (window._rb2p_patResolvedMs || 0) > 5000) {
                         console.warn('[2P PAT GUARD] kickoff _1c1 never fired — sending synthetic PAT_RESULT');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('synthetic PAT_RESULT sent');
                         var names = em.engineTeamDisplayNames || ['', ''];
                         try {
                             window._twoPlayer.send({
@@ -8861,9 +8864,57 @@
                     if (Date.now() - lastTapLogMs > 1000) {
                         lastTapLogMs = Date.now();
                         var gAll = pageToGui(e.pageX, e.pageY);
+                        var scrT = (window.scrollX | 0) || (window.scrollY | 0)
+                            ? ' scr' + (window.scrollX | 0) + ',' + (window.scrollY | 0) : '';
                         diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
-                                '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy));
+                                '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy) + scrT);
                     }
+                    // V260: engine-MODAL buttons (PAT 1PT/2PT, staging Kick Off,
+                    // any popup button) get the same insurance kickoff buttons
+                    // have had since V233. QWHY device session: five straight
+                    // taps on two different modals each mapped 15-25 GUI units
+                    // outside the drawn button, so the engine's (V259-latched)
+                    // click path missed — modal deaf. Match the tap to the
+                    // NEAREST live popup button with a generous pad; give the
+                    // engine 350ms to handle it itself (button destroyed =
+                    // handled); only then fire the response script direct.
+                    if (document.documentElement.classList.contains('rb-mobile')) try {
+                        var plT = (window._rb2p_enumeratePopupInstances &&
+                                   window._rb2p_enumeratePopupInstances()) || [];
+                        var pbtns = [];
+                        for (var pbI = 0; pbI < plT.length; pbI++) {
+                            var ppT = plT[pbI];
+                            if (ppT && !ppT._HL2 && typeof ppT._0G === 'number' && ppT._0G > 0 &&
+                                ppT._8l1 > 0 && ppT.x > -1000 && ppT._g2 !== 0) pbtns.push(ppT);
+                        }
+                        if (pbtns.length) {
+                            var gT = pageToGui(e.pageX, e.pageY);
+                            var gx480 = gT.gx * 480 / 853, gy270 = gT.gy * 270 / 480;
+                            var bestB = null, bestD = 1e9;
+                            for (var pcI = 0; pcI < pbtns.length; pcI++) {
+                                var bbT = pbtns[pcI];
+                                // distance OUTSIDE the button rect (<=0 = inside)
+                                var ddT = Math.max(
+                                    Math.abs(gx480 - (bbT.x + bbT._8l1 / 2)) - bbT._8l1 / 2,
+                                    Math.abs(gy270 - (bbT.y + bbT._VI / 2)) - bbT._VI / 2);
+                                if (ddT < bestD) { bestD = ddT; bestB = bbT; }
+                            }
+                            if (bestB && bestD <= 40) (function (bF, dF) {
+                                setTimeout(function () {
+                                    try {
+                                        if (bF._HL2) { diagLog('modal btn: engine handled tap'); return; }
+                                        var mxF = -1, myF = -1;
+                                        try { mxF = Math.round(_m01(0)); myF = Math.round(_o01(0)); } catch (eM2) {}
+                                        diagLog('modal btn ' + bF._0G + ' d=' + Math.round(dF) +
+                                                ' gm=' + mxF + ',' + myF + ' — firing direct');
+                                        _li(bF, bF, bF._0G);
+                                    } catch (eF2) {
+                                        diagLog('modal btn ERR ' + String((eF2 && eF2.message) || eF2).slice(0, 40));
+                                    }
+                                }, 350);
+                            })(bestB, bestD);
+                        }
+                    } catch (ePB) {}
                     var btns = liveKickoffButtons();
                     if (!btns.length) {
                         // V234: taps on a painted CORPSE were silently ignored
@@ -9078,6 +9129,17 @@
                         }
                     } catch (ePp) {}
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
+                    // V260: pageX-based engine mapping breaks silently if the
+                    // page ever scrolls (iOS toolbar overflow) — heal it.
+                    try {
+                        if (document.documentElement.classList.contains('rb-mobile') &&
+                            document.documentElement.classList.contains('rb-in-match') &&
+                            ((window.scrollX | 0) || (window.scrollY | 0))) {
+                            var sxH = window.scrollX | 0, syH = window.scrollY | 0;
+                            window.scrollTo(0, 0);
+                            diagLog('scroll healed ' + sxH + ',' + syH);
+                        }
+                    } catch (eSc) {}
                     // V246: compositor un-freezer (mobile only). Root cause of
                     // the GET READY stall: the phone compositor freezes the
                     // rotated canvas layer at the match-room switch while the
@@ -9142,10 +9204,12 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V259 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V260 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
+                    ' pat:' + (window._rb2p_patPlayPending === true ? 'P'
+                        : window._rb2p_patPlayResolved === true ? 'R' : '-') +
                     (engKicks ? ' kicks:' + engKicks : '') + '\n' +
                     'ctl:' + ctl + ' pop:' + pops +
                     ' gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
