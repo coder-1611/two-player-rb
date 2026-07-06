@@ -712,7 +712,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V264<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V265<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -780,7 +780,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V264</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V264</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V265</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V265</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9040,6 +9040,43 @@
                         method: 'PUT',
                         body: JSON.stringify(body)
                     }).catch(function () {});
+                    // V265: opponent-visible liveness. Every prior death was
+                    // INVISIBLE to the other player — A sat in WAIT forever with
+                    // no idea B's phone was asleep. Write a tiny hb/{role}
+                    // timestamp; when MY opponent's goes stale >20s while I'm
+                    // parked waiting, say so on screen (information only — no
+                    // auto-action on the other device; the V243 lesson).
+                    try {
+                        if (!room || !role) throw 0;
+                        var hbBase = 'https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room;
+                        fetch(hbBase + '/hb/' + role + '.json', {
+                            method: 'PUT', body: JSON.stringify(Date.now())
+                        }).catch(function () {});
+                        var oppRoleHb = role === 'a' ? 'b' : 'a';
+                        fetch(hbBase + '/hb/' + oppRoleHb + '.json')
+                            .then(function (r) { return r.json(); })
+                            .then(function (oppTs) {
+                                var bn = document.getElementById('rb-oppstall');
+                                var waitingHb = window._rb2p_userIsWaitingForOpponent === true;
+                                var stale = oppTs && (Date.now() - Number(oppTs) > 20000);
+                                if (waitingHb && stale) {
+                                    if (!bn) {
+                                        bn = document.createElement('div');
+                                        bn.id = 'rb-oppstall';
+                                        bn.style.cssText = 'position:fixed;top:8px;left:50%;' +
+                                            'transform:translateX(-50%);z-index:99999;background:#7a1f1f;' +
+                                            'color:#fff;font:bold 12px monospace;padding:6px 10px;' +
+                                            'border:2px solid #ff5555;border-radius:6px;text-align:center;' +
+                                            'pointer-events:none;max-width:92vw;';
+                                        document.body.appendChild(bn);
+                                        diagLog('opponent hb stale — asleep banner shown');
+                                    }
+                                    bn.textContent = "OPPONENT'S PHONE LOOKS ASLEEP (" +
+                                        Math.round((Date.now() - Number(oppTs)) / 1000) +
+                                        's) — HAVE THEM TAP / UNLOCK THEIR SCREEN';
+                                } else if (bn) bn.parentNode.removeChild(bn);
+                            }).catch(function () {});
+                    } catch (eHb) {}
                 } catch (e) {}
             }, 5000);
 
@@ -9275,7 +9312,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V264 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V265 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9871,7 +9908,18 @@
                 // also outranks the older turnover record from the same pick-6.
                 var patDutySnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/patDuty'));
                 var patDuty = patDutySnap.val();
-                var patDutyActive = patDuty && (Date.now() - (Number(patDuty.ts) || 0) < 600000);
+                // V265: room-code REUSE contamination. startMatch() clears stale
+                // records, but tryRestore runs FIRST when sessionStorage still
+                // holds the room — and a duty from the PREVIOUS match (10-min
+                // TTL) hijacked the session into resuming the old game's pick-6
+                // while the opponent started fresh (QWHY phase 2: stale modal at
+                // a nonsense clock, both phones in different universes). A duty
+                // is only credible if a live/{role} heartbeat proves a match was
+                // running within 25s, or the record itself is young (<3 min — a
+                // real mid-PAT reload happens in seconds).
+                var patDutyAge = patDuty ? (Date.now() - (Number(patDuty.ts) || 0)) : Infinity;
+                var patDutyActive = patDuty && ((myLive || oppLive) ? patDutyAge < 600000
+                                                                    : patDutyAge < 180000);
                 var patDutyMine = !!(patDutyActive && patDuty.role === savedRole);
                 if (patDutyMine) {
                     window._rb2p_resumePatDuty = patDuty;
@@ -9943,6 +9991,18 @@
                     return;
                 }
 
+                // V265: falling through to the lobby = the room is between
+                // matches (nothing fresh to resume). Sweep leftover per-match
+                // records NOW so neither phone's next join/READY can be
+                // hijacked by them (startMatch also clears, but only after
+                // BOTH players ready — tryRestore on the other phone may run
+                // before that).
+                try {
+                    if (patDuty && !patDutyActive)
+                        FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/patDuty')).catch(function () {});
+                    if (turnover && !turnoverActive && !turnoverForMe)
+                        FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/turnover')).catch(function () {});
+                } catch (eSw) {}
                 enterRoom(savedRoom, savedRole, /*restoring=*/true);
             } catch (e) {
                 sessionStorage.removeItem('rb_room');
