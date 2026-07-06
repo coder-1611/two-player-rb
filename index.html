@@ -712,7 +712,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V262<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V263<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -780,7 +780,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V262</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V262</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V263</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V263</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9189,13 +9189,16 @@
                         // >90s between tries, max 3 per session.
                         if (inMH && !window.__rbMatchEnterMs) window.__rbMatchEnterMs = Date.now();
                         if (!inMH) window.__rbMatchEnterMs = 0;
+                        // V263: BLFY showed iOS escalates the 1Hz throttle to a
+                        // FULL freeze ~20s after entry — the 25s trigger never
+                        // got to run. Fire inside the 1Hz window instead.
                         if (inMH && em && Number(vy) === 0 && ball === 0 &&
                             (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0 &&
-                            engKicks > 10 &&
-                            Date.now() - window.__rbMatchEnterMs > 25000) {
+                            engKicks >= 5 &&
+                            Date.now() - window.__rbMatchEnterMs > 12000) {
                             var arTs = Number(sessionStorage.getItem('rb2p_ar_ts') || 0);
                             var arN  = Number(sessionStorage.getItem('rb2p_ar_n') || 0);
-                            if (Date.now() - arTs > 90000 && arN < 3) {
+                            if (Date.now() - arTs > 45000 && arN < 4) {
                                 sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
                                 sessionStorage.setItem('rb2p_ar_n', String(arN + 1));
                                 diagLog('AUTO-RECOVER: reloading wedged start (kicks=' + engKicks + ')');
@@ -9267,7 +9270,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V262 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V263 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9366,6 +9369,43 @@
                     if (window._rb2p_glStatus() === 'LOST') glLostRecover('probe');
                 } catch (e) {}
             }, 1500);
+
+            // ==== V263 SILENT-AUDIO KEEP-ALIVE ==========================
+            // BLFY/QJIX/IUHB: on the iOS-18.7 phones the UNTOUCHED (waiting)
+            // side gets suppressed at match entry while visible — rAF 0,
+            // timers 1Hz, then fully frozen ~20s later — with 'REJ Decoding
+            // failed' (AudioContext) at the death moment. The touched phone
+            // always survives (why QWHY-1 worked: the user handled B the
+            // whole time). Pages actively playing audio are exempt from
+            // iOS's idle-page suppression: run a silent looping WebAudio
+            // source, unlocked by ANY first touch, re-resumed continuously.
+            var kaCtx = null;
+            function kaEnsure() {
+                try {
+                    if (!document.documentElement.classList.contains('rb-mobile')) return;
+                    var AC = window.AudioContext || window.webkitAudioContext;
+                    if (!AC) return;
+                    if (!kaCtx) {
+                        kaCtx = new AC();
+                        var kaBuf = kaCtx.createBuffer(1, kaCtx.sampleRate, kaCtx.sampleRate);
+                        var kaSrc = kaCtx.createBufferSource();
+                        kaSrc.buffer = kaBuf;
+                        kaSrc.loop = true;
+                        var kaG = kaCtx.createGain();
+                        kaG.gain.value = 0.001;   // inaudible, but "playing"
+                        kaSrc.connect(kaG); kaG.connect(kaCtx.destination);
+                        kaSrc.start(0);
+                        diagLog('audio keep-alive created');
+                    }
+                    if (kaCtx.state !== 'running')
+                        kaCtx.resume().then(function () {
+                            diagLog('audio keep-alive running');
+                        }).catch(function () {});
+                } catch (eKA) {}
+            }
+            document.addEventListener('pointerdown', kaEnsure, { capture: true, passive: true });
+            document.addEventListener('touchstart', kaEnsure, { capture: true, passive: true });
+            setInterval(kaEnsure, 3000);
 
             // ==== V261 WAKE LOCK + VISIBILITY FORENSICS =================
             // IUHB/QWHY-2/UYDX device telemetry: the WAITING phone's rAF hit
