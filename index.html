@@ -704,7 +704,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V260<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V261<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -772,7 +772,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V260</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V260</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V261</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V261</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9204,7 +9204,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V260 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V261 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9303,6 +9303,58 @@
                     if (window._rb2p_glStatus() === 'LOST') glLostRecover('probe');
                 } catch (e) {}
             }, 1500);
+
+            // ==== V261 WAKE LOCK + VISIBILITY FORENSICS =================
+            // IUHB/QWHY-2/UYDX device telemetry: the WAITING phone's rAF hit
+            // 0 AND its timers clamped to ~1Hz for minutes — iOS suspending
+            // the page. The signature fits the screen auto-locking (default
+            // 30s) while the phone sits untouched at GET READY; the engine
+            // is dead through the match-start handshake, so the match wedges
+            // even after the screen comes back (UYDX_b: fps recovered to 60,
+            // vy still 0). A screen wake lock (iOS Safari 16.4+) prevents
+            // auto-lock outright; the vis log lines prove/disprove the
+            // mechanism on the next incident.
+            var wakeL = null, wakeLPending = false, hiddenAtMs = 0;
+            setInterval(function () {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    if (wakeL || wakeLPending) return;
+                    if (!('wakeLock' in navigator)) return;
+                    if (document.visibilityState !== 'visible') return;
+                    wakeLPending = true;
+                    navigator.wakeLock.request('screen').then(function (l) {
+                        wakeL = l; wakeLPending = false;
+                        diagLog('wake lock ON');
+                        l.addEventListener('release', function () {
+                            wakeL = null;
+                            diagLog('wake lock released');
+                        });
+                    }).catch(function (eW) {
+                        wakeLPending = false;
+                        if (!window.__rbWakeErrOnce) {
+                            window.__rbWakeErrOnce = true;
+                            diagLog('wake lock ERR ' + String((eW && eW.message) || eW).slice(0, 40));
+                        }
+                    });
+                } catch (eWL) { wakeLPending = false; }
+            }, 1000);
+            document.addEventListener('visibilitychange', function () {
+                try {
+                    if (document.visibilityState === 'visible') {
+                        var hidS = hiddenAtMs ? Math.round((Date.now() - hiddenAtMs) / 1000) : 0;
+                        hiddenAtMs = 0;
+                        diagLog('vis: visible' + (hidS ? ' (hidden ' + hidS + 's)' : ''));
+                        try { if (window.__rbLayoutNow) window.__rbLayoutNow(); } catch (eL) {}
+                    } else {
+                        hiddenAtMs = Date.now();
+                        diagLog('vis: HIDDEN');
+                    }
+                } catch (eV) {}
+            });
+            window.addEventListener('pagehide', function () { try { diagLog('pagehide'); } catch (e) {} });
+            window.addEventListener('pageshow', function (ev) {
+                try { diagLog('pageshow' + (ev && ev.persisted ? ' (bfcache)' : '')); } catch (e) {}
+            });
 
             // ==== V241 ENGINE-LOOP WATCHDOG =============================
             // Phone A telemetry (room FXHF): fps:60 but a FROZEN canvas over
