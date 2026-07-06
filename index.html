@@ -565,6 +565,14 @@
            overlays) ride along and DOM hit-testing stays correct automatically.
            The canvas needs the JS/engine coordinate remap (see bootstrap script
            + retrobowl.js patches) since GameMaker maps taps via getBoundingRect. */
+        /* V262: never allow ANY page scroll on phones. A ~1px scrollable
+           overflow (dvh lagging the toolbar state on iOS 18) parks Safari in
+           a perpetual scroll-settle with rAF fully suspended on a VISIBLE
+           page — the GET READY death (QJIX: fps:0, timers 1Hz, 'scroll
+           healed 0,1' repeating, no vis:HIDDEN). layout() also sizes the
+           rotated body in real px; this is the CSS belt. */
+        html.rb-mobile { overflow: hidden; }
+        html.rb-mobile, html.rb-mobile body { overscroll-behavior: none; }
         html.rb-rot90 body {
             position: absolute;
             top: 100%;              /* fallback for old browsers */
@@ -704,7 +712,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V261<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V262<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -772,7 +780,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V261</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V261</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V262</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V262</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -872,6 +880,23 @@
                     return;
                 }
                 docEl.classList.toggle('rb-rot90', rot);
+                // V262: size the rotated body in real PIXELS, overriding the
+                // 100dvh/100dvw CSS. On iOS 18 dvh lags toolbar transitions,
+                // leaving the page ~1px scrollable — Safari then suspends rAF
+                // indefinitely on a fully visible page (the GET READY death;
+                // QJIX telemetry). Pixel sizes kill the overflow at the source.
+                try {
+                    var bS = document.body.style;
+                    if (rot) {
+                        bS.setProperty('top',    LW + 'px', 'important');
+                        bS.setProperty('width',  LW + 'px', 'important');
+                        bS.setProperty('height', LH + 'px', 'important');
+                    } else {
+                        bS.removeProperty('top');
+                        bS.removeProperty('width');
+                        bS.removeProperty('height');
+                    }
+                } catch (eBS) {}
                 var scale = Math.max(LW / bw, LH / bh);   // COVER (no black bars)
                 var cw = bw * scale, ch = bh * scale;
                 var ox = (LW - cw) / 2, oy = (LH - ch) / 2;
@@ -9131,13 +9156,51 @@
                     try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
                     // V260: pageX-based engine mapping breaks silently if the
                     // page ever scrolls (iOS toolbar overflow) — heal it.
+                    // V262: only fight REAL displacement (>2px, max 1/10s).
+                    // A 1px offset is iOS's own resting state; scrollTo-ing it
+                    // every 700ms feeds the perpetual scroll-settle that keeps
+                    // rAF suspended (QJIX: 'scroll healed 0,1 x2' loops).
                     try {
-                        if (document.documentElement.classList.contains('rb-mobile') &&
-                            document.documentElement.classList.contains('rb-in-match') &&
-                            ((window.scrollX | 0) || (window.scrollY | 0))) {
+                        var inMH = document.documentElement.classList.contains('rb-in-match');
+                        if (document.documentElement.classList.contains('rb-mobile') && inMH) {
                             var sxH = window.scrollX | 0, syH = window.scrollY | 0;
-                            window.scrollTo(0, 0);
-                            diagLog('scroll healed ' + sxH + ',' + syH);
+                            if ((Math.abs(sxH) > 2 || Math.abs(syH) > 2) &&
+                                Date.now() - (window.__rbScrollHealMs || 0) > 10000) {
+                                window.__rbScrollHealMs = Date.now();
+                                window.scrollTo(0, 0);
+                                diagLog('scroll healed ' + sxH + ',' + syH);
+                            }
+                            // V262: keyboard focus residue keeps iOS's visual
+                            // viewport in a transitional state — blur it.
+                            var aeH = document.activeElement;
+                            if (aeH && /^(INPUT|TEXTAREA|SELECT)$/.test(aeH.tagName)) {
+                                aeH.blur();
+                                diagLog('blurred lingering input focus');
+                            }
+                        }
+                        // V262 AUTO-RECOVER: the one thing PROVEN to fix a dead
+                        // page (user refreshes have fixed it 100% for weeks) is
+                        // a reload into the resume flow. If the OPENING never
+                        // ran (no drive armed, no ball, 0-0) and the engine
+                        // loop has been provably dead (kicks piling up) well
+                        // into the match, reload ourselves. Strictly gated so
+                        // it can NEVER fire mid-game (the V243 lesson): score
+                        // must be 0-0 with vy=0, ball=0, >25s after entry,
+                        // >90s between tries, max 3 per session.
+                        if (inMH && !window.__rbMatchEnterMs) window.__rbMatchEnterMs = Date.now();
+                        if (!inMH) window.__rbMatchEnterMs = 0;
+                        if (inMH && em && Number(vy) === 0 && ball === 0 &&
+                            (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0 &&
+                            engKicks > 10 &&
+                            Date.now() - window.__rbMatchEnterMs > 25000) {
+                            var arTs = Number(sessionStorage.getItem('rb2p_ar_ts') || 0);
+                            var arN  = Number(sessionStorage.getItem('rb2p_ar_n') || 0);
+                            if (Date.now() - arTs > 90000 && arN < 3) {
+                                sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
+                                sessionStorage.setItem('rb2p_ar_n', String(arN + 1));
+                                diagLog('AUTO-RECOVER: reloading wedged start (kicks=' + engKicks + ')');
+                                setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 250);
+                            }
                         }
                     } catch (eSc) {}
                     // V246: compositor un-freezer (mobile only). Root cause of
@@ -9204,7 +9267,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V261 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V262 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
