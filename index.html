@@ -704,7 +704,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V257<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V258<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -772,7 +772,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V257</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V257</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V258</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V258</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9142,7 +9142,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V257 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V258 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9792,6 +9792,39 @@
             $slotB.classList.toggle('you', role === 'b');
             $ready.textContent = 'READY';
             $ready.dataset.state = 'not-ready';
+
+            // V258: version handshake. GitHub Pages deploys fail
+            // intermittently, so coder-1611.github.io can silently lag
+            // several builds behind Vercel — two players on DIFFERENT bridge
+            // versions produce exactly the "impossible" mixed-protocol
+            // breaks. Publish my build number; warn loudly on mismatch.
+            try {
+                var verM = (document.querySelector('.prompt') || { textContent: '' })
+                               .textContent.match(/V(\d+)/);
+                window._rb2p_myVer = verM ? Number(verM[1]) : 0;
+                FB.set(FB.ref(db, 'rooms/' + code + '/ver/' + role), window._rb2p_myVer).catch(function () {});
+                FB.onValue(FB.ref(db, 'rooms/' + code + '/ver'), function (vs) {
+                    try {
+                        var v = vs.val() || {};
+                        var opp = role === 'a' ? v.b : v.a;
+                        if (opp && window._rb2p_myVer && opp !== window._rb2p_myVer) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'VERSION MISMATCH: me V' + window._rb2p_myVer + ' vs opp V' + opp);
+                            var vb = document.getElementById('rb-vermismatch');
+                            if (!vb) {
+                                vb = document.createElement('div');
+                                vb.id = 'rb-vermismatch';
+                                vb.style.cssText = 'position:fixed;top:4px;left:50%;transform:translateX(-50%);' +
+                                    'z-index:99999;background:#b00;color:#fff;font:bold 12px monospace;' +
+                                    'padding:6px 10px;border-radius:6px;pointer-events:none;';
+                                document.body.appendChild(vb);
+                            }
+                            vb.textContent = 'VERSION MISMATCH — you: V' + window._rb2p_myVer +
+                                             ', opponent: V' + opp + ' — BOTH must reload the same site';
+                        }
+                    } catch (eVC) {}
+                });
+            } catch (eVH) {}
 
             // Subscribe to player presence
             unsubscribePlayers = FB.onValue(
