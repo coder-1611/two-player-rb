@@ -610,6 +610,161 @@
 </head>
 
 <body>
+    <!-- ============ VERSION JUMPER (V269) ============
+         Top-right chip: tap it, type a version number, GO -> loads that
+         exact historical build (the one whose lobby said V<n>) from the
+         githack CDN pinned to that commit's SHA. The version->SHA manifest
+         (versions.json) is generated at build time from each commit's own
+         lobby label and fetched live from raw.githubusercontent so even an
+         old build can jump forward. Works on desktop + phone; sits above
+         everything. To return to the newest build, tap LIVE. -->
+    <div id="rb-verjump" data-open="0">
+        <button id="rb-vj-chip" type="button" title="Jump to a version">V…</button>
+        <div id="rb-vj-panel">
+            <div id="rb-vj-row">
+                <span id="rb-vj-v">V</span>
+                <input id="rb-vj-input" type="text" inputmode="numeric" pattern="[0-9]*"
+                       maxlength="4" placeholder="#" autocomplete="off" autocorrect="off"
+                       autocapitalize="off" spellcheck="false" />
+                <button id="rb-vj-go" type="button">GO</button>
+            </div>
+            <div id="rb-vj-msg"></div>
+            <div id="rb-vj-links">
+                <button id="rb-vj-live" type="button">LIVE ↗</button>
+                <button id="rb-vj-close" type="button">✕</button>
+            </div>
+        </div>
+    </div>
+    <style>
+        #rb-verjump {
+            position: fixed; top: 6px; right: 6px; z-index: 2147483000;
+            font-family: 'Press Start 2P', monospace;
+            -webkit-user-select: none; user-select: none;
+        }
+        #rb-vj-chip {
+            font: inherit; font-size: 9px; line-height: 1;
+            color: #9fe6ff; background: rgba(6,20,30,0.82);
+            border: 1px solid #2b6f86; border-radius: 6px;
+            padding: 6px 7px; cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #rb-vj-chip:active { background: rgba(20,54,72,0.95); }
+        #rb-vj-panel { display: none; margin-top: 4px;
+            background: rgba(6,20,30,0.94); border: 1px solid #2b6f86;
+            border-radius: 8px; padding: 8px; width: 148px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.55); }
+        #rb-verjump[data-open="1"] #rb-vj-panel { display: block; }
+        #rb-verjump[data-open="1"] #rb-vj-chip { background: rgba(20,54,72,0.95); }
+        #rb-vj-row { display: flex; align-items: center; gap: 4px; }
+        #rb-vj-v { color: #9fe6ff; font-size: 10px; }
+        #rb-vj-input {
+            font: inherit; font-size: 12px; width: 48px; text-align: center;
+            color: #eaffff; background: #071820; border: 1px solid #2b6f86;
+            border-radius: 5px; padding: 5px 2px; caret-color: #9fe6ff;
+        }
+        #rb-vj-input:focus { outline: none; border-color: #6fd0ec; }
+        #rb-vj-go {
+            font: inherit; font-size: 9px; color: #041017; background: #6fd0ec;
+            border: 0; border-radius: 5px; padding: 6px 7px; cursor: pointer;
+        }
+        #rb-vj-go:active { background: #9fe6ff; }
+        #rb-vj-msg { color: #ffcf6f; font-size: 7px; line-height: 1.35;
+            margin-top: 6px; min-height: 8px; }
+        #rb-vj-links { display: flex; justify-content: space-between;
+            margin-top: 7px; }
+        #rb-vj-live, #rb-vj-close {
+            font: inherit; font-size: 8px; color: #9fe6ff; background: transparent;
+            border: 1px solid #2b6f86; border-radius: 5px; padding: 5px 6px;
+            cursor: pointer; }
+        #rb-vj-live:active, #rb-vj-close:active { background: rgba(20,54,72,0.95); }
+    </style>
+    <script>
+        (function () {
+            var REPO = 'coder-1611/two-player-rb';
+            var LIVE = 'https://two-player-rb.vercel.app/';
+            var MANIFEST = 'https://raw.githubusercontent.com/' + REPO + '/main/versions.json';
+            var wrap = document.getElementById('rb-verjump');
+            if (!wrap) return;
+            var chip = document.getElementById('rb-vj-chip');
+            var panel = document.getElementById('rb-vj-panel');
+            var input = document.getElementById('rb-vj-input');
+            var go = document.getElementById('rb-vj-go');
+            var msg = document.getElementById('rb-vj-msg');
+            var liveBtn = document.getElementById('rb-vj-live');
+            var closeBtn = document.getElementById('rb-vj-close');
+            var manifest = null, loading = false;
+
+            // Current version from the lobby label (V258 already parses it).
+            function myVer() {
+                if (window._rb2p_myVer) return String(window._rb2p_myVer);
+                try {
+                    var p = document.querySelector('.prompt');
+                    var m = p && p.textContent.match(/V(\d+)/);
+                    if (m) return m[1];
+                } catch (e) {}
+                return '?';
+            }
+            // The .prompt label lives LATER in the DOM than this script, so
+            // read it after the document parses (and refresh on demand).
+            var onGithack = /githack\.com$/.test(location.hostname);
+            function refreshChip() {
+                var v = myVer();
+                chip.textContent = 'V' + v + (onGithack ? ' ⟳' : '');
+            }
+            if (document.readyState === 'loading')
+                document.addEventListener('DOMContentLoaded', refreshChip);
+            else refreshChip();
+
+            function setMsg(t) { msg.textContent = t || ''; }
+            function open(o) {
+                wrap.setAttribute('data-open', o ? '1' : '0');
+                if (o) { loadManifest(); setTimeout(function () { input.focus(); }, 50); }
+            }
+            function loadManifest() {
+                if (manifest || loading) return;
+                loading = true; setMsg('loading list…');
+                fetch(MANIFEST, { cache: 'no-store' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (j) { manifest = j; loading = false;
+                        setMsg('V1–V' + Object.keys(j).reduce(function (a, b) {
+                            return Math.max(a, +b); }, 0) + ' available'); })
+                    .catch(function () { loading = false;
+                        // fall back to this build's own local manifest
+                        fetch('versions.json', { cache: 'no-store' })
+                            .then(function (r) { return r.json(); })
+                            .then(function (j) { manifest = j; setMsg('list (local)'); })
+                            .catch(function () { setMsg('list unavailable'); }); });
+            }
+            // Build the historical-build URL for a version number (or null).
+            function vjUrl(n) {
+                var sha = manifest && manifest[n];
+                return sha ? 'https://rawcdn.githack.com/' + REPO + '/' + sha + '/index.html' : null;
+            }
+            window._rb2p_verJumpUrl = function (n) {
+                return vjUrl(String(n).replace(/[^0-9]/g, ''));
+            };
+            function jump() {
+                var n = (input.value || '').replace(/[^0-9]/g, '');
+                if (!n) { setMsg('type a number'); return; }
+                if (n === myVer() && !onGithack) { setMsg('already on V' + n); return; }
+                if (!manifest) { setMsg('still loading — retry'); loadManifest(); return; }
+                var url = vjUrl(n);
+                if (!url) { setMsg('no V' + n + ' found'); return; }
+                setMsg('loading V' + n + '…');
+                location.href = url;
+            }
+            chip.addEventListener('click', function () {
+                open(wrap.getAttribute('data-open') !== '1');
+            });
+            go.addEventListener('click', jump);
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); jump(); }
+            });
+            liveBtn.addEventListener('click', function () { location.href = LIVE; });
+            closeBtn.addEventListener('click', function () { open(false); });
+        })();
+    </script>
+
     <div class="gm4html5_div_class" id="gm4html5_div_id">
         <img src="splash.png" id="GM4HTML5_loadingscreen" alt="GameMaker:HTML5 loading screen"
             style="display: none;" />
@@ -712,7 +867,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V268<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V269<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -780,7 +935,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V268</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V268</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V269</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V269</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9254,7 +9409,8 @@
                             // V262: keyboard focus residue keeps iOS's visual
                             // viewport in a transitional state — blur it.
                             var aeH = document.activeElement;
-                            if (aeH && /^(INPUT|TEXTAREA|SELECT)$/.test(aeH.tagName)) {
+                            if (aeH && /^(INPUT|TEXTAREA|SELECT)$/.test(aeH.tagName) &&
+                                !(aeH.closest && aeH.closest('#rb-verjump'))) {
                                 aeH.blur();
                                 diagLog('blurred lingering input focus');
                             }
@@ -9366,7 +9522,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V268 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V269 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -10349,7 +10505,13 @@
                                 if (!document.documentElement.classList.contains('rb-in-match')) {
                                     var oRsg = myRole === 'a' ? 'b' : 'a';
                                     var hbSg = await FB.get(FB.ref(db, 'rooms/' + code + '/hb/' + oRsg));
-                                    var hbVg = Number(hbSg.val() || 0);
+                                    // hb became {ts,fps,vis} at V268 (was a bare
+                                    // number). Number(object) is NaN, which
+                                    // silently disabled this guard against V268+
+                                    // opponents — accept both shapes.
+                                    var hbRawG = hbSg.val();
+                                    var hbVg = typeof hbRawG === 'number'
+                                        ? hbRawG : Number(hbRawG && hbRawG.ts) || 0;
                                     if (hbVg && Date.now() - hbVg < 15000) {
                                         var fSg = await FB.get(FB.ref(db, 'rooms/' + code + '/final/' + oRsg));
                                         var fVg = fSg.val();
