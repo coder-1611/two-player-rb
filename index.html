@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V274<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V275<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V274</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V274</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V275</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V275</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9192,19 +9192,50 @@
                     } catch (ePB) {}
                     var btns = liveKickoffButtons();
                     if (!btns.length) {
-                        // V234: taps on a painted CORPSE were silently ignored
-                        // (on-device evidence: zero tap lines while a ghost was
-                        // visible). De-ghost it on tap and say so.
+                        // V275: the user's confirmed hunch — the freeze IS the
+                        // corpse tap. On the possessing phone the "Receive"
+                        // button is a DEAD kickoff button (forceUserOffenseDrive
+                        // killed it), so tapping it can never start the drive and
+                        // the engine sits on the kickoff staging forever. Don't
+                        // just hide it: if the offensive formation isn't on the
+                        // field and we're the side that should be playing, FORCE
+                        // the 22 sprites right here, on the tap. Park every
+                        // kickoff button (live + corpse) so "Receive" stops
+                        // painting/eating taps and clear GET READY on every
+                        // controller. Gated to the staging state (a corpse
+                        // exists) so it can never disturb a live drive.
                         var ghosts = anyKickoffButtons();
                         if (ghosts.length) {
                             for (var gi = 0; gi < ghosts.length; gi++) {
-                                try { ghosts[gi]._g2 = 0; } catch (eG) {}
+                                try { ghosts[gi]._g2 = 0; ghosts[gi].x = -2000; ghosts[gi].y = -2000; } catch (eG) {}
                             }
                             try {
+                                var csT = (typeof _si === 'function') ? _si(71) : null;
+                                for (var ckT in csT) { if (csT.hasOwnProperty(ckT) && csT[ckT]) try { csT[ckT].__b1 = ''; } catch (eBk) {} }
                                 var emT = window.RB && RB.engineState && RB.engineState();
                                 if (emT && emT.rawEngineMatch.__b1) emT.rawEngineMatch.__b1 = '';
                             } catch (eB2) {}
-                            diagLog('tap on corpse btn — de-ghosted; game should be live, tap field');
+                            var ofNow = 0;
+                            try {
+                                var allD = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                for (var di = 0; di < allD.length; di++) {
+                                    var ind = allD[di];
+                                    if (ind && !ind._HL2 && ind._eE2 && ind._eE2._fE2 === 'obj_playerOF') ofNow++;
+                                }
+                            } catch (eOF) {}
+                            var waitingNow = window._rb2p_userIsWaitingForOpponent === true;
+                            var patNow = !!(window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat());
+                            if (ofNow < 6 && !waitingNow && !patNow &&
+                                typeof window._rb2p_forceUserOffenseDrive === 'function') {
+                                try {
+                                    var ydTap = window._rb2p_kickoffReturnYard
+                                        ? window._rb2p_kickoffReturnYard() : -25;
+                                    window._rb2p_forceUserOffenseDrive(ydTap);
+                                    diagLog('corpse tap — FORCING 22 sprites (OF was ' + ofNow + ')');
+                                } catch (eFT) { diagLog('corpse-tap force ERR ' + String((eFT && eFT.message) || eFT).slice(0, 40)); }
+                            } else {
+                                diagLog('tap on corpse btn — de-ghosted (OF=' + ofNow + ')');
+                            }
                         }
                         return;
                     }
@@ -9359,7 +9390,7 @@
             setInterval(function () {
                 if (!diagEl) return;
                 var kp = '?', vy = '?', z7 = '?', ball = 0, live = 0, ghost = 0, gmx = '?', gmy = '?';
-                var plOF = 0;   // V272: offensive formation on the field = drive live
+                var plOF = 0, plDF = 0;   // V272/V275: the 22 sprites = drive live
                 var ctl = 0, pops = 0, b1out = '';
                 try {
                     var em = window.RB && RB.engineState && RB.engineState();
@@ -9382,6 +9413,7 @@
                         var n = inst._eE2._fE2;
                         if (n === 'obj_ball' && !inst._HL2) ball++;
                         else if (n === 'obj_playerOF' && !inst._HL2) plOF++;   // V272
+                        else if (n === 'obj_playerDF' && !inst._HL2) plDF++;   // V275
                         else if (n === 'obj_btn_kickoff') {
                             if (inst._HL2) {
                                 ghost++;
@@ -9652,7 +9684,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V274 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF +
+                    'V275 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
