@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V276<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V277<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V276</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V276</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V277</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V277</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9097,6 +9097,66 @@
                 return { gx: (ih - py) / ih * 853, gy: px / iw * 480 };
             }
 
+            // ===== V277: TAP SCREENSHOT SYSTEM =====================
+            // The DEPLOYED app captures what is ACTUALLY on screen at each tap
+            // (and 700ms later) + the live player/engine counts, and streams it
+            // so a stuck "it doesn't click" is diagnosable from the real device,
+            // not a test that can't reproduce it. Pull with:
+            //   curl .../taps/{room_role_session}.json
+            var __rbSess = Math.random().toString(36).slice(2, 7);
+            function captureShot(w) {
+                try {
+                    var src = document.getElementById('canvas');
+                    if (!src || !src.width) return null;
+                    w = w || 300;
+                    var c = document.createElement('canvas');
+                    var h = Math.max(1, Math.round(src.height / src.width * w));
+                    c.width = w; c.height = h;
+                    c.getContext('2d').drawImage(src, 0, 0, w, h);
+                    var du = c.toDataURL('image/jpeg', 0.55);
+                    return (du && du.length > 200) ? du : null;
+                } catch (e) { return null; }
+            }
+            window._rb2p_captureShot = captureShot;
+            function fieldState() {
+                var s = {};
+                try {
+                    var em = window.RB && RB.engineState && RB.engineState();
+                    if (em) { s.kp = em.engineControllerState; s.vy = em.engineDriveFsmStage;
+                              s.z7 = em.rawEngineMatch._7z; s.uS = em.userScore; s.oS = em.opponentScore; }
+                    var of = 0, df = 0, ballN = 0, koPaint = 0, koGh = 0;
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var x = all[i]; if (!x || !x._eE2) continue; var n = x._eE2._fE2;
+                        if (n === 'obj_playerOF' && !x._HL2) of++;
+                        else if (n === 'obj_playerDF' && !x._HL2) df++;
+                        else if (n === 'obj_ball' && !x._HL2) ballN++;
+                        else if (n === 'obj_btn_kickoff') { if (x.x > -1000) koPaint++; if (x._HL2) koGh++; }
+                    }
+                    s.OF = of; s.DF = df; s.ball = ballN; s.koPaint = koPaint; s.koGhost = koGh;
+                    s.waiting = window._rb2p_userIsWaitingForOpponent === true;
+                } catch (e) { s.err = String(e && e.message).slice(0, 40); }
+                return s;
+            }
+            var __rbTapShots = [];
+            window._rb2p_tapBurst = function (tapInfo) {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    var room = ''; try { room = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
+                    var role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : '';
+                    var key = ((room || 'noroom') + '_' + (role || 'x') + '_' + __rbSess).replace(/[^A-Za-z0-9_-]/g, '');
+                    var push = function (tag) {
+                        var entry = fieldState(); entry.tag = tag; entry.t = Date.now();
+                        if (tapInfo) entry.tap = tapInfo; entry.img = captureShot(300);
+                        __rbTapShots.push(entry); while (__rbTapShots.length > 8) __rbTapShots.shift();
+                        fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/taps/' + key + '.json',
+                            { method: 'PUT', body: JSON.stringify(__rbTapShots) }).catch(function () {});
+                    };
+                    push('tap');                                  // what the screen showed AT the tap
+                    setTimeout(function () { push('+700ms'); }, 700);   // ...and after the tap's effect
+                } catch (e) {}
+            };
+
             // -- proof-of-click: log whenever the engine's own path fires _Ky --
             try {
                 if (typeof _Ky === 'function' && !_Ky.__rb2pWrapped) {
@@ -9143,6 +9203,10 @@
                             ? ' scr' + (window.scrollX | 0) + ',' + (window.scrollY | 0) : '';
                         diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
                                 '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy) + scrT);
+                        // V277: screenshot burst — capture the real screen at the
+                        // tap + 700ms after, so the click response is visible.
+                        try { window._rb2p_tapBurst({ px: Math.round(e.pageX), py: Math.round(e.pageY),
+                            gx: Math.round(gAll.gx), gy: Math.round(gAll.gy) }); } catch (eTB) {}
                     }
                     // V260: engine-MODAL buttons (PAT 1PT/2PT, staging Kick Off,
                     // any popup button) get the same insurance kickoff buttons
@@ -9735,7 +9799,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V276 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V277 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
