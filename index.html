@@ -712,7 +712,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V266<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V267<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -780,7 +780,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V266</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V266</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V267</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V267</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5515,6 +5515,12 @@
                                 ts: Date.now()
                             });
                         } catch (eS) { console.log('[2P] send err', eS); }
+                        // V267: the normal _1c1 ship path clears the duty; the
+                        // synthetic path must too, or a defender reload within
+                        // 3 minutes replays an already-resolved PAT (double +1/+2).
+                        try {
+                            if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
+                        } catch (eSD) {}
                         window._rb2p_patResultSentMs = Date.now();
                         window._rb2p_patPlayPending  = false;
                         window._rb2p_patPlayResolved = false;
@@ -9340,7 +9346,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V266 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V267 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -10000,13 +10006,39 @@
                     if (lo && lo.ts && (Date.now() - Number(lo.ts) < 120000) &&
                         lo.ack !== savedRole &&
                         (lo.type === 'TD' || lo.type === 'FG' ||
-                         lo.type === 'PUNT' || lo.type === 'OTHER') &&
+                         lo.type === 'PUNT' || lo.type === 'OTHER' ||
+                         lo.type === 'PAT_RESULT') &&
                         !patDutyMine && !pick6ForMe && !turnoverForMe &&
                         !(myLive && myLive.iHaveBall === true &&
                           (Number(myLive.ts) || 0) >= Number(lo.ts))) {
-                        lostOutcome = lo;
-                        console.log('[2P RESUME] un-ACKed ' + lo.type +
-                                    ' outcome addressed to me — will drain after resume');
+                        // V267: cross-reload phantom-score guard. The live
+                        // V208 guard keys off an in-memory handoff timestamp
+                        // that a reload zeroes — reconstruct it from MY OWN
+                        // persistent outcomes record: a TD/FG landing within
+                        // 8s of my INT/PUNT/OTHER handoff cannot be a played
+                        // drive. Mark it rejected so it never drains.
+                        var phantomLo = false;
+                        if (lo.type === 'TD' || lo.type === 'FG') try {
+                            var myOutSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom +
+                                                                 '/outcomes/' + savedRole));
+                            var myOut = myOutSnap.val();
+                            if (myOut && myOut.ts &&
+                                (myOut.type === 'INT' || myOut.type === 'PUNT' || myOut.type === 'OTHER') &&
+                                Number(lo.ts) - Number(myOut.ts) < 8000) {
+                                phantomLo = true;
+                                console.log('[2P RESUME] skipping phantom ' + lo.type +
+                                            ' (arrived <8s after my handoff)');
+                                FB.update(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
+                                                 (savedRole === 'a' ? 'b' : 'a')),
+                                          { ack: savedRole, ackTs: Date.now(), rej: 'phantom-resume' })
+                                    .catch(function () {});
+                            }
+                        } catch (ePh) {}
+                        if (!phantomLo) {
+                            lostOutcome = lo;
+                            console.log('[2P RESUME] un-ACKed ' + lo.type +
+                                        ' outcome addressed to me — will drain after resume');
+                        }
                     }
                 } catch (eLO) {}
                 var inProgress = oppFresh || myFresh || turnoverActive || turnoverForMe ||
@@ -10100,6 +10132,9 @@
                         FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/patDuty')).catch(function () {});
                     if (turnover && !turnoverActive && !turnoverForMe)
                         FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/turnover')).catch(function () {});
+                    // V267: no match to resume — the live flag must not keep
+                    // VIS-RECOVER reloading the room screen on every unlock.
+                    sessionStorage.removeItem('rb2p_matchLive');
                 } catch (eSw) {}
                 enterRoom(savedRoom, savedRole, /*restoring=*/true);
             } catch (e) {
@@ -10650,6 +10685,13 @@
                                     ' arriving ' +
                                     (Date.now() - (window._rb2p_lastTurnoverHandoffMs || 0)) +
                                     'ms after our turnover handoff — opponent has not played a down');
+                        // V267: mark the rejection on the record itself, so the
+                        // lost-outcome insurance can tell "rejected phantom"
+                        // from "lost in my reload" — otherwise a reload while
+                        // this is the newest record would DRAIN the phantom,
+                        // crediting an engine-AI score past this very guard.
+                        FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
+                                  { ack: myRole, ackTs: Date.now(), rej: 'phantom' }).catch(function () {});
                         return;
                     }
                     window._twoPlayer.receive(val);
