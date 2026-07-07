@@ -2,37 +2,6 @@
 <html lang="en">
 
 <head>
-    <!-- ============ DESKTOP → V213 (last pre-mobile build) ============
-         Desktop was "perfect" BEFORE the V214 mobile overhaul + the whole
-         GET READY saga, and must stay frozen there. V213 (commit f3f2ee7)
-         is the last build before V214 — the V211 pixel-redesign lobby plus
-         the blurry-title and animation fixes. Only MOBILE gets the current
-         build's fixes. This SELF-HOSTS an exact copy of the V213 index.html
-         at v213.html (it reuses the root retrobowl.js + html5game assets;
-         every engine change since V213 is gated on mobile-only globals, so
-         desktop is byte-identical). Self-hosting avoids the githack
-         "External Content Notice" interstitial that top-level navigation to
-         that CDN triggers. Desktop shows the old "V213" label and runs the
-         old code. Guards: never on mobile (coarse+no-hover), never when
-         already on v213.html (no loop), never on localhost/127.* (dev + e2e
-         harness), and ?live escapes to the current build. -->
-    <script>
-        (function () {
-            try {
-                var isMobile = window.matchMedia &&
-                    window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-                var onV213 = /v213\.html$/i.test(location.pathname);
-                var isLocal = location.hostname === '' || location.hostname === 'localhost' ||
-                    /^127\./.test(location.hostname) || location.hostname === '::1' ||
-                    location.hostname === '0.0.0.0';
-                var wantLive = /[?&]live(=|&|$)/.test(location.search);
-                if (!isMobile && !onV213 && !isLocal && !wantLive) {
-                    var base = location.pathname.replace(/[^/]*$/, '');   // dir of current page
-                    location.replace(base + 'v213.html');
-                }
-            } catch (e) {}
-        })();
-    </script>
     <!-- ============================================================
          Auto cache-bust (runs BEFORE anything else loads).
          GitHub Pages caches index.html at the Fastly CDN for ~10 min
@@ -440,369 +409,10 @@
             position: absolute; inset: 0; z-index: 41; pointer-events: none;
             background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(4,10,30,.6) 100%);
         }
-
-        /* ---- V220: static main menu (no animations, all viewports) ----
-           Removes the lobby's float / glow / blink / marquee / CRT-scan/flicker
-           animations everywhere — the calmer static look the mobile build
-           already uses. Elements stay in place (ticker banner, cursor, CRT
-           overlays all remain visible, just not moving); the marquee simply
-           freezes showing its readable banner text. Mobile keeps its own rules
-           below (it fully hides the ticker/CRT); this brings desktop in line on
-           the one thing asked for — no motion. */
-        #rb-lobby, #rb-lobby * { animation: none !important; }
-        #rb-lobby .rb-cursor { opacity: 1; }
-
-        /* =====================================================================
-           MOBILE OVERHAUL (V214) — everything below is gated on html.rb-mobile,
-           which is added at runtime ONLY for touch phones. Desktop never gets
-           the class, so desktop rendering/behavior is completely untouched.
-           html.rb-rot90 is added on top when the phone is held in portrait, to
-           force the whole experience into landscape.
-           ===================================================================== */
-
-        /* ---- global: kill scroll/zoom/callout, native touch feel ---- */
-        html.rb-mobile, html.rb-mobile body {
-            width: 100%; height: 100%;
-            overflow: hidden;
-            overscroll-behavior: none;
-            -webkit-tap-highlight-color: transparent;
-            -webkit-touch-callout: none;
-            /* V256: was `manipulation`, which still PERMITS panning. iOS
-               suspends the whole page's rAF while a touch is in scroll/pan
-               arbitration — and it honors touch-action poorly inside the
-               rotated (transformed) body. Long press-holds (the PAT kick
-               meter) and careful drags sat in that arbitration = screen
-               frozen while the finger is down (device telemetry: fps:0,
-               taps still logging, engine watchdog kicking). Nothing on a
-               phone may ever scroll: total none. */
-            touch-action: none;
-        }
-        html.rb-mobile #canvas { touch-action: none; }
-        html.rb-mobile #rb-diag, html.rb-mobile #rb-hud-toggle { touch-action: none; }
-        html.rb-mobile #gm4html5_div_id { margin: 0 !important; }
-        html.rb-mobile .cheat-btn,
-        html.rb-mobile #rb-lobby button,
-        html.rb-mobile #rb-lobby select {
-            -webkit-user-select: none; user-select: none;
-            -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
-        }
-        /* the room-code field still needs real text selection/caret */
-        html.rb-mobile #rb-lobby input { -webkit-user-select: text; user-select: text; }
-
-        /* ---- press feedback: neutralize sticky :hover, drive :active ---- */
-        html.rb-mobile .cheat-btn:hover { opacity: .85; transform: none; }
-        html.rb-mobile .cheat-btn:active { opacity: 1; transform: scale(.9); }
-
-        html.rb-mobile #rb-lobby .rb-cta:hover:not(:disabled) { transform: none; box-shadow: 7px 7px 0 #0a1838; color: #1f63cf; }
-        html.rb-mobile #rb-lobby .rb-cta:active:not(:disabled) { transform: translate(4px,4px); box-shadow: 3px 3px 0 #0a1838; }
-
-        html.rb-mobile #rb-lobby .rb-join-btn:hover { transform: none; box-shadow: 4px 4px 0 #0a1838; }
-        html.rb-mobile #rb-lobby .rb-join-btn:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #0a1838; }
-
-        html.rb-mobile #rb-lobby .diff-btn:hover:not(:disabled) { transform: none; }
-        html.rb-mobile #rb-lobby .diff-btn:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 rgba(10,24,56,0.5); }
-
-        html.rb-mobile #rb-lobby #rb-ready:hover:not(:disabled),
-        html.rb-mobile #rb-lobby #rb-leave:hover:not(:disabled) { transform: none; box-shadow: 6px 6px 0 #0a1838; }
-        html.rb-mobile #rb-lobby #rb-ready:active:not(:disabled),
-        html.rb-mobile #rb-lobby #rb-leave:active:not(:disabled) { transform: translate(3px,3px); box-shadow: 3px 3px 0 #0a1838; }
-
-        html.rb-mobile #rb-lobby input,
-        html.rb-mobile #rb-lobby .rb-join-btn,
-        html.rb-mobile #rb-lobby .diff-btn { min-height: 44px; }
-
-        /* ============ Mobile in-game HUD — collapsible overlay cluster ============
-           On phones the LEAVE / ROSTER buttons + the RM/YOU/DIF info badge sat
-           full-size over the canvas and covered the scoreboard + player names.
-           On mobile they're hidden behind one tiny toggle chip (#rb-hud-toggle);
-           tapping it expands a compact cluster in the same corner. Desktop keeps
-           the original always-visible buttons (the toggle is display:none). */
-        #rb-hud-toggle { display: none; }
-        html.rb-mobile.rb-in-match #rb-hud-toggle {
-            display: flex; align-items: center; justify-content: center;
-            position: fixed; z-index: 9998; top: 8px; left: 8px;
-            width: 34px; height: 34px; padding: 0;
-            font-size: 16px; line-height: 1; font-family: monospace;
-            color: #ffd23c; background: rgba(10,10,20,0.7);
-            border: 2px solid #ffd23c; border-radius: 8px;
-            opacity: 0.7; cursor: pointer;
-            -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-        }
-        html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
-        html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
-
-        /* V233 one-shot diagnostic — mobile, in-match. Persists across the
-           auto-reload; one screenshot of this box is a full incident report. */
-        #rb-diag { display: none; }
-        html.rb-mobile.rb-in-match #rb-diag {
-            display: block;
-            position: fixed; z-index: 10003;
-            top: 4px; right: 4px;
-            max-width: 72vw;
-            padding: 4px 6px;
-            font-family: monospace; font-size: 9px; line-height: 1.25;
-            font-weight: bold; white-space: pre;
-            color: #eaffea; background: rgba(4,12,28,.82);
-            border: 1px solid #3cff7a; border-radius: 5px;
-            pointer-events: none;
-        }
-
-        /* the three overlay elements: compact + clustered under the toggle */
-        html.rb-mobile #rb-leave-game,
-        html.rb-mobile #rb-roster-view {
-            top: 48px; left: 8px; right: auto;
-            min-height: 0; padding: 7px 12px; font-size: 12px; opacity: 0.95;
-        }
-        html.rb-mobile #rb-roster-view { top: 84px; }
-        html.rb-mobile #rb-fb-badge {
-            left: 8px !important; bottom: auto !important; top: 120px !important;
-            max-width: 44vw; font-size: 9px !important; letter-spacing: 1px !important;
-            padding: 4px 7px !important; white-space: normal; line-height: 1.35;
-            opacity: 0.9;
-        }
-        /* collapsed (default on mobile): only the toggle shows */
-        html.rb-mobile:not(.rb-hud-open) #rb-leave-game,
-        html.rb-mobile:not(.rb-hud-open) #rb-roster-view,
-        html.rb-mobile:not(.rb-hud-open) #rb-fb-badge { display: none !important; }
-
-        /* ---- lobby fully expanded, no scroll, desktop-like composition ---- */
-        html.rb-mobile #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"],
-        html.rb-mobile #rb-lobby[data-active="room"]  .rb-screen[data-view="room"] {
-            gap: 10px; justify-content: center;
-            /* leave breathing room for the browser toolbar / notch / home bar */
-            padding: max(22px, env(safe-area-inset-top))
-                     max(30px, env(safe-area-inset-right))
-                     max(22px, env(safe-area-inset-bottom))
-                     max(30px, env(safe-area-inset-left));
-        }
-        html.rb-mobile #rb-lobby .rb-hero { gap: 8px; }
-        html.rb-mobile #rb-lobby .rb-stack { gap: 8px; }
-        html.rb-mobile #rb-lobby .slots { gap: 16px; margin: 2px 0; }
-        html.rb-mobile #rb-lobby .slot { padding: 12px 14px; }
-        html.rb-mobile #rb-lobby .diff-row { gap: 8px; }
-
-        /* ---- remove animations + ticker on mobile (they cause lag) ---- */
-        html.rb-mobile #rb-lobby,
-        html.rb-mobile #rb-lobby * { animation: none !important; }
-        html.rb-mobile #rb-lobby .rb-cursor { opacity: 1; }
-        html.rb-mobile #rb-lobby .rb-ticker,
-        html.rb-mobile #rb-lobby .rb-crt-scan,
-        html.rb-mobile #rb-lobby .rb-crt-vig { display: none !important; }
-
-        /* =================== FORCED LANDSCAPE (portrait phone) ===================
-           Rotate the whole <body> -90deg. Because a transform makes <body> the
-           containing block, all position:fixed children (canvas, lobby, buttons,
-           overlays) ride along and DOM hit-testing stays correct automatically.
-           The canvas needs the JS/engine coordinate remap (see bootstrap script
-           + retrobowl.js patches) since GameMaker maps taps via getBoundingRect. */
-        /* V262: never allow ANY page scroll on phones. A ~1px scrollable
-           overflow (dvh lagging the toolbar state on iOS 18) parks Safari in
-           a perpetual scroll-settle with rAF fully suspended on a VISIBLE
-           page — the GET READY death (QJIX: fps:0, timers 1Hz, 'scroll
-           healed 0,1' repeating, no vis:HIDDEN). layout() also sizes the
-           rotated body in real px; this is the CSS belt. */
-        html.rb-mobile { overflow: hidden; }
-        html.rb-mobile, html.rb-mobile body { overscroll-behavior: none; }
-        html.rb-rot90 body {
-            position: absolute;
-            top: 100%;              /* fallback for old browsers */
-            top: 100dvh;            /* dvh excludes the visible browser chrome */
-            left: 0;
-            width: 100vh;
-            width: 100dvh;
-            height: 100vw;
-            height: 100dvw;
-            transform-origin: left top;
-            transform: rotate(-90deg);
-            overflow: hidden;
-            will-change: transform;
-        }
-        /* V246: a WebGL canvas inside a transformed <body> is the exact setup
-           where phone compositors detach the canvas layer after a heavy GPU
-           event (the match-room switch): the game keeps rendering into the
-           buffer but the screen shows a stale frame — the GET READY stall
-           (device telemetry: eng:60 fps:60 gl:ok while the user sees frozen
-           staging panels, and the canvas-readback snapshot differed from what
-           the user's screen showed). Force the canvas onto its OWN compositor
-           layer so it can't be flattened into the rotated body's layer. */
-        html.rb-mobile #canvas {
-            will-change: transform;
-            -webkit-backface-visibility: hidden;
-            backface-visibility: hidden;
-        }
-        /* In rotated mode the visual "width" is the viewport HEIGHT, so vw-based
-           font clamps under-size — swap them to vh. */
-        html.rb-rot90 #rb-lobby .rb-wordmark  { font-size: clamp(34px, 7vh, 78px); }
-        html.rb-rot90 #rb-lobby .rb-roomtitle { font-size: clamp(30px, 6vh, 62px); }
-        html.rb-rot90 #rb-lobby .rb-cta       { font-size: clamp(16px, 2.4vh, 24px); }
-        html.rb-rot90 #rb-lobby .vs           { font-size: clamp(20px, 3vh, 30px); }
     </style>
 </head>
 
 <body>
-    <!-- ============ VERSION JUMPER (V269) ============
-         Top-right chip: tap it, type a version number, GO -> loads that
-         exact historical build (the one whose lobby said V<n>) from the
-         githack CDN pinned to that commit's SHA. The version->SHA manifest
-         (versions.json) is generated at build time from each commit's own
-         lobby label and fetched live from raw.githubusercontent so even an
-         old build can jump forward. Works on desktop + phone; sits above
-         everything. To return to the newest build, tap LIVE. -->
-    <div id="rb-verjump" data-open="0">
-        <button id="rb-vj-chip" type="button" title="Jump to a version">V…</button>
-        <div id="rb-vj-panel">
-            <div id="rb-vj-row">
-                <span id="rb-vj-v">V</span>
-                <input id="rb-vj-input" type="text" inputmode="numeric" pattern="[0-9]*"
-                       maxlength="4" placeholder="#" autocomplete="off" autocorrect="off"
-                       autocapitalize="off" spellcheck="false" />
-                <button id="rb-vj-go" type="button">GO</button>
-            </div>
-            <div id="rb-vj-msg"></div>
-            <div id="rb-vj-links">
-                <button id="rb-vj-live" type="button">LIVE ↗</button>
-                <button id="rb-vj-close" type="button">✕</button>
-            </div>
-        </div>
-    </div>
-    <style>
-        #rb-verjump {
-            position: fixed; top: 6px; right: 6px; z-index: 2147483000;
-            font-family: 'Press Start 2P', monospace;
-            -webkit-user-select: none; user-select: none;
-        }
-        #rb-vj-chip {
-            font: inherit; font-size: 9px; line-height: 1;
-            color: #9fe6ff; background: rgba(6,20,30,0.82);
-            border: 1px solid #2b6f86; border-radius: 6px;
-            padding: 6px 7px; cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
-        }
-        #rb-vj-chip:active { background: rgba(20,54,72,0.95); }
-        #rb-vj-panel { display: none; margin-top: 4px;
-            background: rgba(6,20,30,0.94); border: 1px solid #2b6f86;
-            border-radius: 8px; padding: 8px; width: 148px;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.55); }
-        #rb-verjump[data-open="1"] #rb-vj-panel { display: block; }
-        #rb-verjump[data-open="1"] #rb-vj-chip { background: rgba(20,54,72,0.95); }
-        #rb-vj-row { display: flex; align-items: center; gap: 4px; }
-        #rb-vj-v { color: #9fe6ff; font-size: 10px; }
-        #rb-vj-input {
-            font: inherit; font-size: 16px; width: 54px; text-align: center;
-            color: #eaffff; background: #071820; border: 1px solid #2b6f86;
-            border-radius: 5px; padding: 6px 2px; caret-color: #9fe6ff;
-            /* iOS: an input that INHERITS user-select:none (from the mobile
-               body + this box's container) cannot be typed into — the caret
-               and keyboard are blocked. Force it selectable + tappable. And
-               16px font stops iOS's focus-zoom. */
-            -webkit-user-select: text !important; user-select: text !important;
-            -webkit-touch-callout: default !important;
-            touch-action: manipulation; pointer-events: auto !important;
-        }
-        #rb-vj-input:focus { outline: none; border-color: #6fd0ec; }
-        #rb-vj-go {
-            font: inherit; font-size: 9px; color: #041017; background: #6fd0ec;
-            border: 0; border-radius: 5px; padding: 6px 7px; cursor: pointer;
-        }
-        #rb-vj-go:active { background: #9fe6ff; }
-        #rb-vj-msg { color: #ffcf6f; font-size: 7px; line-height: 1.35;
-            margin-top: 6px; min-height: 8px; }
-        #rb-vj-links { display: flex; justify-content: space-between;
-            margin-top: 7px; }
-        #rb-vj-live, #rb-vj-close {
-            font: inherit; font-size: 8px; color: #9fe6ff; background: transparent;
-            border: 1px solid #2b6f86; border-radius: 5px; padding: 5px 6px;
-            cursor: pointer; }
-        #rb-vj-live:active, #rb-vj-close:active { background: rgba(20,54,72,0.95); }
-    </style>
-    <script>
-        (function () {
-            var REPO = 'coder-1611/two-player-rb';
-            var LIVE = 'https://two-player-rb.vercel.app/';
-            var MANIFEST = 'https://raw.githubusercontent.com/' + REPO + '/main/versions.json';
-            var wrap = document.getElementById('rb-verjump');
-            if (!wrap) return;
-            var chip = document.getElementById('rb-vj-chip');
-            var panel = document.getElementById('rb-vj-panel');
-            var input = document.getElementById('rb-vj-input');
-            var go = document.getElementById('rb-vj-go');
-            var msg = document.getElementById('rb-vj-msg');
-            var liveBtn = document.getElementById('rb-vj-live');
-            var closeBtn = document.getElementById('rb-vj-close');
-            var manifest = null, loading = false;
-
-            // Current version from the lobby label (V258 already parses it).
-            function myVer() {
-                if (window._rb2p_myVer) return String(window._rb2p_myVer);
-                try {
-                    var p = document.querySelector('.prompt');
-                    var m = p && p.textContent.match(/V(\d+)/);
-                    if (m) return m[1];
-                } catch (e) {}
-                return '?';
-            }
-            // The .prompt label lives LATER in the DOM than this script, so
-            // read it after the document parses (and refresh on demand).
-            var onGithack = /githack\.com$/.test(location.hostname);
-            function refreshChip() {
-                var v = myVer();
-                chip.textContent = 'V' + v + (onGithack ? ' ⟳' : '');
-            }
-            if (document.readyState === 'loading')
-                document.addEventListener('DOMContentLoaded', refreshChip);
-            else refreshChip();
-
-            function setMsg(t) { msg.textContent = t || ''; }
-            function open(o) {
-                wrap.setAttribute('data-open', o ? '1' : '0');
-                if (o) { loadManifest(); setTimeout(function () { input.focus(); }, 50); }
-            }
-            function loadManifest() {
-                if (manifest || loading) return;
-                loading = true; setMsg('loading list…');
-                fetch(MANIFEST, { cache: 'no-store' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (j) { manifest = j; loading = false;
-                        setMsg('V1–V' + Object.keys(j).reduce(function (a, b) {
-                            return Math.max(a, +b); }, 0) + ' available'); })
-                    .catch(function () { loading = false;
-                        // fall back to this build's own local manifest
-                        fetch('versions.json', { cache: 'no-store' })
-                            .then(function (r) { return r.json(); })
-                            .then(function (j) { manifest = j; setMsg('list (local)'); })
-                            .catch(function () { setMsg('list unavailable'); }); });
-            }
-            // Build the historical-build URL for a version number (or null).
-            function vjUrl(n) {
-                var sha = manifest && manifest[n];
-                return sha ? 'https://rawcdn.githack.com/' + REPO + '/' + sha + '/index.html' : null;
-            }
-            window._rb2p_verJumpUrl = function (n) {
-                return vjUrl(String(n).replace(/[^0-9]/g, ''));
-            };
-            function jump() {
-                var n = (input.value || '').replace(/[^0-9]/g, '');
-                if (!n) { setMsg('type a number'); return; }
-                if (n === myVer() && !onGithack) { setMsg('already on V' + n); return; }
-                if (!manifest) { setMsg('still loading — retry'); loadManifest(); return; }
-                var url = vjUrl(n);
-                if (!url) { setMsg('no V' + n + ' found'); return; }
-                setMsg('loading V' + n + '…');
-                location.href = url;
-            }
-            chip.addEventListener('click', function () {
-                open(wrap.getAttribute('data-open') !== '1');
-            });
-            go.addEventListener('click', jump);
-            input.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') { e.preventDefault(); jump(); }
-            });
-            liveBtn.addEventListener('click', function () { location.href = LIVE; });
-            closeBtn.addEventListener('click', function () { open(false); });
-        })();
-    </script>
-
     <div class="gm4html5_div_class" id="gm4html5_div_id">
         <img src="splash.png" id="GM4HTML5_loadingscreen" alt="GameMaker:HTML5 loading screen"
             style="display: none;" />
@@ -818,12 +428,6 @@
 
     <button id="rb-leave-game" class="cheat-btn" title="Leave the game and return to the lobby">LEAVE</button>
     <button id="rb-roster-view" class="cheat-btn" title="View your team's roster">ROSTER</button>
-    <!-- Mobile-only: tiny toggle that collapses the LEAVE/ROSTER/info overlays
-         into one small chip so they stop blocking the scoreboard + player names.
-         Hidden on desktop (CSS). Tapping it expands the cluster. -->
-    <button id="rb-hud-toggle" type="button" aria-label="Show game controls">&#9776;</button>
-    <!-- V233 one-shot diagnostic readout (mobile, in-match; see CSS). -->
-    <div id="rb-diag"></div>
 
     <!-- Mid-game read-only roster overlay (built from _rb2p_dumpRoster). -->
     <div id="rb-roster-overlay">
@@ -853,15 +457,11 @@
             // attach to the input (e.g. "Enter -> submit"). So we handle
             // those key bindings here in the shield itself.
             function shieldLobby(e) {
+                var lob = document.getElementById('rb-lobby');
+                if (!lob || lob.style.display === 'none') return;
                 var tgt = e.target;
                 if (!tgt || !tgt.closest) return;
-                // The version jumper (#rb-verjump) lives OUTSIDE the lobby and
-                // must be typable even in-match, so shield it regardless of
-                // lobby visibility. The lobby is shielded only while visible.
-                var inVj = tgt.closest('#rb-verjump');
-                var lob = document.getElementById('rb-lobby');
-                var inLobby = lob && lob.style.display !== 'none' && tgt.closest('#rb-lobby');
-                if (!inVj && !inLobby) return;
+                if (!tgt.closest('#rb-lobby')) return;
 
                 // Enter on the room-code input triggers JOIN
                 if (e.type === 'keydown' && e.key === 'Enter' &&
@@ -870,17 +470,6 @@
                     e.stopImmediatePropagation();
                     var joinBtn = document.getElementById('rb-join');
                     if (joinBtn && !joinBtn.disabled) joinBtn.click();
-                    return;
-                }
-                // Enter in the version-jump input triggers GO (the shield's
-                // stopImmediatePropagation below would otherwise swallow the
-                // input's own Enter listener).
-                if (e.type === 'keydown' && e.key === 'Enter' &&
-                    tgt.id === 'rb-vj-input') {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    var goBtn = document.getElementById('rb-vj-go');
-                    if (goBtn) goBtn.click();
                     return;
                 }
 
@@ -920,7 +509,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V274<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V213<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,182 +577,13 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V274</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V274</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V213</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V213</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
         <div class="rb-crt-scan" aria-hidden="true"></div>
         <div class="rb-crt-vig" aria-hidden="true"></div>
     </div>
-
-    <!-- ============ MOBILE BOOTSTRAP (V214) ============
-         Runs ONLY on touch phones. Adds html.rb-mobile, forces landscape by
-         rotating <body> when portrait (html.rb-rot90), and cover-scales the
-         game canvas to fill the screen with no black bars. Defines the two
-         globals the retrobowl.js input patches read:
-           - window.__rbRemapPointer(px,py): screen -> logical-landscape coords
-           - window.__rbVirt: the virtual (un-rotated) canvas rect for _No2
-         On desktop this script returns immediately, both globals stay
-         undefined, and the engine patches short-circuit to a no-op. -->
-    <script>
-        (function () {
-            // Map a canvas click/tap to 480x270 GUI space, correctly on BOTH
-            // desktop (plain rect math) and rotated mobile (through the same
-            // virtual rect the engine input patches use). Shared by the
-            // bridge's canvas click intercepts (PLAY 2P, options confetti).
-            window._rb2p_canvasClickToGame = function (e, cv) {
-                var v = window.__rbVirt;
-                var m = window.__rbRemapPointer && window.__rbRemapPointer(e.clientX, e.clientY);
-                if (m && v) {
-                    return { gx: (m[0] - v.left) / (v.right - v.left) * 480,
-                             gy: (m[1] - v.top)  / (v.bottom - v.top) * 270 };
-                }
-                var r = cv.getBoundingClientRect();
-                return { gx: (e.clientX - r.left) / r.width  * 480,
-                         gy: (e.clientY - r.top)  / r.height * 270 };
-            };
-
-            var mq = window.matchMedia('(hover: none) and (pointer: coarse)');
-            if (!mq.matches) return;                 // desktop -> do nothing
-            var docEl = document.documentElement;
-            docEl.classList.add('rb-mobile');
-
-            // let the canvas reach under notches / the home indicator
-            try {
-                var vp = document.querySelector('meta[name="viewport"]');
-                if (vp && vp.content.indexOf('viewport-fit') < 0)
-                    vp.content += ', viewport-fit=cover';
-            } catch (e) {}
-
-            var portraitMQ = window.matchMedia('(orientation: portrait)');
-            // Set rotation state SYNCHRONOUSLY, before retrobowl.js loads below,
-            // so the engine's _tI2/_uI2 report landscape dims when it first sizes
-            // its canvas buffer + camera (otherwise a portrait window makes it
-            // render the field into a letterboxed strip).
-            docEl.classList.toggle('rb-rot90', portraitMQ.matches);
-
-            // screen (pageX,pageY) -> logical landscape coords, for the -90deg
-            // body rotation recipe used in CSS. Identity when not rotated.
-            window.__rbRemapPointer = function (px, py) {
-                if (!docEl.classList.contains('rb-rot90')) return null;
-                return [window.innerHeight - py, px];
-            };
-            window.__rbVirt = null;
-
-            function layout() {
-                var canvas = document.getElementById('canvas');
-                if (!canvas) return;
-                var rot = portraitMQ.matches;
-
-                var bw = canvas.width || 853, bh = canvas.height || 480;
-                // logical landscape viewport (swapped when rotated)
-                var LW = rot ? window.innerHeight : window.innerWidth;
-                var LH = rot ? window.innerWidth  : window.innerHeight;
-                // V256: measure the home-indicator inset once (probe lives on
-                // <html>, which is never CSS-rotated, so the rect is honest).
-                if (window.__rbSafeB === undefined) {
-                    try {
-                        var sp = document.createElement('div');
-                        sp.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;visibility:hidden;' +
-                                           'height:env(safe-area-inset-bottom,0px);pointer-events:none;';
-                        document.documentElement.appendChild(sp);
-                        window.__rbSafeB = Math.min(40, sp.getBoundingClientRect().height || 0);
-                        sp.parentNode.removeChild(sp);
-                    } catch (eSB) { window.__rbSafeB = 0; }
-                }
-                // V249: THE mobile GET READY hang root cause. A resize event
-                // delivered while the window reports degenerate dimensions
-                // (screen lock / app switch / Safari toolbar transitions)
-                // made this function write canvas CSS of 0px and a zeroed
-                // __rbVirt — freezing the visible frame (stale composited
-                // layer, typically the GET READY staging screen) AND killing
-                // the tap remap (NaN coords; device telemetry showed
-                // gui-mouse pinned at 0,24) while the engine ran healthily
-                // underneath. Repro: e2e/webkit/pw-hang4.js. NEVER consume
-                // degenerate dims: keep the last good layout and retry until
-                // the browser reports something sane.
-                if (!(LW >= 100) || !(LH >= 100)) {
-                    clearTimeout(window.__rbLayoutRetryT);
-                    window.__rbLayoutRetryT = setTimeout(layout, 400);
-                    return;
-                }
-                docEl.classList.toggle('rb-rot90', rot);
-                // V262: size the rotated body in real PIXELS, overriding the
-                // 100dvh/100dvw CSS. On iOS 18 dvh lags toolbar transitions,
-                // leaving the page ~1px scrollable — Safari then suspends rAF
-                // indefinitely on a fully visible page (the GET READY death;
-                // QJIX telemetry). Pixel sizes kill the overflow at the source.
-                try {
-                    var bS = document.body.style;
-                    if (rot) {
-                        bS.setProperty('top',    LW + 'px', 'important');
-                        bS.setProperty('width',  LW + 'px', 'important');
-                        bS.setProperty('height', LH + 'px', 'important');
-                    } else {
-                        bS.removeProperty('top');
-                        bS.removeProperty('width');
-                        bS.removeProperty('height');
-                    }
-                } catch (eBS) {}
-                var scale = Math.max(LW / bw, LH / bh);   // COVER (no black bars)
-                var cw = bw * scale, ch = bh * scale;
-                var ox = (LW - cw) / 2, oy = (LH - ch) / 2;
-                // V256: in rotated mode the logical-LEFT edge is the phone's
-                // physical BOTTOM — the home-indicator system-gesture zone,
-                // where the PAT kick meter lands. The system swipe cannot be
-                // disabled from a web page, so shift the game content off
-                // that edge (the plan-sanctioned thin margin).
-                if (rot && window.__rbSafeB > 0) ox += window.__rbSafeB;
-
-                var s = canvas.style;
-                s.setProperty('position', 'fixed', 'important');
-                s.setProperty('left',   ox + 'px', 'important');
-                s.setProperty('top',    oy + 'px', 'important');
-                s.setProperty('width',  cw + 'px', 'important');
-                s.setProperty('height', ch + 'px', 'important');
-                s.setProperty('margin', '0', 'important');
-                s.setProperty('max-width', 'none', 'important');
-                s.setProperty('max-height', 'none', 'important');
-                // V246: identity 3D transform (NOT 'none') keeps the canvas on
-                // its own compositor layer — see the html.rb-mobile #canvas CSS.
-                s.setProperty('transform', 'translateZ(0)', 'important');
-
-                // virtual un-rotated rect the engine's _No2 override consumes so
-                // its getBoundingClientRect-based tap mapping stays correct.
-                window.__rbVirt = { left: ox, top: oy, right: ox + cw, bottom: oy + ch, sx: scale, sy: scale };
-            }
-
-            // V256: definitive gesture-proofing. iOS pauses the page's rAF
-            // while a touch is in scroll/system-gesture arbitration — the
-            // frozen-under-finger family (PAT kick-meter holds, careful snap
-            // drags). A CANCELED first touchmove ends the arbitration
-            // outright (works even where touch-action is mis-honored inside
-            // the rotated body). Lobby taps/typing are untouched: only
-            // touchMOVE is canceled, and only outside form fields.
-            document.addEventListener('touchmove', function (e) {
-                try {
-                    var t = e.target;
-                    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
-                    // scrollable overlays (roster view / lobby column) keep
-                    // native scrolling — everything else is game surface
-                    if (t && t.closest && t.closest('#rb-roster-overlay, #rb-roster-body, .rb-screen')) return;
-                    e.preventDefault();
-                } catch (eT) {}
-            }, { passive: false });
-            document.addEventListener('gesturestart', function (e) {
-                try { e.preventDefault(); } catch (eG) {}
-            }, { passive: false });
-
-            window.addEventListener('resize', layout);
-            window.__rbLayoutNow = layout;   // V249: heartbeat self-heal hook
-            window.addEventListener('orientationchange', function () { setTimeout(layout, 60); });
-            if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', layout);
-            document.addEventListener('DOMContentLoaded', layout);
-            window.addEventListener('load', layout);
-            // re-apply a few times to win over any late engine canvas centering
-            [0, 200, 600, 1200, 2500].forEach(function (t) { setTimeout(layout, t); });
-        })();
-    </script>
 
     <!-- Cache-bust retrobowl.js with the SAME per-session ?v= token as the page,
          so engine edits actually reach the browser (a bare src was cached
@@ -1299,7 +719,7 @@
                 } catch (e) {}
             }
             setInterval(function () {
-                if (typeof _Ec2 !== 'undefined' && _Ec2 && _Ec2._UX3 && _Ec2._UX3.length) hookDraw();
+                if (typeof _Ec2 !== 'undefined' && _Ec2._UX3 && _Ec2._UX3.length) hookDraw();
             }, 1000);
 
             function drawBtn(inst) {
@@ -1330,8 +750,9 @@
             canvas.addEventListener('click', function (e) {
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_OPTIONS) return;
-                    var g = window._rb2p_canvasClickToGame(e, canvas);
-                    var gx = g.gx, gy = g.gy;
+                    var r = canvas.getBoundingClientRect();
+                    var gx = ((e.clientX - r.left) / r.width) * 480;
+                    var gy = ((e.clientY - r.top) / r.height) * 270;
                     if (gx < BTN.x || gx > BTN.x + BTN.w) return;
                     if (gy < BTN.y || gy > BTN.y + BTN.h) return;
                     try {
@@ -1591,96 +1012,10 @@
             //   - Player A's engineMatch start (their first offensive drive)
             //   - After applyOpponentOutcome on every subsequent received drive
             // Idempotent: if obj_ball already exists, _eb1 is skipped.
-
-            // V232: _Y41 (per-player finalize, 22 calls per s_set_up_play)
-            // crashes on null singleton lookups (_jj → no live instance for
-            // obj 64/71) in a half-built or aged room — ONE throw aborts the
-            // whole 22-player+ball spawn (harness-verified: this is the GET
-            // READY stall's spawn failure). Per-player try/catch shield: one
-            // bad player no longer kills the spawn. Engine top-level functions
-            // are true globals, so reassigning rebinds every caller.
-            try {
-                if (typeof _Y41 === 'function' && !_Y41.__rb2pWrapped) {
-                    var __origY41 = _Y41;
-                    var __y41Errs = 0;
-                    _Y41 = function (_, t) {
-                        try { return __origY41(_, t); }
-                        catch (eY) {
-                            if (++__y41Errs <= 3) console.warn('[2p-rb] _Y41 crash shielded (#' +
-                                __y41Errs + '):', (eY && eY.message) || eY);
-                            if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                'Y41 shielded ' + String((eY && eY.message) || eY).slice(0, 50));
-                            return 0;
-                        }
-                    };
-                    _Y41.__rb2pWrapped = true;
-                }
-            } catch (eW) {}
-
-            // V236: _Iy (s_set_up_button_kickoff) guard. Real-2P harness run
-            // proved the WAITING player sits on a fully live GET READY staging
-            // screen (kp:1 + tappable Kick Off button) for the whole opposing
-            // drive — the bridge never suppressed it. And on phones (where
-            // damaged rooms never purge corpses) every re-created button ends
-            // up a painted ghost. Kill the source: the button must never be
-            // built while this device is WAITING, nor while a drive is already
-            // live. The genuine fallback case (spawn failed: no ball, kp
-            // rolled back, not waiting) still passes through.
-            // V247: the ONE legitimate case where the WAITING device must build
-            // and keep staging UI — the pick-6 SCORER playing the PAT (the
-            // PICK6 receive branch deliberately leaves waiting=true, see
-            // scorerPlayingPat at the WAIT-cover). Every waiting-side killer
-            // MUST honor this exception: the V246-era PAT freeze (B frozen
-            // right after the 1pt/2pt click, sometimes mid-snap) was the _Iy
-            // guard + the 700ms staging sweep shredding the legit PAT scene.
-            window._rb2p_scorerPlayingPat = function () {
-                return window._rb2p_pickSixThisDeviceIsThrower !== true &&
-                       (window._rb2p_pickSixPatCascadeActive === true ||
-                        window._rb2p_patPlayPending === true);
-            };
-            try {
-                if (typeof _Iy === 'function' && !_Iy.__rb2pWrapped) {
-                    var __origIy = _Iy;
-                    _Iy = function (_, t) {
-                        try {
-                            // V247: pick-6 PAT on this device — the button is
-                            // legitimate; bypass BOTH suppression clauses.
-                            if (window._rb2p_scorerPlayingPat()) {
-                                if (window._rb2p_diagLog) window._rb2p_diagLog('Iy allowed (PAT play)');
-                                return __origIy(_, t);
-                            }
-                            if (window._rb2p_userIsWaitingForOpponent === true) {
-                                if (window._rb2p_diagLog) window._rb2p_diagLog('Iy suppressed (waiting)');
-                                return 0;
-                            }
-                            if (window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom()) {
-                                var em = RB.engineState && RB.engineState();
-                                if (em && em.engineControllerState === 2) {
-                                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                                    for (var i = 0; i < all.length; i++) {
-                                        var inst = all[i];
-                                        if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_ball') {
-                                            if (window._rb2p_diagLog) window._rb2p_diagLog('Iy suppressed (drive live)');
-                                            return 0;
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (eG) {}
-                        return __origIy(_, t);
-                    };
-                    _Iy.__rb2pWrapped = true;
-                }
-            } catch (eI) {}
-
             function forceUserOffenseDrive(yardLine) {
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
-                    // V232: resolve the spawner FIRST — a clean bail must happen
-                    // before ANY state is touched.
-                    var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
-                    if (typeof setUpPlay !== 'function') return false;
                     // V140: user is on offense again → re-enable the MAX defender
                     // speed bump (cleared after a turnover so the return ran normal).
                     window._rb2p_intReturnActive = false;
@@ -1689,31 +1024,14 @@
                     window._rb2p_pick6SentThisPossession = false;
                     // V192: re-arm the per-play INT-credit dedup for this drive.
                     window._rb2p_intCreditedThisPlay = false;
+                    // Drop any lingering kickoff button — it gates the
+                    // controller's step and would re-trigger the dead path.
                     var allInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    // V232 GHOST-BUTTON FIX: the kickoff "Receive" button is NOT
-                    // killed up front anymore. The old order killed it (raw
-                    // `_HL2 = true`) and THEN spawned; when the spawn crashed the
-                    // player stared at a corpse — GameMaker still PAINTS
-                    // `_HL2`-marked instances but never runs their step, so the
-                    // visible button ignored every tap (harness-verified:
-                    // ghost:1/live:0, trusted tap at its rect → nothing). The
-                    // button now dies only AFTER a confirmed spawn, and via the
-                    // engine's real destroy (_cr) so no corpse is ever painted.
-                    // It must still die then: a surviving button gates
-                    // obj_controller's step (the gutted AI-kickoff path).
-                    function killKickoffButtons() {
-                        for (var i = 0; i < allInstances.length; i++) {
-                            var inst = allInstances[i];
-                            if (!inst || inst._HL2) continue;
-                            if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
-                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
-                                // V234: _cr's destroy-event dispatch can THROW in a
-                                // damaged room (seen on-device) — the fallback raw
-                                // kill then left a PAINTED corpse. _g2 = 0 makes the
-                                // engine skip draw+step unconditionally (same
-                                // mechanism hideCont uses), so no corpse can render.
-                                try { inst._g2 = 0; } catch (eV) {}
-                            }
+                    for (var i = 0; i < allInstances.length; i++) {
+                        var inst = allInstances[i];
+                        if (!inst || inst._HL2) continue;
+                        if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
+                            inst._HL2 = true;
                         }
                     }
                     // Snapshot scores at drive-start so the _1c1 wrapper can
@@ -1721,30 +1039,6 @@
                     // offensive drive) and PAT-eligibility (user scored 6).
                     window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
                     window._rb2p_opponentScoreAtDriveStart  = engineMatch.opponentScore;
-                    // V232: snapshot everything mutated below so a failed spawn
-                    // rolls back cleanly — leaving the engine's native kickoff
-                    // staging (kp=1 + live tappable button) playable instead of
-                    // a poisoned half-state.
-                    var fieldSnap = {
-                        poss: engineMatch.enginePossessingTeamIdx,
-                        down: engineMatch.engineDownNumber,
-                        ytg:  engineMatch.engineYardsToGo,
-                        ydl:  engineMatch.engineYardLineSigned,
-                        dir:  engineMatch.engineDriveDirection,
-                        vy:   engineMatch.engineDriveFsmStage,
-                        kp:   engineMatch.engineControllerState
-                    };
-                    function rollBackFieldState() {
-                        try {
-                            engineMatch.enginePossessingTeamIdx = fieldSnap.poss;
-                            engineMatch.engineDownNumber        = fieldSnap.down;
-                            engineMatch.engineYardsToGo         = fieldSnap.ytg;
-                            engineMatch.engineYardLineSigned    = fieldSnap.ydl;
-                            engineMatch.engineDriveDirection    = fieldSnap.dir;
-                            engineMatch.engineDriveFsmStage     = fieldSnap.vy;
-                            engineMatch.engineControllerState   = fieldSnap.kp;
-                        } catch (eR) {}
-                    }
 
                     // Field state for a fresh 1st & 10.
                     // yardLine is signed yards from MIDFIELD: negative = own half
@@ -1813,49 +1107,17 @@
                         if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') ballCount++;
                     }
                     if (ballCount > 0) {
-                        killKickoffButtons();
                         engineMatch.engineControllerState = 2;
-                        armKickoffSweeper(ydl);
                         return true;
                     }
 
-                    // V232: spawn FIRST; the button dies only on confirmed success.
-                    try {
-                        setUpPlay(engineMatch.rawEngineMatch, _Sc2, 0);
-                    } catch (eS) {
-                        rollBackFieldState();
-                        console.log('[2p-rb] forceUserOffenseDrive spawn crashed (rolled back):', eS);
-                        if (window._rb2p_diagLog) window._rb2p_diagLog(
-                            'force CRASH ' + String((eS && eS.message) || eS).slice(0, 60));
-                        return false;
-                    }
-                    // Confirm the spawn actually produced a ball before killing
-                    // the native button — a silent no-ball "success" must also
-                    // leave the staging playable.
-                    var spawnedBall = 0;
-                    var nowInstances = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var k = 0; k < nowInstances.length; k++) {
-                        var nb = nowInstances[k];
-                        if (nb && !nb._HL2 && nb._eE2 && nb._eE2._fE2 === 'obj_ball') spawnedBall++;
-                    }
-                    if (spawnedBall === 0) {
-                        rollBackFieldState();
-                        console.log('[2p-rb] forceUserOffenseDrive: spawn completed but no ball — rolled back');
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('force NO-BALL (rolled back)');
-                        return false;
-                    }
-                    killKickoffButtons();
-                    // V234: the "GET READY!" banner (controller __b1, set at match
-                    // create) is only cleared by the engine's own kickoff flow,
-                    // which the bridge bypasses — on-device it stayed painted over
-                    // a LIVE drive, making the game look stuck. Staging is over
-                    // once the drive spawned: clear it.
-                    try { engineMatch.rawEngineMatch.__b1 = ''; } catch (eB) {}
+                    var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
+                    if (typeof setUpPlay !== 'function') return false;
+                    setUpPlay(engineMatch.rawEngineMatch, _Sc2, 0);
 
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
                     engineMatch.engineControllerState = 2;
-                    armKickoffSweeper(ydl);
                     return true;
                 } catch (e) {
                     console.log('[2p-rb] forceUserOffenseDrive err:', e);
@@ -1863,115 +1125,6 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
-
-            // V232: poisoned-spawn recovery. Harness-proven: once the FIRST
-            // spawn of a match crashes, every later s_set_up_play throws too
-            // (GML _ZC2) — the room is unrecoverable in place; ONLY a reload
-            // (fresh room + resume flow) fixes it. That's the one case where
-            // the manual-refresh behavior is automated: after ~3s of
-            // consecutive opening-spawn failures, reload once (max once/min).
-            var openingSpawnFails = 0;
-            function noteOpeningSpawnResult(ok, tag) {
-                if (ok) { openingSpawnFails = 0; return; }
-                openingSpawnFails++;
-                var need = window._rb2p_spawnReloadAfterFails || 60;   // 60 × 50ms ≈ 3s
-                if (openingSpawnFails < need) return;
-                openingSpawnFails = 0;
-                try {
-                    var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
-                    if (Date.now() - lastR < 60000) return;
-                    sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
-                    console.warn('[2p-rb] opening spawn poisoned (' + tag + ') — reloading into resume flow');
-                    if (window._rb2p_diagLog) window._rb2p_diagLog('POISONED (' + tag + ') -> auto-reload');
-                    setTimeout(function () { location.reload(); }, 200);
-                } catch (eL) {}
-            }
-            window._rb2p_noteOpeningSpawnResult = noteOpeningSpawnResult;
-
-            // ---- kickoff sweeper: cure the mobile GET READY!/Kick Off hang ----
-            // forceUserOffenseDrive kills obj_btn_kickoff ONCE, but on slow
-            // devices the engine spawns the button AFTER that one-shot kill.
-            // The surviving button gates obj_controller's step (the gutted
-            // dead path), the ball stays inert, and no tap can ever advance —
-            // the "GET READY! + Kick Off stuck until refresh" hang. (Refresh
-            // worked because the resume path re-ran forceUserOffenseDrive
-            // after the button existed.) This watcher runs ~20s after every
-            // drive-force and keeps the drive alive:
-            //   • any obj_btn_kickoff that appears is killed on sight;
-            //   • if NO ball has EVER spawned for this drive, the spawn is
-            //     retried (safe: the drive never started, so down/toGo are
-            //     still the fresh 1st&10 this call would set anyway);
-            //   • once a ball has been seen, the sweeper never re-forces —
-            //     a mid-drive between-plays despawn must not reset downs.
-            // A generation counter makes each new drive-force supersede any
-            // older watcher, so overlapping arms can't fight.
-            window._rb2p_kickoffSweepGen = window._rb2p_kickoffSweepGen || 0;
-            function armKickoffSweeper(yard) {
-                var gen = ++window._rb2p_kickoffSweepGen;
-                var ticks = 0, ballSeenEver = false;
-                var iv = setInterval(function () {
-                    ticks++;
-                    if (gen !== window._rb2p_kickoffSweepGen || ticks > 200) { clearInterval(iv); return; }
-                    try {
-                        if (!RB.isEngineInMatchRoom()) return;
-                        var em = RB.engineState();
-                        if (!em || em.engineUserTeamIdx == null) return;
-                        if (window._rb2p_userIsWaitingForOpponent ||
-                            window._rb2p_patPlayPending) { clearInterval(iv); return; }
-                        if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return;
-                        var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                        // V271: DHEB device evidence overturned the old "ball ==
-                        // drive live" assumption. The engine's KICKOFF STAGING
-                        // ("GET READY! / Receive") has a ball on the tee, so the
-                        // first obj_ball set ballSeenEver=true and the sweeper
-                        // STOPPED retrying — leaving the possessing phone stranded
-                        // at the Receive screen (visible, fps 60, ball:1 vy:2, a
-                        // painted corpse Receive button) with no way to snap. The
-                        // real "drive is live" signal is the OFFENSIVE FORMATION
-                        // (obj_playerOF on the field), not any ball. Also: corpse
-                        // (_HL2) kickoff buttons still PAINT and eat taps, so park
-                        // them too — the old loop skipped _HL2.
-                        var sawBtn = false, koAny = 0, plOF = 0, balls = 0;
-                        for (var i = 0; i < all.length; i++) {
-                            var inst = all[i];
-                            if (!inst || !inst._eE2) continue;
-                            var nm = inst._eE2._fE2;
-                            if (nm === 'obj_btn_kickoff') {
-                                koAny++;
-                                // Kill live ones properly; park live AND corpse off
-                                // screen so neither paints "Receive" nor eats taps.
-                                if (!inst._HL2) { try { _cr(inst); } catch (eK) { inst._HL2 = true; } sawBtn = true; }
-                                try { inst._g2 = 0; inst.x = -2000; inst.y = -2000; } catch (eV) {}
-                            }
-                            else if (nm === 'obj_playerOF' && !inst._HL2) plOF++;
-                            else if (nm === 'obj_ball' && !inst._HL2) balls++;
-                        }
-                        if (plOF >= 5) ballSeenEver = true;   // (diagnostic only)
-                        if (sawBtn) {
-                            em.engineControllerState = 2;
-                            console.log('[2P KICKOFF-SWEEP] killed late obj_btn_kickoff (t=' +
-                                        (ticks * 300) + 'ms, plOF=' + plOF + ' balls=' + balls + ')');
-                        }
-                        // Retry the spawn every ~1.2s WHENEVER a kickoff button is
-                        // present with no offensive formation. That conjunction
-                        // (koAny>0 && plOF===0) is UNIQUE to the stuck-at-staging
-                        // state — a live drive never has a kickoff button, and a
-                        // between-plays despawn mid-drive never spawns one — so
-                        // this can't reset a live drive, and unlike the old
-                        // ballSeenEver latch it also recovers a scene that spawned
-                        // then reverted to staging (the DHEB device signature).
-                        if (koAny > 0 && plOF === 0 && ticks % 4 === 0) {
-                            if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                'STUCK@staging ' + (ticks * 300) + 'ms ko=' + koAny +
-                                ' ball=' + balls + ' — re-forcing drive');
-                            console.log('[2P KICKOFF-SWEEP] no offense ' + (ticks * 300) +
-                                        'ms after drive-force (ko=' + koAny + ' balls=' + balls +
-                                        ') — retrying spawn');
-                            forceUserOffenseDrive(yard);   // re-arms; this watcher dies via gen
-                        }
-                    } catch (e) {}
-                }, 300);
-            }
             // Public alias documented in "how the hell can I not do this,
             // actually wait, now I can.md" — call this from devtools to force
             // the user offense at any signed yard line.
@@ -3361,9 +2514,9 @@
                         var pollR = setInterval(function () {
                             triesR++;
                             try {
-                                if (!RB.isEngineInMatchRoom()) { if (triesR > 2400) clearInterval(pollR); return; }
+                                if (!RB.isEngineInMatchRoom()) { if (triesR > 400) clearInterval(pollR); return; }
                                 var em = RB.engineState();
-                                if (!em || em.engineUserTeamIdx == null) { if (triesR > 2400) clearInterval(pollR); return; }
+                                if (!em || em.engineUserTeamIdx == null) { if (triesR > 400) clearInterval(pollR); return; }
                                 // V178: re-assert score & quarter as monotonic FLOORS
                                 // every tick for a ~3s grace window. The engine's
                                 // opening inits Q1 / 0-0 and the live-sync may push a
@@ -3397,118 +2550,11 @@
                                         // the yard line; we overwrite down/toGo right after.
                                         var resumeYard = (typeof rs.yardLine === 'number')
                                             ? rs.yardLine : window._rb2p_kickoffReturnYard();
-                                        // V232: the resume force can fail too (poisoned
-                                        // boot). Retry next tick instead of silently
-                                        // proceeding without a drive; the shared counter
-                                        // reloads once if the room is truly poisoned.
-                                        var resumeForceOk = forceUserOffenseDrive(resumeYard);
-                                        noteOpeningSpawnResult(resumeForceOk, 'resume');
-                                        if (!resumeForceOk) return;
+                                        forceUserOffenseDrive(resumeYard);
                                         if (typeof rs.down === 'number' && rs.down >= 1 && rs.down <= 4)
                                             em.engineDownNumber = rs.down;
                                         if (typeof rs.toGo === 'number' && rs.toGo >= 0)
                                             em.engineYardsToGo = rs.toGo;
-                                    } else if (window._rb2p_resumePatDuty) {
-                                        // V217: reloaded mid-pick-6-PAT — re-pop the
-                                        // engine PAT modal instead of parking in WAIT.
-                                        // Reuses the normal PICK6 receive path with a
-                                        // synthetic outcome whose scores match the
-                                        // already-restored floors (so the score writes
-                                        // are no-ops) — the modal + PAT guardian +
-                                        // PAT_RESULT send all arm exactly as they did
-                                        // the first time.
-                                        window._rb2p_resumePatDuty = null;
-                                        window._rb2p_userIsWaitingForOpponent = true;
-                                        // V252: fire-and-forget re-pop FAILED on device —
-                                        // telemetry (WMPL_b): 5 popup instances existed but
-                                        // the user's canvas showed a blank field (modal
-                                        // never painted / got eaten; engine loop also died
-                                        // twice right after the pop). VERIFY a modal is
-                                        // actually alive and VISIBLE, and retry the pop
-                                        // until it is (up to ~20s), logging each attempt
-                                        // into the reload-surviving diag ring.
-                                        // V253: the V252 loop STACKED modals — attempt 1's
-                                        // modal can be alive-but-invisible (the blank-field
-                                        // gremlin), attempt 2 pops a second one on top, the
-                                        // user answers the visible one, and the leftover
-                                        // live instances gate the engine → frozen right
-                                        // after the 1PT/2PT click (device log: attempt 1,
-                                        // attempt 2, visible try 3, tap, freeze). Rules now:
-                                        // HARD-KILL every popup instance before each re-pop
-                                        // (attempts can never stack), and stand down the
-                                        // moment the user answers (popups went present →
-                                        // gone, or the PAT resolved).
-                                        (function (rsq) {
-                                            var patTries = 0, prevLive = -1;
-                                            var patIv = setInterval(function () {
-                                                try {
-                                                    if (window._rb2p_patPlayResolved === true ||
-                                                        (patTries > 0 && window._rb2p_patPlayPending !== true)) {
-                                                        clearInterval(patIv);
-                                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT answered — re-pop loop done');
-                                                        return;
-                                                    }
-                                                    var pl = (window._rb2p_enumeratePopupInstances &&
-                                                              window._rb2p_enumeratePopupInstances()) || [];
-                                                    var liveN = 0, visible = false;
-                                                    for (var i = 0; i < pl.length; i++) {
-                                                        var p = pl[i];
-                                                        if (!p || p._HL2) continue;
-                                                        liveN++;
-                                                        if (p._g2 !== 0 && p.x > -1000) visible = true;
-                                                    }
-                                                    // popups were up and are now gone while the
-                                                    // PAT is still pending = the user clicked and
-                                                    // the scene is playing — do NOT re-pop.
-                                                    if (patTries > 0 && prevLive > 0 && liveN === 0) {
-                                                        clearInterval(patIv);
-                                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT modal answered (scene live)');
-                                                        return;
-                                                    }
-                                                    prevLive = liveN;
-                                                    if (visible) {
-                                                        clearInterval(patIv);
-                                                        if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                            'PAT modal visible (try ' + (patTries + 1) + ')');
-                                                        return;
-                                                    }
-                                                    if (patTries >= 12) {
-                                                        clearInterval(patIv);
-                                                        if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                            'PAT re-pop gave up after ' + patTries + ' tries');
-                                                        return;
-                                                    }
-                                                    patTries++;
-                                                    // hard-kill EVERYTHING popup-shaped (live,
-                                                    // invisible, corpse) so this attempt starts
-                                                    // from zero — no stacking, no lingering
-                                                    // instances gating the engine.
-                                                    for (var j = 0; j < pl.length; j++) {
-                                                        var q = pl[j];
-                                                        if (!q) continue;
-                                                        try { if (!q._HL2) _cr(q); } catch (eC) { try { q._HL2 = true; } catch (eH) {} }
-                                                        try { q._g2 = 0; q.x = -2000; q.y = -2000; } catch (eV) {}
-                                                    }
-                                                    window._rb2p_userPatPopupRefs = null;
-                                                    window._rb2p_applyOpponentOutcome({
-                                                        type: 'PICK6', yardLine: 0, ownSide: true,
-                                                        needsPAT: true,
-                                                        scoreUser: rsq.oppScore, scoreOpp: rsq.myScore,
-                                                        quarter: rsq.quarter,
-                                                        minutesLeft: rsq.minutes, secondsLeft: rsq.seconds,
-                                                        message: 'PAT re-popped after reload',
-                                                        ts: Date.now()
-                                                    });
-                                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                        'PAT re-pop attempt ' + patTries);
-                                                    console.log('[2P RESUME] pick-6 PAT re-pop attempt ' + patTries);
-                                                } catch (eP) {
-                                                    console.log('[2P RESUME patDuty err]', eP);
-                                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                        'PAT re-pop err: ' + String(eP && eP.message).slice(0, 40));
-                                                }
-                                            }, 1600);
-                                        })(rs);
                                     } else {
                                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
                                         window._rb2p_userIsWaitingForOpponent = true;
@@ -3524,7 +2570,7 @@
                                 // Hold the floors for ~3s (60 × 50ms) after the first
                                 // restore so the opening can't clobber them, then stop.
                                 if (resumedOnce && ++holdTicks >= 60) clearInterval(pollR);
-                            } catch (e) { if (triesR > 2400) clearInterval(pollR); }
+                            } catch (e) { if (triesR > 400) clearInterval(pollR); }
                         }, 50);
                         return;
                     }
@@ -3549,12 +2595,12 @@
                             triesA++;
                             try {
                                 if (!RB.isEngineInMatchRoom()) {
-                                    if (triesA > 2400) clearInterval(pollA);
+                                    if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
                                 var engineMatch = RB.engineState();
                                 if (!engineMatch || engineMatch.engineUserTeamIdx == null) {
-                                    if (triesA > 2400) clearInterval(pollA);
+                                    if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
                                 // forceUserOffenseDrive: kills obj_btn_kickoff,
@@ -3572,19 +2618,15 @@
                                 // Receiver's own X = NEGATIVE yardLine.
                                 var openingYard = window._rb2p_kickoffReturnYard();
                                 if (!forceUserOffenseDrive(openingYard)) {
-                                    noteOpeningSpawnResult(false, 'pollA');   // V232: poisoned-room reload path
-                                    if (triesA > 2400) clearInterval(pollA);
+                                    if (triesA > 400) clearInterval(pollA);
                                     return;
                                 }
-                                noteOpeningSpawnResult(true, 'pollA');
                                 window._rb2p_userIsWaitingForOpponent = false;
                                 window._rb2p_userOutcomeSendInProgress      = false;
                                 window._rb2p_lastOpponentOutcomeApplyMs         = Date.now();
                                 clearInterval(pollA);
-                                console.log('[2P START] A opening drive forced after ~' +
-                                            (triesA * 50) + 'ms (yard=' + openingYard + ')');
                             } catch (e) {
-                                if (triesA > 2400) clearInterval(pollA);
+                                if (triesA > 400) clearInterval(pollA);
                             }
                         }, 50);
                     } else if (role === 'b') {
@@ -3601,19 +2643,19 @@
                             tries++;
                             try {
                                 if (!RB.isEngineInMatchRoom()) {
-                                    if (tries > 2400) clearInterval(poll);
+                                    if (tries > 400) clearInterval(poll);
                                     return;
                                 }
                                 var engineMatch = RB.engineState();
                                 if (!engineMatch || engineMatch.engineUserTeamIdx == null) {
-                                    if (tries > 2400) clearInterval(poll);
+                                    if (tries > 400) clearInterval(poll);
                                     return;
                                 }
                                 engineMatch.enginePossessingTeamIdx = engineMatch.engineOpponentTeamIdx;   // opponent has ball
                                 window._rb2p_userIsWaitingForOpponent = true;
                                 clearInterval(poll);
                             } catch (e) {
-                                if (tries > 2400) clearInterval(poll);
+                                if (tries > 400) clearInterval(poll);
                             }
                         }, 50);
                     }
@@ -3738,8 +2780,9 @@
             canvas.addEventListener('click', function (e) {
                 try {
                     if (typeof _ft === 'undefined' || _ft._gt() !== STATE_HOME) return;
-                    var g = window._rb2p_canvasClickToGame(e, canvas);
-                    var gx = g.gx, gy = g.gy;
+                    var r = canvas.getBoundingClientRect();
+                    var gx = ((e.clientX - r.left) / r.width)  * 480;
+                    var gy = ((e.clientY - r.top)  / r.height) * 270;
                     var hit2P = gx >= BTN_2P.x && gx <= BTN_2P.x + BTN_2P.w &&
                                 gy >= BTN_2P.y && gy <= BTN_2P.y + BTN_2P.h;
                     if (!hit2P) return;
@@ -3783,12 +2826,12 @@
 
             // -------- Install hooks --------
             setInterval(function () {
-                if (typeof _Ec2 !== 'undefined' && _Ec2 && _Ec2._UX3 && _Ec2._UX3.length) {
+                if (typeof _Ec2 !== 'undefined' && _Ec2._UX3 && _Ec2._UX3.length) {
                     hideOnHome('obj_matchline');
                     hideOnHome('obj_division');
                     hookBtn();
                 }
-                if (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) {
+                if (typeof _Sc2 !== 'undefined' && _Sc2._GL2 && _Sc2._GL2._oq2) {
                     hideCont();
                     recenterHomeStats();
                 }
@@ -4193,8 +3236,6 @@
                             try { window._twoPlayer.send(outcome); }
                             catch (e) { console.log('[2P] send err', e); }
                             window._rb2p_patResultSentMs = Date.now();
-                            // V217: PAT resolved — clear the reload-safety duty record.
-                            if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
                             // B's side of the cascade is finished the moment
                             // the result ships — tear it down so the
                             // watchdogs re-engage for normal play.
@@ -4754,15 +3795,8 @@
                             // go to WAIT, not spawn a drive.
                             if (window._rb2p_pickSixPatCascadeActive === true &&
                                 window._rb2p_pickSixThisDeviceIsThrower !== true) {
-                                // V255: judge "PAT still pending" by the BRIDGE's
-                                // sticky flag, NOT engineDownNumber — the engine
-                                // resets _t11 during response processing (the V57
-                                // clobber), so the 2-PT click's _eb1 could arrive
-                                // while down!=6 and get blocked → the goal-line
-                                // snap never spawned on a resumed room (mannequin
-                                // scene; guardian force-missed it ~8s later — the
-                                // "freezes a constant time after choosing" bug).
-                                var patPending = window._rb2p_patPlayPending === true &&
+                                var emP = RB.engineState();
+                                var patPending = emP && emP.engineDownNumber === 6 &&
                                                  window._rb2p_patPlayResolved !== true;
                                 if (patPending) return origEb1.apply(this, arguments);
                                 if (Date.now() - lastSpawnGateLogMs > 1000) {
@@ -5415,10 +4449,6 @@
                     window._rb2p_userIsWaitingForOpponent  = false;
                     window._rb2p_userOutcomeSendInProgress = false;
                     window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                    // V217: belt & braces — the PAT is resolved, so make sure the
-                    // reload-safety duty record can't linger (the defender clears
-                    // it on send; this covers a defender that died right after).
-                    if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
                     // V168: this device just applied the pick-6 PAT_RESULT and is
                     // about to RECEIVE the kickoff + start its own drive. The kickoff
                     // cascade briefly flips _UD, which the _1c1 send-hook misreads as
@@ -5433,30 +4463,7 @@
                     if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
                         ' scoreOpp=' + outcome.scoreOpp + ')');
-                    // V254: the old gate was `wasInCascade` — but the cascade
-                    // has a 60s hard timeout, and a B who refreshed + re-popped
-                    // + played the PAT easily takes longer than that. A then
-                    // applied the scores and DID NOTHING → both devices parked
-                    // in WAIT forever (the "froze a constant time after
-                    // choosing 1pt/2pt" report: B's guardian ships the
-                    // synthetic PAT_RESULT 5s after resolution, A ignores it).
-                    // The gate's real intent is "don't restart a drive that's
-                    // already running" — so test exactly that.
-                    var alreadyDriving = false;
-                    try {
-                        if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
-                            engineMatch.engineControllerState === 2) {
-                            var allAD = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                            for (var iAD = 0; iAD < allAD.length; iAD++) {
-                                var xAD = allAD[iAD];
-                                if (xAD && !xAD._HL2 && xAD._eE2 && xAD._eE2._fE2 === 'obj_ball') {
-                                    alreadyDriving = true; break;
-                                }
-                            }
-                        }
-                    } catch (eAD) {}
-                    if (!alreadyDriving) {
-                        if (!wasInCascade) console.log('[2P PICK6] PAT_RESULT after cascade timeout — forcing drive anyway (V254)');
+                    if (wasInCascade) {
                         var yard = window._rb2p_kickoffReturnYard();
                         // V169: break the post-pick-6 COMM_STAGE_DRIVE (Vy=4) FREEZE.
                         // The engine parks A's kickoff-return drive on the gutted
@@ -5479,46 +4486,6 @@
                         }
                         if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
                         console.log('[2P PICK6] PAT_RESULT applied — A kicking off (holding kp=2 to start the drive)');
-                        // V257: the one-shot force FAILED on device when the
-                        // PAT_RESULT arrived while this phone was backgrounded
-                        // (telemetry: A stuck at vy:4 kp:1 ball:0, loop dead,
-                        // kicks climbing — the drive never spawned and nothing
-                        // retried). Retry until the ball actually exists, the
-                        // room changed hands, or ~45s passes; heals on wake
-                        // because intervals run (throttled) in background.
-                        (function (yard0) {
-                            var krTries = 0;
-                            var krIv = setInterval(function () {
-                                try {
-                                    krTries++;
-                                    if (krTries > 30) { clearInterval(krIv); return; }
-                                    var emK = RB.engineState();
-                                    if (!emK || emK.engineUserTeamIdx == null) return;
-                                    if (window._rb2p_userIsWaitingForOpponent === true) { clearInterval(krIv); return; }
-                                    if (emK.enginePossessingTeamIdx !== emK.engineUserTeamIdx &&
-                                        emK.engineControllerState === 2) { clearInterval(krIv); return; }
-                                    var ballK = 0;
-                                    var allK = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                                    for (var ik = 0; ik < allK.length; ik++) {
-                                        var xk = allK[ik];
-                                        if (xk && !xk._HL2 && xk._eE2 && xk._eE2._fE2 === 'obj_ball') { ballK++; break; }
-                                    }
-                                    if (ballK > 0) { clearInterval(krIv); return; }
-                                    // V169 pre-clear + re-force
-                                    try {
-                                        var rawK = emK.rawEngineMatch;
-                                        try { rawK._831 = ''; rawK.__b1 = ''; } catch (eC2) {}
-                                        emK.engineMainCommentaryText = '';
-                                        emK.engineSubCommentaryText  = '';
-                                        try { if (Number(rawK._Nb1) < 1) rawK._Nb1 = 1; } catch (eN2) {}
-                                    } catch (ePre2) {}
-                                    var okK = window._rb2p_forceUserOffenseDrive(yard0);
-                                    if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
-                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                        'post-PAT drive retry ' + krTries + (okK ? ' OK' : ' fail'));
-                                } catch (eKR) {}
-                            }, 1500);
-                        })(yard);
                     } else {
                         console.log('[2P PICK6] PAT_RESULT applied (scores only — drive already running)');
                     }
@@ -5635,7 +4602,6 @@
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = userDelta;
                             console.log('[2P PAT GUARD] PAT resolved: +' + userDelta + ' (made)');
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved +' + userDelta);
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('PAT made: +' + userDelta);
                             return;
                         }
@@ -5665,7 +4631,6 @@
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = 0;
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved: missed');
                             console.log('[2P PAT GUARD] PAT resolved: missed (Vy=' +
                                         em.engineDriveFsmStage + ', possessionFlipped=' +
                                         patKickoffFlippedAway + ')');
@@ -5677,33 +4642,8 @@
                         if (em.engineDownNumber !== 6) {
                             em.engineDownNumber = 6;
                             em.engineYardsToGo  = 2;
-                            window._rb2p_patClobberCount = (window._rb2p_patClobberCount || 0) + 1;
                             console.warn('[2P PAT GUARD] _t11 clobbered mid-PAT — re-asserted 6');
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('_t11 clobber re-asserted');
-                            // V218: resolution-loop breaker. A missed PAT after a
-                            // reload-resume can land the FSM on a state the miss
-                            // detector above doesn't cover (not Vy 1/22, possession
-                            // never flips) — the engine then re-fires
-                            // BALL_INCOMPLETE forever while this branch re-asserts
-                            // _t11=6, each fight incrementing this counter (the
-                            // user-reported post-resume freeze). A NORMAL PAT sees
-                            // 0-1 clobbers total and an idle modal sees none, so a
-                            // long stream well after the play started can only be
-                            // the loop: the scene already played out scoreless.
-                            // Resolve it as the miss it is (+0 — the human played
-                            // the scene; this reports its outcome, no dice roll).
-                            if (window._rb2p_patClobberCount >= 12 &&
-                                Date.now() - (window._rb2p_patPlayStartMs || 0) > 8000) {
-                                window._rb2p_patPlayPending  = false;
-                                window._rb2p_patPlayResolved = true;
-                                window._rb2p_patResolvedMs   = Date.now();
-                                window._rb2p_patResultPoints = 0;
-                                console.warn('[2P PAT GUARD] resolution loop broken after ' +
-                                             window._rb2p_patClobberCount + ' clobber re-asserts — ' +
-                                             'PAT resolved: missed (played-out scene never credited)');
-                                if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
-                                    'PAT loop broken → missed (+0)');
-                            }
                         }
                         return;
                     }
@@ -5728,7 +4668,6 @@
                     // does). If it never fires, send synthetically.
                     if (Date.now() - (window._rb2p_patResolvedMs || 0) > 5000) {
                         console.warn('[2P PAT GUARD] kickoff _1c1 never fired — sending synthetic PAT_RESULT');
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('synthetic PAT_RESULT sent');
                         var names = em.engineTeamDisplayNames || ['', ''];
                         try {
                             window._twoPlayer.send({
@@ -5746,12 +4685,6 @@
                                 ts: Date.now()
                             });
                         } catch (eS) { console.log('[2P] send err', eS); }
-                        // V267: the normal _1c1 ship path clears the duty; the
-                        // synthetic path must too, or a defender reload within
-                        // 3 minutes replays an already-resolved PAT (double +1/+2).
-                        try {
-                            if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
-                        } catch (eSD) {}
                         window._rb2p_patResultSentMs = Date.now();
                         window._rb2p_patPlayPending  = false;
                         window._rb2p_patPlayResolved = false;
@@ -7096,12 +6029,6 @@
                         window._rb2p_userIsWaitingForOpponent = true;
                         window._rb2p_userOutcomeSendInProgress = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
-                        // V251: ACK the refresh-safety turnover record for
-                        // PICK6 too — V248 only ACKed the plain-INT branch,
-                        // so a B refresh around a pick-6 found an un-acked
-                        // record and resumed into the wrong flow.
-                        if (typeof window._rb2p_ackTurnoverApplied === 'function')
-                            window._rb2p_ackTurnoverApplied();
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
 
                         if (outcome.needsPAT === true) {
@@ -7131,20 +6058,6 @@
                                 // the fresh TD scene left the ball on the goal line.
                                 engineMatch.engineYardLineSigned   = 48;
                                 engineMatch.engineControllerState  = 2;
-                                // V255: on a RESUMED room the drive FSM is still
-                                // at stage 0 and drives are un-armed — the modal
-                                // paints but the engine never processes the
-                                // 1PT/2PT click and the 2-pt goal-line scene is
-                                // a mannequin (device: vy:0, taps logged, nothing
-                                // responds; repro: e2e/webkit/pw-pat-click.js).
-                                // Arm the stage the live mid-game flow already
-                                // has (no-op there: vy>=2 and _Nb1>=1 mid-match).
-                                if (Number(engineMatch.engineDriveFsmStage) < 2)
-                                    engineMatch.engineDriveFsmStage = 2;
-                                try {
-                                    var rawP6 = engineMatch.rawEngineMatch;
-                                    if (Number(rawP6._Nb1) < 1) rawP6._Nb1 = 1;
-                                } catch (eNb) {}
                                 // V57: bridge-side sticky PAT state. The
                                 // engine's own marker (_t11) gets reset by
                                 // s_action_result's epilogue and can be
@@ -7154,16 +6067,8 @@
                                 window._rb2p_patPlayPending      = true;
                                 window._rb2p_patPlayResolved     = false;
                                 window._rb2p_patPlayStartMs      = Date.now();
-                                window._rb2p_patClobberCount     = 0;   // V218: loop-breaker counter
                                 window._rb2p_patUserScoreAtStart = engineMatch.userScore;
                                 window._rb2p_patOppScoreAtStart  = engineMatch.opponentScore;
-                                // V217: persist "I owe a PAT" so a mid-PAT reload
-                                // can re-pop the modal instead of deadlocking.
-                                if (typeof window._rb2p_setPatDuty === 'function')
-                                    window._rb2p_setPatDuty({
-                                        scoreUser: engineMatch.userScore,
-                                        scoreOpp:  engineMatch.opponentScore
-                                    });
                                 if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('SCORER', 'PICK6 received');
                                 // Pop the engine-native PAT modal exactly
                                 // the way _hB case-0 does — but WITHOUT
@@ -7413,13 +6318,6 @@
                             engineMatch.engineDownNumber       = 1;
                             engineMatch.engineYardsToGo       = 10;
                             engineMatch.engineDriveFsmStage    = 2;
-                        }
-                        // V248: the INT is applied — ACK the refresh-safety
-                        // record so a later reload doesn't re-take possession
-                        // at the stale pick spot.
-                        if (outcome.type === 'INT' &&
-                            typeof window._rb2p_ackTurnoverApplied === 'function') {
-                            window._rb2p_ackTurnoverApplied();
                         }
                         // V110: in OT, give this possession a clock and HOLD
                         // kp=2 so a hand-off that lands near a quarter boundary
@@ -8371,11 +7269,7 @@
                         for (var i = 0; i < insts.length; i++) {
                             var inst = insts[i];
                             if (inst && !inst._HL2 && inst._eE2 &&
-                                inst._eE2._fE2 === 'obj_btn_kickoff') {
-                                // V232: proper destroy (no painted ghost)
-                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
-                                try { inst._g2 = 0; } catch (eV) {}   // V234: never paint a corpse
-                            }
+                                inst._eE2._fE2 === 'obj_btn_kickoff') inst._HL2 = true;
                         }
                     } catch (eH) {}
                     if (++hn > 90) { clearInterval(hiv); window._rb2p_otResumeHoldActive = false; }
@@ -8558,17 +7452,10 @@
                   '</div>' +
                 '</div>';
             finalOverlay.style.display = 'block';
-            try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
             if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
             var lv = document.getElementById('rb-final-leave');
             if (lv) lv.addEventListener('click', function () {
                 finalOverlay.style.display = 'none';
-                // V266: deliberate exit. During OT finals the engine never
-                // leaves rm_match (the bridge swallows the native game-over),
-                // so live/ stays fresh and the reload would RESUME the
-                // finished match. One-shot flag tells tryRestore to skip.
-                try { sessionStorage.setItem('rb2p_skipResumeOnce', '1'); } catch (eSk) {}
-                try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML) {}
                 try { location.reload(); } catch (e) {}
             });
         }
@@ -8998,965 +7885,10 @@
             if ($leaveGame)   $leaveGame.style.display   = on ? 'block' : 'none';
             if ($rosterView)  $rosterView.style.display  = on ? 'block' : 'none';
             if (!on) hideRosterOverlay();   // never leave the overlay up outside a match
-            // Mobile HUD: the toggle chip exists only during a match, and each
-            // match starts COLLAPSED so the overlays never cover the scoreboard.
-            try {
-                var de = document.documentElement;
-                de.classList.toggle('rb-in-match', !!on);
-                if (!on) de.classList.remove('rb-hud-open');
-            } catch (e) {}
         }
-        // Mobile HUD toggle: flip the expanded/collapsed state of the overlay
-        // cluster. DOM click mapping works through the forced-landscape rotation
-        // for free (real DOM element), so no engine coord remap is needed here.
-        (function () {
-            var hudToggle = document.getElementById('rb-hud-toggle');
-            if (hudToggle) hudToggle.addEventListener('click', function () {
-                document.documentElement.classList.toggle('rb-hud-open');
-            });
-            // Tapping ROSTER opens the roster overlay — collapse the cluster
-            // behind it so it isn't floating over the card.
-            if ($rosterView) $rosterView.addEventListener('click', function () {
-                document.documentElement.classList.remove('rb-hud-open');
-            });
-        })();
-
-        // ==== V233 one-shot diagnostic + DOM tap-bridge ====================
-        // Two jobs:
-        //  (1) An on-screen, reload-surviving incident log — one phone
-        //      screenshot answers everything (force errors w/ stack, taps
-        //      raw→GUI→hit verdict, _Ky fires, reloads, shield catches).
-        //  (2) THE FIX for the last untestable failure mode: if the engine's
-        //      GUI-mouse never registers taps on real iOS, even a LIVE
-        //      Receive button stays deaf. The tap-bridge catches the tap at
-        //      the DOM level, maps it with our own rotation math, and calls
-        //      the button's engine handler (_Ky) DIRECTLY — the engine's
-        //      touch plumbing is no longer in the path at all.
-        (function () {
-            var DIAG_KEY = 'rb2p_diag233';
-            var lastMsg = null, lastCount = 0;
-            function readLog() {
-                try { return JSON.parse(sessionStorage.getItem(DIAG_KEY) || '[]'); } catch (e) { return []; }
-            }
-            function diagLog(msg) {
-                try {
-                    var t = new Date();
-                    var text = String(msg).slice(0, 120);
-                    var ts = ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2);
-                    var arr = readLog();
-                    if (text === lastMsg && arr.length) {
-                        lastCount++;
-                        arr[arr.length - 1] = ts + ' ' + text + ' x' + lastCount;
-                    } else {
-                        lastMsg = text; lastCount = 1;
-                        arr.push(ts + ' ' + text);
-                    }
-                    while (arr.length > 11) arr.shift();
-                    sessionStorage.setItem(DIAG_KEY, JSON.stringify(arr));
-                    console.log('[2P DIAG] ' + msg);
-                } catch (e) {}
-            }
-            window._rb2p_diagLog = diagLog;
-            (function () {
-                window.__rbBootMs = Date.now();
-                var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
-                diagLog('boot' + (Date.now() - lastR < 20000 ? ' (post auto-reload)' : ''));
-            })();
-            window.addEventListener('error', function (ev) {
-                var frame = '';
-                try {
-                    var lines = ((ev.error && ev.error.stack) || '').split('\n');
-                    frame = (lines[1] || lines[0] || '').replace(/@.*\//, '@').trim().slice(0, 44);
-                } catch (eS) {}
-                diagLog('ERR ' + String(ev.message).slice(0, 100) +
-                        (ev.lineno ? ' @' + ev.lineno : '') + (frame ? ' | ' + frame : ''));
-            });
-            window.addEventListener('unhandledrejection', function (ev) {
-                var r = ev && ev.reason;
-                diagLog('REJ ' + String((r && r.message) || r).slice(0, 70));
-            });
-
-            // -- shared helpers --
-            function liveKickoffButtons() {
-                var out = [];
-                try {
-                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var i = 0; i < all.length; i++) {
-                        var inst = all[i];
-                        if (inst && !inst._HL2 && inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') out.push(inst);
-                    }
-                } catch (e) {}
-                return out;
-            }
-            // screen(page coords) -> engine GUI coords, honoring the forced
-            // rotation. Inverse of the harness-verified GUI->screen map.
-            function pageToGui(px, py) {
-                var iw = window.innerWidth, ih = window.innerHeight;
-                if (!document.documentElement.classList.contains('rb-rot90'))
-                    return { gx: px / iw * 853, gy: py / ih * 480 };
-                return { gx: (ih - py) / ih * 853, gy: px / iw * 480 };
-            }
-
-            // -- proof-of-click: log whenever the engine's own path fires _Ky --
-            try {
-                if (typeof _Ky === 'function' && !_Ky.__rb2pWrapped) {
-                    var __origKy = _Ky;
-                    _Ky = function (_, t) {
-                        diagLog('KY fired (kickoff button clicked)');
-                        return __origKy(_, t);
-                    };
-                    _Ky.__rb2pWrapped = true;
-                }
-            } catch (eK) {}
-
-            // V234: any obj_btn_kickoff instance, live or corpse (_HL2 ghost)
-            function anyKickoffButtons() {
-                var out = [];
-                try {
-                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    for (var i = 0; i < all.length; i++) {
-                        var inst = all[i];
-                        if (inst && inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') out.push(inst);
-                    }
-                } catch (e) {}
-                return out;
-            }
-
-            // -- THE TAP-BRIDGE --
-            var canvasEl = document.getElementById('canvas');
-            var lastTapLogMs = 0;
-            if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
-                try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) return;
-                    // V266: the tap-bridge exists for touch phones (V233). On
-                    // desktop it made mouse behavior non-identical: a click up
-                    // to 16 GUI units OUTSIDE a button — which the engine
-                    // correctly ignores — was converted into a direct _Ky fire.
-                    if (!document.documentElement.classList.contains('rb-mobile')) return;
-                    // V239: log EVERY in-match tap (throttled 1/s) — during the
-                    // on-device stall taps were invisible because logging was
-                    // gated on button existence.
-                    if (Date.now() - lastTapLogMs > 1000) {
-                        lastTapLogMs = Date.now();
-                        var gAll = pageToGui(e.pageX, e.pageY);
-                        var scrT = (window.scrollX | 0) || (window.scrollY | 0)
-                            ? ' scr' + (window.scrollX | 0) + ',' + (window.scrollY | 0) : '';
-                        diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
-                                '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy) + scrT);
-                    }
-                    // V260: engine-MODAL buttons (PAT 1PT/2PT, staging Kick Off,
-                    // any popup button) get the same insurance kickoff buttons
-                    // have had since V233. QWHY device session: five straight
-                    // taps on two different modals each mapped 15-25 GUI units
-                    // outside the drawn button, so the engine's (V259-latched)
-                    // click path missed — modal deaf. Match the tap to the
-                    // NEAREST live popup button with a generous pad; give the
-                    // engine 350ms to handle it itself (button destroyed =
-                    // handled); only then fire the response script direct.
-                    if (document.documentElement.classList.contains('rb-mobile')) try {
-                        var plT = (window._rb2p_enumeratePopupInstances &&
-                                   window._rb2p_enumeratePopupInstances()) || [];
-                        var pbtns = [];
-                        for (var pbI = 0; pbI < plT.length; pbI++) {
-                            var ppT = plT[pbI];
-                            if (ppT && !ppT._HL2 && typeof ppT._0G === 'number' && ppT._0G > 0 &&
-                                ppT._8l1 > 0 && ppT.x > -1000 && ppT._g2 !== 0) pbtns.push(ppT);
-                        }
-                        if (pbtns.length) {
-                            var gT = pageToGui(e.pageX, e.pageY);
-                            var gx480 = gT.gx * 480 / 853, gy270 = gT.gy * 270 / 480;
-                            var bestB = null, bestD = 1e9;
-                            for (var pcI = 0; pcI < pbtns.length; pcI++) {
-                                var bbT = pbtns[pcI];
-                                // distance OUTSIDE the button rect (<=0 = inside)
-                                var ddT = Math.max(
-                                    Math.abs(gx480 - (bbT.x + bbT._8l1 / 2)) - bbT._8l1 / 2,
-                                    Math.abs(gy270 - (bbT.y + bbT._VI / 2)) - bbT._VI / 2);
-                                if (ddT < bestD) { bestD = ddT; bestB = bbT; }
-                            }
-                            if (bestB && bestD <= 40) (function (bF, dF) {
-                                setTimeout(function () {
-                                    try {
-                                        if (bF._HL2) { diagLog('modal btn: engine handled tap'); return; }
-                                        var mxF = -1, myF = -1;
-                                        try { mxF = Math.round(_m01(0)); myF = Math.round(_o01(0)); } catch (eM2) {}
-                                        diagLog('modal btn ' + bF._0G + ' d=' + Math.round(dF) +
-                                                ' gm=' + mxF + ',' + myF + ' — firing direct');
-                                        _li(bF, bF, bF._0G);
-                                    } catch (eF2) {
-                                        diagLog('modal btn ERR ' + String((eF2 && eF2.message) || eF2).slice(0, 40));
-                                    }
-                                }, 350);
-                            })(bestB, bestD);
-                        }
-                    } catch (ePB) {}
-                    var btns = liveKickoffButtons();
-                    if (!btns.length) {
-                        // V234: taps on a painted CORPSE were silently ignored
-                        // (on-device evidence: zero tap lines while a ghost was
-                        // visible). De-ghost it on tap and say so.
-                        var ghosts = anyKickoffButtons();
-                        if (ghosts.length) {
-                            for (var gi = 0; gi < ghosts.length; gi++) {
-                                try { ghosts[gi]._g2 = 0; } catch (eG) {}
-                            }
-                            try {
-                                var emT = window.RB && RB.engineState && RB.engineState();
-                                if (emT && emT.rawEngineMatch.__b1) emT.rawEngineMatch.__b1 = '';
-                            } catch (eB2) {}
-                            diagLog('tap on corpse btn — de-ghosted; game should be live, tap field');
-                        }
-                        return;
-                    }
-                    var g = pageToGui(e.pageX, e.pageY);
-                    var b = btns[0], PAD = 16;
-                    var hit = g.gx >= b.x - PAD && g.gx <= b.x + (b._8l1 || 96) + PAD &&
-                              g.gy >= b.y - PAD && g.gy <= b.y + (b._VI || 32) + PAD;
-                    diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
-                            '->gui ' + Math.round(g.gx) + ',' + Math.round(g.gy) +
-                            ' btn(' + b.x + ',' + b.y + ') ' + (hit ? 'HIT' : 'miss'));
-                    // Let the engine's own handling win if it works: check a beat
-                    // later whether the button is still alive; if so, fire direct.
-                    if (hit) setTimeout(function () {
-                        try {
-                            if (b._HL2) { diagLog('engine handled the tap itself'); return; }
-                            var mx = -1, my = -1;
-                            try { mx = Math.round(_m01(0)); my = Math.round(_o01(0)); } catch (eM) {}
-                            diagLog('engine gui-mouse says ' + mx + ',' + my + ' — firing KY direct');
-                            _Ky(b, b);
-                        } catch (eF) { diagLog('KY direct ERR ' + String((eF && eF.message) || eF).slice(0, 60)); }
-                    }, 350);
-                } catch (eT) {}
-            }, { capture: true, passive: true });
-
-            // V238 TELEMETRY: stream the diag (state line + reload-surviving
-            // log) to the game's own Firebase DB every 5s during a match, so
-            // real phone sessions are readable remotely — no more screenshots.
-            // Tiny writes, match-time only, keyed room_role_session.
-            var telemetrySess = Math.random().toString(36).slice(2, 7);
-            var telemetryTick = 0;
-            setInterval(function () {
-                try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) {
-                        // V266: the asleep-banner must not outlive the match.
-                        var bnEnd = document.getElementById('rb-oppstall');
-                        if (bnEnd) bnEnd.parentNode.removeChild(bnEnd);
-                        return;
-                    }
-                    telemetryTick++;
-                    var room = '', role = '';
-                    try { room = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
-                    try { role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : ''; } catch (e) {}
-                    var key = ((room || 'noroom') + '_' + (role || 'x') + '_' + telemetrySess)
-                        .replace(/[^A-Za-z0-9_-]/g, '');
-                    var el = document.getElementById('rb-diag');
-                    var body = {
-                        ts: Date.now(),
-                        ua: navigator.userAgent.slice(0, 90),
-                        diag: ((el && el.innerText) || '').slice(0, 1500)
-                    };
-                    // V243 PHANTOM PROBE: name whatever occupies the staging-
-                    // panel area (GUI ~x150-360, y~120-260) + the corpse's
-                    // actual coords — to identify what still paints the panels.
-                    try {
-                        var pr = { area: [], corpse: null };
-                        var allP = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                        for (var pi2 = 0; pi2 < allP.length; pi2++) {
-                            var ip = allP[pi2];
-                            if (!ip || !ip._eE2) continue;
-                            if (ip._eE2._fE2 === 'obj_btn_kickoff' && ip._HL2 && !pr.corpse)
-                                pr.corpse = { x: Math.round(ip.x), y: Math.round(ip.y), g2: ip._g2 };
-                            if (!ip._HL2 && ip.x >= 150 && ip.x <= 360 && ip.y >= 120 && ip.y <= 260 &&
-                                pr.area.length < 8)
-                                pr.area.push(ip._eE2._fE2 + '@' + Math.round(ip.x) + ',' + Math.round(ip.y) +
-                                             (ip._g2 === 0 ? ' hid' : ''));
-                        }
-                        body.probe = pr;
-                    } catch (ePr) {}
-                    // V239: refresh a small snapshot of the ACTUAL canvas every
-                    // 3rd tick (~15s) — what the player really sees, remotely.
-                    // Cached + sent on EVERY tick (PUT replaces the whole entry).
-                    if (telemetryTick % 3 === 1 || !window.__rbLastShot) {
-                        try {
-                            var src = document.getElementById('canvas');
-                            if (src && src.width) {
-                                var c = document.createElement('canvas');
-                                var w = 214, h = Math.max(1, Math.round(src.height / src.width * w));
-                                c.width = w; c.height = h;
-                                c.getContext('2d').drawImage(src, 0, 0, w, h);
-                                var du = c.toDataURL('image/jpeg', 0.5);
-                                if (du && du.length > 200) window.__rbLastShot = du;
-                            }
-                        } catch (eS) { body.shotErr = String((eS && eS.message) || eS).slice(0, 60); }
-                    }
-                    if (window.__rbLastShot) body.shot = window.__rbLastShot;
-                    fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/diag/' + key + '.json', {
-                        method: 'PUT',
-                        body: JSON.stringify(body)
-                    }).catch(function () {});
-                    // V265: opponent-visible liveness. Every prior death was
-                    // INVISIBLE to the other player — A sat in WAIT forever with
-                    // no idea B's phone was asleep. Write a tiny hb/{role}
-                    // timestamp; when MY opponent's goes stale >20s while I'm
-                    // parked waiting, say so on screen (information only — no
-                    // auto-action on the other device; the V243 lesson).
-                    try {
-                        if (!room || !role) throw 0;
-                        var hbBase = 'https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room;
-                        // V268: hb carries liveness, not just a timestamp. A
-                        // LOCKED phone's timers are throttled to ~1Hz but its
-                        // 5s interval still ticks — hb stayed fresh and the
-                        // stale-check alone never fired (YZAW: B locked for the
-                        // whole match, A never saw a banner).
-                        fetch(hbBase + '/hb/' + role + '.json', {
-                            method: 'PUT', body: JSON.stringify({
-                                ts: Date.now(), fps: diagFps,
-                                vis: document.hidden ? 'H' : 'V'
-                            })
-                        }).catch(function () {});
-                        var oppRoleHb = role === 'a' ? 'b' : 'a';
-                        fetch(hbBase + '/hb/' + oppRoleHb + '.json')
-                            .then(function (r) { return r.json(); })
-                            .then(function (oppHb) {
-                                var bn = document.getElementById('rb-oppstall');
-                                var waitingHb = window._rb2p_userIsWaitingForOpponent === true;
-                                var oTs = 0, oDead = false;
-                                if (typeof oppHb === 'number') oTs = oppHb;
-                                else if (oppHb) {
-                                    oTs = Number(oppHb.ts) || 0;
-                                    oDead = oppHb.vis === 'H' || Number(oppHb.fps) === 0;
-                                }
-                                var oppTs = oTs;
-                                // two consecutive locked reads = not a boot blip
-                                window.__rbOppLockedN = (oTs && oDead) ? (window.__rbOppLockedN || 0) + 1 : 0;
-                                var stale = oppTs && (Date.now() - Number(oppTs) > 20000);
-                                if (waitingHb && (stale || window.__rbOppLockedN >= 2)) {
-                                    if (!bn) {
-                                        bn = document.createElement('div');
-                                        bn.id = 'rb-oppstall';
-                                        bn.style.cssText = 'position:fixed;top:8px;left:50%;' +
-                                            'transform:translateX(-50%);z-index:99999;background:#7a1f1f;' +
-                                            'color:#fff;font:bold 12px monospace;padding:6px 10px;' +
-                                            'border:2px solid #ff5555;border-radius:6px;text-align:center;' +
-                                            'pointer-events:none;max-width:92vw;';
-                                        document.body.appendChild(bn);
-                                        diagLog('opponent hb stale — asleep banner shown');
-                                    }
-                                    bn.textContent = stale
-                                        ? "OPPONENT'S PHONE LOOKS ASLEEP (" +
-                                          Math.round((Date.now() - Number(oppTs)) / 1000) +
-                                          's) — HAVE THEM TAP / UNLOCK THEIR SCREEN'
-                                        : "OPPONENT'S PHONE IS LOCKED — HAVE THEM UNLOCK IT " +
-                                          'TO CONTINUE THE MATCH';
-                                } else if (bn) bn.parentNode.removeChild(bn);
-                            }).catch(function () {});
-                    } catch (eHb) {}
-                } catch (e) {}
-            }, 5000);
-
-            // -- heartbeat readout + V234 corpse self-healer --
-            var diagEl = document.getElementById('rb-diag');
-            setInterval(function () {
-                if (!diagEl) return;
-                var kp = '?', vy = '?', z7 = '?', ball = 0, live = 0, ghost = 0, gmx = '?', gmy = '?';
-                var plOF = 0;   // V272: offensive formation on the field = drive live
-                var ctl = 0, pops = 0, b1out = '';
-                try {
-                    var em = window.RB && RB.engineState && RB.engineState();
-                    if (em) { kp = em.engineControllerState; vy = em.engineDriveFsmStage;
-                              z7 = em.rawEngineMatch._7z; }
-                    var waiting = window._rb2p_userIsWaitingForOpponent === true;
-                    // V247: pick-6 PAT exception — the scorer plays the PAT
-                    // while flagged waiting; nothing below may kill its UI.
-                    var patPlay = !!(window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat());
-                    var healedNow = false;
-                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                    // First pass: counts + heal. V239: NO list splicing — the
-                    // V236 splice removed corpses from the only list the diag
-                    // can see while the layer renderer keeps its own, so
-                    // telemetry could report btn:0 with a corpse still painted.
-                    // _g2 = 0 (+_HL2) is the whole cure; corpses stay countable.
-                    for (var i = 0; i < all.length; i++) {
-                        var inst = all[i];
-                        if (!inst || !inst._eE2) continue;
-                        var n = inst._eE2._fE2;
-                        if (n === 'obj_ball' && !inst._HL2) ball++;
-                        else if (n === 'obj_playerOF' && !inst._HL2) plOF++;   // V272
-                        else if (n === 'obj_btn_kickoff') {
-                            if (inst._HL2) {
-                                ghost++;
-                                // V240: on-device proof (de-ghosted x76): the
-                                // engine's staging code RE-SHOWS the corpse every
-                                // frame (it still holds the instance id), so a
-                                // _g2=0 written every 700ms loses 59 frames in 60.
-                                // POSITION survives the re-show — park the corpse
-                                // far off-screen once; _g2=0 stays as belt.
-                                try {
-                                    if (inst.x > -1000) {
-                                        inst.x = -2000; inst.y = -2000;
-                                        healedNow = true;
-                                        diagLog('corpse btn parked off-screen');
-                                    }
-                                    if (inst._g2 !== 0) inst._g2 = 0;
-                                } catch (eD) {}
-                            } else if (waiting && !patPlay) {
-                                // V236: the WAITING side must never show the
-                                // staging screen (real-2P harness: B sat on a
-                                // LIVE tappable Kick Off button all drive).
-                                // V247: except while playing the pick-6 PAT.
-                                try {
-                                    try { _cr(inst); } catch (eC) { inst._HL2 = true; }
-                                    inst._g2 = 0;
-                                    inst.x = -2000; inst.y = -2000;   // V240: survive re-shows
-                                    healedNow = true;
-                                    diagLog('suppressed staging btn (waiting side)');
-                                } catch (eS) {}
-                            } else live++;
-                        }
-                    }
-                    // Banner sweep — V240: over EVERY controller instance (not
-                    // just the one engineState happens to read), with exact-
-                    // string + plain-text GET READY matching. Also counts
-                    // controllers for the diag header.
-                    try {
-                        if (window.__rbGetReadyStr === undefined && em) {
-                            try { window.__rbGetReadyStr = String(_XP(_Xi(em.rawEngineMatch, _Sc2, 'match_GetReady'))); }
-                            catch (eX) { window.__rbGetReadyStr = null; }
-                        }
-                        var cs = _si(71);
-                        for (var ck in cs) {
-                            if (!cs.hasOwnProperty(ck)) continue;
-                            ctl++;
-                            var cInst = cs[ck];
-                            var cb1 = String(cInst.__b1 || '');
-                            if (!cb1) continue;
-                            if (!b1out) b1out = cb1.slice(0, 12);
-                            var isGetReady = (window.__rbGetReadyStr && cb1 === window.__rbGetReadyStr) ||
-                                             /get\s*ready/i.test(cb1);
-                            if (!patPlay &&
-                                ((isGetReady && (waiting || (ball > 0 && kp === 2))) ||
-                                 (healedNow && ball > 0))) {
-                                cInst.__b1 = '';
-                                if (b1out === cb1.slice(0, 12)) b1out = '';
-                                diagLog('cleared GET READY banner');
-                            }
-                        }
-                    } catch (eBnr) {}
-                    // V240: kill NON-PAT popups while a 2P match is active. The
-                    // welcome/intro popup (fresh save — phones lose site storage
-                    // often) gates ALL engine button input (_y2 early-returns on
-                    // any object-46 instance) and blocked B's engine from ever
-                    // reaching the match. PAT modals (script ids 100367/100369)
-                    // are the only in-match popups the 2P design wants.
-                    try {
-                        if (typeof window._rb2p_enumeratePopupInstances === 'function') {
-                            var pl = window._rb2p_enumeratePopupInstances() || [];
-                            pops = pl.length;
-                            if (pops && window._rb2p_patPlayPending !== true) {
-                                var hasPat = false;
-                                for (var pi = 0; pi < pl.length; pi++)
-                                    if (pl[pi] && (pl[pi]._0G === 100367 || pl[pi]._0G === 100369)) { hasPat = true; break; }
-                                if (!hasPat) {
-                                    for (var pj = 0; pj < pl.length; pj++) {
-                                        try { _cr(pl[pj]); } catch (eP1) { try { pl[pj]._HL2 = true; } catch (eP2) {} }
-                                        try { pl[pj]._g2 = 0; pl[pj].x = -2000; pl[pj].y = -2000; } catch (eP3) {}
-                                    }
-                                    diagLog('killed non-PAT popup x' + pops);
-                                    pops = 0;
-                                }
-                            }
-                        }
-                    } catch (ePp) {}
-                    try { gmx = Math.round(_m01(0)); gmy = Math.round(_o01(0)); } catch (eG) {}
-                    // V260: pageX-based engine mapping breaks silently if the
-                    // page ever scrolls (iOS toolbar overflow) — heal it.
-                    // V262: only fight REAL displacement (>2px, max 1/10s).
-                    // A 1px offset is iOS's own resting state; scrollTo-ing it
-                    // every 700ms feeds the perpetual scroll-settle that keeps
-                    // rAF suspended (QJIX: 'scroll healed 0,1 x2' loops).
-                    try {
-                        var inMH = document.documentElement.classList.contains('rb-in-match');
-                        if (document.documentElement.classList.contains('rb-mobile') && inMH) {
-                            var sxH = window.scrollX | 0, syH = window.scrollY | 0;
-                            if ((Math.abs(sxH) > 2 || Math.abs(syH) > 2) &&
-                                Date.now() - (window.__rbScrollHealMs || 0) > 10000) {
-                                window.__rbScrollHealMs = Date.now();
-                                window.scrollTo(0, 0);
-                                diagLog('scroll healed ' + sxH + ',' + syH);
-                            }
-                            // V262: keyboard focus residue keeps iOS's visual
-                            // viewport in a transitional state — blur it.
-                            var aeH = document.activeElement;
-                            if (aeH && /^(INPUT|TEXTAREA|SELECT)$/.test(aeH.tagName) &&
-                                !(aeH.closest && aeH.closest('#rb-verjump'))) {
-                                aeH.blur();
-                                diagLog('blurred lingering input focus');
-                            }
-                        }
-                        // V262 AUTO-RECOVER: the one thing PROVEN to fix a dead
-                        // page (user refreshes have fixed it 100% for weeks) is
-                        // a reload into the resume flow. If the OPENING never
-                        // ran (no drive armed, no ball, 0-0) and the engine
-                        // loop has been provably dead (kicks piling up) well
-                        // into the match, reload ourselves. Strictly gated so
-                        // it can NEVER fire mid-game (the V243 lesson): score
-                        // must be 0-0 with vy=0, ball=0, >25s after entry,
-                        // >90s between tries, max 3 per session.
-                        if (inMH && !window.__rbMatchEnterMs) window.__rbMatchEnterMs = Date.now();
-                        if (!inMH) window.__rbMatchEnterMs = 0;
-                        // V263: BLFY showed iOS escalates the 1Hz throttle to a
-                        // FULL freeze ~20s after entry — the 25s trigger never
-                        // got to run. Fire inside the 1Hz window instead.
-                        // V264: only recover while VISIBLE — a reload fired on a
-                        // hidden (locked) page comes up suspended and can't
-                        // rejoin (KRXI_b_aunz1); the unlock handler covers it.
-                        if (inMH && em && Number(vy) === 0 && ball === 0 &&
-                            document.visibilityState === 'visible' &&
-                            (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0 &&
-                            engKicks >= 5 &&
-                            Date.now() - window.__rbMatchEnterMs > 12000) {
-                            var arTs = Number(sessionStorage.getItem('rb2p_ar_ts') || 0);
-                            var arN  = Number(sessionStorage.getItem('rb2p_ar_n') || 0);
-                            if (Date.now() - arTs > 45000 && arN < 4) {
-                                sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
-                                sessionStorage.setItem('rb2p_ar_n', String(arN + 1));
-                                diagLog('AUTO-RECOVER: reloading wedged start (kicks=' + engKicks + ')');
-                                setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 250);
-                            }
-                        }
-                        // V272: STUCK-AT-KICKOFF-STAGING recovery — the actual
-                        // device freeze (PUCD/DHEB, iOS 18.7). The ACTIVE phone
-                        // (role a, VISIBLE, fps 60) sits on the "Receive" staging
-                        // with a corpse button and NO offense, at vy:2 ball:1 (the
-                        // ball on the kickoff tee). Both older nets missed it: the
-                        // V262 AUTO-RECOVER needs vy=0/ball=0, and the V271 sweeper
-                        // retry was in a 60s, possession-gated watchdog that had
-                        // bailed — so my new 'STUCK@staging' line never even fired
-                        // on device. The one trustworthy 'drive is live' signal is
-                        // the offensive formation (plOF>=5); its ABSENCE with a
-                        // kickoff button present and not waiting = stuck. Re-force
-                        // the drive from THIS always-on heartbeat (harness proves
-                        // forceUserOffenseDrive spawns 11 OF); if still stuck after
-                        // ~12s, reload into the resume flow — the exact cure the
-                        // user's manual refresh performs. Cannot fire mid-drive (a
-                        // live drive has plOF>=11 and no kickoff button) or on the
-                        // waiting side (!waiting gate).
-                        try {
-                            var koPresent = (live > 0 || ghost > 0);
-                            var stagingStuck = inMH && !waiting && !patPlay && koPresent && plOF === 0 &&
-                                em && (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0;
-                            if (stagingStuck) {
-                                if (!window.__rbStagingStuckSince) window.__rbStagingStuckSince = Date.now();
-                                var stuckMs = Date.now() - window.__rbStagingStuckSince;
-                                if (Date.now() - (window.__rbStagingReforceMs || 0) > 2100) {
-                                    window.__rbStagingReforceMs = Date.now();
-                                    try {
-                                        var yd = window._rb2p_kickoffReturnYard
-                                            ? window._rb2p_kickoffReturnYard() : -25;
-                                        if (window._rb2p_forceUserOffenseDrive)
-                                            window._rb2p_forceUserOffenseDrive(yd);
-                                        diagLog('STUCK@staging ' + stuckMs + 'ms OF=0 ko=' +
-                                                (live + ghost) + ' — re-forcing drive');
-                                    } catch (eRF) {}
-                                }
-                                if (stuckMs > 12000 && document.visibilityState === 'visible') {
-                                    var srTs = Number(sessionStorage.getItem('rb2p_ar_ts') || 0);
-                                    var srN  = Number(sessionStorage.getItem('rb2p_ar_n') || 0);
-                                    if (Date.now() - srTs > 45000 && srN < 4) {
-                                        sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
-                                        sessionStorage.setItem('rb2p_ar_n', String(srN + 1));
-                                        sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
-                                        diagLog('STUCK@staging ' + stuckMs + 'ms — reloading into resume');
-                                        setTimeout(function () { try { location.reload(); } catch (eSR) {} }, 250);
-                                    }
-                                }
-                            } else {
-                                window.__rbStagingStuckSince = 0;
-                            }
-                        } catch (eSS) {}
-                        // V266/V272: recovery budgets reset once the match is
-                        // provably healthy. "Healthy" now requires a real
-                        // OFFENSIVE FORMATION (plOF>=5) or points — NOT vy>0/ball>0,
-                        // which the stuck-at-staging state (vy:2 ball:1 tee ball)
-                        // falsely satisfied, resetting the caps mid-freeze.
-                        if (inMH && em && (plOF >= 5 ||
-                            ((em.userScore | 0) + (em.opponentScore | 0)) > 0)) {
-                            if (sessionStorage.getItem('rb2p_ar_n') || sessionStorage.getItem('rb2p_vr_n')) {
-                                sessionStorage.removeItem('rb2p_ar_n'); sessionStorage.removeItem('rb2p_ar_ts');
-                                sessionStorage.removeItem('rb2p_vr_n'); sessionStorage.removeItem('rb2p_vr_ts');
-                                diagLog('recovery caps reset (match healthy)');
-                            }
-                        }
-                    } catch (eSc) {}
-                    // V246: compositor un-freezer (mobile only). Root cause of
-                    // the GET READY stall: the phone compositor freezes the
-                    // rotated canvas layer at the match-room switch while the
-                    // engine keeps running (eng/fps 60, snapshot != screen).
-                    // On match entry rebuild the layer outright (display flip
-                    // forces the compositor to recreate it — synchronous, no
-                    // visible frame is lost), then keep it validated with an
-                    // identity-transform nudge every tick.
-                    try {
-                        if (document.documentElement.classList.contains('rb-mobile')) {
-                            var cvsF = document.getElementById('canvas');
-                            var imF = false;
-                            try { imF = RB.isEngineInMatchRoom() === true; } catch (eIm) {}
-                            if (cvsF && imF && window.__rbWasInMatch !== true) {
-                                [0, 1000, 2500].forEach(function (d) { setTimeout(function () {
-                                    try { cvsF.style.display = 'none'; void cvsF.offsetHeight;
-                                          cvsF.style.display = ''; } catch (eRb) {}
-                                }, d); });
-                                diagLog('canvas layer rebuilt (match entry)');
-                            }
-                            window.__rbWasInMatch = imF;
-                            if (cvsF && imF) {
-                                window.__rbNudge = !window.__rbNudge;
-                                cvsF.style.setProperty('transform',
-                                    window.__rbNudge ? 'translateZ(0) scale(1)' : 'translateZ(0)', 'important');
-                            }
-                        }
-                    } catch (eCz) {}
-                    // V249: degenerate-canvas self-heal. A resize delivered
-                    // during a phone lock/app-switch used to zero the canvas
-                    // buffer + app surface (render dies forever, logic keeps
-                    // running — the GET READY hang, repro: e2e/webkit/
-                    // pw-hang4.js). The engine-side clamp (_tI2/_uI2) stops
-                    // the zeroing at the source; this heals any device that
-                    // still ends up with a degenerate buffer.
-                    try {
-                        var cvsZ = document.getElementById('canvas');
-                        if (cvsZ && (cvsZ.width < 100 || cvsZ.height < 100)) {
-                            cvsZ.width  = window.__rbLastGoodW || 853;
-                            cvsZ.height = window.__rbLastGoodH || 480;
-                            try { window.dispatchEvent(new Event('resize')); } catch (eRz) {}
-                            diagLog('degenerate canvas buffer healed');
-                        }
-                        // V249: collapsed ELEMENT (0px CSS from a degenerate
-                        // layout()) or poisoned __rbVirt — re-run layout now
-                        // that dims may be sane again.
-                        if (cvsZ && document.documentElement.classList.contains('rb-mobile')) {
-                            var rZ = cvsZ.getBoundingClientRect();
-                            var vZ = window.__rbVirt;
-                            var virtBad = vZ && (!isFinite(vZ.right - vZ.left) ||
-                                                 (vZ.right - vZ.left) < 100);
-                            if ((rZ.width < 100 || rZ.height < 100 || virtBad) &&
-                                typeof window.__rbLayoutNow === 'function') {
-                                window.__rbLayoutNow();
-                                var r2Z = cvsZ.getBoundingClientRect();
-                                if (r2Z.width >= 100) diagLog('collapsed canvas layout healed');
-                            }
-                        }
-                    } catch (eZb) {}
-                } catch (e) {}
-                var clkout = '';
-                try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
-                var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
-                diagEl.innerHTML =
-                    'V274 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF +
-                    ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
-                    ' fps:' + diagFps + ' eng:' + engPerSec +
-                    ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
-                    ' pat:' + (window._rb2p_patPlayPending === true ? 'P'
-                        : window._rb2p_patPlayResolved === true ? 'R' : '-') +
-                    ' vis:' + (document.hidden ? 'H' : 'V') +
-                    (engKicks ? ' kicks:' + engKicks : '') + '\n' +
-                    'ctl:' + ctl + ' pop:' + pops +
-                    ' gui-mouse:' + gmx + ',' + gmy + ' clk:' + esc(clkout) +
-                    ' b1:' + (b1out ? esc(b1out) : '-') + '\n' +
-                    '--- LOG (survives reload) ---\n' +
-                    readLog().slice(-8).map(esc).join('\n');
-            }, 700);
-            // V239: fps counter (dropped in the V233 rewrite; decisive for
-            // telling "render dead" from "logic stuck" remotely)
-            var rafCount = 0, diagFps = -1;
-            (function rafTick() { rafCount++; window.__rbRafMono = (window.__rbRafMono || 0) + 1;
-                requestAnimationFrame(rafTick); })();
-            setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
-            // V257: measure rAF DURING each touch-hold — the one number that
-            // separates "iOS froze the page under the finger" (frames ~0 for
-            // the hold) from "engine/scene ignored the input" (frames ~60/s).
-            try {
-                var cvsH = document.getElementById('canvas');
-                if (cvsH) {
-                    var holdT0 = 0, holdF0 = 0;
-                    cvsH.addEventListener('pointerdown', function () {
-                        holdT0 = Date.now(); holdF0 = window.__rbRafMono || 0;
-                    }, { capture: true, passive: true });
-                    var holdEnd = function (tag) { return function () {
-                        if (!holdT0) return;
-                        var ms = Date.now() - holdT0;
-                        var fr = (window.__rbRafMono || 0) - holdF0;
-                        holdT0 = 0;
-                        if (ms > 250) diagLog('hold ' + ms + 'ms ' + fr + 'f' +
-                                              (tag ? ' ' + tag : '') +
-                                              (fr < ms / 50 ? ' <-- rAF SUSPENDED DURING HOLD' : ''));
-                    }; };
-                    cvsH.addEventListener('pointerup', holdEnd(''), { capture: true, passive: true });
-                    cvsH.addEventListener('pointercancel', holdEnd('CANCEL'), { capture: true, passive: true });
-                }
-            } catch (eHm) {}
-
-            // (V244: the V243 "live-blind stall escape" is REMOVED at the
-            // user's direction — its auto-reload fired around possession
-            // switches and desynced both devices into permanent WAIT.)
-
-            // ==== V242 WEBGL CONTEXT-LOSS GUARD =========================
-            // The V241 telemetry produced an IMPOSSIBLE frame: eng:60 (engine
-            // drawing every frame), live state (ball + 22 players, corpse
-            // parked off-screen, banner swept) — yet the canvas still showed
-            // the old staging panels on an empty field. Only one mechanism
-            // paints that: the WebGL context was LOST (phones kill GPU
-            // contexts under memory pressure), the screen froze on the last
-            // presented frame, and the game kept running blind. It also
-            // explains the user's day-one observation that a refresh always
-            // fixes it: a reload mints a fresh GPU context. Detect the loss
-            // (event + per-beat probe) and reload into the resume flow.
-            function rbGL() {
-                try {
-                    if (!window.__rbGL) {
-                        var cEl = document.getElementById('canvas');
-                        window.__rbGL = cEl && (cEl.getContext('webgl') || cEl.getContext('experimental-webgl'));
-                    }
-                } catch (eGl) {}
-                return window.__rbGL || null;
-            }
-            window._rb2p_glStatus = function () {
-                var g = rbGL();
-                if (!g) return 'none';
-                try { return g.isContextLost() ? 'LOST' : 'ok'; } catch (e) { return '?'; }
-            };
-            function glLostRecover(src) {
-                diagLog('WEBGL CONTEXT LOST (' + src + ')');
-                try {
-                    var lastR = Number(sessionStorage.getItem('rb2p_gl_reload') || 0);
-                    if (Date.now() - lastR < 45000) return;
-                    sessionStorage.setItem('rb2p_gl_reload', String(Date.now()));
-                    diagLog('reloading for a fresh GL context');
-                    setTimeout(function () { location.reload(); }, 400);
-                } catch (eR) {}
-            }
-            (function () {
-                var cEl = document.getElementById('canvas');
-                if (!cEl) return;
-                cEl.addEventListener('webglcontextlost', function (ev) {
-                    try { ev.preventDefault(); } catch (eP) {}
-                    glLostRecover('event');
-                }, false);
-                cEl.addEventListener('webglcontextrestored', function () {
-                    diagLog('webgl context RESTORED');
-                }, false);
-            })();
-            setInterval(function () {
-                try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) return;
-                    if (window._rb2p_glStatus() === 'LOST') glLostRecover('probe');
-                } catch (e) {}
-            }, 1500);
-
-            // ==== V263 SILENT-AUDIO KEEP-ALIVE ==========================
-            // BLFY/QJIX/IUHB: on the iOS-18.7 phones the UNTOUCHED (waiting)
-            // side gets suppressed at match entry while visible — rAF 0,
-            // timers 1Hz, then fully frozen ~20s later — with 'REJ Decoding
-            // failed' (AudioContext) at the death moment. The touched phone
-            // always survives (why QWHY-1 worked: the user handled B the
-            // whole time). Pages actively playing audio are exempt from
-            // iOS's idle-page suppression: run a silent looping WebAudio
-            // source, unlocked by ANY first touch, re-resumed continuously.
-            var kaCtx = null;
-            function kaEnsure() {
-                try {
-                    if (!document.documentElement.classList.contains('rb-mobile')) return;
-                    var AC = window.AudioContext || window.webkitAudioContext;
-                    if (!AC) return;
-                    if (!kaCtx) {
-                        kaCtx = new AC();
-                        var kaBuf = kaCtx.createBuffer(1, kaCtx.sampleRate, kaCtx.sampleRate);
-                        var kaSrc = kaCtx.createBufferSource();
-                        kaSrc.buffer = kaBuf;
-                        kaSrc.loop = true;
-                        var kaG = kaCtx.createGain();
-                        kaG.gain.value = 0.001;   // inaudible, but "playing"
-                        kaSrc.connect(kaG); kaG.connect(kaCtx.destination);
-                        kaSrc.start(0);
-                        diagLog('audio keep-alive created');
-                    }
-                    if (kaCtx.state !== 'running')
-                        kaCtx.resume().then(function () {
-                            diagLog('audio keep-alive running');
-                        }).catch(function () {});
-                } catch (eKA) {}
-            }
-            document.addEventListener('pointerdown', kaEnsure, { capture: true, passive: true });
-            document.addEventListener('touchstart', kaEnsure, { capture: true, passive: true });
-            setInterval(kaEnsure, 3000);
-
-            // ==== V261 WAKE LOCK + VISIBILITY FORENSICS =================
-            // IUHB/QWHY-2/UYDX device telemetry: the WAITING phone's rAF hit
-            // 0 AND its timers clamped to ~1Hz for minutes — iOS suspending
-            // the page. The signature fits the screen auto-locking (default
-            // 30s) while the phone sits untouched at GET READY; the engine
-            // is dead through the match-start handshake, so the match wedges
-            // even after the screen comes back (UYDX_b: fps recovered to 60,
-            // vy still 0). A screen wake lock (iOS Safari 16.4+) prevents
-            // auto-lock outright; the vis log lines prove/disprove the
-            // mechanism on the next incident.
-            var wakeL = null, wakeLPending = false, hiddenAtMs = 0;
-            setInterval(function () {
-                try {
-                    // V264: hold the lock from page load on MOBILE, not just
-                    // in-match. KRXI: the waiting phone AUTO-LOCKED during the
-                    // lobby/READY wait (vis:HIDDEN 2s before match entry) —
-                    // the in-match-only lock never had a chance to engage.
-                    if (!document.documentElement.classList.contains('rb-in-match') &&
-                        !document.documentElement.classList.contains('rb-mobile')) return;
-                    if (wakeL || wakeLPending) return;
-                    if (!('wakeLock' in navigator)) return;
-                    if (document.visibilityState !== 'visible') return;
-                    wakeLPending = true;
-                    navigator.wakeLock.request('screen').then(function (l) {
-                        wakeL = l; wakeLPending = false;
-                        diagLog('wake lock ON');
-                        var lpmB = document.getElementById('rb-lpm');
-                        if (lpmB) lpmB.parentNode.removeChild(lpmB);
-                        l.addEventListener('release', function () {
-                            wakeL = null;
-                            diagLog('wake lock released');
-                        });
-                    }).catch(function (eW) {
-                        wakeLPending = false;
-                        var eMsg = String((eW && eW.message) || eW);
-                        if (!window.__rbWakeErrOnce) {
-                            window.__rbWakeErrOnce = true;
-                            diagLog('wake lock ERR ' + eMsg.slice(0, 40));
-                        }
-                        // V271: the V268 "Low Power Mode" banner is REMOVED. It was
-                        // a false diagnosis: iOS 18.7 Safari rejects wakeLock.request
-                        // ('Permission was denied') even with LPM OFF, so the banner
-                        // false-flagged on every 18.7 device, and the user confirmed
-                        // LPM makes no difference to the freeze. The real freeze is
-                        // the stuck kickoff-staging on the ACTIVE phone (see the V271
-                        // sweeper fix), not screen suppression. Keep the one-time
-                        // diag line above as a quiet signal; show nothing on screen.
-                    });
-                } catch (eWL) { wakeLPending = false; }
-            }, 1000);
-            document.addEventListener('visibilitychange', function () {
-                try {
-                    if (document.visibilityState === 'visible') {
-                        var hidS = hiddenAtMs ? Math.round((Date.now() - hiddenAtMs) / 1000) : 0;
-                        hiddenAtMs = 0;
-                        diagLog('vis: visible' + (hidS ? ' (hidden ' + hidS + 's)' : ''));
-                        try { if (window.__rbLayoutNow) window.__rbLayoutNow(); } catch (eL) {}
-                        // V264 HEAL-ON-UNLOCK. KRXI: the match wedged while the
-                        // page was hidden (auto-lock), and the hidden AUTO-
-                        // RECOVER reload couldn't rejoin while suspended. The
-                        // moment the screen returns: if we should be in a match
-                        // but aren't in a healthy one, reload into the proven
-                        // resume flow. Mobile-only; cooldown + cap stop loops.
-                        try {
-                            if (document.documentElement.classList.contains('rb-mobile')) {
-                                var roomVR = '';
-                                try { roomVR = sessionStorage.getItem('rb_room') || ''; } catch (eR1) {}
-                                if (roomVR) {
-                                    var inMVR = document.documentElement.classList.contains('rb-in-match');
-                                    var wedgedVR = false;
-                                    try {
-                                        var emVR = RB.engineState();
-                                        // V266: require loop-dead evidence (engKicks) —
-                                        // stage 0 at 0-0 is ALSO the healthy waiting
-                                        // side during the opponent's opening drive; a
-                                        // brief lock/unlock must not reload a healthy
-                                        // phone (each reload risks losing an outcome).
-                                        wedgedVR = inMVR && emVR && engKicks >= 3 &&
-                                            Number(emVR.engineDriveFsmStage) === 0 &&
-                                            (emVR.userScore | 0) === 0 && (emVR.opponentScore | 0) === 0 &&
-                                            Date.now() - (window.__rbMatchEnterMs || Date.now()) > 12000;
-                                    } catch (eW1) {}
-                                    var bootAge = Date.now() - (window.__rbBootMs || Date.now());
-                                    // V266: the not-in-match branch only applies when a
-                                    // match SHOULD be live (flag set at start/resume,
-                                    // cleared on FINAL/LEAVE) — not while sitting at
-                                    // the room screen waiting for a friend.
-                                    var shouldBeLive = false;
-                                    try { shouldBeLive = sessionStorage.getItem('rb2p_matchLive') === '1'; } catch (eSL) {}
-                                    if (wedgedVR || (!inMVR && shouldBeLive && bootAge > 20000)) {
-                                        var vrTs = Number(sessionStorage.getItem('rb2p_vr_ts') || 0);
-                                        var vrN  = Number(sessionStorage.getItem('rb2p_vr_n') || 0);
-                                        if (Date.now() - vrTs > 30000 && vrN < 5) {
-                                            sessionStorage.setItem('rb2p_vr_ts', String(Date.now()));
-                                            sessionStorage.setItem('rb2p_vr_n', String(vrN + 1));
-                                            diagLog('VIS-RECOVER: reload on unlock (' +
-                                                    (wedgedVR ? 'wedged' : 'not-in-match') + ')');
-                                            setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 300);
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (eVR) {}
-                    } else {
-                        hiddenAtMs = Date.now();
-                        diagLog('vis: HIDDEN');
-                    }
-                } catch (eV) {}
-            });
-            window.addEventListener('pagehide', function () { try { diagLog('pagehide'); } catch (e) {} });
-            window.addEventListener('pageshow', function (ev) {
-                try { diagLog('pageshow' + (ev && ev.persisted ? ' (bfcache)' : '')); } catch (e) {}
-            });
-
-            // ==== V241 ENGINE-LOOP WATCHDOG =============================
-            // Phone A telemetry (room FXHF): fps:60 but a FROZEN canvas over
-            // live engine state (ball:1, 22 players spawned, empty field in
-            // the snapshot) — the engine's tick chain (rAF -> _fi5 -> _Gi5 ->
-            // reschedule) had died while the page itself stayed healthy. The
-            // chain's states survive, so calling _fi5() re-arms it. Watchdog:
-            // count real engine ticks by wrapping _Gi5; if they flatline
-            // while a match is active, kick _fi5(). Self-regulating: a live
-            // chain keeps the counter fresh so the watchdog abstains; if rAF
-            // is dead entirely, the 50ms interval itself drives ~20fps.
-            var engTicks = 0, engPerSec = -1, lastChainMs = Date.now(), engKicks = 0;
-            var kickInProgress = false;
-            try {
-                if (typeof _Gi5 === 'function' && !_Gi5.__rb2pWrapped) {
-                    var __origGi5 = _Gi5;
-                    _Gi5 = function () {
-                        engTicks++;
-                        // Only CHAIN-originated ticks count as liveness — a
-                        // kicked tick must not silence the watchdog, or a
-                        // fully-dead rAF degrades to ~2 ticks/s instead of ~20.
-                        if (!kickInProgress) lastChainMs = Date.now();
-                        return __origGi5.apply(this, arguments);
-                    };
-                    _Gi5.__rb2pWrapped = true;
-                }
-            } catch (eGW) {}
-            setInterval(function () { engPerSec = engTicks; engTicks = 0; }, 1000);
-            window._rb2p_engPerSec = function () { return engPerSec; };
-            var lastKickLogMs = 0;
-            setInterval(function () {
-                try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) return;
-                    if (Date.now() - lastChainMs < 400) return;   // real chain alive
-                    if (typeof _fi5 !== 'function') return;
-                    engKicks++;
-                    if (Date.now() - lastKickLogMs > 5000) {
-                        lastKickLogMs = Date.now();
-                        diagLog('ENGINE LOOP DEAD — kicking _fi5 (kicks=' + engKicks + ')');
-                    }
-                    kickInProgress = true;
-                    try { _fi5(); } finally { kickInProgress = false; }
-                } catch (eK) {
-                    if (Date.now() - lastKickLogMs > 5000) {
-                        lastKickLogMs = Date.now();
-                        diagLog('engine kick ERR ' + String((eK && eK.message) || eK).slice(0, 60));
-                    }
-                }
-            }, 50);
-        })();
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
                 if (!window.confirm('Leave the game and return to the lobby?')) return;
-                try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML5) {}
                 var room = myRoom;
                 try { await leaveRoom(); } catch (e) {}
                 try {
@@ -10146,9 +8078,6 @@
                             ' me=' + role + ' → iHaveBall=' + window._rb2p_resumeState.iHaveBall +
                             ' yard=' + turnover.yardLine + ' isPick6=' + turnover.isPick6);
             }
-            // V217: pending pick-6 PAT duty — I owe the PAT, not a drive. The
-            // resume poll's non-offense branch re-pops the PAT modal from this.
-            if (window._rb2p_resumePatDuty) window._rb2p_resumeState.iHaveBall = false;
             hideLobby();
             var rs = window._rb2p_resumeState;
             console.log('[2P RESUME] resuming as ' + role + ' from ' +
@@ -10242,60 +8171,6 @@
                 try { localStorage.removeItem('rb2p_pendingInt'); } catch (eLR) {}   // consume once
                 var turnoverActive = turnover && turnover.resolved !== true &&
                                      (Date.now() - (Number(turnover.ts) || 0) < 25000);
-                // V248: receiver-side INT recovery. resolved=true only means
-                // the thrower SENT the outcome; if I (the interceptor) reloaded
-                // before it landed, I never took possession and would park in
-                // WAIT forever. A fresh record addressed to me that I never
-                // ACKed (applied !== true) = my ball at the pick spot — unless
-                // my own snapshot proves I already took it and drove on (never
-                // teleport an in-progress drive back to the pick spot).
-                var turnoverForMe = !!(turnover && turnover.thrower &&
-                                       turnover.thrower !== savedRole &&
-                                       turnover.applied !== true &&
-                                       (Date.now() - (Number(turnover.ts) || 0) < 120000) &&
-                                       !(myLive && myLive.iHaveBall === true &&
-                                         (Number(myLive.ts) || 0) >= (Number(turnover.ts) || 0)));
-                // V251: an un-applied PICK-6 record is NOT "my ball at the
-                // pick spot" — the receiver is owed the +6 PAT scene, and the
-                // thrower is parked waiting for PAT_RESULT. Route it through
-                // the PAT-duty resume path (re-pops the engine PAT modal)
-                // instead of handing B a plain drive.
-                var pick6ForMe = !!(turnoverForMe && turnover.isPick6 === true);
-                if (pick6ForMe) turnoverForMe = false;
-                if (turnoverForMe) console.log('[2P RESUME] un-applied INT addressed to me — ' +
-                                               'taking possession at yard ' + turnover.yardLine);
-                // V217: unresolved pick-6 PAT duty. If I reloaded while MY PAT
-                // modal was up, the duty record (written at modal-pop, cleared
-                // at PAT_RESULT) is still there — resume must re-pop the PAT,
-                // not park in WAIT (the both-stuck deadlock). A pending PAT
-                // also outranks the older turnover record from the same pick-6.
-                var patDutySnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/patDuty'));
-                var patDuty = patDutySnap.val();
-                // V265: room-code REUSE contamination. startMatch() clears stale
-                // records, but tryRestore runs FIRST when sessionStorage still
-                // holds the room — and a duty from the PREVIOUS match (10-min
-                // TTL) hijacked the session into resuming the old game's pick-6
-                // while the opponent started fresh (QWHY phase 2: stale modal at
-                // a nonsense clock, both phones in different universes). A duty
-                // is only credible if a live/{role} heartbeat proves a match was
-                // running within 25s, or the record itself is young (<3 min — a
-                // real mid-PAT reload happens in seconds).
-                var patDutyAge = patDuty ? (Date.now() - (Number(patDuty.ts) || 0)) : Infinity;
-                var patDutyActive = patDuty && ((myLive || oppLive) ? patDutyAge < 600000
-                                                                    : patDutyAge < 180000);
-                var patDutyMine = !!(patDutyActive && patDuty.role === savedRole);
-                if (patDutyMine) {
-                    window._rb2p_resumePatDuty = patDuty;
-                    console.log('[2P RESUME] pending pick-6 PAT duty found (mine) — will re-pop PAT modal');
-                } else if (pick6ForMe) {
-                    // V251: no duty record (reload landed before the modal
-                    // popped) but an un-applied pick-6 addressed to me —
-                    // synthesize the duty so the same re-pop path runs.
-                    window._rb2p_resumePatDuty = { role: savedRole, ts: Number(turnover.ts) || Date.now(),
-                                                   synthetic: 'pick6-turnover' };
-                    patDutyMine = true;
-                    console.log('[2P RESUME] un-applied PICK6 addressed to me — routing to PAT-duty re-pop');
-                }
                 // V184: the in-progress check must consider MY OWN live push, not
                 // just the opponent's. Both devices write live/{me} every 500ms
                 // while in the match. If I refresh right after LOSING possession
@@ -10308,66 +8183,7 @@
                 // is in progress" signal; resumeMatch already rebuilds state from it.
                 var oppFresh = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
                 var myFresh  = myLive  && (Date.now() - (Number(myLive.ts)  || 0) < 25000);
-                // V266: LOST-OUTCOME insurance. TD/FG/PUNT/OTHER outcomes had
-                // no persistence/ACK — if my reload raced a drive-end send, the
-                // fresh subscription's firstSnap deliberately swallowed it and
-                // BOTH sides parked in WAIT forever, and refresh could never
-                // cure it (both live records say iHaveBall:false). The
-                // outcomes/{opp} record IS persistent: a fresh one I never
-                // ACKed that hands me the ball gets drained after resume.
-                var lostOutcome = null;
-                try {
-                    var loSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
-                                                     (savedRole === 'a' ? 'b' : 'a')));
-                    var lo = loSnap.val();
-                    if (lo && lo.ts && (Date.now() - Number(lo.ts) < 120000) &&
-                        lo.ack !== savedRole &&
-                        (lo.type === 'TD' || lo.type === 'FG' ||
-                         lo.type === 'PUNT' || lo.type === 'OTHER' ||
-                         lo.type === 'PAT_RESULT') &&
-                        !patDutyMine && !pick6ForMe && !turnoverForMe &&
-                        !(myLive && myLive.iHaveBall === true &&
-                          (Number(myLive.ts) || 0) >= Number(lo.ts))) {
-                        // V267: cross-reload phantom-score guard. The live
-                        // V208 guard keys off an in-memory handoff timestamp
-                        // that a reload zeroes — reconstruct it from MY OWN
-                        // persistent outcomes record: a TD/FG landing within
-                        // 8s of my INT/PUNT/OTHER handoff cannot be a played
-                        // drive. Mark it rejected so it never drains.
-                        var phantomLo = false;
-                        if (lo.type === 'TD' || lo.type === 'FG') try {
-                            var myOutSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom +
-                                                                 '/outcomes/' + savedRole));
-                            var myOut = myOutSnap.val();
-                            if (myOut && myOut.ts &&
-                                (myOut.type === 'INT' || myOut.type === 'PUNT' || myOut.type === 'OTHER') &&
-                                Number(lo.ts) - Number(myOut.ts) < 8000) {
-                                phantomLo = true;
-                                console.log('[2P RESUME] skipping phantom ' + lo.type +
-                                            ' (arrived <8s after my handoff)');
-                                FB.update(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
-                                                 (savedRole === 'a' ? 'b' : 'a')),
-                                          { ack: savedRole, ackTs: Date.now(), rej: 'phantom-resume' })
-                                    .catch(function () {});
-                            }
-                        } catch (ePh) {}
-                        if (!phantomLo) {
-                            lostOutcome = lo;
-                            console.log('[2P RESUME] un-ACKed ' + lo.type +
-                                        ' outcome addressed to me — will drain after resume');
-                        }
-                    }
-                } catch (eLO) {}
-                var inProgress = oppFresh || myFresh || turnoverActive || turnoverForMe ||
-                                 patDutyMine || !!lostOutcome;
-                // V266: BACK TO LOBBY on the FINAL screen is a deliberate exit —
-                // never resume the finished match it reloads away from.
-                try {
-                    if (sessionStorage.getItem('rb2p_skipResumeOnce')) {
-                        sessionStorage.removeItem('rb2p_skipResumeOnce');
-                        inProgress = false;
-                    }
-                } catch (eSk1) {}
+                var inProgress = oppFresh || myFresh || turnoverActive;
                 // V131: only a FRESH final (ts within 25s) means a real game-over.
                 // A stale leftover in this reused room must NOT block resume.
                 var finalRep = finalSnap.val();
@@ -10402,57 +8218,10 @@
                     } catch (e) {}
                     gameStarted = true;   // set before enterRoom subscribes
                     enterRoom(savedRoom, savedRole, /*restoring=*/true);
-                    // V217: a pending PAT duty supersedes the turnover record —
-                    // the pick-6 already resolved into a TD; what's owed is the PAT.
-                    // V248: pass the record for the thrower re-send path
-                    // (unresolved, mine) OR the receiver take-possession path
-                    // (un-applied, addressed to me) — each with its own gates.
-                    var passTurnover = ((turnoverActive && turnover.thrower === savedRole) ||
-                                        turnoverForMe) && !patDutyMine;
-                    try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML2) {}
-                    // V266: drain the lost outcome once the resumed engine is
-                    // settled in the match room (restore hold is ~3s). The live
-                    // subscription's firstSnap already recorded this record's ts,
-                    // so it cannot double-apply; skip if a NEWER outcome landed.
-                    if (lostOutcome) (function (rec) {
-                        var drainT0 = Date.now(), dTries = 0;
-                        var dIv = setInterval(function () {
-                            try {
-                                if (++dTries > 40) { clearInterval(dIv); return; }
-                                if ((window._rb2p_lastOpponentOutcomeApplyMs || 0) > drainT0) {
-                                    clearInterval(dIv); return;   // newer outcome already applied
-                                }
-                                if (!(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) return;
-                                if (dTries < 8) return;
-                                clearInterval(dIv);
-                                if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                    'drained lost ' + rec.type + ' outcome');
-                                window._twoPlayer.receive(rec);
-                                FB.update(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
-                                                 (savedRole === 'a' ? 'b' : 'a')),
-                                          { ack: savedRole, ackTs: Date.now() }).catch(function () {});
-                            } catch (eDr) {}
-                        }, 500);
-                    })(lostOutcome);
-                    resumeMatch(savedRole, oppLive, myLive, passTurnover ? turnover : null);
+                    resumeMatch(savedRole, oppLive, myLive, turnoverActive ? turnover : null);
                     return;
                 }
 
-                // V265: falling through to the lobby = the room is between
-                // matches (nothing fresh to resume). Sweep leftover per-match
-                // records NOW so neither phone's next join/READY can be
-                // hijacked by them (startMatch also clears, but only after
-                // BOTH players ready — tryRestore on the other phone may run
-                // before that).
-                try {
-                    if (patDuty && !patDutyActive)
-                        FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/patDuty')).catch(function () {});
-                    if (turnover && !turnoverActive && !turnoverForMe)
-                        FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/turnover')).catch(function () {});
-                    // V267: no match to resume — the live flag must not keep
-                    // VIS-RECOVER reloading the room screen on every unlock.
-                    sessionStorage.removeItem('rb2p_matchLive');
-                } catch (eSw) {}
                 enterRoom(savedRoom, savedRole, /*restoring=*/true);
             } catch (e) {
                 sessionStorage.removeItem('rb_room');
@@ -10568,39 +8337,6 @@
             $ready.textContent = 'READY';
             $ready.dataset.state = 'not-ready';
 
-            // V258: version handshake. GitHub Pages deploys fail
-            // intermittently, so coder-1611.github.io can silently lag
-            // several builds behind Vercel — two players on DIFFERENT bridge
-            // versions produce exactly the "impossible" mixed-protocol
-            // breaks. Publish my build number; warn loudly on mismatch.
-            try {
-                var verM = (document.querySelector('.prompt') || { textContent: '' })
-                               .textContent.match(/V(\d+)/);
-                window._rb2p_myVer = verM ? Number(verM[1]) : 0;
-                FB.set(FB.ref(db, 'rooms/' + code + '/ver/' + role), window._rb2p_myVer).catch(function () {});
-                FB.onValue(FB.ref(db, 'rooms/' + code + '/ver'), function (vs) {
-                    try {
-                        var v = vs.val() || {};
-                        var opp = role === 'a' ? v.b : v.a;
-                        if (opp && window._rb2p_myVer && opp !== window._rb2p_myVer) {
-                            if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                'VERSION MISMATCH: me V' + window._rb2p_myVer + ' vs opp V' + opp);
-                            var vb = document.getElementById('rb-vermismatch');
-                            if (!vb) {
-                                vb = document.createElement('div');
-                                vb.id = 'rb-vermismatch';
-                                vb.style.cssText = 'position:fixed;top:4px;left:50%;transform:translateX(-50%);' +
-                                    'z-index:99999;background:#b00;color:#fff;font:bold 12px monospace;' +
-                                    'padding:6px 10px;border-radius:6px;pointer-events:none;';
-                                document.body.appendChild(vb);
-                            }
-                            vb.textContent = 'VERSION MISMATCH — you: V' + window._rb2p_myVer +
-                                             ', opponent: V' + opp + ' — BOTH must reload the same site';
-                        }
-                    } catch (eVC) {}
-                });
-            } catch (eVH) {}
-
             // Subscribe to player presence
             unsubscribePlayers = FB.onValue(
                 FB.ref(db, 'rooms/' + code + '/players'),
@@ -10609,41 +8345,7 @@
                     renderPlayers(players);
                     if (players.a && players.b && players.a.ready && players.b.ready && !gameStarted) {
                         gameStarted = true;
-                        // V266: stale-ready guard. ready flags are never reset
-                        // during a match, so a fresh-tab rejoiner tapping READY
-                        // sees the opponent's leftover ready=true and would fire
-                        // a SECOND startMatch() under the live match — wiping
-                        // turnover/patDuty and splitting the phones into two
-                        // universes. If the opponent's in-match heartbeat is
-                        // fresh and there is no fresh FINAL (rematch context),
-                        // resume into their match instead of starting a new one.
-                        (async function () {
-                            try {
-                                if (!document.documentElement.classList.contains('rb-in-match')) {
-                                    var oRsg = myRole === 'a' ? 'b' : 'a';
-                                    var hbSg = await FB.get(FB.ref(db, 'rooms/' + code + '/hb/' + oRsg));
-                                    // hb became {ts,fps,vis} at V268 (was a bare
-                                    // number). Number(object) is NaN, which
-                                    // silently disabled this guard against V268+
-                                    // opponents — accept both shapes.
-                                    var hbRawG = hbSg.val();
-                                    var hbVg = typeof hbRawG === 'number'
-                                        ? hbRawG : Number(hbRawG && hbRawG.ts) || 0;
-                                    if (hbVg && Date.now() - hbVg < 15000) {
-                                        var fSg = await FB.get(FB.ref(db, 'rooms/' + code + '/final/' + oRsg));
-                                        var fVg = fSg.val();
-                                        if (!(fVg && fVg.ts && Date.now() - fVg.ts < 60000)) {
-                                            console.log('[2P GUARD] READY while opponent mid-match — resuming, not restarting');
-                                            if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                'READY blocked — opponent mid-match; resuming');
-                                            try { location.reload(); } catch (eRl) {}
-                                            return;
-                                        }
-                                    }
-                                }
-                            } catch (eSG) {}
-                            startMatch();
-                        })();
+                        startMatch();
                     }
                 }
             );
@@ -10916,38 +8618,6 @@
                 } catch (e) {}
                 try { localStorage.removeItem('rb2p_pendingInt'); } catch (e2) {}
             };
-            // V248: receiver-side ACK. resolved=true only proves the thrower
-            // SENT the live INT outcome — not that it landed. If the receiver
-            // was mid-reload when it shipped, the message is gone and both
-            // devices park in WAIT forever (user report: "on ints I have to
-            // refresh for B and it stays on the wait page"). The receiver
-            // writes applied=true the moment it actually takes possession;
-            // tryRestore treats a fresh un-applied record addressed to me as
-            // "my ball at the pick spot" even when resolved=true.
-            window._rb2p_ackTurnoverApplied = function () {
-                try {
-                    FB.update(FB.ref(db, 'rooms/' + myRoom + '/turnover'),
-                              { applied: true, appliedBy: myRole }).catch(function () {});
-                } catch (e) {}
-            };
-            // V217: pick-6 PAT duty persistence for refresh-safety. Written the
-            // moment the defender's PAT modal pops (applyOpponentOutcome PICK6
-            // branch), cleared when PAT_RESULT ships (defender) or lands
-            // (thrower). If the defender reloads mid-PAT, tryRestore reads this
-            // record and re-pops the PAT modal instead of parking both devices
-            // in WAIT forever (the "refresh during pick-6 PAT ruins the game"
-            // deadlock). Pass null to clear.
-            window._rb2p_setPatDuty = function (extra) {
-                try {
-                    if (extra) {
-                        var rec = { role: myRole, ts: Date.now() };
-                        for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) rec[k] = extra[k];
-                        FB.set(FB.ref(db, 'rooms/' + myRoom + '/patDuty'), rec).catch(function () {});
-                    } else {
-                        FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});
-                    }
-                } catch (e) {}
-            };
             // Wire SEND to Firebase BEFORE entering the engineMatch. The local
             // bridge already mutates _twoPlayer.send once installed; we
             // chain on top of whatever's there so simulate()/sentLog still
@@ -11008,22 +8678,9 @@
                                     ' arriving ' +
                                     (Date.now() - (window._rb2p_lastTurnoverHandoffMs || 0)) +
                                     'ms after our turnover handoff — opponent has not played a down');
-                        // V267: mark the rejection on the record itself, so the
-                        // lost-outcome insurance can tell "rejected phantom"
-                        // from "lost in my reload" — otherwise a reload while
-                        // this is the newest record would DRAIN the phantom,
-                        // crediting an engine-AI score past this very guard.
-                        FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
-                                  { ack: myRole, ackTs: Date.now(), rej: 'phantom' }).catch(function () {});
                         return;
                     }
                     window._twoPlayer.receive(val);
-                    // V266: ACK the applied outcome so a later reload can tell
-                    // "already applied" from "lost in my reload" (the lost-
-                    // outcome insurance in tryRestore). Same-ts update; the
-                    // ts<=lastTs dedupe above ignores the refire.
-                    FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
-                              { ack: myRole, ackTs: Date.now() }).catch(function () {});
                 }
             );
 
@@ -11352,15 +9009,6 @@
             // rematch in this reused room can't resume into a stale turnover.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/turnover')).catch(function () {});
             try { localStorage.removeItem('rb2p_pendingInt'); } catch (e) {}   // V188: + local backup
-            // V217: same for a leftover pick-6 PAT duty — a rematch must not
-            // resume into a stale "you owe a PAT" record from the prior game.
-            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});
-            window._rb2p_resumePatDuty = null;
-            // V266: clear prior-match heartbeats (stale hb = false "opponent
-            // asleep" banner flash at rematch start) + arm the match-live flag
-            // the VIS-RECOVER not-in-match branch requires.
-            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/hb')).catch(function () {});
-            try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
