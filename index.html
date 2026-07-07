@@ -658,9 +658,16 @@
         #rb-vj-row { display: flex; align-items: center; gap: 4px; }
         #rb-vj-v { color: #9fe6ff; font-size: 10px; }
         #rb-vj-input {
-            font: inherit; font-size: 12px; width: 48px; text-align: center;
+            font: inherit; font-size: 16px; width: 54px; text-align: center;
             color: #eaffff; background: #071820; border: 1px solid #2b6f86;
-            border-radius: 5px; padding: 5px 2px; caret-color: #9fe6ff;
+            border-radius: 5px; padding: 6px 2px; caret-color: #9fe6ff;
+            /* iOS: an input that INHERITS user-select:none (from the mobile
+               body + this box's container) cannot be typed into — the caret
+               and keyboard are blocked. Force it selectable + tappable. And
+               16px font stops iOS's focus-zoom. */
+            -webkit-user-select: text !important; user-select: text !important;
+            -webkit-touch-callout: default !important;
+            touch-action: manipulation; pointer-events: auto !important;
         }
         #rb-vj-input:focus { outline: none; border-color: #6fd0ec; }
         #rb-vj-go {
@@ -815,11 +822,15 @@
             // attach to the input (e.g. "Enter -> submit"). So we handle
             // those key bindings here in the shield itself.
             function shieldLobby(e) {
-                var lob = document.getElementById('rb-lobby');
-                if (!lob || lob.style.display === 'none') return;
                 var tgt = e.target;
                 if (!tgt || !tgt.closest) return;
-                if (!tgt.closest('#rb-lobby')) return;
+                // The version jumper (#rb-verjump) lives OUTSIDE the lobby and
+                // must be typable even in-match, so shield it regardless of
+                // lobby visibility. The lobby is shielded only while visible.
+                var inVj = tgt.closest('#rb-verjump');
+                var lob = document.getElementById('rb-lobby');
+                var inLobby = lob && lob.style.display !== 'none' && tgt.closest('#rb-lobby');
+                if (!inVj && !inLobby) return;
 
                 // Enter on the room-code input triggers JOIN
                 if (e.type === 'keydown' && e.key === 'Enter' &&
@@ -828,6 +839,17 @@
                     e.stopImmediatePropagation();
                     var joinBtn = document.getElementById('rb-join');
                     if (joinBtn && !joinBtn.disabled) joinBtn.click();
+                    return;
+                }
+                // Enter in the version-jump input triggers GO (the shield's
+                // stopImmediatePropagation below would otherwise swallow the
+                // input's own Enter listener).
+                if (e.type === 'keydown' && e.key === 'Enter' &&
+                    tgt.id === 'rb-vj-input') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var goBtn = document.getElementById('rb-vj-go');
+                    if (goBtn) goBtn.click();
                     return;
                 }
 
@@ -867,7 +889,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V269<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V270<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -935,7 +957,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V269</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V269</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V270</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V270</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9522,7 +9544,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V269 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V270 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +

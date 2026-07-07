@@ -48,6 +48,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
   const badV = await page.evaluate(() => window._rb2p_verJumpUrl('99999'));
 
+  // typing must work: focus the input (as a tap would), type, read it back.
+  await page.click('#rb-vj-input').catch(() => {});
+  await page.type('#rb-vj-input', '259', { delay: 20 }).catch(() => {});
+  const typed = await page.evaluate(() => document.getElementById('rb-vj-input').value);
+  const selectable = await page.evaluate(() => getComputedStyle(document.getElementById('rb-vj-input')).webkitUserSelect ||
+    getComputedStyle(document.getElementById('rb-vj-input')).userSelect);
+
   const vjErrors = errors.filter(e => /verjump|rb-vj|Unexpected|SyntaxError/i.test(e));
   console.log('engine boots:      ', engineOk);
   console.log('box present:       ', box, '| chip:', myVer);
@@ -55,6 +62,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   console.log('manifest resolves: ', JSON.stringify(resolved));
   console.log('V259 -> URL:       ', target);
   console.log('bad version -> :   ', badV, '(should be null)');
+  console.log('typed into input:  ', JSON.stringify(typed), '(should be "259")');
+  console.log('input user-select: ', selectable, '(should be text)');
   console.log('chip after load:   ', await page.evaluate(() => (document.getElementById('rb-vj-chip') || {}).textContent));
   console.log('page errors (vj):  ', vjErrors.length ? vjErrors : 'none');
   console.log('all page errors:   ', errors.length ? errors.slice(0, 3) : 'none');
@@ -64,6 +73,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     resolved.v259 && /rawcdn\.githack\.com\/coder-1611\/two-player-rb\/[0-9a-f]{7,}\/index\.html$/.test(target || '') &&
     (target || '').indexOf(resolved.v259) > -1 &&
     badV === null && /^V\d+$/.test(chipTxt || '') &&
+    typed === '259' && /text/.test(selectable || '') &&
     vjErrors.length === 0;
   console.log('VERDICT:', pass ? 'PASS' : 'FAIL');
   await browser.close();
