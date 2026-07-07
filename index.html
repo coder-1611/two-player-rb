@@ -889,7 +889,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V271<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V272<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -957,7 +957,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V271</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V271</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V272</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V272</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9328,6 +9328,7 @@
             setInterval(function () {
                 if (!diagEl) return;
                 var kp = '?', vy = '?', z7 = '?', ball = 0, live = 0, ghost = 0, gmx = '?', gmy = '?';
+                var plOF = 0;   // V272: offensive formation on the field = drive live
                 var ctl = 0, pops = 0, b1out = '';
                 try {
                     var em = window.RB && RB.engineState && RB.engineState();
@@ -9349,6 +9350,7 @@
                         if (!inst || !inst._eE2) continue;
                         var n = inst._eE2._fE2;
                         if (n === 'obj_ball' && !inst._HL2) ball++;
+                        else if (n === 'obj_playerOF' && !inst._HL2) plOF++;   // V272
                         else if (n === 'obj_btn_kickoff') {
                             if (inst._HL2) {
                                 ghost++;
@@ -9491,10 +9493,62 @@
                                 setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 250);
                             }
                         }
-                        // V266: recovery budgets reset once the match is provably
-                        // healthy — caps are per-incident, not per-session (5
-                        // benign firings used to permanently disable recovery).
-                        if (inMH && em && (Number(vy) > 0 || ball > 0 ||
+                        // V272: STUCK-AT-KICKOFF-STAGING recovery — the actual
+                        // device freeze (PUCD/DHEB, iOS 18.7). The ACTIVE phone
+                        // (role a, VISIBLE, fps 60) sits on the "Receive" staging
+                        // with a corpse button and NO offense, at vy:2 ball:1 (the
+                        // ball on the kickoff tee). Both older nets missed it: the
+                        // V262 AUTO-RECOVER needs vy=0/ball=0, and the V271 sweeper
+                        // retry was in a 60s, possession-gated watchdog that had
+                        // bailed — so my new 'STUCK@staging' line never even fired
+                        // on device. The one trustworthy 'drive is live' signal is
+                        // the offensive formation (plOF>=5); its ABSENCE with a
+                        // kickoff button present and not waiting = stuck. Re-force
+                        // the drive from THIS always-on heartbeat (harness proves
+                        // forceUserOffenseDrive spawns 11 OF); if still stuck after
+                        // ~12s, reload into the resume flow — the exact cure the
+                        // user's manual refresh performs. Cannot fire mid-drive (a
+                        // live drive has plOF>=11 and no kickoff button) or on the
+                        // waiting side (!waiting gate).
+                        try {
+                            var koPresent = (live > 0 || ghost > 0);
+                            var stagingStuck = inMH && !waiting && !patPlay && koPresent && plOF === 0 &&
+                                em && (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0;
+                            if (stagingStuck) {
+                                if (!window.__rbStagingStuckSince) window.__rbStagingStuckSince = Date.now();
+                                var stuckMs = Date.now() - window.__rbStagingStuckSince;
+                                if (Date.now() - (window.__rbStagingReforceMs || 0) > 2100) {
+                                    window.__rbStagingReforceMs = Date.now();
+                                    try {
+                                        var yd = window._rb2p_kickoffReturnYard
+                                            ? window._rb2p_kickoffReturnYard() : -25;
+                                        if (window._rb2p_forceUserOffenseDrive)
+                                            window._rb2p_forceUserOffenseDrive(yd);
+                                        diagLog('STUCK@staging ' + stuckMs + 'ms OF=0 ko=' +
+                                                (live + ghost) + ' — re-forcing drive');
+                                    } catch (eRF) {}
+                                }
+                                if (stuckMs > 12000 && document.visibilityState === 'visible') {
+                                    var srTs = Number(sessionStorage.getItem('rb2p_ar_ts') || 0);
+                                    var srN  = Number(sessionStorage.getItem('rb2p_ar_n') || 0);
+                                    if (Date.now() - srTs > 45000 && srN < 4) {
+                                        sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
+                                        sessionStorage.setItem('rb2p_ar_n', String(srN + 1));
+                                        sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
+                                        diagLog('STUCK@staging ' + stuckMs + 'ms — reloading into resume');
+                                        setTimeout(function () { try { location.reload(); } catch (eSR) {} }, 250);
+                                    }
+                                }
+                            } else {
+                                window.__rbStagingStuckSince = 0;
+                            }
+                        } catch (eSS) {}
+                        // V266/V272: recovery budgets reset once the match is
+                        // provably healthy. "Healthy" now requires a real
+                        // OFFENSIVE FORMATION (plOF>=5) or points — NOT vy>0/ball>0,
+                        // which the stuck-at-staging state (vy:2 ball:1 tee ball)
+                        // falsely satisfied, resetting the caps mid-freeze.
+                        if (inMH && em && (plOF >= 5 ||
                             ((em.userScore | 0) + (em.opponentScore | 0)) > 0)) {
                             if (sessionStorage.getItem('rb2p_ar_n') || sessionStorage.getItem('rb2p_vr_n')) {
                                 sessionStorage.removeItem('rb2p_ar_n'); sessionStorage.removeItem('rb2p_ar_ts');
@@ -9567,7 +9621,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V271 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V272 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
