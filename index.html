@@ -712,7 +712,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V265<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V266<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -780,7 +780,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V265</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V265</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V266</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V266</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8321,10 +8321,17 @@
                   '</div>' +
                 '</div>';
             finalOverlay.style.display = 'block';
+            try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
             if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
             var lv = document.getElementById('rb-final-leave');
             if (lv) lv.addEventListener('click', function () {
                 finalOverlay.style.display = 'none';
+                // V266: deliberate exit. During OT finals the engine never
+                // leaves rm_match (the bridge swallows the native game-over),
+                // so live/ stays fresh and the reload would RESUME the
+                // finished match. One-shot flag tells tryRestore to skip.
+                try { sessionStorage.setItem('rb2p_skipResumeOnce', '1'); } catch (eSk) {}
+                try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML) {}
                 try { location.reload(); } catch (e) {}
             });
         }
@@ -8884,6 +8891,11 @@
             if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    // V266: the tap-bridge exists for touch phones (V233). On
+                    // desktop it made mouse behavior non-identical: a click up
+                    // to 16 GUI units OUTSIDE a button — which the engine
+                    // correctly ignores — was converted into a direct _Ky fire.
+                    if (!document.documentElement.classList.contains('rb-mobile')) return;
                     // V239: log EVERY in-match tap (throttled 1/s) — during the
                     // on-device stall taps were invisible because logging was
                     // gated on button existence.
@@ -8988,7 +9000,12 @@
             var telemetryTick = 0;
             setInterval(function () {
                 try {
-                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    if (!document.documentElement.classList.contains('rb-in-match')) {
+                        // V266: the asleep-banner must not outlive the match.
+                        var bnEnd = document.getElementById('rb-oppstall');
+                        if (bnEnd) bnEnd.parentNode.removeChild(bnEnd);
+                        return;
+                    }
                     telemetryTick++;
                     var room = '', role = '';
                     try { room = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
@@ -9247,6 +9264,17 @@
                                 setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 250);
                             }
                         }
+                        // V266: recovery budgets reset once the match is provably
+                        // healthy — caps are per-incident, not per-session (5
+                        // benign firings used to permanently disable recovery).
+                        if (inMH && em && (Number(vy) > 0 || ball > 0 ||
+                            ((em.userScore | 0) + (em.opponentScore | 0)) > 0)) {
+                            if (sessionStorage.getItem('rb2p_ar_n') || sessionStorage.getItem('rb2p_vr_n')) {
+                                sessionStorage.removeItem('rb2p_ar_n'); sessionStorage.removeItem('rb2p_ar_ts');
+                                sessionStorage.removeItem('rb2p_vr_n'); sessionStorage.removeItem('rb2p_vr_ts');
+                                diagLog('recovery caps reset (match healthy)');
+                            }
+                        }
                     } catch (eSc) {}
                     // V246: compositor un-freezer (mobile only). Root cause of
                     // the GET READY stall: the phone compositor freezes the
@@ -9312,7 +9340,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V265 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V266 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9511,13 +9539,24 @@
                                     var wedgedVR = false;
                                     try {
                                         var emVR = RB.engineState();
-                                        wedgedVR = inMVR && emVR &&
+                                        // V266: require loop-dead evidence (engKicks) —
+                                        // stage 0 at 0-0 is ALSO the healthy waiting
+                                        // side during the opponent's opening drive; a
+                                        // brief lock/unlock must not reload a healthy
+                                        // phone (each reload risks losing an outcome).
+                                        wedgedVR = inMVR && emVR && engKicks >= 3 &&
                                             Number(emVR.engineDriveFsmStage) === 0 &&
                                             (emVR.userScore | 0) === 0 && (emVR.opponentScore | 0) === 0 &&
                                             Date.now() - (window.__rbMatchEnterMs || Date.now()) > 12000;
                                     } catch (eW1) {}
                                     var bootAge = Date.now() - (window.__rbBootMs || Date.now());
-                                    if (wedgedVR || (!inMVR && bootAge > 20000)) {
+                                    // V266: the not-in-match branch only applies when a
+                                    // match SHOULD be live (flag set at start/resume,
+                                    // cleared on FINAL/LEAVE) — not while sitting at
+                                    // the room screen waiting for a friend.
+                                    var shouldBeLive = false;
+                                    try { shouldBeLive = sessionStorage.getItem('rb2p_matchLive') === '1'; } catch (eSL) {}
+                                    if (wedgedVR || (!inMVR && shouldBeLive && bootAge > 20000)) {
                                         var vrTs = Number(sessionStorage.getItem('rb2p_vr_ts') || 0);
                                         var vrN  = Number(sessionStorage.getItem('rb2p_vr_n') || 0);
                                         if (Date.now() - vrTs > 30000 && vrN < 5) {
@@ -9594,6 +9633,7 @@
         if ($leaveGame) {
             $leaveGame.addEventListener('click', async function () {
                 if (!window.confirm('Leave the game and return to the lobby?')) return;
+                try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML5) {}
                 var room = myRoom;
                 try { await leaveRoom(); } catch (e) {}
                 try {
@@ -9945,7 +9985,40 @@
                 // is in progress" signal; resumeMatch already rebuilds state from it.
                 var oppFresh = oppLive && (Date.now() - (Number(oppLive.ts) || 0) < 25000);
                 var myFresh  = myLive  && (Date.now() - (Number(myLive.ts)  || 0) < 25000);
-                var inProgress = oppFresh || myFresh || turnoverActive || turnoverForMe || patDutyMine;
+                // V266: LOST-OUTCOME insurance. TD/FG/PUNT/OTHER outcomes had
+                // no persistence/ACK — if my reload raced a drive-end send, the
+                // fresh subscription's firstSnap deliberately swallowed it and
+                // BOTH sides parked in WAIT forever, and refresh could never
+                // cure it (both live records say iHaveBall:false). The
+                // outcomes/{opp} record IS persistent: a fresh one I never
+                // ACKed that hands me the ball gets drained after resume.
+                var lostOutcome = null;
+                try {
+                    var loSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
+                                                     (savedRole === 'a' ? 'b' : 'a')));
+                    var lo = loSnap.val();
+                    if (lo && lo.ts && (Date.now() - Number(lo.ts) < 120000) &&
+                        lo.ack !== savedRole &&
+                        (lo.type === 'TD' || lo.type === 'FG' ||
+                         lo.type === 'PUNT' || lo.type === 'OTHER') &&
+                        !patDutyMine && !pick6ForMe && !turnoverForMe &&
+                        !(myLive && myLive.iHaveBall === true &&
+                          (Number(myLive.ts) || 0) >= Number(lo.ts))) {
+                        lostOutcome = lo;
+                        console.log('[2P RESUME] un-ACKed ' + lo.type +
+                                    ' outcome addressed to me — will drain after resume');
+                    }
+                } catch (eLO) {}
+                var inProgress = oppFresh || myFresh || turnoverActive || turnoverForMe ||
+                                 patDutyMine || !!lostOutcome;
+                // V266: BACK TO LOBBY on the FINAL screen is a deliberate exit —
+                // never resume the finished match it reloads away from.
+                try {
+                    if (sessionStorage.getItem('rb2p_skipResumeOnce')) {
+                        sessionStorage.removeItem('rb2p_skipResumeOnce');
+                        inProgress = false;
+                    }
+                } catch (eSk1) {}
                 // V131: only a FRESH final (ts within 25s) means a real game-over.
                 // A stale leftover in this reused room must NOT block resume.
                 var finalRep = finalSnap.val();
@@ -9987,6 +10060,31 @@
                     // (un-applied, addressed to me) — each with its own gates.
                     var passTurnover = ((turnoverActive && turnover.thrower === savedRole) ||
                                         turnoverForMe) && !patDutyMine;
+                    try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML2) {}
+                    // V266: drain the lost outcome once the resumed engine is
+                    // settled in the match room (restore hold is ~3s). The live
+                    // subscription's firstSnap already recorded this record's ts,
+                    // so it cannot double-apply; skip if a NEWER outcome landed.
+                    if (lostOutcome) (function (rec) {
+                        var drainT0 = Date.now(), dTries = 0;
+                        var dIv = setInterval(function () {
+                            try {
+                                if (++dTries > 40) { clearInterval(dIv); return; }
+                                if ((window._rb2p_lastOpponentOutcomeApplyMs || 0) > drainT0) {
+                                    clearInterval(dIv); return;   // newer outcome already applied
+                                }
+                                if (!(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) return;
+                                if (dTries < 8) return;
+                                clearInterval(dIv);
+                                if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                    'drained lost ' + rec.type + ' outcome');
+                                window._twoPlayer.receive(rec);
+                                FB.update(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
+                                                 (savedRole === 'a' ? 'b' : 'a')),
+                                          { ack: savedRole, ackTs: Date.now() }).catch(function () {});
+                            } catch (eDr) {}
+                        }, 500);
+                    })(lostOutcome);
                     resumeMatch(savedRole, oppLive, myLive, passTurnover ? turnover : null);
                     return;
                 }
@@ -10159,7 +10257,35 @@
                     renderPlayers(players);
                     if (players.a && players.b && players.a.ready && players.b.ready && !gameStarted) {
                         gameStarted = true;
-                        startMatch();
+                        // V266: stale-ready guard. ready flags are never reset
+                        // during a match, so a fresh-tab rejoiner tapping READY
+                        // sees the opponent's leftover ready=true and would fire
+                        // a SECOND startMatch() under the live match — wiping
+                        // turnover/patDuty and splitting the phones into two
+                        // universes. If the opponent's in-match heartbeat is
+                        // fresh and there is no fresh FINAL (rematch context),
+                        // resume into their match instead of starting a new one.
+                        (async function () {
+                            try {
+                                if (!document.documentElement.classList.contains('rb-in-match')) {
+                                    var oRsg = myRole === 'a' ? 'b' : 'a';
+                                    var hbSg = await FB.get(FB.ref(db, 'rooms/' + code + '/hb/' + oRsg));
+                                    var hbVg = Number(hbSg.val() || 0);
+                                    if (hbVg && Date.now() - hbVg < 15000) {
+                                        var fSg = await FB.get(FB.ref(db, 'rooms/' + code + '/final/' + oRsg));
+                                        var fVg = fSg.val();
+                                        if (!(fVg && fVg.ts && Date.now() - fVg.ts < 60000)) {
+                                            console.log('[2P GUARD] READY while opponent mid-match — resuming, not restarting');
+                                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                                'READY blocked — opponent mid-match; resuming');
+                                            try { location.reload(); } catch (eRl) {}
+                                            return;
+                                        }
+                                    }
+                                }
+                            } catch (eSG) {}
+                            startMatch();
+                        })();
                     }
                 }
             );
@@ -10527,6 +10653,12 @@
                         return;
                     }
                     window._twoPlayer.receive(val);
+                    // V266: ACK the applied outcome so a later reload can tell
+                    // "already applied" from "lost in my reload" (the lost-
+                    // outcome insurance in tryRestore). Same-ts update; the
+                    // ts<=lastTs dedupe above ignores the refire.
+                    FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
+                              { ack: myRole, ackTs: Date.now() }).catch(function () {});
                 }
             );
 
@@ -10859,6 +10991,11 @@
             // resume into a stale "you owe a PAT" record from the prior game.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});
             window._rb2p_resumePatDuty = null;
+            // V266: clear prior-match heartbeats (stale hb = false "opponent
+            // asleep" banner flash at rematch start) + arm the match-live flag
+            // the VIS-RECOVER not-in-match branch requires.
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/hb')).catch(function () {});
+            try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
 
             // V60: lock in the agreed quarter length right before launch so
             // startTwoPlayerMatch reads the final synced value (both devices
