@@ -2,6 +2,33 @@
 <html lang="en">
 
 <head>
+    <!-- ============ DESKTOP → V213 (last pre-mobile build) ============
+         Desktop was "perfect" BEFORE the V214 mobile overhaul + the whole
+         GET READY saga, and must stay frozen there. V213 (commit f3f2ee7)
+         is the last build before V214 — the V211 pixel-redesign lobby plus
+         the blurry-title and animation fixes. Only MOBILE gets the current
+         build's fixes. On a desktop browser this replaces the page, before
+         anything else loads, with the pinned V213 build on the same CDN the
+         version jumper uses (so desktop shows the old "V213" label and runs
+         the old code exactly). Guards: never on mobile (coarse+no-hover),
+         never when already on a historical CDN build (no loop), never on
+         localhost/127.* (dev + e2e harness), and ?live escapes to current. -->
+    <script>
+        (function () {
+            try {
+                var isMobile = window.matchMedia &&
+                    window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+                var onGithack = /githack\.com$/i.test(location.hostname);
+                var isLocal = location.hostname === '' || location.hostname === 'localhost' ||
+                    /^127\./.test(location.hostname) || location.hostname === '::1' ||
+                    location.hostname === '0.0.0.0';
+                var wantLive = /[?&]live(=|&|$)/.test(location.search);
+                if (!isMobile && !onGithack && !isLocal && !wantLive) {
+                    location.replace('https://rawcdn.githack.com/coder-1611/two-player-rb/f3f2ee7/index.html');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <!-- ============================================================
          Auto cache-bust (runs BEFORE anything else loads).
          GitHub Pages caches index.html at the Fastly CDN for ~10 min
@@ -889,7 +916,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V272<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V273<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -957,7 +984,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V272</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V272</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V273</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V273</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9621,7 +9648,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V272 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF +
+                    'V273 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
