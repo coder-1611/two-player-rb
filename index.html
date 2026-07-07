@@ -889,7 +889,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V270<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V271<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -957,7 +957,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V270</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V270</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V271</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V271</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1889,30 +1889,53 @@
                             window._rb2p_patPlayPending) { clearInterval(iv); return; }
                         if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return;
                         var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                        var sawBtn = false, balls = 0;
+                        // V271: DHEB device evidence overturned the old "ball ==
+                        // drive live" assumption. The engine's KICKOFF STAGING
+                        // ("GET READY! / Receive") has a ball on the tee, so the
+                        // first obj_ball set ballSeenEver=true and the sweeper
+                        // STOPPED retrying — leaving the possessing phone stranded
+                        // at the Receive screen (visible, fps 60, ball:1 vy:2, a
+                        // painted corpse Receive button) with no way to snap. The
+                        // real "drive is live" signal is the OFFENSIVE FORMATION
+                        // (obj_playerOF on the field), not any ball. Also: corpse
+                        // (_HL2) kickoff buttons still PAINT and eat taps, so park
+                        // them too — the old loop skipped _HL2.
+                        var sawBtn = false, koAny = 0, plOF = 0, balls = 0;
                         for (var i = 0; i < all.length; i++) {
                             var inst = all[i];
-                            if (!inst || inst._HL2 || !inst._eE2) continue;
-                            if (inst._eE2._fE2 === 'obj_btn_kickoff') {
-                                // V232: proper destroy — a raw _HL2 mark leaves a
-                                // painted-but-dead ghost button (see forceUserOffenseDrive).
-                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
-                                try { inst._g2 = 0; } catch (eV) {}   // V234: never paint a corpse
-                                sawBtn = true;
+                            if (!inst || !inst._eE2) continue;
+                            var nm = inst._eE2._fE2;
+                            if (nm === 'obj_btn_kickoff') {
+                                koAny++;
+                                // Kill live ones properly; park live AND corpse off
+                                // screen so neither paints "Receive" nor eats taps.
+                                if (!inst._HL2) { try { _cr(inst); } catch (eK) { inst._HL2 = true; } sawBtn = true; }
+                                try { inst._g2 = 0; inst.x = -2000; inst.y = -2000; } catch (eV) {}
                             }
-                            else if (inst._eE2._fE2 === 'obj_ball') balls++;
+                            else if (nm === 'obj_playerOF' && !inst._HL2) plOF++;
+                            else if (nm === 'obj_ball' && !inst._HL2) balls++;
                         }
-                        if (balls > 0) ballSeenEver = true;
+                        if (plOF >= 5) ballSeenEver = true;   // (diagnostic only)
                         if (sawBtn) {
                             em.engineControllerState = 2;
                             console.log('[2P KICKOFF-SWEEP] killed late obj_btn_kickoff (t=' +
-                                        (ticks * 300) + 'ms, balls=' + balls + ')');
+                                        (ticks * 300) + 'ms, plOF=' + plOF + ' balls=' + balls + ')');
                         }
-                        // Retry the spawn every ~1.2s while the drive has never
-                        // produced a ball (the hang state).
-                        if (!ballSeenEver && balls === 0 && ticks % 4 === 0) {
-                            console.log('[2P KICKOFF-SWEEP] no ball ' + (ticks * 300) +
-                                        'ms after drive-force — retrying spawn');
+                        // Retry the spawn every ~1.2s WHENEVER a kickoff button is
+                        // present with no offensive formation. That conjunction
+                        // (koAny>0 && plOF===0) is UNIQUE to the stuck-at-staging
+                        // state — a live drive never has a kickoff button, and a
+                        // between-plays despawn mid-drive never spawns one — so
+                        // this can't reset a live drive, and unlike the old
+                        // ballSeenEver latch it also recovers a scene that spawned
+                        // then reverted to staging (the DHEB device signature).
+                        if (koAny > 0 && plOF === 0 && ticks % 4 === 0) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'STUCK@staging ' + (ticks * 300) + 'ms ko=' + koAny +
+                                ' ball=' + balls + ' — re-forcing drive');
+                            console.log('[2P KICKOFF-SWEEP] no offense ' + (ticks * 300) +
+                                        'ms after drive-force (ko=' + koAny + ' balls=' + balls +
+                                        ') — retrying spawn');
                             forceUserOffenseDrive(yard);   // re-arms; this watcher dies via gen
                         }
                     } catch (e) {}
@@ -9544,7 +9567,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V270 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
+                    'V271 kp:' + kp + ' vy:' + vy + ' ball:' + ball +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -9721,27 +9744,14 @@
                             window.__rbWakeErrOnce = true;
                             diagLog('wake lock ERR ' + eMsg.slice(0, 40));
                         }
-                        // V268: 'Permission was denied' = Low Power Mode (or a
-                        // battery policy) is blocking screen wake. LPM forces
-                        // 30s auto-lock that NO web API can prevent — YZAW: a
-                        // HELD wake lock on the other phone was released by the
-                        // lock anyway. The player must be told, on-screen.
-                        if (/denied|NotAllowed/i.test(eMsg) && !document.getElementById('rb-lpm')) {
-                            try {
-                                var lb = document.createElement('div');
-                                lb.id = 'rb-lpm';
-                                lb.style.cssText = 'position:fixed;bottom:8px;left:50%;' +
-                                    'transform:translateX(-50%);z-index:99999;background:#7a5a1f;' +
-                                    'color:#fff;font:bold 11px monospace;padding:6px 10px;' +
-                                    'border:2px solid #ffb300;border-radius:6px;text-align:center;' +
-                                    'pointer-events:none;max-width:92vw;';
-                                lb.textContent = 'LOW POWER MODE IS BLOCKING SCREEN WAKE — this ' +
-                                    'phone will auto-lock and freeze the game. Turn off Low ' +
-                                    'Power Mode (Settings > Battery).';
-                                document.body.appendChild(lb);
-                                diagLog('LPM warning shown');
-                            } catch (eLB) {}
-                        }
+                        // V271: the V268 "Low Power Mode" banner is REMOVED. It was
+                        // a false diagnosis: iOS 18.7 Safari rejects wakeLock.request
+                        // ('Permission was denied') even with LPM OFF, so the banner
+                        // false-flagged on every 18.7 device, and the user confirmed
+                        // LPM makes no difference to the freeze. The real freeze is
+                        // the stuck kickoff-staging on the ACTIVE phone (see the V271
+                        // sweeper fix), not screen suppression. Keep the one-time
+                        // diag line above as a quiet signal; show nothing on screen.
                     });
                 } catch (eWL) { wakeLPending = false; }
             }, 1000);
