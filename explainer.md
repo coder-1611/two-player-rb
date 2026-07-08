@@ -346,3 +346,51 @@ whether the scene is playable-with-real-input (meaning the fix is input-path,
 not engine-state) or truly dead (meaning re-architect the pick-6 PAT to a
 self-contained engine scene). `tools/phone_control.py` performs that test the
 moment Remote Automation is enabled.
+
+---
+
+## 12. SOLVED (V280) — the pick-6 PAT freeze was a DOM overlay over the canvas
+
+The "engine-state" framing in §11 was wrong in one crucial way, and the real
+device told me so. The pick-6 2-point conversion scene is **not** wedged — it
+is byte-identical to the harness scene that plays perfectly. The freeze is a
+**DOM overlay**, and it was invisible to every prior check for a precise
+reason.
+
+**Root cause (confirmed live on the phone):** on a pick-6 the scorer plays the
+2-point conversion while the bridge has flagged that device
+`_rb2p_userIsWaitingForOpponent = true`. That flag shows `#rb-waiting` — a
+full-screen, `z-index:1500`, `pointer-events:auto`, 97%-opaque "WAITING FOR
+OPPONENT" cover — **on top of the live game canvas**. The played-out
+conversion is right there underneath, fully armed, but every **real finger
+drag lands on the overlay**, so the snap/throw never reaches the engine. The
+match sits forever on what looks like a waiting/frozen screen.
+
+**Why ~50 iterations never saw it:** every diagnostic either (a) dispatched
+*synthetic* pointer/touch events **directly to `#canvas`**, which bypass a DOM
+overlay entirely and reach the engine's low-level handlers — so input "worked"
+in every test — or (b) read instance counters, which showed a perfectly
+healthy scene (`OF:11 DF:11 kp:2`). The engine's snap/throw only responds to
+*real, trusted* drags (noted in `e2e/play-bots.js`), and a real drag is the
+one thing that hits the overlay. The bug lived exactly in the blind spot
+between "synthetic events on the canvas" and "a real finger on the screen."
+It took a real-device DOM hit-test — `document.elementFromPoint(centerX,
+centerY)` returned the overlay's `<span>`, **not** the canvas — to expose it.
+Setting the overlay to `display:none` made `elementFromPoint` return the
+canvas and revealed the fully playable goal-line scene beneath.
+
+**The fix (V280):** the WAIT overlay must never cover an interactive scene.
+`showWait()` no-ops while `scorerPlayingPat()` is true, and the 700 ms
+heartbeat lifts `#rb-waiting` whenever this device has a live scene to play —
+the scorer's PAT, or any live offensive formation (`obj_playerOF >= 6`) while
+flagged waiting. The legitimate waiting side (no offense on the field, not
+playing a PAT) keeps its cover, so it still can't poke the opponent's stalled
+canvas. **Device-verified on V280:** with the scorer-PAT state set, the
+heartbeat drives `#rb-waiting` to `display:none` and `elementFromPoint(center)`
+becomes `canvas` — a real finger now reaches the game.
+
+**The meta-lesson, finally paid in full:** the instrument (counters + synthetic
+canvas events) and the screen disagreed for fifty iterations because the
+instrument was measuring the layer *underneath the thing that was broken*. The
+only fix was to look at the real device the way a real finger does — which is
+exactly what the user demanded, and what closed it.
