@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V277<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V278<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V277</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V277</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V278</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V278</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9135,6 +9135,24 @@
                     }
                     s.OF = of; s.DF = df; s.ball = ballN; s.koPaint = koPaint; s.koGhost = koGh;
                     s.waiting = window._rb2p_userIsWaitingForOpponent === true;
+                    // V278: full ground-truth on the stuck overlay — the actual
+                    // controller sub-state, its banner, and every kickoff button
+                    // instance (dead? visible? where?). This is what tells me
+                    // WHAT renders "GET READY/Receive" and swallows the taps.
+                    var kos = [];
+                    for (var j = 0; j < all.length; j++) {
+                        var y = all[j]; if (!y || !y._eE2 || y._eE2._fE2 !== 'obj_btn_kickoff') continue;
+                        kos.push({ dead: !!y._HL2, g2: y._g2, x: Math.round(y.x), y: Math.round(y.y),
+                                   act: y._IL2 !== false });
+                    }
+                    s.kos = kos;
+                    try {
+                        var cs2 = _si(71); var cinfo = [];
+                        for (var ck2 in cs2) { if (!cs2.hasOwnProperty(ck2) || !cs2[ck2]) continue;
+                            cinfo.push({ kp: cs2[ck2]._kp, b1: String(cs2[ck2].__b1 || '').slice(0, 16),
+                                         z7: cs2[ck2]._7z }); }
+                        s.ctrls = cinfo;
+                    } catch (eC2) {}
                 } catch (e) { s.err = String(e && e.message).slice(0, 40); }
                 return s;
             }
@@ -9679,16 +9697,39 @@
                             // obj_controller, consumed by the controller's case-0
                             // step to proceed into the play. If still painting
                             // after ~8s, reload into resume (proven refresh cure).
-                            var atStaging = inMH && !waiting && !patPlay && koPainting;
+                            // V278: key on ANY kickoff button instance (live OR
+                            // corpse) with the formation present. PUCD/UQCE proved
+                            // kp==2 is the healthy PLAYING state and the 22 sprites
+                            // are there — the anomaly is a leftover kickoff button
+                            // (koGhost=1, PARKED so koPaint=0) that renders "GET
+                            // READY/Receive" and SWALLOWS the snap taps (8 taps,
+                            // zero state change). V276 keyed on koPainting, which
+                            // is 0 on device, so it never fired. Now: any obj_btn_
+                            // kickoff + a formation + 0-0 + not waiting = stuck.
+                            var koAny = (live > 0 || ghost > 0);
+                            var atStaging = inMH && !waiting && !patPlay && koAny && plOF >= 1 &&
+                                em && (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0;
                             if (atStaging) {
                                 if (!window.__rbStagingStuckSince) window.__rbStagingStuckSince = Date.now();
                                 var stuckMs = Date.now() - window.__rbStagingStuckSince;
-                                // Only press Kick Off once staging has PERSISTED
-                                // >1.5s — the normal opening kills the button in
-                                // ~50ms (forceUserOffenseDrive), so this never
-                                // fights the healthy flow; it only acts on a
-                                // genuinely stuck staging.
+                                // Persisted >1.5s (never the healthy opening, which
+                                // kills the button in ~50ms): AGGRESSIVELY neutralize
+                                // every kickoff button — destroy + DEACTIVATE
+                                // (_IL2=false so its step can't run or intercept
+                                // taps) + park far away — clear GET READY on every
+                                // controller, and press Kick Off.
                                 if (stuckMs > 1500) {
+                                    try {
+                                        var allK = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                        for (var ki = 0; ki < allK.length; ki++) {
+                                            var kb = allK[ki];
+                                            if (!kb || !kb._eE2 || kb._eE2._fE2 !== 'obj_btn_kickoff') continue;
+                                            try { if (!kb._HL2) _cr(kb); } catch (eKc) { try { kb._HL2 = true; } catch (e2) {} }
+                                            try { kb._g2 = 0; kb._IL2 = false; kb.x = -3000; kb.y = -3000; } catch (eKp) {}
+                                        }
+                                        var csK = _si(71);
+                                        for (var ckK in csK) { if (csK.hasOwnProperty(ckK) && csK[ckK]) try { csK[ckK].__b1 = ''; } catch (eB3) {} }
+                                    } catch (eKa) {}
                                     try { if (window._rb2p_proceedKickoff) window._rb2p_proceedKickoff(); } catch (ePk) {}
                                 }
                                 if (plOF < 6 && Date.now() - (window.__rbStagingReforceMs || 0) > 2100) {
@@ -9703,13 +9744,15 @@
                                 if (Date.now() - (window.__rbStagingLogMs || 0) > 2000) {
                                     window.__rbStagingLogMs = Date.now();
                                     diagLog('STUCK@staging ' + stuckMs + 'ms OF=' + plOF +
-                                            ' — press KickOff' + (plOF < 6 ? '+force' : ''));
+                                            ' ko=' + (live + ghost) + ' — neutralize+proceed');
                                 }
-                                if (stuckMs > 8000 && document.visibilityState === 'visible' &&
+                                // backstop: still stuck after 6s -> reload into
+                                // resume (the proven manual-refresh cure).
+                                if (stuckMs > 6000 && document.visibilityState === 'visible' &&
                                     em && (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0) {
                                     var srTs = Number(sessionStorage.getItem('rb2p_ar_ts') || 0);
                                     var srN  = Number(sessionStorage.getItem('rb2p_ar_n') || 0);
-                                    if (Date.now() - srTs > 45000 && srN < 4) {
+                                    if (Date.now() - srTs > 30000 && srN < 5) {
                                         sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
                                         sessionStorage.setItem('rb2p_ar_n', String(srN + 1));
                                         sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
@@ -9799,7 +9842,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V277 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V278 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
