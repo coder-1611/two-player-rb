@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V278<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V279<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V278</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V278</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V279</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V279</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1881,9 +1881,8 @@
                     var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
                     if (Date.now() - lastR < 60000) return;
                     sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
-                    console.warn('[2p-rb] opening spawn poisoned (' + tag + ') — reloading into resume flow');
-                    if (window._rb2p_diagLog) window._rb2p_diagLog('POISONED (' + tag + ') -> auto-reload');
-                    setTimeout(function () { location.reload(); }, 200);
+                    // V279: auto-reload REMOVED (user: 'auto reload doesn't count').
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('POISONED (' + tag + ') — reload disabled');
                 } catch (eL) {}
             }
             window._rb2p_noteOpeningSpawnResult = noteOpeningSpawnResult;
@@ -9663,8 +9662,7 @@
                             if (Date.now() - arTs > 45000 && arN < 4) {
                                 sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
                                 sessionStorage.setItem('rb2p_ar_n', String(arN + 1));
-                                diagLog('AUTO-RECOVER: reloading wedged start (kicks=' + engKicks + ')');
-                                setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 250);
+                                diagLog('AUTO-RECOVER: reload DISABLED (V279)');
                             }
                         }
                         // V272: STUCK-AT-KICKOFF-STAGING recovery — the actual
@@ -9756,8 +9754,7 @@
                                         sessionStorage.setItem('rb2p_ar_ts', String(Date.now()));
                                         sessionStorage.setItem('rb2p_ar_n', String(srN + 1));
                                         sessionStorage.setItem('rb2p_spawn_reload', String(Date.now()));
-                                        diagLog('STUCK@staging ' + stuckMs + 'ms — reloading into resume');
-                                        setTimeout(function () { try { location.reload(); } catch (eSR) {} }, 250);
+                                        diagLog('STUCK@staging ' + stuckMs + 'ms — reload DISABLED (V279)');
                                     }
                                 }
                             } else {
@@ -9842,7 +9839,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V278 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V279 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -10075,9 +10072,7 @@
                                         if (Date.now() - vrTs > 30000 && vrN < 5) {
                                             sessionStorage.setItem('rb2p_vr_ts', String(Date.now()));
                                             sessionStorage.setItem('rb2p_vr_n', String(vrN + 1));
-                                            diagLog('VIS-RECOVER: reload on unlock (' +
-                                                    (wedgedVR ? 'wedged' : 'not-in-match') + ')');
-                                            setTimeout(function () { try { location.reload(); } catch (eR2) {} }, 300);
+                                            diagLog('VIS-RECOVER: reload DISABLED (V279)');
                                         }
                                     }
                                 }
