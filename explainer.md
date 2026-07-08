@@ -296,3 +296,53 @@ verified end-to-end in a real browser.
 
 *The single most important lesson, paid for in ~50 iterations: when the
 instrument and the screen disagree, believe the screen. Test on the real thing.*
+
+---
+
+## 11. Real-device session (2026-07-09, Web Inspector over USB) — findings
+
+Got onto the actual phone (iPhone 11, iOS 26.5) via Safari Web Inspector and
+took real screenshots + read/poked live engine state. Major findings:
+
+1. **The opening / GET READY worked this game.** The phone was mid-match at
+   "PIT 6, 1st Qtr 1:58" — i.e. it got past the opening kickoff and a
+   touchdown happened. The long-running GET READY (kickoff) freeze did **not**
+   occur. That is real progress; the remaining freeze is narrower.
+
+2. **The current freeze is the pick-6 2-point conversion**, not the kickoff.
+   Real screenshot: a goal-line offensive formation with receiver routes drawn,
+   frozen. State: `kp:2 vy:2 OF:11 DF:11 ball:1 pat:P scorerPat:true`. The
+   engine loop is alive (`fps:60 eng:60`); the ball, clock, and all players are
+   perfectly static across many seconds. The played-out conversion never goes
+   "live" (receivers never run their routes).
+
+3. **Input reaches the engine, but the play does not respond.** An injected
+   touch registers (`held:1`, `_bp2:1`, gui-mouse tracks it), yet a full
+   press-drag-release changes nothing. Dropping `_t11` (the PAT marker that
+   gates the player-mover `_Ad1` via its `_t11>4` skip), disabling the PAT
+   guardian, and re-calling `forceUserOffenseDrive` **all failed to move a
+   single player**. The play FSM is wedged in a state JS pokes cannot un-stick.
+
+4. **This is iOS-specific.** The harness (`pw-pat-click`) plays this exact
+   2-point scene to a `+2` score. The phone's identical code wedges. Same
+   "harness green, phone red" gap as the whole saga — the difference lives in
+   WebKit-on-iOS, not in reachable state.
+
+5. **The hard tooling limit that blocks a verified fix tonight.** The engine's
+   snap/throw "only responds to real drags, not in-page synthetic events"
+   (documented in `e2e/play-bots.js`). Safari **Web Inspector** can run JS and
+   read/poke state, but it **cannot inject a trusted input event** — so it
+   cannot reproduce a real finger-snap to test whether a candidate fix makes the
+   conversion playable. Injecting real taps/drags requires Safari **Remote
+   Automation** (`tools/phone_control.py` is built and ready for it), or
+   Developer Mode + DVT touch injection. Both are on-device toggles.
+
+**Where this leaves the fix:** the un-reload'd game (V279) no longer masks the
+freeze. The opening works. The residual pick-6 2-point conversion wedges in an
+iOS-specific engine state that (a) JS state-pokes can't un-stick and (b) can't
+be verified-fixed without trusted input injection. The decisive next step is
+Remote Automation ON → inject a real snap/throw on the frozen scene → confirm
+whether the scene is playable-with-real-input (meaning the fix is input-path,
+not engine-state) or truly dead (meaning re-architect the pick-6 PAT to a
+self-contained engine scene). `tools/phone_control.py` performs that test the
+moment Remote Automation is enabled.

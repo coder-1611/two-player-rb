@@ -29,12 +29,12 @@ async def run(args):
         pages = await inspector.get_open_application_pages(timeout=args.timeout)
         infos = []
         for p in pages:
-            infos.append({"url": getattr(p, "web_url", "") or "", "title": getattr(p, "web_title", "") or ""})
+            infos.append({"url": getattr(getattr(p,"page",None), "web_url", "") or "", "title": getattr(getattr(p,"page",None), "web_title", "") or ""})
         if args.list:
             print(json.dumps(infos, indent=1)); return
         target = None
         for p in pages:
-            u = (getattr(p, "web_url", "") or "")
+            u = (getattr(getattr(p,"page",None), "web_url", "") or "")
             if args.filter.lower() in u.lower():
                 target = p; break
         if target is None:

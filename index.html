@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V279<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V280<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V279</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V279</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V280</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V280</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -7478,6 +7478,18 @@
             // its reversed commentary). `flex` because the container centers
             // the card via align/justify.
             function showWait(msg) {
+                // V280: NEVER cover an interactive scene. The pick-6 PAT scorer
+                // plays the 2-point conversion while flagged waiting:true — this
+                // full-screen z1500 overlay was covering the live scene and
+                // eating every real finger drag (device-confirmed via Safari
+                // Web Inspector: elementFromPoint(center) was the overlay, not
+                // the canvas; hiding it made the canvas the touch target and the
+                // scene playable). If this device is the scorer playing the PAT,
+                // do not show the cover.
+                if (window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat()) {
+                    wait.style.display = 'none';
+                    return;
+                }
                 wait.style.display = 'flex';
                 if (msg) waitSub.textContent = msg;
             }
@@ -9761,6 +9773,31 @@
                                 window.__rbStagingStuckSince = 0;
                             }
                         } catch (eSS) {}
+                        // V280: THE pick-6 PAT freeze (device-confirmed via Safari
+                        // Web Inspector). The "WAITING FOR OPPONENT" overlay
+                        // (#rb-waiting, z1500, pointer-events auto) covers the
+                        // canvas while the scorer plays the 2-point conversion
+                        // (flagged waiting:true), so every REAL finger drag hits
+                        // the overlay and the snap/throw never reaches the engine
+                        // — the scene is fine (identical to the working harness),
+                        // it's just buried. Synthetic taps dispatched to #canvas
+                        // bypassed the overlay, which is why 50 iterations of
+                        // counter-based checks never saw it. Hide the overlay
+                        // whenever this device has a live scene to play: the
+                        // scorer's PAT, or ANY live offensive formation while
+                        // flagged waiting. The legit waiting side has plOF===0
+                        // and no scorerPat, so its cover is untouched.
+                        try {
+                            var woH = document.getElementById('rb-waiting');
+                            if (woH && woH.style.display !== 'none') {
+                                var scorerPatH = !!(window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat());
+                                if (scorerPatH || plOF >= 6) {
+                                    woH.style.display = 'none';
+                                    diagLog('WAIT overlay lifted (interactive: ' +
+                                            (scorerPatH ? 'scorerPAT' : 'OF=' + plOF) + ')');
+                                }
+                            }
+                        } catch (eWO) {}
                         // V266/V272/V276: recovery budgets reset once the match is
                         // provably healthy — a real formation (plOF>=5) with NO
                         // kickoff button still painting (koPainting false), or
@@ -9839,7 +9876,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V279 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V280 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
