@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V280<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V283<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V280</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V280</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V283</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V283</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1702,16 +1702,39 @@
                     // It must still die then: a surviving button gates
                     // obj_controller's step (the gutted AI-kickoff path).
                     function killKickoffButtons() {
-                        for (var i = 0; i < allInstances.length; i++) {
-                            var inst = allInstances[i];
+                        // V283: THE root-cause fix. On the slow device the engine
+                        // creates obj_btn_kickoff during native staging; the OLD
+                        // per-instance _cr(inst) here runs the button's Destroy
+                        // event, which THROWS in the damaged room — so _HL2/CleanUp
+                        // never run and the fallback leaves a corpse the engine
+                        // keeps counting (instance_exists), gating the drive =
+                        // "GET READY" forever. _cr's OBJECT-INDEX path
+                        // (_cr(anchor, objIndex, false)) skips the throwing Destroy
+                        // event (execute-event=false) but STILL runs CleanUp and
+                        // sets _HL2, truly removing the instance from the engine's
+                        // lists — no corpse, no gate. Falls back per-instance and
+                        // LOGS whatever still throws so the device tells us the truth.
+                        var koIdx = window._rb2p_koObjectIndex ? window._rb2p_koObjectIndex() : -1;
+                        if (koIdx >= 0) {
+                            try { _cr(_Sc2, koIdx, false); }
+                            catch (eKo) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                    'killKO objpath threw: ' + String((eKo && eKo.message) || eKo).slice(0, 46));
+                            }
+                        }
+                        // Belt: any kickoff button still live (created after the
+                        // objpath call, or if koIdx was -1) — per-instance, and LOG
+                        // the throw so we can see exactly what fails on device.
+                        var list = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || allInstances;
+                        for (var i = 0; i < list.length; i++) {
+                            var inst = list[i];
                             if (!inst || inst._HL2) continue;
                             if (inst._eE2 && inst._eE2._fE2 === 'obj_btn_kickoff') {
-                                try { _cr(inst); } catch (eK) { inst._HL2 = true; }
-                                // V234: _cr's destroy-event dispatch can THROW in a
-                                // damaged room (seen on-device) — the fallback raw
-                                // kill then left a PAINTED corpse. _g2 = 0 makes the
-                                // engine skip draw+step unconditionally (same
-                                // mechanism hideCont uses), so no corpse can render.
+                                try { _cr(inst); } catch (eK) {
+                                    inst._HL2 = true;
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                        'killKO perinst threw: ' + String((eK && eK.message) || eK).slice(0, 42));
+                                }
                                 try { inst._g2 = 0; } catch (eV) {}
                             }
                         }
@@ -1863,6 +1886,31 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
+
+            // V283: resolve obj_btn_kickoff's numeric OBJECT INDEX at runtime
+            // (the engine strips object-name strings, so we scan _si(N) for the
+            // index whose instance list contains a kickoff button). Cached once
+            // found; never caches -1 (the button may not exist yet). Needed for
+            // _cr's object-index destroy path, which skips the throwing Destroy
+            // event that leaves the corpse.
+            window._rb2p_koObjectIndex = function () {
+                if (window.__rbKoIdx != null && window.__rbKoIdx >= 0) return window.__rbKoIdx;
+                try {
+                    for (var n = 0; n < 260; n++) {
+                        var l = null;
+                        try { l = _si(n); } catch (eS) { continue; }
+                        if (l && l.length) {
+                            for (var a = 0; a < l.length; a++) {
+                                var it = l[a];
+                                if (it && it._eE2 && it._eE2._fE2 === 'obj_btn_kickoff') {
+                                    window.__rbKoIdx = n; return n;
+                                }
+                            }
+                        }
+                    }
+                } catch (e2) {}
+                return -1;
+            };
 
             // V232: poisoned-spawn recovery. Harness-proven: once the FIRST
             // spawn of a match crashes, every later s_set_up_play throws too
@@ -9730,11 +9778,30 @@
                                 // controller, and press Kick Off.
                                 if (stuckMs > 1500) {
                                     try {
+                                        // V283: destroy every LIVE kickoff button via
+                                        // _cr's object-index path (skip the throwing
+                                        // Destroy event) so it removes cleanly instead
+                                        // of leaving a corpse. For an EXISTING corpse
+                                        // (_HL2 — which the object-index path skips),
+                                        // run CleanUp + splice it out of the instance
+                                        // list so instance_exists finally drops and the
+                                        // drive un-gates. Log throws — device truth.
+                                        var koIdxH = window._rb2p_koObjectIndex ? window._rb2p_koObjectIndex() : -1;
+                                        if (koIdxH >= 0) {
+                                            try { _cr(_Sc2, koIdxH, false); }
+                                            catch (eKoH) { diagLog('neutralize objpath threw: ' + String((eKoH && eKoH.message) || eKoH).slice(0, 40)); }
+                                        }
                                         var allK = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-                                        for (var ki = 0; ki < allK.length; ki++) {
+                                        for (var ki = allK.length - 1; ki >= 0; ki--) {
                                             var kb = allK[ki];
                                             if (!kb || !kb._eE2 || kb._eE2._fE2 !== 'obj_btn_kickoff') continue;
-                                            try { if (!kb._HL2) _cr(kb); } catch (eKc) { try { kb._HL2 = true; } catch (e2) {} }
+                                            if (!kb._HL2) {
+                                                try { _cr(kb); } catch (eKc) { try { kb._HL2 = true; } catch (e2) {} diagLog('neutralize perinst threw'); }
+                                            } else {
+                                                try { if (typeof _PL2 !== 'undefined') kb._2f2(_PL2, 0, kb, kb); } catch (eCln) {}
+                                                try { allK.splice(ki, 1); } catch (eSp) {}
+                                                diagLog('corpse CleanUp+spliced');
+                                            }
                                             try { kb._g2 = 0; kb._IL2 = false; kb.x = -3000; kb.y = -3000; } catch (eKp) {}
                                         }
                                         var csK = _si(71);
@@ -9803,7 +9870,12 @@
                         // kickoff button still painting (koPainting false), or
                         // points. The V272 "plOF>=5 alone" wrongly reset caps
                         // during the OF:11-but-stuck-at-staging freeze.
-                        if (inMH && em && ((plOF >= 5 && !koPainting) ||
+                        // V283: "match healthy" LIED — koPainting is false while a
+                        // PARKED corpse (live+ghost>0) still gates the drive, so it
+                        // printed "match healthy" over a stuck GET READY. Honest
+                        // health now requires ZERO kickoff buttons of ANY kind
+                        // (live+ghost===0) — the same signal STUCK@staging keys on.
+                        if (inMH && em && ((plOF >= 5 && (live + ghost) === 0) ||
                             ((em.userScore | 0) + (em.opponentScore | 0)) > 0)) {
                             if (sessionStorage.getItem('rb2p_ar_n') || sessionStorage.getItem('rb2p_vr_n')) {
                                 sessionStorage.removeItem('rb2p_ar_n'); sessionStorage.removeItem('rb2p_ar_ts');
@@ -9876,7 +9948,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V280 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V283 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
