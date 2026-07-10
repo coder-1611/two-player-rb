@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V283<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V284<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V283</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V283</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V284</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V284</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9948,7 +9948,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V283 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V284 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -10198,6 +10198,72 @@
                 try { diagLog('pageshow' + (ev && ev.persisted ? ' (bfcache)' : '')); } catch (e) {}
             });
 
+            // ==== V284 IMMORTAL FRAME SCHEDULER =========================
+            // Device telemetry (room JDVS) finally showed the freeze's true
+            // shape: fps:0 with the watchdog's 80 kicks ALL failing while the
+            // bridge's timers stayed alive — the engine frame chain (which
+            // only re-arms INSIDE its own callback: _Gi5 top schedules
+            // setTimeout -> window._di5(_fi5)) died and could not be revived.
+            // Two failure classes, both cured here at the scheduling layer:
+            //  1) zombie-rAF: iOS never delivers a registered rAF callback.
+            //     Timers were PROVEN alive on the frozen phone, so racing
+            //     every registration against a setTimeout fallback guarantees
+            //     delivery (exactly once).
+            //  2) the callback throws before _Gi5 re-arms (e.g. the unguarded
+            //     loading_screen block in _fi5 — also patched in retrobowl.js)
+            //     -> catch it, LOG it to diag (visible in telemetry at last),
+            //     and re-arm ourselves.
+            // With this, the frame loop can only die if ALL JS dies.
+            (function () {
+                var fbDriven = 0, lastFbLogMs = 0, lastFrErrMs = 0, installed = false;
+                function install() {
+                    if (installed) return true;
+                    if (typeof window._di5 !== 'function') return false;
+                    var native = window._di5;
+                    var hardened = function (cb) {
+                        if (typeof cb !== 'function') return 0;
+                        var fired = false;
+                        var run = function (viaFallback) {
+                            if (fired) return;
+                            fired = true;
+                            if (viaFallback) {
+                                fbDriven++;
+                                if (Date.now() - lastFbLogMs > 5000) {
+                                    lastFbLogMs = Date.now();
+                                    try { diagLog('rAF silent — fallback driving frames (' + fbDriven + ')'); } catch (eL) {}
+                                }
+                            }
+                            try { cb(performance.now()); }
+                            catch (eF) {
+                                if (Date.now() - lastFrErrMs > 3000) {
+                                    lastFrErrMs = Date.now();
+                                    var st = '';
+                                    try { st = String(eF.stack || '').split('\n').slice(0, 2).join('|').slice(0, 140); } catch (eS) {}
+                                    try { diagLog('FRAME THREW: ' + String((eF && eF.message) || eF).slice(0, 90) + (st ? ' @' + st : '')); } catch (eL2) {}
+                                }
+                                // engine re-arms inside the callback; a throw
+                                // means it may not have — re-arm ourselves.
+                                setTimeout(function () { hardened(cb); }, 50);
+                            }
+                        };
+                        var toId = setTimeout(function () { run(true); }, 83);
+                        try {
+                            native.call(window, function () { clearTimeout(toId); run(false); });
+                        } catch (eN) { /* native refused — fallback runs */ }
+                        return toId;
+                    };
+                    window._di5 = hardened;
+                    window.requestAnimFrame = hardened;   // pre-mainloop path
+                    installed = true;
+                    try { diagLog('immortal scheduler installed'); } catch (eL3) {}
+                    return true;
+                }
+                if (!install()) {
+                    var ivI = setInterval(function () { if (install()) clearInterval(ivI); }, 200);
+                    setTimeout(function () { clearInterval(ivI); }, 30000);
+                }
+            })();
+
             // ==== V241 ENGINE-LOOP WATCHDOG =============================
             // Phone A telemetry (room FXHF): fps:60 but a FROZEN canvas over
             // live engine state (ball:1, 22 players spawned, empty field in
@@ -10226,7 +10292,12 @@
             } catch (eGW) {}
             setInterval(function () { engPerSec = engTicks; engTicks = 0; }, 1000);
             window._rb2p_engPerSec = function () { return engPerSec; };
-            var lastKickLogMs = 0;
+            // V284: the ERR log used to share lastKickLogMs with the "kicking"
+            // line, which always logged first and reset the window — so a kick
+            // that THREW was structurally invisible in telemetry (the JDVS
+            // freeze: 80 kicks logged, zero errors, zero draws). Separate
+            // windows, and surface the engine's guarded _fi5 error too.
+            var lastKickLogMs = 0, lastKickErrMs = 0;
             setInterval(function () {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
@@ -10235,14 +10306,17 @@
                     engKicks++;
                     if (Date.now() - lastKickLogMs > 5000) {
                         lastKickLogMs = Date.now();
-                        diagLog('ENGINE LOOP DEAD — kicking _fi5 (kicks=' + engKicks + ')');
+                        var fi5e = window.__rbFi5Err ? ' fi5err:' + window.__rbFi5Err : '';
+                        diagLog('ENGINE LOOP DEAD — kicking _fi5 (kicks=' + engKicks + ')' + fi5e);
                     }
                     kickInProgress = true;
                     try { _fi5(); } finally { kickInProgress = false; }
                 } catch (eK) {
-                    if (Date.now() - lastKickLogMs > 5000) {
-                        lastKickLogMs = Date.now();
-                        diagLog('engine kick ERR ' + String((eK && eK.message) || eK).slice(0, 60));
+                    if (Date.now() - lastKickErrMs > 3000) {
+                        lastKickErrMs = Date.now();
+                        var stK = '';
+                        try { stK = String(eK.stack || '').split('\n').slice(0, 2).join('|').slice(0, 120); } catch (eS2) {}
+                        diagLog('engine kick THREW: ' + String((eK && eK.message) || eK).slice(0, 80) + (stK ? ' @' + stK : ''));
                     }
                 }
             }, 50);

@@ -135674,14 +135674,20 @@ function GameMaker_Init() {
     }
 }
 function _fi5() {
+    /* V284: this loading-screen positioning block ran UNGUARDED on every
+       frame entry while _Yh5 is set; a missing #loading_screen (or an _No2
+       throw) killed the frame BEFORE _Gi5 could reschedule -> the loop died
+       forever and every watchdog kick died at the same line (device diag:
+       fps:0, 80 dead kicks, stale GET READY frame). Guard it: a positioning
+       error must never kill the frame. */
     if (3 != _Xh5 && window.requestAnimFrame(_fi5),
-        _Yh5) {
+        _Yh5) try {
         _No2(canvas, _Oo2);
         var load = document.getElementById("loading_screen");
         load.style.position = "absolute",
             load.style.left = _Oo2.left + "px",
             load.style.top = _Oo2.top + "px"
-    }
+    } catch (__rbFi5E) { window.__rbFi5Err = String((__rbFi5E && __rbFi5E.message) || __rbFi5E).slice(0, 120); }
     for (var _4l3 = !1; !_4l3;)
         switch (_4l3 = !0,
         _Xh5) {
