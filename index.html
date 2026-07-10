@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V284<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V285<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V284</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V284</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V285</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V285</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9948,7 +9948,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V284 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V285 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
@@ -10216,6 +10216,7 @@
             // With this, the frame loop can only die if ALL JS dies.
             (function () {
                 var fbDriven = 0, lastFbLogMs = 0, lastFrErrMs = 0, installed = false;
+                var lastRunMs = 0, rearmPending = false;
                 function install() {
                     if (installed) return true;
                     if (typeof window._di5 !== 'function') return false;
@@ -10226,6 +10227,7 @@
                         var run = function (viaFallback) {
                             if (fired) return;
                             fired = true;
+                            lastRunMs = Date.now();
                             if (viaFallback) {
                                 fbDriven++;
                                 if (Date.now() - lastFbLogMs > 5000) {
@@ -10241,9 +10243,20 @@
                                     try { st = String(eF.stack || '').split('\n').slice(0, 2).join('|').slice(0, 140); } catch (eS) {}
                                     try { diagLog('FRAME THREW: ' + String((eF && eF.message) || eF).slice(0, 90) + (st ? ' @' + st : '')); } catch (eL2) {}
                                 }
-                                // engine re-arms inside the callback; a throw
-                                // means it may not have — re-arm ourselves.
-                                setTimeout(function () { hardened(cb); }, 50);
+                                // A throw MAY mean the engine never re-armed
+                                // (throw before _Gi5's top reschedule). But if it
+                                // DID re-arm (throw mid-step), an unconditional
+                                // extra re-arm stacks chains — frame storm (T2
+                                // measured 243fps). So: one outstanding re-arm
+                                // globally, and only fire it if no frame actually
+                                // ran in the interim (chain truly dead).
+                                if (!rearmPending) {
+                                    rearmPending = true;
+                                    setTimeout(function () {
+                                        rearmPending = false;
+                                        if (Date.now() - lastRunMs > 250) hardened(cb);
+                                    }, 300);
+                                }
                             }
                         };
                         var toId = setTimeout(function () { run(true); }, 83);
