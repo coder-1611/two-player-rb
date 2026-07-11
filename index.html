@@ -902,7 +902,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V292<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V293<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -970,7 +970,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V292</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V293</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8132,6 +8132,33 @@
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     var q = Number(em.engineQuarter) || 1;
+                    // ===== V293: REGULATION waiting-side quarter pin =====
+                    // Room YNUP (device-confirmed): the WAITING engine receives
+                    // the driver's near-zero clock via live-push, its own parked
+                    // engine then expires at 0:00 and ROLLS ITS OWN QUARTER —
+                    // and the stale-quarter guard ratchets the inflated counter
+                    // across both devices (reject lower, accept higher). Result:
+                    // Q1→Q3 double-advance on BOTH boards at the first boundary,
+                    // Q2 never played, the game ends a full quarter early while
+                    // the other side is mid-drive (final at "Q4" after 3 real
+                    // quarters, B live at 0:45), conflicting quarter stamps on
+                    // outcomes, WAIT-overlay flapping. V117 pinned exactly this
+                    // for OT ("the waiting side's clock expired and drove the
+                    // quarter forward") but never for regulation. Same cure: a
+                    // parked engine must NEVER see 0:00 — quarters/clocks reach
+                    // the waiting side ONLY via the wire (live-push + outcomes),
+                    // which overwrite min/sec/quarter authoritatively anyway.
+                    // The WAIT screen's clock text comes from the pushed payload
+                    // (refreshWaitDisplay), not the engine, so the 0:01 floor is
+                    // invisible.
+                    if (window._rb2p_userIsWaitingForOpponent === true &&
+                        !window._rb2p_inOvertime) {
+                        if ((Number(em.engineMinutesLeft) * 60 +
+                             Number(em.engineSecondsLeft)) <= 0) {
+                            em.engineSecondsLeft   = 1;
+                            em.engineTickAllowance = 0;
+                        }
+                    }
                     // Reset the per-period guard when a fresh match starts.
                     if (q <= 1) {
                         otInitedPeriod = -1;
@@ -9902,7 +9929,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V292 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V293 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     // V287: pY2 = the engine's run/END state (-1 = playing; the
                     // game_end soft-halt gates ALL step+draw). cg4 = pause flag.
@@ -11692,6 +11719,14 @@
                                 engineMatch.engineMinutesLeft = opponentLivePayload.minutesLeft;
                             if (typeof opponentLivePayload.secondsLeft === 'number')
                                 engineMatch.engineSecondsLeft = opponentLivePayload.secondsLeft;
+                            // V293: never write 0:00 into a PARKED engine — its
+                            // own step would expire the clock and roll ITS quarter
+                            // (the YNUP double-advance). Floor to 0:01; the real
+                            // quarter transition arrives from the driver's wire.
+                            if ((Number(engineMatch.engineMinutesLeft) * 60 +
+                                 Number(engineMatch.engineSecondsLeft)) <= 0) {
+                                engineMatch.engineSecondsLeft = 1;
+                            }
                             if (incomingQ != null)
                                 engineMatch.engineQuarter = incomingQ;
                             engineMatch.engineTickAllowance = 0;
