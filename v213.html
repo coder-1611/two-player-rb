@@ -390,14 +390,25 @@
         #rb-lobby .rb-ticker {
             position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 30px;
             background: #0a1838; border-top: 3px solid rgba(255,255,255,.25);
-            overflow: hidden; display: flex; align-items: center; pointer-events: none;
+            overflow: hidden; display: flex; align-items: center; justify-content: center; pointer-events: none;
         }
-        #rb-lobby .rb-ticker-track { white-space: nowrap; font-size: 9px; letter-spacing: 3px; color: #ffd23f; animation: rb-marquee 22s linear infinite; }
+        /* V290 (cosmetic backport): static centered ticker — the marquee looked
+           broken whenever the animation paused. Matches mobile. */
+        #rb-lobby .rb-ticker-track { white-space: nowrap; font-size: 9px; letter-spacing: 3px; color: #ffd23f; }
         #rb-lobby .rb-ticker-track span { padding: 0 30px; }
         #rb-lobby .rb-ticker-track .g { color: #36e07a; }
         #rb-lobby .rb-ticker-track .w { color: #fff; }
         #rb-lobby .rb-ticker-track .o { color: #ff9a1f; }
         #rb-lobby .rb-ticker-track .b { color: #cdddff; }
+        /* V290: graceful shrink so the centered line never gets chopped */
+        @media (max-width: 1240px) {
+            #rb-lobby .rb-ticker-track { font-size: 8px; letter-spacing: 2px; }
+            #rb-lobby .rb-ticker-track span { padding: 0 14px; }
+        }
+        @media (max-width: 940px) {
+            #rb-lobby .rb-ticker-track > span:first-child { display: none; }
+            #rb-lobby .rb-ticker-track { letter-spacing: 1px; }
+        }
 
         /* ---- CRT overlays ---- */
         #rb-lobby .rb-crt-scan {
@@ -509,7 +520,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V288<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V290<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -577,7 +588,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V288</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V288</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V290</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
