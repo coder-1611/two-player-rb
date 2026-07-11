@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V287<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V288<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V287</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V287</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V288</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V288</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9421,9 +9421,6 @@
             setInterval(function () {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) {
-                        // V266: the asleep-banner must not outlive the match.
-                        var bnEnd = document.getElementById('rb-oppstall');
-                        if (bnEnd) bnEnd.parentNode.removeChild(bnEnd);
                         return;
                     }
                     telemetryTick++;
@@ -9497,42 +9494,11 @@
                                 vis: document.hidden ? 'H' : 'V'
                             })
                         }).catch(function () {});
-                        var oppRoleHb = role === 'a' ? 'b' : 'a';
-                        fetch(hbBase + '/hb/' + oppRoleHb + '.json')
-                            .then(function (r) { return r.json(); })
-                            .then(function (oppHb) {
-                                var bn = document.getElementById('rb-oppstall');
-                                var waitingHb = window._rb2p_userIsWaitingForOpponent === true;
-                                var oTs = 0, oDead = false;
-                                if (typeof oppHb === 'number') oTs = oppHb;
-                                else if (oppHb) {
-                                    oTs = Number(oppHb.ts) || 0;
-                                    oDead = oppHb.vis === 'H' || Number(oppHb.fps) === 0;
-                                }
-                                var oppTs = oTs;
-                                // two consecutive locked reads = not a boot blip
-                                window.__rbOppLockedN = (oTs && oDead) ? (window.__rbOppLockedN || 0) + 1 : 0;
-                                var stale = oppTs && (Date.now() - Number(oppTs) > 20000);
-                                if (waitingHb && (stale || window.__rbOppLockedN >= 2)) {
-                                    if (!bn) {
-                                        bn = document.createElement('div');
-                                        bn.id = 'rb-oppstall';
-                                        bn.style.cssText = 'position:fixed;top:8px;left:50%;' +
-                                            'transform:translateX(-50%);z-index:99999;background:#7a1f1f;' +
-                                            'color:#fff;font:bold 12px monospace;padding:6px 10px;' +
-                                            'border:2px solid #ff5555;border-radius:6px;text-align:center;' +
-                                            'pointer-events:none;max-width:92vw;';
-                                        document.body.appendChild(bn);
-                                        diagLog('opponent hb stale — asleep banner shown');
-                                    }
-                                    bn.textContent = stale
-                                        ? "OPPONENT'S PHONE LOOKS ASLEEP (" +
-                                          Math.round((Date.now() - Number(oppTs)) / 1000) +
-                                          's) — HAVE THEM TAP / UNLOCK THEIR SCREEN'
-                                        : "OPPONENT'S PHONE IS LOCKED — HAVE THEM UNLOCK IT " +
-                                          'TO CONTINUE THE MATCH';
-                                } else if (bn) bn.parentNode.removeChild(bn);
-                            }).catch(function () {});
+                        // V288: the on-screen "OPPONENT'S PHONE IS LOCKED /
+                        // LOOKS ASLEEP" banner is REMOVED (user request — the
+                        // warning class was noise once the freeze was fixed).
+                        // The hb WRITE above stays: the V266 stale-ready guard
+                        // and telemetry still read it.
                     } catch (eHb) {}
                 } catch (e) {}
             }, 5000);
@@ -9650,11 +9616,17 @@
                     // any object-46 instance) and blocked B's engine from ever
                     // reaching the match. PAT modals (script ids 100367/100369)
                     // are the only in-match popups the 2P design wants.
+                    // V288: SCOPED TO STAGING ONLY (plOF < 5). The blanket kill
+                    // was murdering legit MID-DRIVE popups — the 4th-down
+                    // go-for-it / field-goal / punt menu (user report). The
+                    // welcome-popup problem it was built for occurs at match
+                    // entry, before a formation exists; once 11 OF are on the
+                    // field, every popup is engine gameplay and must live.
                     try {
                         if (typeof window._rb2p_enumeratePopupInstances === 'function') {
                             var pl = window._rb2p_enumeratePopupInstances() || [];
                             pops = pl.length;
-                            if (pops && window._rb2p_patPlayPending !== true) {
+                            if (pops && window._rb2p_patPlayPending !== true && plOF < 5) {
                                 var hasPat = false;
                                 for (var pi = 0; pi < pl.length; pi++)
                                     if (pl[pi] && (pl[pi]._0G === 100367 || pl[pi]._0G === 100369)) { hasPat = true; break; }
@@ -9948,7 +9920,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V287 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V288 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     // V287: pY2 = the engine's run/END state (-1 = playing; the
                     // game_end soft-halt gates ALL step+draw). cg4 = pause flag.
