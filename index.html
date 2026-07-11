@@ -920,7 +920,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V285<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V287<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -988,7 +988,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V285</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V285</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V287</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span><span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V287</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9948,8 +9948,12 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V285 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V287 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
+                    // V287: pY2 = the engine's run/END state (-1 = playing; the
+                    // game_end soft-halt gates ALL step+draw). cg4 = pause flag.
+                    ' pY2:' + (typeof _pY2 !== 'undefined' ? _pY2 : '?') +
+                    ' cg4:' + (typeof _cg4 !== 'undefined' ? (_cg4 ? 1 : 0) : '?') +
                     ' fps:' + diagFps + ' eng:' + engPerSec +
                     ' gl:' + (window._rb2p_glStatus ? window._rb2p_glStatus() : '?') +
                     ' pat:' + (window._rb2p_patPlayPending === true ? 'P'
@@ -10276,6 +10280,70 @@
                     setTimeout(function () { clearInterval(ivI); }, 30000);
                 }
             })();
+
+            // ==== V287 DISARM THE ENGINE'S FATAL ERROR HANDLERS =========
+            // THE deep cause of the GET READY freeze family. The engine
+            // registers window error/unhandledrejection handlers (_hi5/_ji5)
+            // that call _5B() = game_end on ANY uncaught page error. _5B sets
+            // _pY2 to the end state — and _8j5 gates the ENTIRE event dispatch
+            // (step+draw) on _pY2 == -1. Result: one stray uncaught error
+            // anywhere (timer, promise, SDK, device-only path) soft-halts the
+            // engine forever: ticks keep counting (housekeeping runs), the
+            // canvas freezes on its last frame, taps do nothing, no exception
+            // ever surfaces in a frame. That is EXACTLY the JDVS/XOVC device
+            // signature (eng>0 fps:0, stale buffer, no FRAME THREW). Precedent
+            // already in this file: the "_Et/_Ht null" crash — an engine-side
+            // throw that "ends the match" (###game_end###). Disarm both
+            // handlers; log uncaught errors to diag instead (message + line
+            // streams to Firebase telemetry).
+            try {
+                if (typeof _hi5 === 'function') {
+                    window.removeEventListener('error', _hi5);
+                    diagLog('engine fatal error handler disarmed');
+                }
+                if (typeof _ji5 === 'function') window.removeEventListener('unhandledrejection', _ji5);
+                var lastUncaughtMs = 0;
+                window.addEventListener('error', function (ev) {
+                    try {
+                        if (Date.now() - lastUncaughtMs < 3000) return;
+                        lastUncaughtMs = Date.now();
+                        var f = String(ev.filename || '').split('/').pop();
+                        diagLog('UNCAUGHT: ' + String(ev.message || '').slice(0, 90) +
+                                (f ? ' @' + f + ':' + ev.lineno : ''));
+                    } catch (eU) {}
+                });
+                window.addEventListener('unhandledrejection', function (ev) {
+                    try {
+                        if (Date.now() - lastUncaughtMs < 3000) return;
+                        lastUncaughtMs = Date.now();
+                        var r = ev && ev.reason;
+                        diagLog('UNHANDLED-REJ: ' + String((r && r.message) || r).slice(0, 90));
+                    } catch (eU2) {}
+                });
+            } catch (eDH) {}
+
+            // ==== V287 ENGINE SOFT-HALT SENTINEL ========================
+            // Belt for a _pY2 flip that already happened (or arrives via a
+            // path that bypasses the handlers, e.g. a GML-level _5B call like
+            // the _Et/_Ht crash): if the engine sits in a game_end state
+            // (_qY2/_6n4 — NOT transient room ids) while our 2P match is live
+            // and the bridge hasn't declared game over, resurrect it. The
+            // engine must never end a 2P match on its own — the bridge owns
+            // the lifecycle.
+            setInterval(function () {
+                try {
+                    if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    if (window._rb2p_gameOverReported === true) return;
+                    if (typeof _pY2 === 'undefined' || _pY2 === -1) return;
+                    var isEnd = (typeof _qY2 !== 'undefined' && _pY2 === _qY2) ||
+                                (typeof _6n4 !== 'undefined' && _pY2 === _6n4);
+                    if (!isEnd) return;   // transient room-change value — leave it
+                    diagLog('ENGINE SOFT-HALT (pY2=' + _pY2 + ') — resurrecting');
+                    _pY2 = -1;
+                    try { if (typeof _hY2 !== 'undefined') _hY2 = false; } catch (eH) {}
+                    try { if (typeof _iY2 !== 'undefined') _iY2 = false; } catch (eI) {}
+                } catch (eSH) {}
+            }, 700);
 
             // ==== V241 ENGINE-LOOP WATCHDOG =============================
             // Phone A telemetry (room FXHF): fps:60 but a FROZEN canvas over
