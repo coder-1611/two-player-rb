@@ -545,21 +545,12 @@
         html.rb-mobile #rb-hud-toggle:active { opacity: 1; transform: scale(.9); }
         html.rb-mobile.rb-hud-open #rb-hud-toggle { color: #3cff7a; border-color: #3cff7a; opacity: 1; }
 
-        /* V233 one-shot diagnostic — mobile, in-match. Persists across the
-           auto-reload; one screenshot of this box is a full incident report. */
+        /* V233 one-shot diagnostic. V291: the on-screen box is REMOVED from
+           mobile (user request — the freeze it existed to debug is fixed).
+           The element stays in the DOM hidden: diagLog + the Firebase diag
+           telemetry (fps/eng/pY2, log tail, canvas shots) keep streaming, so
+           remote debugging still works without anything on screen. */
         #rb-diag { display: none; }
-        html.rb-mobile.rb-in-match #rb-diag {
-            display: block;
-            position: fixed; z-index: 10003;
-            top: 4px; right: 4px;
-            max-width: 72vw;
-            padding: 4px 6px;
-            font-family: monospace; font-size: 9px; line-height: 1.25;
-            font-weight: bold; white-space: pre;
-            color: #eaffea; background: rgba(4,12,28,.82);
-            border: 1px solid #3cff7a; border-radius: 5px;
-            pointer-events: none;
-        }
 
         /* the three overlay elements: compact + clustered under the toggle */
         html.rb-mobile #rb-leave-game,
@@ -933,7 +924,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V290<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V291<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1001,7 +992,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V290</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V291</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9933,7 +9924,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V290 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V291 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     // V287: pY2 = the engine's run/END state (-1 = playing; the
                     // game_end soft-halt gates ALL step+draw). cg4 = pause flag.
