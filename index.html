@@ -902,7 +902,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V293<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V294<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -970,7 +970,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V293</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V294</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4948,7 +4948,16 @@
                         if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 4) &&
                             Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
-                            !window._rb2p_userOutcomeSendInProgress) {
+                            !window._rb2p_userOutcomeSendInProgress &&
+                            // V294: a PAT landing at end-of-Q1/Q3 must play out
+                            // first — this keep-drive clears the pick-6 latch
+                            // below and would clobber the PAT (same race the Q3
+                            // LAW had at halftime). patPlayPending/Resolved are
+                            // the precise active-PAT signals (set synchronously
+                            // when the modal pops, cleared only by the guardian),
+                            // so a stale cascade flag can't wedge the keep-drive.
+                            window._rb2p_patPlayPending !== true &&
+                            window._rb2p_patPlayResolved !== true) {
 
                             // Quarter length for the reset: use the AGREED setting
                             // (_rb2p_quarterMins, kept converged on BOTH devices by
@@ -8151,8 +8160,19 @@
                     // The WAIT screen's clock text comes from the pushed payload
                     // (refreshWaitDisplay), not the engine, so the 0:01 floor is
                     // invisible.
+                    // V294: NEVER pin during a pick-6 / PAT cascade. The scorer
+                    // (defender) is spuriously flagged `waiting` while it plays
+                    // the PAT (documented fragility), so V293 would pin BOTH
+                    // devices at 0:01 through the cascade — and when the pick-6
+                    // lands at end-of-quarter (ITEY: Q2 0:01) neither side's
+                    // clock can ever reach 0:00, so the halftime transition never
+                    // fires and both engines deadlock exactly there. The pick-6
+                    // flow owns its own clock (PAT guardian); leave it alone.
                     if (window._rb2p_userIsWaitingForOpponent === true &&
-                        !window._rb2p_inOvertime) {
+                        !window._rb2p_inOvertime &&
+                        !window._rb2p_pickSixPatCascadeActive &&
+                        window._rb2p_patPlayPending !== true &&
+                        window._rb2p_patPlayResolved !== true) {
                         if ((Number(em.engineMinutesLeft) * 60 +
                              Number(em.engineSecondsLeft)) <= 0) {
                             em.engineSecondsLeft   = 1;
@@ -8249,6 +8269,16 @@
                     var q = Number(em.engineQuarter);
                     if (q <= 1) { window._rb2p_q3LawApplied = false; return; }   // re-arm on fresh match
                     if (q !== 3 || window._rb2p_q3LawApplied === true) return;
+                    // V294: a pick-6 (or normal TD) PAT landing at the END of Q2
+                    // must PLAY OUT before the Q3 handoff. Otherwise this enforcer
+                    // clears the cascade (below) and hands B a normal Q3 kickoff
+                    // drive INSTEAD of the PAT (ITEY: pick-6 at Q2 0:01 → no PAT,
+                    // then deadlock). Defer while a PAT is actively pending/
+                    // resolving; the PAT guardian owns the play (120s cap), so
+                    // this can't hang — once it resolves the flags clear and B
+                    // correctly receives the 2nd-half kickoff on the next tick.
+                    if (window._rb2p_patPlayPending === true ||
+                        window._rb2p_patPlayResolved === true) return;
                     var role = window._rb2p_myFirebaseRole;
                     if (role !== 'a' && role !== 'b') return;   // need the authoritative A/B identity
                     window._rb2p_q3LawApplied   = true;
@@ -9929,7 +9959,7 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V293 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    'V294 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     // V287: pY2 = the engine's run/END state (-1 = playing; the
                     // game_end soft-halt gates ALL step+draw). cg4 = pause flag.
@@ -11723,8 +11753,13 @@
                             // own step would expire the clock and roll ITS quarter
                             // (the YNUP double-advance). Floor to 0:01; the real
                             // quarter transition arrives from the driver's wire.
+                            // V294: but NOT during a pick-6/PAT cascade (see the
+                            // regulation pin above) — the cascade owns its clock.
                             if ((Number(engineMatch.engineMinutesLeft) * 60 +
-                                 Number(engineMatch.engineSecondsLeft)) <= 0) {
+                                 Number(engineMatch.engineSecondsLeft)) <= 0 &&
+                                !window._rb2p_pickSixPatCascadeActive &&
+                                window._rb2p_patPlayPending !== true &&
+                                window._rb2p_patPlayResolved !== true) {
                                 engineMatch.engineSecondsLeft = 1;
                             }
                             if (incomingQ != null)
