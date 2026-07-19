@@ -902,7 +902,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V294<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V295<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -970,7 +970,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V294</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V295</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3403,7 +3403,7 @@
                                 // advance during the window still goes through.
                                 if (typeof rs.myScore  === 'number' && em.userScore     < rs.myScore)  em.setUserScore(rs.myScore);
                                 if (typeof rs.oppScore === 'number' && em.opponentScore < rs.oppScore) em.setOpponentScore(rs.oppScore);
-                                if (typeof rs.quarter  === 'number' && Number(em.engineQuarter) < rs.quarter) em.engineQuarter = rs.quarter;
+                                if (typeof rs.quarter  === 'number' && Number(em.engineQuarter) < rs.quarter) { em.engineQuarter = rs.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(rs.quarter) || 0); }
                                 // V198: re-assert saved offensive stats every tick of
                                 // the hold window. The restore is guarded (only raises
                                 // a value the engine reset to a lower number), so it's
@@ -4573,6 +4573,73 @@
             // snap it back BEFORE the next frame's draw uses the wrong team
             // name. This catches the stray writes inside _Ib1 without
             // breaking the FSM transitions it owns.
+            // V295: one source of truth for "a full quarter in seconds" — the
+            // agreed setting (converged over Firebase config), falling back to
+            // the observed max, then 2:00. Same computation the QTR-ADVANCE
+            // keep-drive and the Q3-LAW already use.
+            window._rb2p_agreedQuarterSec = function () {
+                var qAg = Number(window._rb2p_quarterMins);
+                return (qAg === 1 || qAg === 2 || qAg === 3) ? qAg * 60
+                     : (Number(window._rb2p_quarterLenSec) >= 1
+                        ? Number(window._rb2p_quarterLenSec) : 120);
+            };
+
+            // ===== V295: the quarter-governor core =====
+            // Shared by the _Ib1 wrapper (same-frame coverage when the roll is
+            // registry-routed) and a 16ms bridge interval (the e2e probe showed
+            // engine rolls can bypass every registry hook — probe-ib1path.js).
+            // Invariants, regulation only (OT is owned by the V117 pins):
+            //   1) a quarter ENTERED at 0:00 immediately gets its full clock —
+            //      case 19 rolls the quarter but never resets the clock in this
+            //      build, and a 0:00 parked quarter RE-EXPIRES within ~240ms
+            //      (repro: e2e/qskip-repro.js), eating Q2 (rooms YNUP, QIAA);
+            //   2) the quarter may never exceed (last stable/wire quarter + 1) —
+            //      a burst roll is dragged back to the one legitimate boundary.
+            // Wire-authoritative writes (live mirror, outcome appliers, resume)
+            // stamp _rb2p_wireQuarter so the governor never fights the wire.
+            window._rb2p_quarterGovernorTick = function (em) {
+                try {
+                    if (window._rb2p_inOvertime) return;
+                    if (!em) em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var gq = Number(em.engineQuarter) || 1;
+                    if (gq >= 2 && gq <= 4) {
+                        var gBase = Math.max(Number(window._rb2p_lastStableQuarter) || 1,
+                                             Number(window._rb2p_wireQuarter) || 0);
+                        if (gq > gBase + 1) {
+                            console.warn('[2P Q-GOV] burst quarter roll Q' + gq +
+                                         ' clamped back to Q' + (gBase + 1) +
+                                         ' (stable=' + (window._rb2p_lastStableQuarter || 1) +
+                                         ' wire=' + (window._rb2p_wireQuarter || 0) + ')');
+                            gq = gBase + 1;
+                            em.engineQuarter = gq;
+                        }
+                        if (gq !== window._rb2p_qGovPrevQ &&
+                            (Number(em.engineMinutesLeft) * 60 +
+                             Number(em.engineSecondsLeft)) <= 0) {
+                            var gSec = window._rb2p_agreedQuarterSec();
+                            em.engineMinutesLeft   = Math.floor(gSec / 60);
+                            em.engineSecondsLeft   = gSec % 60;
+                            em.engineTickAllowance = 0;
+                            window._rb2p_qGovToppedQ = gq;
+                            console.log('[2P Q-GOV] Q' + gq + ' entered at 0:00 — fresh ' +
+                                        Math.floor(gSec / 60) + ':' +
+                                        ('0' + (gSec % 60)).slice(-2) +
+                                        ' clock so it cannot re-expire');
+                        }
+                    }
+                    window._rb2p_qGovPrevQ = gq;
+                } catch (eG) {}
+            };
+            // The 16ms leg: fast enough to interpose inside the observed 240ms
+            // roll→re-expire window even when no hookable script runs at all.
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    window._rb2p_quarterGovernorTick(null);
+                } catch (e) {}
+            }, 16);
+
             var hookedEngineCommentaryScript = false;
             function hookEngineCommentaryScript() {
                 if (hookedEngineCommentaryScript) return;
@@ -4621,6 +4688,28 @@
                             }
                         }
                         origIb1.call(this, _, t);
+                        // ===== V295: REGULATION QUARTER GOVERNOR =====
+                        // Device-room QIAA ("the whole 2nd quarter skipped") reproduced
+                        // headlessly in e2e/qskip-repro.js: when the clock expires
+                        // mid-play, case 19 rolls the quarter but leaves the clock at
+                        // 0:00 (the e=20 clock-reset step never fires in this build).
+                        // The play-resolution then wobbles Vy back through a play stage
+                        // and the 0:00 clock RE-EXPIRES — a second case 19 rolls Q2→Q3
+                        // within ~240ms, far inside the keep-drive's 1500ms dwell, and
+                        // the Q3-LAW then legitimizes the skip with a fresh clock.
+                        // Governor, enforced the same frame case 19 runs (this wrapper
+                        // IS case 19's host):
+                        //   1) a quarter ENTERED at 0:00 immediately gets its full
+                        //      clock — removing the re-expiry fuel before the next
+                        //      engine step can see 0:00;
+                        //   2) the quarter may never exceed (last stable/wire quarter
+                        //      + 1) — a burst roll is dragged back to the single
+                        //      legitimate boundary.
+                        // Wire-driven quarter writes (live mirror, outcome appliers,
+                        // resume) update _rb2p_wireQuarter so the governor never
+                        // fights the authoritative wire. OT (q>=5) is owned by the
+                        // V117 pins above and is untouched here.
+                        window._rb2p_quarterGovernorTick(engineMatch);
                         // The engine PAT modal is suppressed by the
                         // popup-killer watchdog further down (it destroys
                         // any "PopUps"-layer instances spawned during
@@ -4945,7 +5034,12 @@
                         // engine ever does auto-advance (then V96's Vy=4 keep-path
                         // catches it instead — both KEEP, so no conflict). Q3 (halftime)
                         // is handled by the dedicated Q3 LAW, NOT here.
-                        if (halfClockExpired && halfPossMe && (halfQ === 2 || halfQ === 4) &&
+                        // V295: the quarter governor tops the entered quarter's clock
+                        // the same frame case 19 rolls it, so the old 0:00 signal
+                        // never persists — accept the governor's "I topped this
+                        // quarter" marker as the equivalent entry condition.
+                        if ((halfClockExpired || window._rb2p_qGovToppedQ === halfQ) &&
+                            halfPossMe && (halfQ === 2 || halfQ === 4) &&
                             Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
                             !window._rb2p_userOutcomeSendInProgress &&
@@ -5029,6 +5123,7 @@
                                         ') — KEEPING ball, ' + qmin + ':' + ('0' + qrem).slice(-2) +
                                         ' at yard ' + keepYard + ' down ' + keepDown + '&' + keepToGo);
                             doKeepDrive(keepYard, keepDown, keepToGo);
+                            window._rb2p_qGovToppedQ = null;   // V295: consumed
                             stuckEngineFsmStage = null;
                             engineFsmStageStuckSinceMs = Date.now();
                         }
@@ -5442,7 +5537,7 @@
                     if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
                     if (typeof outcome.scoreOpp  === 'number') engineMatch.setUserScore(outcome.scoreOpp);
                     if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
-                    if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
+                    if (typeof outcome.quarter      === 'number') { engineMatch.engineQuarter     = outcome.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(outcome.quarter) || 0); }
                     if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
                     if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
                     engineMatch.engineTickAllowance = 0;
@@ -7123,7 +7218,7 @@
                             window._rb2p_otWalkoffDefensiveTd(true);
                             return true;
                         }
-                        if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
+                        if (typeof outcome.quarter      === 'number') { engineMatch.engineQuarter     = outcome.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(outcome.quarter) || 0); }
                         if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
                         if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
                         engineMatch.engineTickAllowance = 0;
@@ -7330,7 +7425,7 @@
                     // value) and zero tickAllowance (no pending ticks) — the
                     // engine resumes from this exact clock state when B
                     // plays.
-                    if (typeof outcome.quarter      === 'number') engineMatch.engineQuarter     = outcome.quarter;
+                    if (typeof outcome.quarter      === 'number') { engineMatch.engineQuarter     = outcome.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(outcome.quarter) || 0); }
                     if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
                     if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
                     engineMatch.engineTickAllowance = 0;
@@ -8182,6 +8277,11 @@
                     // Reset the per-period guard when a fresh match starts.
                     if (q <= 1) {
                         otInitedPeriod = -1;
+                        // V295: re-arm the quarter governor for a fresh match.
+                        window._rb2p_wireQuarter  = 0;
+                        window._rb2p_qGovPrevQ    = 1;
+                        window._rb2p_qGovToppedQ  = null;
+                        window._rb2p_lastStableQuarter = 1;
                         // V109: clear all OT state so a rematch re-arms the
                         // equal-possession engine from scratch.
                         window._rb2p_inOvertime = false;
@@ -8279,10 +8379,20 @@
                     // correctly receives the 2nd-half kickoff on the next tick.
                     if (window._rb2p_patPlayPending === true ||
                         window._rb2p_patPlayResolved === true) return;
+                    // V295: refuse a Q3 the game never earned. A burst roll
+                    // (Q1→Q3 inside ~240ms, rooms YNUP/QIAA) can land here in
+                    // the ms before the quarter governor drags it back — and
+                    // this enforcer would legitimize the skip with a fresh
+                    // clock + possession swap. A legit Q3 requires either a
+                    // Q2 that actually ran on this device (stable >= 2) or
+                    // the wire saying Q3.
+                    if (Number(window._rb2p_lastStableQuarter || 1) < 2 &&
+                        Number(window._rb2p_wireQuarter || 0) < 3) return;
                     var role = window._rb2p_myFirebaseRole;
                     if (role !== 'a' && role !== 'b') return;   // need the authoritative A/B identity
                     window._rb2p_q3LawApplied   = true;
                     window._rb2p_q3KickoffPending = false;   // release the watchdog park
+                    window._rb2p_qGovToppedQ    = null;      // V295: Q3-LAW owns this clock reset
                     // Clear stale pick-6 cascade so this can't be misread as a pick-6.
                     window._rb2p_pickSixPatCascadeActive    = false;
                     window._rb2p_pickSixThisDeviceIsThrower = false;
@@ -11762,8 +11872,13 @@
                                 window._rb2p_patPlayResolved !== true) {
                                 engineMatch.engineSecondsLeft = 1;
                             }
-                            if (incomingQ != null)
+                            if (incomingQ != null) {
                                 engineMatch.engineQuarter = incomingQ;
+                                // V295: record the wire-authoritative quarter so the
+                                // quarter governor never clamps a legit wire jump.
+                                window._rb2p_wireQuarter = Math.max(
+                                    Number(window._rb2p_wireQuarter) || 0, Number(incomingQ) || 0);
+                            }
                             engineMatch.engineTickAllowance = 0;
                         }
                     }
