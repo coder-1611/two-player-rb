@@ -902,7 +902,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V295<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V296<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -970,7 +970,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V295</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V296</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1156,8 +1156,16 @@
         (function () {
             var v = '';
             try { v = new URL(location.href).searchParams.get('v') || ''; } catch (e) {}
+            // V296: detect a FAILED engine load. There was no onerror handler, so
+            // if retrobowl.js died mid-transfer (spotty mobile data, filtered
+            // network) nothing noticed: the lobby is plain HTML/CSS and kept
+            // working, both players could pick teams and press READY, and the
+            // launcher swallowed the missing-engine ReferenceError in its
+            // try/catch — so the lobby hid and the screen went black forever with
+            // no error and no way back, stranding the opponent too.
             document.write('<script type="text/javascript" src="retrobowl.js' +
-                           (v ? '?v=' + encodeURIComponent(v) : '') + '"><\/script>');
+                           (v ? '?v=' + encodeURIComponent(v) : '') +
+                           '" onerror="window.__rbEngineLoadFailed = true;"><\/script>');
         })();
     </script>
 
@@ -4941,7 +4949,28 @@
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
-                    if (window._rb2p_userIsWaitingForOpponent === true) return;  // already handed off
+                    if (window._rb2p_userIsWaitingForOpponent === true) {
+                        // V296: re-arm the forced-end score baseline while we are OFF
+                        // offense. It used to be updated only at first sample, on a
+                        // score regression, or after a previous watchdog-forced end —
+                        // never when a drive ended through the engine's own _1c1
+                        // (every normal punt/FG/TD/INT). Points from earlier drives
+                        // therefore stayed in the baseline and the next forced end
+                        // computed a CUMULATIVE delta, so a scoreless
+                        // turnover-on-downs shipped as 'FG' (or 'TD' after an earlier
+                        // touchdown) and the receiver got a random-kickoff spot plus a
+                        // phantom "Field goal good" message. This must live in the
+                        // early return: the watchdog bails here while waiting, so a
+                        // re-baseline placed below would never execute.
+                        try {
+                            var emW = RB.engineState();
+                            if (emW && emW.engineScoreboard != null) {
+                                lastUserScoreObserved = Number(emW.userScore) || 0;
+                                window._rb2p_scoreBaseline = lastUserScoreObserved;
+                            }
+                        } catch (eBW) {}
+                        return;  // already handed off
+                    }
                     // V203: at OT ENTRY the Q4→Q5 rollover parks the FSM on Vy=13→Vy=4
                     // with the user STILL "possessing" and not waiting. The force-end
                     // path below would mistake that for a stuck 4th-down drive, ship a
@@ -4965,6 +4994,25 @@
                     // reset (e.g. new drive setup) — re-baseline lastUserScoreObserved.
                     var myScore = engineMatch.userScore;
                     if (lastUserScoreObserved < 0 || myScore < lastUserScoreObserved) lastUserScoreObserved = myScore;
+                    // V296: the delta below is meant to answer "did THIS stalled
+                    // drive score?", so the baseline must be my score when the
+                    // CURRENT possession began. It was only ever re-baselined at
+                    // first sample, on a score regression, or after a previous
+                    // watchdog-forced end — never when a drive ended through the
+                    // engine's own _1c1 (every normal punt/FG/TD/INT). So points
+                    // from earlier drives stayed in the baseline and the next
+                    // forced end computed a CUMULATIVE delta: a scoreless
+                    // turnover-on-downs shipped as 'FG' (or 'TD' after an earlier
+                    // touchdown), and the receiver then spotted the ball at a
+                    // random own 25-40 instead of the real spot and saw a phantom
+                    // "Field goal good" message. While I am not on offense there is
+                    // no drive in progress, so re-baseline continuously — by the
+                    // time a possession starts the baseline is exactly my score.
+                    if (window._rb2p_userIsWaitingForOpponent === true ||
+                        engineMatch.enginePossessingTeamIdx !== engineMatch.engineUserTeamIdx) {
+                        lastUserScoreObserved = myScore;
+                    }
+                    window._rb2p_scoreBaseline = lastUserScoreObserved;   // V296: observable for tests
 
                     if (engineMatch.engineDriveFsmStage !== stuckEngineFsmStage) {
                         stuckEngineFsmStage = engineMatch.engineDriveFsmStage;
@@ -7445,6 +7493,10 @@
                         window._rb2p_otOppPoss = (window._rb2p_otOppPoss || 0) + 1;
                         console.log('[2P OT] opponent possession ended — my=' +
                                     window._rb2p_otMyPoss + ' opp=' + window._rb2p_otOppPoss);
+                        // V296: persist so a reload keeps the round's accounting.
+                        if (typeof window._rb2p_otPersistPoss === 'function') {
+                            window._rb2p_otPersistPoss(Number(engineMatch.engineQuarter) || 5);
+                        }
                         if (typeof window._rb2p_otCheckRoundEnd === 'function' &&
                             window._rb2p_otCheckRoundEnd()) {
                             return true;   // round decided — game over, don't take the ball
@@ -7538,8 +7590,66 @@
                         // Clamp to engine's valid range.
                         if (yard < -50) yard = -50;
                         if (yard >  50) yard =  50;
+                        // V296: HONOR the spawn's failure return. This used to be
+                        // fire-and-forget, but forceUserOffenseDrive returns false
+                        // on a real failure (s_set_up_play throws — the V232
+                        // "poisoned room" — or the spawn yields no ball) and then
+                        // ROLLS BACK to the parked WAIT-era field state. With the
+                        // failure ignored, waiting was already cleared, so ~3 s
+                        // later the drive-end watchdog found a dead FSM holding the
+                        // ball with no score change, force-ended it, and shipped a
+                        // FABRICATED 'INT' back — the receiving player lost their
+                        // entire drive without ever seeing a ball. Retry until a
+                        // drive really exists (same shape as the V257 PAT_RESULT
+                        // retry), and do not ACK the turnover until it does, so the
+                        // reload-safety record can still recover possession.
+                        var spawnOk = true;
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
-                            window._rb2p_forceUserOffenseDrive(yard);
+                            spawnOk = (window._rb2p_forceUserOffenseDrive(yard) !== false);
+                            if (!spawnOk) {
+                                console.warn('[2P apply] forceUserOffenseDrive FAILED for ' +
+                                             outcome.type + ' at yard ' + yard + ' — retrying');
+                                (function (yardR, typeR) {
+                                    var rTries = 0;
+                                    var rIv = setInterval(function () {
+                                        try {
+                                            rTries++;
+                                            if (rTries > 30) {   // ~30s, then give up loudly
+                                                clearInterval(rIv);
+                                                console.warn('[2P apply] drive spawn never recovered after ' +
+                                                             rTries + ' tries — turnover left UN-ACKed for reload safety');
+                                                return;
+                                            }
+                                            if (window._rb2p_userIsWaitingForOpponent === true) { clearInterval(rIv); return; }
+                                            var emR = RB.engineState();
+                                            if (!emR || emR.engineUserTeamIdx == null) return;
+                                            var ballR = 0;
+                                            var allR = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                            for (var iR = 0; iR < allR.length; iR++) {
+                                                var xR = allR[iR];
+                                                if (xR && !xR._HL2 && xR._eE2 && xR._eE2._fE2 === 'obj_ball') { ballR++; break; }
+                                            }
+                                            if (ballR > 0) {
+                                                clearInterval(rIv);
+                                                console.log('[2P apply] drive recovered after ' + rTries + ' retries');
+                                                if (typeR === 'INT' &&
+                                                    typeof window._rb2p_ackTurnoverApplied === 'function') {
+                                                    window._rb2p_ackTurnoverApplied();
+                                                }
+                                                return;
+                                            }
+                                            try {
+                                                var rawR = emR.rawEngineMatch;
+                                                try { rawR._831 = ''; rawR.__b1 = ''; } catch (eCR) {}
+                                                emR.engineMainCommentaryText = '';
+                                                emR.engineSubCommentaryText  = '';
+                                                try { if (Number(rawR._Nb1) < 1) rawR._Nb1 = 1; } catch (eNR) {}
+                                            } catch (ePR) {}
+                                            window._rb2p_forceUserOffenseDrive(yardR);
+                                        } catch (eR) {}
+                                    }, 1000);
+                                })(yard, outcome.type);
+                            }
                         } else {
                             engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
                             engineMatch.engineYardLineSigned   = yard;
@@ -7550,7 +7660,10 @@
                         // V248: the INT is applied — ACK the refresh-safety
                         // record so a later reload doesn't re-take possession
                         // at the stale pick spot.
-                        if (outcome.type === 'INT' &&
+                        // V296: only once the drive actually spawned (the retry
+                        // above ACKs on success); ACKing a failed spawn threw away
+                        // the one record that could have restored possession.
+                        if (spawnOk && outcome.type === 'INT' &&
                             typeof window._rb2p_ackTurnoverApplied === 'function') {
                             window._rb2p_ackTurnoverApplied();
                         }
@@ -8291,6 +8404,8 @@
                         window._rb2p_otKickoffPending = false;   // V203: clear OT-entry watchdog park
                         window._rb2p_q3KickoffPending = false;   // V204: clear Q3 watchdog park
                         window._rb2p_q3LawApplied     = false;   // V204: re-arm the Q3 law
+                        window._rb2p_otKickoffAppliedPeriod = null;   // V296
+                        try { sessionStorage.removeItem('rb2p_otPoss'); } catch (eRP) {}   // V296
                         return;
                     }
                     // V109: OT possession accounting — runs every tick during OT,
@@ -8308,6 +8423,9 @@
                             window._rb2p_otCheckRoundEnd();
                         }
                         window._rb2p_otWasWaiting = nowWaiting;
+                        // V296: persist the equal-possession counters so a mid-OT
+                        // reload resumes the round instead of restarting it at 0/0.
+                        window._rb2p_otPersistPoss(q);
                         // V117: PIN the engine in a single, never-ending OT period.
                         // The engine's quarter counter (_Wy) must NOT climb past 5,
                         // and the clock must NOT expire — otherwise the engine rolls
@@ -8327,23 +8445,51 @@
                         }
                     }
                     if (q < 5) return;                       // regulation
-                    if (em.userScore !== em.opponentScore) return;  // tied check (only the very first OT kickoff is gated on a tie)
+                    // ===== V296: quarter >= 5 IS overtime, whatever the score =====
+                    // _rb2p_inOvertime lives ONLY in page memory, and this block used
+                    // to sit BELOW the tied-check — so it was re-armed after a reload
+                    // only while the OT score was still level. But the normal state
+                    // mid-OT is NOT level (one team has scored and owes the other an
+                    // answering possession), so a mid-OT reload left inOvertime=false:
+                    // the game-over detector's OT hands-off guard never fired, q>=5
+                    // raised pastRegulation, and ~1.2s later the device declared FINAL
+                    // and published it — ending the match with the answering
+                    // possession unplayed and dragging the other device down with it
+                    // (pre-V109 sudden death, resurrected through the reload path).
+                    // Being in period 5+ with the game still live is a complete
+                    // definition of overtime, so arm from that alone.
+                    if (!window._rb2p_inOvertime) {
+                        window._rb2p_inOvertime  = true;
+                        window._rb2p_otWasWaiting = (window._rb2p_userIsWaitingForOpponent === true);
+                        // Restore the equal-possession counters if THIS device is
+                        // resuming the same OT period (sessionStorage survives the
+                        // reload); otherwise start the period at 0/0.
+                        var restored = null;
+                        try {
+                            var rawP = sessionStorage.getItem('rb2p_otPoss');
+                            if (rawP) {
+                                var pp = JSON.parse(rawP);
+                                if (pp && Number(pp.q) === q) restored = pp;
+                            }
+                        } catch (eP) {}
+                        window._rb2p_otMyPoss  = restored ? (Number(restored.my)  || 0) : 0;
+                        window._rb2p_otOppPoss = restored ? (Number(restored.opp) || 0) : 0;
+                        console.log('[2P OT] armed for period ' + q +
+                                    (restored ? ' — restored possessions my=' + window._rb2p_otMyPoss +
+                                                ' opp=' + window._rb2p_otOppPoss + ' after reload'
+                                              : ' — fresh (0/0)'));
+                    }
+                    if (em.userScore !== em.opponentScore) return;  // coin flip only from a tie
                     if (otInitedPeriod === q) return;        // already requested this OT period
                     otInitedPeriod = q;
                     // V203: park the drive-end watchdog until the OT coin flip routes
                     // possession (cleared in _rb2p_applyOtKickoff), so it can't
                     // force-end the parked OT-entry state and race the kickoff.
-                    window._rb2p_otKickoffPending   = true;
-                    window._rb2p_otKickoffPendingMs = Date.now();
-                    // V109: we're tied entering OT → mark OT active. From here
-                    // the equal-possession engine owns game-over: each team gets
-                    // the same number of possessions, the leader after equal
-                    // possessions wins, and a defensive TD is an instant walk-off.
-                    if (!window._rb2p_inOvertime) {
-                        window._rb2p_inOvertime  = true;
-                        window._rb2p_otMyPoss    = 0;   // OT possessions THIS device has finished
-                        window._rb2p_otOppPoss   = 0;   // OT possessions the opponent has finished
-                        window._rb2p_otWasWaiting = (window._rb2p_userIsWaitingForOpponent === true);
+                    // V296: but NOT if the flip for this period was already applied —
+                    // re-parking then strands the watchdog for its full 20s cap.
+                    if (window._rb2p_otKickoffAppliedPeriod !== q) {
+                        window._rb2p_otKickoffPending   = true;
+                        window._rb2p_otKickoffPendingMs = Date.now();
                     }
                     console.log('[2P OT] tied entering OT period ' + q + ' — requesting shared kickoff');
                     if (typeof window._rb2p_requestOtKickoff === 'function') {
@@ -8351,6 +8497,22 @@
                     }
                 } catch (e) {}
             }, 300);
+
+            // V296: write-through cache of the OT possession counters. sessionStorage
+            // survives a reload on this device, so an accidental refresh (or a Safari
+            // purge) mid-overtime resumes the round with the counts intact instead of
+            // silently restarting the equal-possession accounting.
+            window._rb2p_otPersistPoss = function (period) {
+                try {
+                    var my  = Number(window._rb2p_otMyPoss)  || 0;
+                    var opp = Number(window._rb2p_otOppPoss) || 0;
+                    var sig = period + ':' + my + ':' + opp;
+                    if (sig === window._rb2p_otPossSig) return;   // unchanged
+                    window._rb2p_otPossSig = sig;
+                    sessionStorage.setItem('rb2p_otPoss',
+                        JSON.stringify({ q: period, my: my, opp: opp }));
+                } catch (e) {}
+            };
 
             // ===== V204: Q3 LAW — the 3rd quarter ALWAYS starts with B =====
             // B is the 2nd-half receiver (A receives the opening kickoff, so the
@@ -8502,6 +8664,14 @@
                     // V203: possession is now routed by the coordinator — release the
                     // drive-end watchdog so normal in-OT drive handoffs work again.
                     window._rb2p_otKickoffPending = false;
+                    // V296: remember that THIS period's flip has been applied. The
+                    // flip can land BEFORE the wire delivers quarter=5 (our own
+                    // engine is pinned at Q4 0:01 by V293), and the OT-init block
+                    // then ran afterwards and re-set otKickoffPending — stranding
+                    // the drive-end watchdog for its full 20 s cap right at the
+                    // start of the receiver's possession, so an early OT score
+                    // froze on the dead stage instead of handing off.
+                    window._rb2p_otKickoffAppliedPeriod = Number(em.engineQuarter) || 5;
                 } catch (e) { console.log('[2P OT apply err]', e); }
             };
 
@@ -8790,6 +8960,15 @@
         // banner shows on both screens.
         window._rb2p_requestOtKickoff = function (period) {
             if (!myRoom || myRole !== 'a') return;   // only the host seeds
+            // V296: never re-seed a period this device already routed. The three
+            // old guards were all session-local (otInitedPeriod / otAppliedPeriods
+            // are page memory) or purgeable (the flip itself), so a mid-OT reload
+            // could roll a BRAND-NEW coin toss and re-route possession underneath
+            // a live drive — both sides in WAIT forever, or two live offenses.
+            if (window._rb2p_otKickoffAppliedPeriod === period) {
+                console.log('[2P OT] p' + period + ' kickoff already applied — not re-seeding');
+                return;
+            }
             var ref = FB.ref(db, 'rooms/' + myRoom + '/ot/p' + period);
             FB.get(ref).then(function (snap) {
                 if (!snap.exists()) {
@@ -8806,9 +8985,15 @@
                 'background:#ffd23c;color:#0a1018;font-family:monospace;font-weight:bold;' +
                 'letter-spacing:4px;font-size:20px;padding:14px 28px;border:4px solid #0a1018;' +
                 'text-align:center;image-rendering:pixelated;';
+            // V296: the label said "SUDDEN DEATH", which has been wrong since V109
+            // replaced it with equal-possession rounds — both teams are guaranteed
+            // the ball, and only a defensive TD is a walk-off. Announcing the wrong
+            // win condition at the one moment players need it right made the
+            // non-receiver think the game was over the instant the opponent scored.
             b.innerHTML = 'OVERTIME<div style="font-size:11px;letter-spacing:2px;margin-top:6px;">' +
-                          (amReceiver ? 'YOU GET THE BALL' : 'OPPONENT GETS THE BALL') +
-                          ' — SUDDEN DEATH</div>';
+                          (amReceiver ? 'YOU GET THE BALL FIRST' : 'OPPONENT GETS THE BALL FIRST') +
+                          '</div><div style="font-size:9px;letter-spacing:1px;margin-top:5px;">' +
+                          'BOTH TEAMS GET A POSSESSION</div>';
             document.body.appendChild(b);
             setTimeout(function () { try { b.remove(); } catch (e) {} }, 3500);
         }
@@ -10135,6 +10320,20 @@
             function rbGL() {
                 try {
                     if (!window.__rbGL) {
+                        // V296: NEVER create the context ourselves before the engine
+                        // boots. This runs from the unconditional 700ms diag
+                        // heartbeat, and GameMaker_Init only runs on window 'load'
+                        // — so on any page where a subresource delays 'load' past
+                        // the first beat (the render-blocking Google Fonts link is
+                        // enough on a slow/filtered network) we won the race and
+                        // created the canvas's WebGL context with BROWSER-DEFAULT
+                        // attributes. Per spec the engine's later getContext then
+                        // returns our context and silently ignores its requested
+                        // attributes (antialias:false, premultipliedAlpha:false …),
+                        // so pixel art rendered smoothed with double-multiplied
+                        // alpha for the whole session and canvas readbacks could
+                        // come back blank. Only ever ADOPT the engine's context.
+                        if (typeof GameMaker_Init !== 'function' || !window.__rbEngineBooted) return null;
                         var cEl = document.getElementById('canvas');
                         window.__rbGL = cEl && (cEl.getContext('webgl') || cEl.getContext('experimental-webgl'));
                     }
@@ -10591,6 +10790,41 @@
         }
         function hideLobby() { lobby.style.display = 'none'; showLeaveGameBtn(true); }
 
+        // V296: visible, actionable failure when retrobowl.js never loaded. Without
+        // this the lobby stayed fully functional and the match launch just produced
+        // a black screen forever (the launcher swallows the missing-engine error),
+        // with the opponent left waiting for a match that can never start.
+        window._rb2p_showEngineLoadError = function () {
+            try {
+                if (document.getElementById('rb-engineerr')) return;
+                var e = document.createElement('div');
+                e.id = 'rb-engineerr';
+                e.style.cssText =
+                    'position:fixed;left:0;right:0;top:0;z-index:3000;background:#b3261e;color:#fff;' +
+                    'font-family:monospace;font-size:13px;line-height:1.5;padding:12px 16px;' +
+                    'text-align:center;letter-spacing:1px;';
+                e.innerHTML = 'GAME FILES FAILED TO LOAD — check your connection and ' +
+                              '<a href="#" style="color:#ffd23c;text-decoration:underline;">RELOAD</a>' +
+                              '<div style="font-size:11px;opacity:.85;margin-top:4px;">' +
+                              'You cannot start a match until the game loads.</div>';
+                e.querySelector('a').addEventListener('click', function (ev) {
+                    ev.preventDefault(); location.reload();
+                });
+                document.body.appendChild(e);
+            } catch (er) {}
+        };
+
+        // V296: single gate both launch paths consult before hiding the lobby.
+        function engineUnavailable() {
+            if (window.__rbEngineLoadFailed ||
+                typeof window.s_play_two_player_match !== 'function') {
+                window.__rbEngineLoadFailed = true;
+                try { window._rb2p_showEngineLoadError(); } catch (e) {}
+                return true;
+            }
+            return false;
+        }
+
         // ---- Lobby state ----
         var myRoom = null;
         var myRole = null;
@@ -10601,6 +10835,7 @@
         var unsubscribeFinal = null;
         var unsubscribeDefStats = null;
         var unsubscribeOt = null;
+        var unsubscribeVer = null;   // V296: was never tracked -> leaked across rooms
         var unsubscribeTeams = null;
         var unsubscribeDiffMode = null;
         var unsubscribeSharedDiff = null;
@@ -10669,6 +10904,36 @@
             // opponent's view — which avoids both-wait deadlocks and both-ball races.
             var myTs  = Number(myLive.ts)  || 0;
             var oppTs = Number(oppLive.ts) || 0;
+            // V296: the Math.max below is only sound when BOTH records belong to
+            // the match being resumed. startMatch now purges live/snap/box, but a
+            // record can still survive if the purge lost a race or the other
+            // device wedged at match entry and never overwrote it — and a stale
+            // record here teleports the resumed device to the PRIOR game's score
+            // and quarter, which the live mirror then propagates to the opponent
+            // (its monotonic guards reject only REGRESSIONS, never a bogus jump).
+            // Discriminator that needs no cross-device coordination: within ONE
+            // match score and quarter are monotonic, so the FRESHER record can
+            // never be BEHIND the older one. A record that is simultaneously
+            // older AND ahead is self-contradictory => it belongs to a different
+            // match. (Cannot key this off _rb2p_matchStartMs: tryRestore stamps
+            // that immediately before calling resumeMatch, so every record would
+            // look stale and resume would restart from 0-0.)
+            var contradictory = function (older, newer) {
+                return (Number(older.quarter) || 1) > (Number(newer.quarter) || 1) ||
+                       (Number(older.myScore) || 0) > (Number(newer.oppScore) || 0) ||
+                       (Number(older.oppScore) || 0) > (Number(newer.myScore) || 0);
+            };
+            if (myTs && oppTs) {
+                if (oppTs < myTs && contradictory(oppLive, myLive)) {
+                    console.warn('[2P RESUME] opponent live record is older (' + oppTs + ' < ' + myTs +
+                                 ') yet ahead on score/quarter — prior-match leftover, dropping it');
+                    oppLive = {}; oppTs = 0;
+                } else if (myTs < oppTs && contradictory(myLive, oppLive)) {
+                    console.warn('[2P RESUME] my live record is older (' + myTs + ' < ' + oppTs +
+                                 ') yet ahead on score/quarter — prior-match leftover, dropping it');
+                    myLive = {}; myTs = 0;
+                }
+            }
             var useMyClock = myTs >= oppTs;
             // my score: my own "myScore" and the opponent's "oppScore" (their view of me)
             var myScore  = Math.max(Number(myLive.myScore)  || 0, Number(oppLive.oppScore) || 0);
@@ -10719,6 +10984,11 @@
             // V217: pending pick-6 PAT duty — I owe the PAT, not a drive. The
             // resume poll's non-offense branch re-pops the PAT modal from this.
             if (window._rb2p_resumePatDuty) window._rb2p_resumeState.iHaveBall = false;
+            // V296: never hide the lobby into a dead engine.
+            if (engineUnavailable()) {
+                console.error('[2P RESUME] aborted — engine unavailable');
+                return;
+            }
             hideLobby();
             var rs = window._rb2p_resumeState;
             console.log('[2P RESUME] resuming as ' + role + ' from ' +
@@ -10944,16 +11214,56 @@
                 var finalFresh = !!(finalRep && finalRep.ts && (Date.now() - finalRep.ts < 25000));
 
                 // Make sure our slot exists (re-claim if onDisconnect cleared it).
-                var snap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole));
-                if (!snap.exists()) {
-                    await FB.set(FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole),
-                                 { ts: Date.now(), ready: inProgress ? true : false });
+                // V296: verify OWNERSHIP first. The header above promises we only
+                // restore when the slot still matches our session, but records
+                // carried no identity, so this silently resumed as a role a THIRD
+                // device may have claimed during our onDisconnect window — and the
+                // blind set below could clobber that device's committed
+                // transactional claim. Two clients then ran as the same role,
+                // interleaving live/ and outcomes/ writes at the opponent. Now:
+                // same-sid slot => ours; different-sid => taken, fall back to entry;
+                // absent => re-claim TRANSACTIONALLY and bail if someone beat us.
+                var mySid = mySessionId();
+                var slotRef = FB.ref(db, 'rooms/' + savedRoom + '/players/' + savedRole);
+                var snap = await FB.get(slotRef);
+                if (snap.exists()) {
+                    var cur = snap.val() || {};
+                    if (cur.sid && cur.sid !== mySid) {
+                        console.warn('[2P RESUME] slot ' + savedRole + ' in ' + savedRoom +
+                                     ' now belongs to another device — not resuming');
+                        try { sessionStorage.removeItem('rb_room'); } catch (eSR) {}
+                        showView('entry');
+                        return;
+                    }
+                    // Legacy record with no sid: adopt it (pre-V296 rooms).
+                    if (!cur.sid) {
+                        await FB.update(slotRef, { sid: mySid }).catch(function () {});
+                    }
+                } else {
+                    var reclaim = await FB.runTransaction(slotRef, function (c) {
+                        return c === null
+                            ? { ts: Date.now(), ready: inProgress ? true : false, sid: mySid }
+                            : undefined;   // someone else got here first — abort
+                    }).catch(function () { return { committed: false }; });
+                    if (!reclaim || !reclaim.committed) {
+                        console.warn('[2P RESUME] slot ' + savedRole + ' in ' + savedRoom +
+                                     ' was taken while we were away — not resuming');
+                        try { sessionStorage.removeItem('rb_room'); } catch (eSR2) {}
+                        showView('entry');
+                        return;
+                    }
                 }
 
                 if (inProgress && !finalFresh) {
                     // V131: anchor the stale-final guard for this resumed session
                     // (no startMatch runs on a reload-resume).
-                    window._rb2p_matchStartMs = Date.now();
+                    // V296: prefer THIS match's real start (persisted by startMatch
+                    // and surviving the reload). Re-stamping "now" made every record
+                    // written before the reload look like a prior-match leftover —
+                    // which is how a live OT coin flip got purged as "stale".
+                    var anchoredMs = 0;
+                    try { anchoredMs = Number(sessionStorage.getItem('rb2p_matchStartMs')) || 0; } catch (eAM) {}
+                    window._rb2p_matchStartMs = anchoredMs || Date.now();
                     // Pull the shared quarter length before launch so _Ws is right.
                     try {
                         var cfgSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/config/quarterMins'));
@@ -11058,7 +11368,9 @@
                 var res = await FB.runTransaction(
                     FB.ref(db, 'rooms/' + code + '/players'),
                     function (cur) {
-                        return cur === null ? { a: { ts: Date.now(), ready: false } } : undefined;
+                        return cur === null
+                            ? { a: { ts: Date.now(), ready: false, sid: mySessionId() } }   // V296
+                            : undefined;
                     }
                 );
                 if (res.committed) return code;
@@ -11108,16 +11420,35 @@
             }
         }
 
+        // ===== V296: per-session slot ownership =====
+        // Player records were just {ts, ready} with NO identity, so nothing could
+        // tell "my slot" from "a slot someone else claimed after my onDisconnect
+        // fired". tryRestore therefore trusted any existing slot and, when the slot
+        // was gone, re-took it with a blind set that could clobber a committed
+        // transactional claim — leaving two devices playing the SAME role, both
+        // writing live/{role} and outcomes/{role} at the opponent. This id survives
+        // a reload (sessionStorage) but not a new tab, which is exactly the
+        // lifetime of a legitimate resume.
+        function mySessionId() {
+            var sid = null;
+            try { sid = sessionStorage.getItem('rb2p_sid'); } catch (e) {}
+            if (!sid) {
+                sid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+                try { sessionStorage.setItem('rb2p_sid', sid); } catch (e) {}
+            }
+            return sid;
+        }
+
         async function claimSlot(code) {
             // Try A, then B; return the role we ended up with (or null).
             var resA = await FB.runTransaction(
                 FB.ref(db, 'rooms/' + code + '/players/a'),
-                function (cur) { return cur === null ? { ts: Date.now(), ready: false } : undefined; }
+                function (cur) { return cur === null ? { ts: Date.now(), ready: false, sid: mySessionId() } : undefined; }
             );
             if (resA.committed) return 'a';
             var resB = await FB.runTransaction(
                 FB.ref(db, 'rooms/' + code + '/players/b'),
-                function (cur) { return cur === null ? { ts: Date.now(), ready: false } : undefined; }
+                function (cur) { return cur === null ? { ts: Date.now(), ready: false, sid: mySessionId() } : undefined; }
             );
             if (resB.committed) return 'b';
             return null;
@@ -11148,7 +11479,13 @@
                                .textContent.match(/V(\d+)/);
                 window._rb2p_myVer = verM ? Number(verM[1]) : 0;
                 FB.set(FB.ref(db, 'rooms/' + code + '/ver/' + role), window._rb2p_myVer).catch(function () {});
-                FB.onValue(FB.ref(db, 'rooms/' + code + '/ver'), function (vs) {
+                // V296: STORE the unsubscribe. Every other enterRoom listener is
+                // torn down by leaveRoom, but this one's handle was discarded, so
+                // after LEAVE (which does not reload the page) the OLD room's
+                // listener kept firing with `code` captured in its closure and
+                // could paint the permanent red VERSION MISMATCH banner over a
+                // perfectly matched game in the NEW room.
+                unsubscribeVer = FB.onValue(FB.ref(db, 'rooms/' + code + '/ver'), function (vs) {
                     try {
                         var v = vs.val() || {};
                         var opp = role === 'a' ? v.b : v.a;
@@ -11278,9 +11615,26 @@
                     // in this reused room). Without this guard a stale report trips
                     // endGameFromOpponentDeclaration and pops a FINAL mid-game.
                     // Purge it so it can't keep firing, and don't end on it.
-                    var startMs = window._rb2p_matchStartMs || 0;
-                    if (!rep.ts || rep.ts < startMs) {
+                    // V296: _rb2p_matchStartMs is set ONLY by startMatch and by
+                    // tryRestore's resume branch — so in a LOBBY session (BACK TO
+                    // LOBBY + reload, or joining a room whose last game finished
+                    // <2h ago) it is unset and `|| 0` collapsed the guard to a
+                    // no-op: every leftover report passed, endGameFromOpponentDeclaration
+                    // popped the FINAL overlay on top of the room UI, and
+                    // reportGameOver re-published our own final with a FRESH ts —
+                    // re-arming the trap for the other player. Neither side could
+                    // reach READY again (the overlay covers it) and the record was
+                    // never purged, so the room was dead until the 2h TTL.
+                    // A final report can only be legitimate if THIS page life
+                    // actually entered a match; otherwise it is by definition a
+                    // leftover, so purge it and stay in the lobby.
+                    var startMs = Number(window._rb2p_matchStartMs) || 0;
+                    if (!rep.ts || !startMs || rep.ts < startMs) {
                         oppFinalReport = null;
+                        if (!startMs) {
+                            console.log('[2P FINAL] leftover final/' + oppRole +
+                                        ' ignored — no match started this session (purging)');
+                        }
                         FB.remove(FB.ref(db, 'rooms/' + code + '/final/' + oppRole)).catch(function () {});
                         return;
                     }
@@ -11342,11 +11696,27 @@
                         // reload/resume) and got re-applied on a fresh match —
                         // forcing B onto offense at Q1 with the 9:00 OT clock, the
                         // corrupted state seen in the live dump (quarter=1, min=9).
-                        // Only honor a coin flip written in the last 60 s (the OT
-                        // actually in progress now); purge anything older.
-                        if (typeof entry.ts !== 'number' || (Date.now() - entry.ts) > 60000) {
-                            console.log('[2P OT] ignoring STALE ' + key + ' (age ' +
-                                        (entry.ts ? Math.round((Date.now() - entry.ts) / 1000) + 's' : 'no ts') + ')');
+                        // V296: judge staleness by MATCH, not by wall-clock age.
+                        // The old rule honored only flips younger than 60 s, which
+                        // mistook two legitimate cases for leftovers:
+                        //   • a phone locked/suspended at OT entry (Firebase delivers
+                        //     the flip only on wake) — its own OT possession was then
+                        //     purged and force-ended with no human input;
+                        //   • a device that reloaded mid-OT — losing the flip and
+                        //     letting the host re-seed a brand-new coin toss that
+                        //     hijacked live possession (or deadlocked both sides).
+                        // "Stale" means "written before the match I am in" — exactly
+                        // what the reused-room bug V118 was really about.
+                        var otAnchor = Number(window._rb2p_matchStartMs) || 0;
+                        if (!otAnchor) {
+                            // No match on this device (lobby) — never apply, and do
+                            // NOT purge: the entry may belong to a live match.
+                            return;
+                        }
+                        if (typeof entry.ts !== 'number' || entry.ts < otAnchor) {
+                            console.log('[2P OT] ignoring STALE ' + key +
+                                        (entry.ts ? ' (ts ' + entry.ts + ' < matchStart ' + otAnchor + ')'
+                                                  : ' (no ts)'));
                             FB.remove(FB.ref(db, 'rooms/' + code + '/ot/' + key)).catch(function () {});
                             return;
                         }
@@ -11425,6 +11795,7 @@
             if (unsubscribeFinal) { unsubscribeFinal(); unsubscribeFinal = null; }
             if (unsubscribeDefStats) { unsubscribeDefStats(); unsubscribeDefStats = null; }
             if (unsubscribeOt) { unsubscribeOt(); unsubscribeOt = null; }
+            if (unsubscribeVer) { unsubscribeVer(); unsubscribeVer = null; }   // V296
             if (unsubscribeTeams) { unsubscribeTeams(); unsubscribeTeams = null; }
             if (unsubscribeDiffMode) { unsubscribeDiffMode(); unsubscribeDiffMode = null; }
             if (unsubscribeSharedDiff) { unsubscribeSharedDiff(); unsubscribeSharedDiff = null; }
@@ -11930,6 +12301,11 @@
             // endGameFromOpponentDeclaration and pops a stale FINAL mid-game (the
             // "3-0 game over while the engine plays on to 9-0" bug).
             window._rb2p_matchStartMs = Date.now();
+            // V296: persist the anchor. sessionStorage survives a reload, so a
+            // resume can reuse THIS match's true start instead of re-stamping
+            // "now" — which would make every record written before the reload
+            // (notably the OT coin flip) look like a prior-match leftover.
+            try { sessionStorage.setItem('rb2p_matchStartMs', String(window._rb2p_matchStartMs)); } catch (eMS) {}
             hideFinal();
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
             // V62: clear any prior overtime coin flips so a rematch's OT
@@ -11948,6 +12324,16 @@
             // asleep" banner flash at rematch start) + arm the match-live flag
             // the VIS-RECOVER not-in-match branch requires.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/hb')).catch(function () {});
+            // V296: purge the PRIOR match's live/snap/box records too. resumeMatch
+            // Math.max()es MY snapshot against the OPPONENT's live record on the
+            // V178 assumption both are from the same match — but nothing cleared
+            // them at match start, so a rematch in a reused room could resume at
+            // the previous game's score and quarter (the live mirror's monotonic
+            // guards only reject REGRESSIONS, so the bogus forward jump then
+            // propagated to the other device too).
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/live')).catch(function () {});
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/snap')).catch(function () {});
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/box')).catch(function () {});
             try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
 
             // V60: lock in the agreed quarter length right before launch so
@@ -11969,6 +12355,13 @@
                         ' teamByRole=' + JSON.stringify(teamByRole) +
                         ' → myTeamUid=' + window._rb2p_myTeamUid +
                         ' oppTeamUid=' + window._rb2p_oppTeamUid);
+            // V296: never hide the lobby into a dead engine — show the load error
+            // and stay put instead of dropping the player onto a black screen.
+            if (engineUnavailable()) {
+                console.error('[2P START] aborted — engine unavailable');
+                $status.textContent = 'Game files failed to load — reload the page.';
+                return;
+            }
             hideLobby();
             window.s_play_two_player_match(myRole);
         }
@@ -11996,7 +12389,21 @@
                     }
                 })();
                 window.PokiSDK_OK = ok;
+                // V296: never call into a missing engine. If retrobowl.js failed to
+                // load, GameMaker_Init is undefined and this threw an uncaught
+                // ReferenceError that only reached the diag log — the player just
+                // saw a working lobby that led to a permanent black screen. Surface
+                // it and set the flag the lobby checks before letting anyone launch.
+                if (window.__rbEngineLoadFailed || typeof GameMaker_Init !== 'function') {
+                    window.__rbEngineLoadFailed = true;
+                    try { window._rb2p_showEngineLoadError && window._rb2p_showEngineLoadError(); } catch (eE) {}
+                    console.error('[2P BOOT] retrobowl.js did not load — engine unavailable');
+                    return;
+                }
                 GameMaker_Init();
+                // V296: the engine now owns the canvas's WebGL context — the diag
+                // heartbeat may adopt it from here on (never create it first).
+                window.__rbEngineBooted = true;
             }
             window.addEventListener("load", function (_) {
                 window.PokiSDK_loadState = 0;
