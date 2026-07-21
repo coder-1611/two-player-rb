@@ -23,6 +23,59 @@
          sessionStorage flag prevents an infinite reload loop.
          ============================================================ -->
     <script>
+        // V297: Firebase anonymous-auth token for the raw REST writes
+        // (taps/diag/hb). DB rules are moving to auth != null; the SDK
+        // signs in anonymously on its own, but the fire-and-forget
+        // fetch() writes need an ?auth= token appended. Falls back to
+        // the bare URL if no token is obtainable so nothing breaks
+        // while the Anonymous provider is still disabled.
+        var FB_API_KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
+        var _fbTok = null;
+        function _fbLoadTok() {
+            try { _fbTok = JSON.parse(localStorage.getItem('fbAnonTok:realretrobowl2p')) || null; } catch (e) { _fbTok = null; }
+        }
+        function _fbSaveTok() {
+            try { localStorage.setItem('fbAnonTok:realretrobowl2p', JSON.stringify(_fbTok)); } catch (e) {}
+        }
+        async function fbEnsureTok() {
+            if (!_fbTok) _fbLoadTok();
+            var now = Date.now();
+            if (_fbTok && _fbTok.t && now < _fbTok.e - 300000) return _fbTok.t;
+            try {
+                if (_fbTok && _fbTok.r) {
+                    var r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + FB_API_KEY, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(_fbTok.r)
+                    });
+                    if (r.ok) {
+                        var d = await r.json();
+                        _fbTok = { t: d.id_token, r: d.refresh_token, e: now + (parseInt(d.expires_in, 10) || 3600) * 1000 };
+                        _fbSaveTok();
+                        return _fbTok.t;
+                    }
+                }
+                var r2 = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{"returnSecureToken":true}'
+                });
+                if (r2.ok) {
+                    var d2 = await r2.json();
+                    _fbTok = { t: d2.idToken, r: d2.refreshToken, e: now + (parseInt(d2.expiresIn, 10) || 3600) * 1000 };
+                    _fbSaveTok();
+                    return _fbTok.t;
+                }
+            } catch (e) {}
+            return null;
+        }
+        async function fbAuthUrl(url) {
+            var t = await fbEnsureTok();
+            if (!t) return url;
+            return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'auth=' + t;
+        }
+    </script>
+    <script>
         (function () {
             try {
                 if (sessionStorage.getItem('__rb_cb')) return;
@@ -902,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V296<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V297<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -8794,11 +8847,18 @@
 
         var { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js");
         var FB = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js");
+        var FBA = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js");
 
         var app = initializeApp({
+            apiKey: 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0',
             databaseURL: 'https://realretrobowl2p-default-rtdb.firebaseio.com/',
             projectId: 'realretrobowl2p'
         });
+        // V297: rules are moving to auth != null. Sign in anonymously
+        // before any DB traffic; if the Anonymous provider isn't enabled
+        // yet this throws and we proceed unauthenticated (still allowed
+        // until the rules flip).
+        try { await FBA.signInAnonymously(FBA.getAuth(app)); } catch (eAuth) {}
         var db = FB.getDatabase(app);
 
         // ===== V61: end-of-game FINAL stats screen =====
@@ -9560,8 +9620,9 @@
                         var entry = fieldState(); entry.tag = tag; entry.t = Date.now();
                         if (tapInfo) entry.tap = tapInfo; entry.img = captureShot(300);
                         __rbTapShots.push(entry); while (__rbTapShots.length > 8) __rbTapShots.shift();
-                        fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/taps/' + key + '.json',
-                            { method: 'PUT', body: JSON.stringify(__rbTapShots) }).catch(function () {});
+                        fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/taps/' + key + '.json')
+                            .then(function (u) { return fetch(u, { method: 'PUT', body: JSON.stringify(__rbTapShots) }); })
+                            .catch(function () {});
                     };
                     push('tap');                                  // what the screen showed AT the tap
                     setTimeout(function () { push('+700ms'); }, 700);   // ...and after the tap's effect
@@ -9804,10 +9865,10 @@
                         } catch (eS) { body.shotErr = String((eS && eS.message) || eS).slice(0, 60); }
                     }
                     if (window.__rbLastShot) body.shot = window.__rbLastShot;
-                    fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/diag/' + key + '.json', {
-                        method: 'PUT',
-                        body: JSON.stringify(body)
-                    }).catch(function () {});
+                    fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/diag/' + key + '.json')
+                        .then(function (u) {
+                            return fetch(u, { method: 'PUT', body: JSON.stringify(body) });
+                        }).catch(function () {});
                     // V265: opponent-visible liveness. Every prior death was
                     // INVISIBLE to the other player — A sat in WAIT forever with
                     // no idea B's phone was asleep. Write a tiny hb/{role}
@@ -9822,12 +9883,15 @@
                         // 5s interval still ticks — hb stayed fresh and the
                         // stale-check alone never fired (YZAW: B locked for the
                         // whole match, A never saw a banner).
-                        fetch(hbBase + '/hb/' + role + '.json', {
-                            method: 'PUT', body: JSON.stringify({
-                                ts: Date.now(), fps: diagFps,
-                                vis: document.hidden ? 'H' : 'V'
-                            })
-                        }).catch(function () {});
+                        fbAuthUrl(hbBase + '/hb/' + role + '.json')
+                            .then(function (u) {
+                                return fetch(u, {
+                                    method: 'PUT', body: JSON.stringify({
+                                        ts: Date.now(), fps: diagFps,
+                                        vis: document.hidden ? 'H' : 'V'
+                                    })
+                                });
+                            }).catch(function () {});
                         // V288: the on-screen "OPPONENT'S PHONE IS LOCKED /
                         // LOOKS ASLEEP" banner is REMOVED (user request — the
                         // warning class was noise once the freeze was fixed).
