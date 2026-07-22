@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V304<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V305<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V304</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V305</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8248,6 +8248,40 @@
                     var scorerPlayingPat =
                         window._rb2p_pickSixPatCascadeActive === true &&
                         window._rb2p_pickSixThisDeviceIsThrower !== true;
+                    // ===== V305: a PICK6 must never be dropped for being ON OFFENSE =====
+                    // Inbound outcomes drain in exactly ONE place — the branch below,
+                    // which requires WAIT. But the sender DEFERS a PICK6 until its own
+                    // engine credits the +6 (V57), and in room ZCGR that took 8.5s: by
+                    // then the interception handoff had already put the scorer on
+                    // offense, so it was never in WAIT, the queue never drained, and a
+                    // 6-point defensive TD simply vanished. Device report: "after a
+                    // pick 6, nothing happened, just a normal interception behavior" —
+                    // and the two boards then disagreed 8 vs 14 for the rest of the
+                    // game. (The ACK is written the moment receive() QUEUES a record,
+                    // so an acked outcome is not an applied one — which is why the
+                    // Firebase trail looked healthy.)
+                    //
+                    // The PICK6 branch is self-contained: it takes the points, seizes
+                    // possession for the PAT and parks us in WAIT, so it is safe to run
+                    // from an offense state. Hold it until the ball is dead so we never
+                    // yank control out of a live snap — it keeps in the queue until then.
+                    if (window._rb2p_userIsWaitingForOpponent !== true &&
+                        window._twoPlayer.pending.length > 0) {
+                        var p6i = -1;
+                        for (var pqi = 0; pqi < window._twoPlayer.pending.length; pqi++) {
+                            var pq = window._twoPlayer.pending[pqi];
+                            if (pq && pq.type === 'PICK6') { p6i = pqi; break; }
+                        }
+                        var ballLive = (typeof rb2pPlayInProgress === 'function') &&
+                                       rb2pPlayInProgress();
+                        if (p6i >= 0 && !ballLive) {
+                            var p6o = window._twoPlayer.pending.splice(p6i, 1)[0];
+                            console.log('[2P PICK6] applying a PICK6 that arrived while we ' +
+                                        'were ON OFFENSE — the deferred send landed after ' +
+                                        'the interception handoff, so we were never in WAIT');
+                            if (applyOpponentOutcome(p6o)) hideWait();
+                        }
+                    }
                     if (window._rb2p_userIsWaitingForOpponent === true && !scorerPlayingPat) {
                         if (window._twoPlayer.pending.length > 0) {
                             var o = window._twoPlayer.pending.shift();

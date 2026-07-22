@@ -140,10 +140,11 @@ const SET_Q = `(function (q) {
     const wtr = aWait ? g.a : g.b;
 
     const bridgeLog = [];
+    // Capture every bridge line, so a boundary that goes wrong can be diagnosed
+    // from the run instead of guessed at.
     drv.page.on('console', m => {
         const t = m.text();
-        if (t.indexOf('[2P QTR-SPOT]') === 0 || t.indexOf('[2P QTR-ADVANCE]') === 0 ||
-            t.indexOf('[2P OT]') === 0 || t.indexOf('[2P FINAL]') === 0) bridgeLog.push(t);
+        if (t.indexOf('[2P') === 0) bridgeLog.push(t);
     });
     await installSampler(drv.page);
 
@@ -159,15 +160,23 @@ const SET_Q = `(function (q) {
     // Run this on a CLEAN match, before the synthetic states below perturb the
     // FSM. Expire the Q1 clock mid-play and confirm the drive resumes where the
     // final play actually ended (the Vy=13 park sample), not before it.
-    await drv.page.evaluate(() => {
-        const s = RB.engineState();
-        s.engineMinutesLeft = 0; s.engineSecondsLeft = 8; s.engineTickAllowance = 0;
-        window.__ylogMark = window.__ylog.length;
-    });
-    await sleep(600);
-    for (let i = 0; i < 12; i++) {
+    await drv.page.evaluate(() => { window.__ylogMark = window.__ylog.length; });
+    // Re-arm the clock to 0:01 before EVERY attempt. The clock only runs while a
+    // play is live, so a throw that falls incomplete barely moves it — with a
+    // one-shot 0:08 this leg often never reached the boundary at all and skipped
+    // itself (and, worse, sometimes half-expired into an ambiguous sample).
+    // Re-stamping 0:01 each time makes the very next live snap expire it, which
+    // is the authentic case-19 path we want to observe.
+    let rolled = false;
+    for (let i = 0; i < 16 && !rolled; i++) {
         const s = await st(drv.page);
-        if (s.q !== 1) break;
+        if (s.q !== 1) { rolled = true; break; }
+        await drv.page.evaluate(() => {
+            const e = RB.engineState();
+            if (Number(e.engineQuarter) === 1) {
+                e.engineMinutesLeft = 0; e.engineSecondsLeft = 1; e.engineTickAllowance = 0;
+            }
+        });
         if (s.btn > 0) await clickButtons(drv.page);
         else if (s.ball > 0) await trustedThrow(drv.page);
         await sleep(1400);
@@ -208,6 +217,14 @@ const SET_Q = `(function (q) {
                   ? (real.park.d + '&' + real.park.tg.toFixed(1) + ' -> ' +
                      real.resume.d + '&' + real.resume.tg.toFixed(1))
                   : 'missing sample');
+        if (real.park && real.resume &&
+            (Math.abs(real.resume.yd - real.park.yd) >= 1.5 || real.resume.d !== real.park.d)) {
+            console.log('  !! the boundary was taken over by something OTHER than the ' +
+                        'quarter-keep (resume landed ' +
+                        (real.resume.t - real.park.t) + 'ms after the park; the keep-drive ' +
+                        'dwell alone is 1500ms). Bridge log for this window:');
+            for (const l of bridgeLog) console.log('     ' + l);
+        }
     }
 
     // ================= A1/A2: deterministic latch + resume =================
@@ -219,6 +236,11 @@ const SET_Q = `(function (q) {
     await drv.page.evaluate((setQ, settled, stale) => {
         eval(setQ)(2);
         const s = RB.engineState();
+        // A3 ran a real Q1->Q2 boundary and may have left a latch for Q2. The
+        // latch block only fires when _rb2p_qEndLatchQ !== the current quarter,
+        // so a leftover would silently block this one from arming and we would
+        // assert against A3's spot instead of this scenario's.
+        window._rb2p_qEndLatchQ = null;
         window._rb2p_userIsWaitingForOpponent = false;
         s.enginePossessingTeamIdx = s.engineUserTeamIdx;
         // What the clock-gated capture would have (wrongly) held.
@@ -261,6 +283,15 @@ const SET_Q = `(function (q) {
 
     // ================= B: overtime entry =================
     const resetMatch = async () => {
+        // B1 (the tied case) makes the HOST seed a REAL coin flip at
+        // rooms/{code}/ot/p5. Nothing clears it between sub-tests, so the ot
+        // subscription re-delivers it and legitimately re-arms overtime for the
+        // later cases — B3 was inheriting genuine OT evidence and failing about
+        // half the time. A real match purges /ot at startMatch; do the same here.
+        await TP.fbDelete('rooms/' + g.code + '/ot');
+        for (const side of [g.a, g.b]) {
+            await side.page.evaluate(() => { window._rb2p_otFlipSeenPeriod = null; });
+        }
         await drv.page.evaluate((setQ) => {
             eval(setQ)(1);
             const s = RB.engineState();
@@ -272,6 +303,16 @@ const SET_Q = `(function (q) {
     };
     // Drive the engine to period 5 with a given score, with/without OT evidence.
     const toPeriod5 = async (us, them, evidence) => {
+        // Set the SAME decided score on the opponent too. Both pages are live in
+        // one Firebase room, so the opponent's live mirror keeps pushing its own
+        // scores across — and a momentary 0-0 read on this device looks like a
+        // regulation TIE, which legitimately arms overtime and made this leg
+        // fail about one run in three. A real decided regulation end has both
+        // boards agreeing, so mirror it here too.
+        await wtr.page.evaluate((u, t) => {
+            const s = RB.engineState();
+            s.setUserScore(t); s.setOpponentScore(u);
+        }, us, them);
         await drv.page.evaluate((setQ, u, t, ev) => {
             const s = RB.engineState();
             s.setUserScore(u); s.setOpponentScore(t);
@@ -284,11 +325,27 @@ const SET_Q = `(function (q) {
         await sleep(2500);   // the OT loop and the FINAL detector both run at 300ms
     };
 
+    // ORDER MATTERS: the decided-score case runs FIRST. The tied case makes the
+    // host seed a REAL coin flip at rooms/{code}/ot/p5, and once that record
+    // exists the opponent device (which runs the same OT logic against its own
+    // score view) can re-seed it too — so any later "no OT evidence" assertion
+    // is fighting genuine evidence. Assert the clean case before any is created.
     await resetMatch();
-    await toPeriod5(21, 21, 'none');
+    bridgeLog.length = 0;
+    await toPeriod5(23, 0, 'none');
     let b = await st(drv.page);
-    check('B1 q=5 while TIED arms overtime', b.inOt === true,
-          'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);
+    check('B1 q=5 with a DECIDED score and no OT evidence does NOT arm overtime',
+          b.inOt === false, 'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);
+    check('B1 the bridge named it as end-of-regulation',
+          bridgeLog.some(l => l.indexOf('NOT overtime') >= 0),
+          bridgeLog.filter(l => l.indexOf('[2P OT]') === 0).join(' | ') || '(no OT log)');
+    // With OT disarmed the FINAL detector is no longer short-circuited.
+    await sleep(4000);
+    b = await st(drv.page);
+    check('B1 the FINAL detector was free to end the 23-0 game',
+          b.over === true || bridgeLog.some(l => l.indexOf('[2P FINAL]') === 0),
+          'gameOverReported=' + b.over + ' logs=' +
+          (bridgeLog.filter(l => l.indexOf('FINAL') >= 0).join(' | ') || 'none'));
 
     await resetMatch();
     await toPeriod5(27, 21, 'poss');
@@ -297,21 +354,10 @@ const SET_Q = `(function (q) {
           b.inOt === true, 'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);
 
     await resetMatch();
-    bridgeLog.length = 0;
-    await toPeriod5(23, 0, 'none');
+    await toPeriod5(21, 21, 'none');
     b = await st(drv.page);
-    check('B3 q=5 with a DECIDED score and no OT evidence does NOT arm overtime',
-          b.inOt === false, 'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);
-    check('B3 the bridge named it as end-of-regulation',
-          bridgeLog.some(l => l.indexOf('NOT overtime') >= 0),
-          bridgeLog.filter(l => l.indexOf('[2P OT]') === 0).join(' | ') || '(no OT log)');
-    // With OT disarmed the FINAL detector is no longer short-circuited.
-    await sleep(4000);
-    b = await st(drv.page);
-    check('B3 the FINAL detector was free to end the 23-0 game',
-          b.over === true || bridgeLog.some(l => l.indexOf('[2P FINAL]') === 0),
-          'gameOverReported=' + b.over + ' logs=' +
-          (bridgeLog.filter(l => l.indexOf('FINAL') >= 0).join(' | ') || 'none'));
+    check('B3 q=5 while TIED arms overtime', b.inOt === true,
+          'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
