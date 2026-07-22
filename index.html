@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V305<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V306<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V305</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V306</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5181,6 +5181,7 @@
 
             var stuckEngineFsmStage = null, engineFsmStageStuckSinceMs = 0, lastUserScoreObserved = -1;
             var qkResumeHoldActive = false;   // guards the kp=2 hold-loop so it can't stack
+            var qkPlayHoldStartMs = 0;        // V306: when we began waiting for a live ball to die
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
@@ -5335,6 +5336,36 @@
                             // so a stale cascade flag can't wedge the keep-drive.
                             window._rb2p_patPlayPending !== true &&
                             window._rb2p_patPlayResolved !== true) {
+
+                            // ===== V306: never respawn the drive MID-PLAY =====
+                            // Device report: "after the 3 to 4 quarter shift a play got
+                            // restarted mid THROW, as if it was an incomplete pass, but
+                            // the down remained same."
+                            //
+                            // Exactly what doKeepDrive does: it calls s_set_up_play,
+                            // which re-spawns the whole formation at the kept spot, and
+                            // restores the SAME down. If the ball is still in the air
+                            // when it runs, the throw is thrown away and the play
+                            // visibly restarts on the same down — the reported symptom.
+                            // The clock expires on a tick, not on the whistle, so the
+                            // quarter cascade routinely begins mid-play; the 1500ms
+                            // dwell is nowhere near a deep pass's hang time.
+                            //
+                            // The FINAL detector already solves this ("end the game ON
+                            // THE FINAL PLAY, not at 0:00"); the quarter boundary needs
+                            // the same courtesy. Hold until the ball is dead, capped so
+                            // a stuck ball can never wedge the quarter forever.
+                            if (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) {
+                                if (!qkPlayHoldStartMs) {
+                                    qkPlayHoldStartMs = Date.now();
+                                    console.log('[2P QTR-ADVANCE] clock expired MID-PLAY (ball still ' +
+                                                'live) — holding the quarter-keep until the ball is dead');
+                                }
+                                if (Date.now() - qkPlayHoldStartMs < 12000) return;
+                                console.log('[2P QTR-ADVANCE] ball still live after 12s — ' +
+                                            'proceeding with the quarter-keep anyway');
+                            }
+                            qkPlayHoldStartMs = 0;
 
                             // Quarter length for the reset: use the AGREED setting
                             // (_rb2p_quarterMins, kept converged on BOTH devices by
@@ -5702,8 +5733,18 @@
                     // ARE the settled post-play spot — the exact value the drive should
                     // resume from. Latch them once per boundary, before the FSM drifts
                     // on to Vy=4 and the cascade smears them.
+                    // V306: only latch once the BALL IS DEAD. The clock can expire
+                    // with a pass still in the air (case 19 runs on the tick, not on
+                    // the whistle), and at that instant _6F/_t11/_l61 are still the
+                    // PRE-snap values — latching them would resume the drive having
+                    // erased the play that was in flight, which is the very bug the
+                    // latch exists to prevent. Waiting for the ball to die makes the
+                    // first dead-ball sample the true settled spot in BOTH cases:
+                    // clock expired after the whistle (latch immediately) or during
+                    // the throw (latch when it lands).
                     if (Number(em.engineDriveFsmStage) === 13 &&
                         window._rb2p_qEndLatchQ !== qNow &&
+                        !(typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) &&
                         userHasBall && window._rb2p_userIsWaitingForOpponent !== true &&
                         qkDown >= 1 && qkDown <= 4 &&
                         Math.abs(Number(em.engineYardLineSigned)) <= 50) {
@@ -8538,14 +8579,33 @@
             // the end-of-game FINAL until the play actually completes instead of
             // cutting it off. Excludes terminal/dead states (4 downed, 6 TD, 7
             // incomplete, 8 OOB, 12 safety), pre-snap (0 set / 1 aim), and "no ball".
+            // ===== V306: what "a play is in progress" actually means =====
+            // This used to whitelist _kp in {2,3,5,9,10,11,13}. That list is WRONG,
+            // and wrong in the worst place: a thrown ball. A 40ms trace of three
+            // real plays (e2e probe) gives the ball's full state cycle —
+            //     0 -> 1 -> 2 -> 3 -> 7 -> 0     (pass, incomplete; down 1 -> 2)
+            //     0 -> 1 -> 2 -> 5 -> 4 -> 0     (catch + run + tackle; down 2 -> 3)
+            // so 7 = BALL IN FLIGHT and 4 = tackle/resolution, and neither was in
+            // the list. The ball rests at _kp = 0 between plays — that, and only
+            // that, is the dead state (it is exactly where the down advances).
+            //
+            // Consequences of the old list, all real:
+            //   • the quarter-keep saw "no play" during a pass and re-spawned the
+            //     formation on top of it — device report: "after the 3 to 4 quarter
+            //     shift a play got restarted mid THROW, as if it was an incomplete
+            //     pass, but the down remained same";
+            //   • V202's "end the game ON THE FINAL PLAY, not at 0:00" could still
+            //     declare FINAL while a pass was in the air.
+            // Invert the test instead of extending the whitelist, so an unobserved
+            // in-flight state can never re-open the same hole. Every caller caps its
+            // wait (12s), so a ball stuck off-zero can't wedge anything.
             function rb2pPlayInProgress() {
                 try {
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var x = all[i];
                         if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') {
-                            var k = x._kp;
-                            return (k === 2 || k === 3 || k === 5 || k === 9 || k === 10 || k === 11 || k === 13);
+                            return Number(x._kp) !== 0;   // 0 = dead ball at rest
                         }
                     }
                 } catch (e) {}
