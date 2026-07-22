@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V302<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V303<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V302</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V303</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9254,11 +9254,24 @@
                 str = String(str);
                 return str.length >= n ? str : str + new Array(n - str.length + 1).join(' ');
             }
+            // V303: the stat line WRAPS; it must never scroll. The old row was a
+            // single `white-space:pre; overflow-x:auto` box, so any line wider than
+            // the column grew a native horizontal scrollbar — the ugly light bar
+            // under the QB/RB/WR rows — and, worse, hid the tail of the line off
+            // the right edge (a 2-TD passing line was clipped mid-stat). Split the
+            // row into a fixed monospace POS+NAME prefix (which keeps pad()'s
+            // column alignment via white-space:pre) and a flexible stat cell that
+            // wraps on the " · " separators. min-width:0 lets the flex child
+            // actually shrink; overflow-wrap is the fallback for one long token.
             var rows = players.map(function (p) {
-                return '<div style="white-space:pre;font-size:12px;line-height:1.7;' +
-                       'border-bottom:1px solid rgba(255,255,255,0.07);overflow-x:auto;">' +
-                       '<b>' + esc(pad(p.pos, 3)) + '</b>' + esc(pad(p.name, 15)) +
-                       '<span style="opacity:0.85;">' + esc(p.line) + '</span></div>';
+                return '<div style="display:flex;align-items:baseline;font-size:12px;' +
+                       'line-height:1.7;padding:1px 0;' +
+                       'border-bottom:1px solid rgba(255,255,255,0.07);">' +
+                       '<span style="white-space:pre;flex:0 0 auto;">' +
+                         '<b>' + esc(pad(p.pos, 3)) + '</b>' + esc(pad(p.name, 15)) +
+                       '</span>' +
+                       '<span style="opacity:0.85;flex:1 1 auto;min-width:0;' +
+                       'overflow-wrap:anywhere;">' + esc(p.line) + '</span></div>';
             }).join('');
             if (!rows) rows = '<div style="opacity:0.5;padding:8px 0;">no recorded stats</div>';
             return '<div style="flex:1;min-width:240px;max-width:440px;">' +
