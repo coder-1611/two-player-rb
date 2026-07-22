@@ -23,14 +23,11 @@ function check(name, ok, detail) {
     else    { fail++; console.log('  FAIL  ' + name + (detail ? ' — ' + detail : '')); }
 }
 
-async function fbPut(path, val) {
-    await fetch(FB_DB + '/' + path + '.json',
-                { method: 'PUT', body: JSON.stringify(val) });
-}
-async function fbGet(path) {
-    const r = await fetch(FB_DB + '/' + path + '.json');
-    return r.json();
-}
+// V298: the DB now requires auth — use the harness's authenticated helpers so a
+// permissions error can never masquerade as a failing assertion.
+const fbPut = TP.fbPut;
+const fbGet = TP.fbGet;
+const fbDelete = TP.fbDelete;
 
 (async () => {
     console.log('=== V296 FIX VERIFICATION ===');
@@ -40,7 +37,7 @@ async function fbGet(path) {
     // ---------------------------------------------------------------- T1 (#1)
     console.log('\nT1 (#1): leftover final/{opp} must not hijack the lobby');
     const code = 'Z' + Math.random().toString(36).slice(2, 5).toUpperCase();
-    await fetch(FB_DB + '/rooms/' + code + '.json', { method: 'DELETE' });
+    await fbDelete('rooms/' + code);
     // A finished game's leftovers, exactly as they'd survive in a reused room.
     await fbPut('rooms/' + code + '/final/a',
                 { ts: Date.now() - 120000, team: 'Pittsburgh', score: 21, players: [] });
@@ -72,7 +69,7 @@ async function fbGet(path) {
     check('T5 (#3): my slot carries a session id', !!(slot && slot.sid),
           'slot=' + JSON.stringify(slot));
     await p1.page.close();
-    await fetch(FB_DB + '/rooms/' + code + '.json', { method: 'DELETE' });
+    await fbDelete('rooms/' + code);
 
     // --------------------------------------------------------- T2/T3/T4 in-match
     console.log('\nT2 (#13) / T3 (#2) / T4 (#10): live match checks');

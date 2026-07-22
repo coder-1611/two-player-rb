@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V297<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V298<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V296</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V298</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1493,6 +1493,12 @@
                     get engineOpponentTeamIdx()    { return m._0z ? 0 : 1; },
                     get engineYardLineSigned()     { return m._6F; },  set engineYardLineSigned(v)     { m._6F  = v; },
                     get engineDriveFsmStage()      { return m._Vy; },  set engineDriveFsmStage(v)      { m._Vy  = v; },
+                    // V298: the engine's PIXEL-space scrimmage + first-down marker.
+                    // Every play resolves as s = (ballX - _B01)/20, then _l61 -= s,
+                    // _t11 += 1, _6F += s — so these must track _6F/_l61 or the
+                    // engine invents yardage on the next snap (see resyncScrimmage).
+                    get engineScrimmagePx()        { return m._B01; }, set engineScrimmagePx(v)        { m._B01 = v; },
+                    get engineFirstDownPx()        { return m._vb1; }, set engineFirstDownPx(v)        { m._vb1 = v; },
                     get enginePriorFsmStage()      { return m._2c1; }, set enginePriorFsmStage(v)      { m._2c1 = v; },
                     get engineControllerState()    { return m._kp; },  set engineControllerState(v)    { m._kp  = v; },
                     get engineDownNumber()         { return m._t11; }, set engineDownNumber(v)         { m._t11 = v; },
@@ -1806,6 +1812,7 @@
                             engineMatch.engineDownNumber        = fieldSnap.down;
                             engineMatch.engineYardsToGo         = fieldSnap.ytg;
                             engineMatch.engineYardLineSigned    = fieldSnap.ydl;
+                            resyncScrimmage(engineMatch, 'rollback');   // V298
                             engineMatch.engineDriveDirection    = fieldSnap.dir;
                             engineMatch.engineDriveFsmStage     = fieldSnap.vy;
                             engineMatch.engineControllerState   = fieldSnap.kp;
@@ -1881,6 +1888,10 @@
                     if (ballCount > 0) {
                         killKickoffButtons();
                         engineMatch.engineControllerState = 2;
+                        // V298: this path deliberately SKIPS s_set_up_play, so nothing
+                        // recomputes the pixel scrimmage for the yard line we just
+                        // wrote — the next snap would invent yardage. Re-sync it.
+                        resyncScrimmage(engineMatch, 'force/mid-drive');
                         armKickoffSweeper(ydl);
                         return true;
                     }
@@ -1921,6 +1932,10 @@
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
                     engineMatch.engineControllerState = 2;
+                    // V298: s_set_up_play normally refreshes _B01/_vb1 — but the
+                    // spawn-gate can BLOCK it (possession not yet flipped), leaving
+                    // the pixel scrimmage stale. Idempotent when the setup did run.
+                    resyncScrimmage(engineMatch, 'force/spawned');
                     armKickoffSweeper(ydl);
                     return true;
                 } catch (e) {
@@ -2084,6 +2099,53 @@
                 return -(10 + Math.floor(Math.random() * 16));   // _6F -10..-25 = own 40..25
             }
             window._rb2p_kickoffReturnYard = kickoffReturnYard;
+
+            // ===== V298: RE-SYNC THE PIXEL SCRIMMAGE AFTER ANY BRIDGE BALL MOVE =====
+            // Device-reported (room KSKC): "1st & 10, incomplete pass, now 2nd & 2"
+            // and "drive started on the opponent's 8, an incomplete throw moved me
+            // 8 yards". Same defect, both symptoms.
+            //
+            // The engine keeps the line of scrimmage and the first-down marker in
+            // SCREEN PIXELS, derived from the yard line and distance:
+            //     _B01 = 1300 + _6F  * 20 * _501      (scrimmage)
+            //     _vb1 = _B01  + _l61 * 20 * _501      (first-down marker)
+            // and resolves every play as:
+            //     s = (ballX - _B01)/20 ;  _l61 -= s ;  _t11 += 1 ;  _6F += s
+            //
+            // Both pixel values are recomputed in exactly ONE place: s_set_up_play.
+            // The bridge writes _6F/_l61 in seven places and never wrote _B01/_vb1
+            // at all — and the spawn-gate deliberately BLOCKS s_set_up_play when
+            // possession doesn't match. So after a bridge-forced spot the pixel
+            // scrimmage still pointed at the OLD position, and the next snap
+            // measured the dead ball against a stale origin and invented a gain.
+            // A 160px staleness = a phantom 8 yards: the ball jumps 8 forward AND
+            // 1st & 10 becomes 2nd & 2, with no play having gained anything.
+            //
+            // Call this after ANY write to the yard line or distance-to-go. It is
+            // exactly the engine's own arithmetic, so it is idempotent and safe to
+            // call even when s_set_up_play did run.
+            function resyncScrimmage(em, why) {
+                try {
+                    if (!em) em = RB.engineState();
+                    if (!em || em.rawEngineMatch == null) return false;
+                    var yd  = Number(em.engineYardLineSigned);
+                    var tg  = Number(em.engineYardsToGo);
+                    var dir = Number(em.engineDriveDirection);
+                    if (isNaN(yd) || isNaN(dir) || dir === 0) return false;
+                    if (isNaN(tg)) tg = 0;
+                    var b01 = 1300 + (yd * 20 * dir);
+                    em.engineScrimmagePx = b01;
+                    em.engineFirstDownPx = b01 + (tg * 20 * dir);
+                    if (window._rb2p_qsyncLog !== false) {
+                        console.log('[2P SCRIMMAGE] re-synced (' + (why || '?') + ') — yard ' +
+                                    yd.toFixed(1) + ', toGo ' + tg + ', dir ' + dir +
+                                    ' -> _B01 ' + Math.round(b01) +
+                                    ' _vb1 ' + Math.round(b01 + tg * 20 * dir));
+                    }
+                    return true;
+                } catch (e) { return false; }
+            }
+            window._rb2p_resyncScrimmage = resyncScrimmage;
 
             // Generalised: set up a engineMatch between BUFF (uid 0) and KC (uid 5)
             // with the local user's team determined by role. _gx wants the
@@ -3498,6 +3560,11 @@
                                             em.engineDownNumber = rs.down;
                                         if (typeof rs.toGo === 'number' && rs.toGo >= 0)
                                             em.engineYardsToGo = rs.toGo;
+                                        // V298: down/distance were written AFTER the
+                                        // spawn, so the first-down marker still holds
+                                        // the spawn-time value — recompute both.
+                                        if (typeof window._rb2p_resyncScrimmage === 'function')
+                                            window._rb2p_resyncScrimmage(em, 'resume');
                                     } else if (window._rb2p_resumePatDuty) {
                                         // V217: reloaded mid-pick-6-PAT — re-pop the
                                         // engine PAT modal instead of parking in WAIT.
@@ -3979,13 +4046,29 @@
                 if (prevVy === 1)                  return 'KICKOFF'; // kickoff cascade fired _1c1
                 return 'OTHER';
             }
-            function describeYardLocation(yard, ownSide) {
-                if (yard === 0)  return 'in the endzone';
-                if (yard >= 45)  return 'midfield';
-                return (ownSide ? 'your ' : 'opponent ') + yard + ' yard line';
+            // V298: this described the field WRONGLY in all three branches, because
+            // it treated _6F as if it were a yard line. It is not — _6F is the
+            // signed distance from MIDFIELD (engine: own 25 = -25, and the PAT pin
+            // uses +48 for the opponent's 2). So:
+            //     yard line = 50 - |_6F| ,  sign picks the half
+            //     _6F  0  = midfield (was called "in the endzone")
+            //     _6F ±45 = the 5 yard line (was called "midfield")
+            //     _6F ±48 = the 2 yard line
+            // The old code also printed the raw internal number as if it were the
+            // yard line, so a ball on the opponent's 8 was announced as "your 42
+            // yard line". Take the SIGNED _6F here and derive everything from it.
+            function describeYardLocation(signedYard) {
+                var v = Number(signedYard);
+                if (isNaN(v)) return 'the field';
+                var line = Math.round(50 - Math.abs(v));       // real yard line, 0..50
+                if (Math.abs(v) < 1) return 'midfield';
+                if (line <= 0) return 'the goal line';
+                if (line >= 50) return 'midfield';
+                // _6F < 0 = own territory, _6F > 0 = opponent territory.
+                return (v < 0 ? 'your ' : 'the opponent ') + line + ' yard line';
             }
             function userFacingMessageForType(type, yard, ownSide) {
-                var loc = describeYardLocation(yard, ownSide);
+                var loc = describeYardLocation(yard);   // V298: takes the SIGNED _6F
                 switch (type) {
                     case 'TD':       return 'Touchdown by opponent. Kickoff to ' + loc;
                     case 'INT':      return 'Interception. On ' + loc;
@@ -4806,6 +4889,7 @@
                                         var cur = Number(engineMatch.engineYardLineSigned);
                                         if (!isNaN(cur) && Math.abs(cur - (-lg)) < 1.0 && Math.abs(cur - lg) > 0.5) {
                                             engineMatch.engineYardLineSigned = lg;
+                                            resyncScrimmage(engineMatch, 'yard-guard');   // V298
                                             console.warn('[2P YARD-GUARD] restored teleported yard ' +
                                                          cur + ' → ' + lg + ' (spurious possession flip)');
                                         }
@@ -5312,6 +5396,7 @@
                                 engineMatch.engineYardsToGo          = keepToGo;
                                 var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
                                 if (typeof setUpPlay === 'function') setUpPlay(raw, _Sc2, 0);
+                                resyncScrimmage(engineMatch, 'quarter-keep');   // V298
                                 engineMatch.engineDriveFsmStage   = 2;
                                 engineMatch.engineControllerState = 2;
                                 var hn = 0;
@@ -7247,7 +7332,13 @@
                     secondsLeft: secLeft,
                     fromTeam: pre.engineTeamDisplayNames[pre.enginePossessingTeamIdx],
                     toTeam:   post.engineTeamDisplayNames[post.enginePossessingTeamIdx],
-                    message: userFacingMessageForType(type, Math.abs(yard), ownSide),
+                    // V298: pass the SIGNED yard. Math.abs() destroyed the very
+                    // bit that says which half of the field the ball is on, which
+                    // is how an interception at our OWN 25 got announced as
+                    // "on opponent 24.94978054029125 yard line" (wrong half, and
+                    // the raw float). describeYardLocation now rounds and derives
+                    // the true yard line itself.
+                    message: userFacingMessageForType(type, yard, ownSide),
                     ts: Date.now()
                 };
             }
@@ -7709,6 +7800,8 @@
                             engineMatch.engineDownNumber       = 1;
                             engineMatch.engineYardsToGo       = 10;
                             engineMatch.engineDriveFsmStage    = 2;
+                            if (typeof window._rb2p_resyncScrimmage === 'function')
+                                window._rb2p_resyncScrimmage(engineMatch, 'apply/fallback');   // V298
                         }
                         // V248: the INT is applied — ACK the refresh-safety
                         // record so a later reload doesn't re-take possession
@@ -8634,6 +8727,12 @@
                             window._rb2p_forceUserOffenseDrive(koY);
                         em.engineDownNumber = 1;
                         em.engineYardsToGo  = 10;
+                        // V298: forceUserOffenseDrive already ran s_set_up_play, which
+                        // computed the first-down marker from the PREVIOUS distance —
+                        // these two writes would otherwise leave the HUD saying "10"
+                        // while the real marker sat somewhere else.
+                        if (typeof window._rb2p_resyncScrimmage === 'function')
+                            window._rb2p_resyncScrimmage(em, 'q3-law');
                         // Hold kp=2 to overpower the engine's per-frame re-park at the
                         // Vy=13 quarter-start stage (same fix the OT kickoff uses).
                         if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
@@ -9491,6 +9590,21 @@
             function readLog() {
                 try { return JSON.parse(sessionStorage.getItem(DIAG_KEY) || '[]'); } catch (e) { return []; }
             }
+            // V298: read the build number straight off the lobby label. _rb2p_myVer
+            // is only set once a room is entered, but telemetry starts streaming at
+            // boot — without this the first reports would say "V?" instead of the
+            // real build (they used to say a hardcoded "V294" forever).
+            var rb2pBuildLabelCache = null;
+            function rb2pBuildLabel() {
+                if (rb2pBuildLabelCache) return rb2pBuildLabelCache;
+                try {
+                    var m = (document.querySelector('.prompt') || { textContent: '' })
+                                .textContent.match(/V(\d+)/);
+                    if (m) rb2pBuildLabelCache = m[1];
+                } catch (e) {}
+                return rb2pBuildLabelCache || '?';
+            }
+
             function diagLog(msg) {
                 try {
                     var t = new Date();
@@ -10318,7 +10432,12 @@
                 try { clkout = em ? (em.engineMinutesLeft + ':' + ('0' + em.engineSecondsLeft).slice(-2)) : ''; } catch (eCk) {}
                 var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
                 diagEl.innerHTML =
-                    'V294 kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
+                    // V298: was hardcoded 'V294', so every device telemetry report
+                    // mislabelled its own build (room KSKC ran V297 and still said
+                    // V294) — which silently misleads exactly the freeze/desync
+                    // debugging this stream exists for. Derive it from the real label.
+                    'V' + (window._rb2p_myVer || rb2pBuildLabel()) +
+                    ' kp:' + kp + ' vy:' + vy + ' ball:' + ball + ' OF:' + plOF + ' DF:' + plDF +
                     ' btn:' + live + (ghost ? '+g' + ghost : '') + ' _7z:' + z7 +
                     // V287: pY2 = the engine's run/END state (-1 = playing; the
                     // game_end soft-halt gates ALL step+draw). cg4 = pause flag.
@@ -11113,8 +11232,30 @@
                 try {
                     var myBoxSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/box/' + savedRole));
                     var myBox = myBoxSnap.val();
-                    if (myBox && myBox.stats && (Date.now() - (Number(myBox.ts) || 0) < SNAP_FRESH))
+                    // V298: do NOT age-gate the stat restore. This used to require the
+                    // record to be <25s old (SNAP_FRESH), which is right for POSITION
+                    // data — stale position is wrong position — but stats are
+                    // CUMULATIVE and never go stale. Worse, the box is only written
+                    // while you are ON OFFENSE, so during the opponent's drive your
+                    // record is routinely minutes old: reloading then silently reset
+                    // every stat to zero and started over. That is exactly what
+                    // happened in room KSKC — Houston really scored its touchdowns,
+                    // reloaded while waiting, and its box came back showing only the
+                    // 44 seconds it played afterwards. A prior MATCH's record can no
+                    // longer leak in (startMatch removes rooms/{code}/box), and the
+                    // match-start anchor is belt-and-braces for a reused room.
+                    var boxAnchor = 0;
+                    try { boxAnchor = Number(sessionStorage.getItem('rb2p_matchStartMs')) || 0; } catch (eBA) {}
+                    if (myBox && myBox.stats &&
+                        (!boxAnchor || (Number(myBox.ts) || 0) >= boxAnchor)) {
                         window._rb2p_resumeRawOffStats = myBox.stats;
+                        console.log('[2P RESUME] restoring saved offensive stats (' +
+                                    myBox.stats.length + ' players, age ' +
+                                    Math.round((Date.now() - (Number(myBox.ts) || 0)) / 1000) + 's)');
+                    } else if (myBox && myBox.stats) {
+                        console.warn('[2P RESUME] ignoring box from before this match (ts ' +
+                                     myBox.ts + ' < ' + boxAnchor + ')');
+                    }
                 } catch (eBox) {}
                 var finalSnap = await FB.get(FB.ref(db, 'rooms/' + savedRoom + '/final/' + savedRole));
                 // V187: an unresolved interception (saved the instant it happened)
@@ -12149,9 +12290,17 @@
                     // real production — never overwrite a good record with an empty
                     // one. Also cache the last non-empty full box score so a
                     // degenerate game-over collect can fall back to it.
-                    if (!waiting && typeof window._rb2p_collectRawOffStats === 'function') {
+                    // V298: was gated on `!waiting`, so the final plays of a drive
+                    // could be lost (possession flips before the next push) and the
+                    // record then sat frozen for the whole opponent drive. Stats only
+                    // change while on offense, so writing whenever the SIGNATURE
+                    // changes captures the last play, keeps the record current, and
+                    // costs no extra writes while parked in WAIT.
+                    if (typeof window._rb2p_collectRawOffStats === 'function') {
                         var raw = window._rb2p_collectRawOffStats();
-                        if (raw && raw.length) {
+                        var rawSig = raw && raw.length ? JSON.stringify(raw) : '';
+                        if (raw && raw.length && rawSig !== window._rb2p_lastBoxSig) {
+                            window._rb2p_lastBoxSig = rawSig;
                             FB.set(FB.ref(db, 'rooms/' + myRoom + '/box/' + myRole),
                                    { stats: raw, ts: Date.now() }).catch(function () {});
                             if (typeof window._rb2p_collectBoxScore === 'function') {
@@ -12353,6 +12502,7 @@
             oppDefStatsLocal = null;   // V106
             window._rb2p_lastGoodBoxScore = null;     // V198: drop prior game's box cache
             window._rb2p_resumeRawOffStats = null;    // V198: consume-once on resume
+            window._rb2p_lastBoxSig = null;           // V298: re-arm the box write-through
             window._rb2p_gameOverReported = false;
             window._rb2p_inOvertime = false;   // V109: re-arm equal-possession OT
             window._rb2p_otMyPoss   = 0;

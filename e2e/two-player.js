@@ -14,6 +14,32 @@
 const H = require('./harness');
 
 const FB_DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com';
+const FB_API_KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
+
+// V298: the RTDB rules now require auth (auth != null), so the bare REST calls
+// these tests used all started returning "Permission denied" — which surfaced as
+// bogus test FAILURES rather than an obvious infrastructure error. Sign in
+// anonymously once (same thing the page does) and hang ?auth=<idToken> on every
+// REST call. Cached for the process lifetime.
+let _fbToken = null;
+async function fbToken() {
+    if (_fbToken) return _fbToken;
+    const r = await fetch(
+        'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ returnSecureToken: true }) });
+    const j = await r.json();
+    if (!j.idToken) throw new Error('anon auth failed: ' + JSON.stringify(j).slice(0, 200));
+    _fbToken = j.idToken;
+    return _fbToken;
+}
+// Authenticated REST helpers — use these instead of raw fetch on the DB.
+async function fbUrl(path) { return FB_DB + '/' + path + '.json?auth=' + (await fbToken()); }
+async function fbGet(path) { const r = await fetch(await fbUrl(path)); return r.json(); }
+async function fbPut(path, val) {
+    return fetch(await fbUrl(path), { method: 'PUT', body: JSON.stringify(val) });
+}
+async function fbDelete(path) { return fetch(await fbUrl(path), { method: 'DELETE' }); }
 
 function randomCode() {
     // 4 chars; 'Z' prefix marks it a test room and avoids colliding with the
@@ -25,7 +51,7 @@ function randomCode() {
 }
 
 async function deleteRoom(code) {
-    try { await fetch(FB_DB + '/rooms/' + code + '.json', { method: 'DELETE' }); }
+    try { await fbDelete('rooms/' + code); }
     catch (e) { /* best-effort cleanup */ }
 }
 
@@ -161,6 +187,7 @@ async function startTwoPlayerGame(opts) {
 }
 
 module.exports = {
-    FB_DB, randomCode, deleteRoom, waitFor, openLobbyPage,
+    FB_DB, FB_API_KEY, fbToken, fbGet, fbPut, fbDelete,
+    randomCode, deleteRoom, waitFor, openLobbyPage,
     joinRoom, readyUp, waitForMatch, snapshot, startTwoPlayerGame
 };
