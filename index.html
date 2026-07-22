@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V298<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V299<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V298</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V299</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5081,6 +5081,60 @@
             // inferUserDriveEndType returns 'TD' and the receiver gets a proper kickoff
             // (own 25). Otherwise vyStage = 8 (turnover-on-downs).
             var deadEngineFsmStages = { 4: true, 10: true, 11: true };
+
+            // ===== V299: ONSIDE-KICK STAGE SAFETY NET =====
+            // The onside offer is removed at the source (retrobowl.js: both entry
+            // conditions are now `false &&`, so the FSM falls through to the normal
+            // kickoff). This watchdog exists only for a device running a STALE CACHED
+            // engine, where those stages are still reachable.
+            //
+            // Why they are fatal without it: onside success is forced to 0, so "Yes"
+            // always lands in the fail branch, which calls _1c1 — flipping possession
+            // and negating the yard line while spawning NO field. Stage 25 (modal
+            // pending) / 27 (opponent onside) / 28 (success) / 29 (fail) are absent
+            // from deadEngineFsmStages, so no watchdog force-ends them, and the
+            // possession clamp then hands the ball back to the local user — leaving
+            // an empty field here and BOTH devices on offense after a refresh
+            // (device-confirmed, room KSKC: vy:25 ball:0 OF:0 DF:0).
+            //
+            // Recovery routes to the engine's own kickoff stage rather than forcing a
+            // drive-end: the forced-end path derives the outcome type from a score
+            // delta and would ship a mistyped TD/INT ("Interception" for a kickoff).
+            // Deliberately NOT added to deadEngineFsmStages for that reason.
+            var onsideStages = { 25: true, 27: true, 28: true, 29: true };
+            var onsideSeenStage = null, onsideSeenSinceMs = 0;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    var emO = RB.engineState();
+                    if (!emO || emO.engineUserTeamIdx == null) return;
+                    var vyO = Number(emO.engineDriveFsmStage);
+                    if (!onsideStages[vyO]) { onsideSeenStage = null; return; }
+                    if (vyO !== onsideSeenStage) {
+                        onsideSeenStage = vyO;
+                        onsideSeenSinceMs = Date.now();
+                        return;
+                    }
+                    if (Date.now() - onsideSeenSinceMs < 3000) return;   // let it settle
+                    onsideSeenStage = null;
+                    console.warn('[2P ONSIDE] stale-engine onside stage Vy=' + vyO +
+                                 ' — recovering to a normal kickoff');
+                    if (window._rb2p_diagLog)
+                        window._rb2p_diagLog('ONSIDE stage Vy=' + vyO + ' recovered (stale engine)');
+                    // Clear the modal that can never be answered, then hand the FSM
+                    // back to the kickoff stage so the normal cascade resumes.
+                    try {
+                        var pls = (typeof window._rb2p_enumeratePopupInstances === 'function')
+                            ? window._rb2p_enumeratePopupInstances() : [];
+                        for (var pz = 0; pz < pls.length; pz++) {
+                            try { (typeof _cr === 'function') ? _cr(pls[pz]) : (pls[pz]._HL2 = true); }
+                            catch (ePz) {}
+                        }
+                    } catch (ePl) {}
+                    emO.engineDriveFsmStage = 1;   // COMM_STAGE kickoff
+                } catch (e) {}
+            }, 500);
+
             var stuckEngineFsmStage = null, engineFsmStageStuckSinceMs = 0, lastUserScoreObserved = -1;
             var qkResumeHoldActive = false;   // guards the kp=2 hold-loop so it can't stack
             setInterval(function () {

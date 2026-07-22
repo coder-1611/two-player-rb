@@ -55036,14 +55036,14 @@ function _Ib1(_, t) {
                 , n = _Ub1(_, t)
                 , o = 100;
             if (yyfgreater(a, 8) && (o = 160),
-                yyGetBool(yyfequal(_._UD, _._0z)) && yyGetBool(yyfequal(_._Wy, 4)) && yyGetBool(yyflessequal(_._Sb1[_7v(_._0z, _._Sb1)], _._Sb1[_7v(yyGetBool(_._0z) ? 0 : 1, _._Sb1)])) && yyGetBool(_k61(_, t, o))) {
+                false && /* [2P] onside OFFER removed: success is forced to 0 below, so this modal could only ever fail — and the fail cascade (case 6 -> _1c1) flips possession with no field spawned, which the 2P bridge's possession clamp then undoes, leaving the kicker parked at _Vy=25 on an empty field and BOTH devices on offense after a refresh (device-confirmed, room KSKC: vy:25 ball:0 OF:0). Falls through to the normal kickoff (_Zb1/_l41). */ yyGetBool(yyfequal(_._UD, _._0z)) && yyGetBool(yyfequal(_._Wy, 4)) && yyGetBool(yyflessequal(_._Sb1[_7v(_._0z, _._Sb1)], _._Sb1[_7v(yyGetBool(_._0z) ? 0 : 1, _._Sb1)])) && yyGetBool(_k61(_, t, o))) {
                 var s = 5;
                 yyGetBool(r = _a51(_, t, 10, 1)) && (s = yyfplus(s, _Ai(r, "skill"))),
                     _wm(_, t, "", _Em(_Xi(_, t, "msg_OnSideKick"), "$num", _9p(s)), _Xi(_, t, "ui_No"), _Xi(_, t, "ui_Yes"), _Xb1, _Yb1, 16777215, .7),
                     _._Vy = 25,
                     _._6F = -15
             } else
-                yyGetBool(yyfnotequal(_._UD, _._0z)) && yyGetBool(yyfequal(_._Wy, 4)) && yyGetBool(yyfgreaterequal(_._Sb1[_7v(_._0z, _._Sb1)], _._Sb1[_7v(yyGetBool(_._0z) ? 0 : 1, _._Sb1)])) && yyGetBool(yyGetBool(yyGetBool(yyflessequal(a, 8)) && yyGetBool(yyflessequal(n, 60))) || yyGetBool(yyGetBool(yyfgreater(a, 8)) && yyGetBool(yyflessequal(a, 16)) && yyGetBool(yyfgreater(n, 60)))) ? (_._Vy = 27,
+                false && /* [2P] opponent-side onside removed: in 2P the opponent's kickoff must never be simulated locally (it desyncs possession); take the normal kickoff. */ yyGetBool(yyfnotequal(_._UD, _._0z)) && yyGetBool(yyfequal(_._Wy, 4)) && yyGetBool(yyfgreaterequal(_._Sb1[_7v(_._0z, _._Sb1)], _._Sb1[_7v(yyGetBool(_._0z) ? 0 : 1, _._Sb1)])) && yyGetBool(yyGetBool(yyGetBool(yyflessequal(a, 8)) && yyGetBool(yyflessequal(n, 60))) || yyGetBool(yyGetBool(yyfgreater(a, 8)) && yyGetBool(yyflessequal(a, 16)) && yyGetBool(yyfgreater(n, 60)))) ? (_._Vy = 27,
                     _._6F = -15,
                     _Ib1(_, t)) : (_Zb1(_, t),
                         _l41(_, t));
