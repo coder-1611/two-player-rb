@@ -53166,7 +53166,7 @@ function _Y41(_, t) {
                     yyfless(_jj(_, t, 71)._l51, 0) && (_jj(_, t, 71)._l51 = _m51(_, t, _._7j))) : (_._i51 = yyfplus(1, _Ri(yyftime(.1, _Ri(e)))),
                         _._j51 = yyfplus(.065, _Ri(yyftime(.002, _Ri(e)))),
                         _._S31 = 1,
-                        yyGetBool(yyfless(_jj(_, t, 71)._l51, 0)) && yyGetBool(yyfgreater(_jj(_, t, 64)._fj, 1)) && (_jj(_, t, 71)._l51 = 1)),
+                        yyGetBool(yyfless(_jj(_, t, 71)._l51, 0)) && yyGetBool(1 /* [2P] was year > 1 — always arm AUDIBLES so CHANGE PLAY shows on BOTH devices regardless of local career state. The msg_Audibles tutorial popup is still year-gated and stays suppressed. */) && (_jj(_, t, 71)._l51 = 1)),
                 _Z01(_, t, 0);
             break;
         case 1:
@@ -55502,7 +55502,7 @@ function _Ib1(_, t) {
             yyfequal(_._Wy, 3) && (_._5F = K),
                 yyGetBool(yyfequal(_._Wy, 5)) && yyGetBool(yyfless(_._5F, K)) && (g_yyPrePostObject__ = _._5F,
                     _._5F = g_yyPrePostObject__ instanceof Long ? _._5F.add(1) : ++_._5F),
-                yyfequal(_jj(_, t, 64)._fj, 1) && (_._5F = 0),
+                false && /* [2P] year-1 no longer zeroes TIMEOUTS: stock Retro Bowl hides them until season 2, but a 2P career lives in per-device localStorage so the two phones disagreed. Keep the count from the op_matchlength formula above. */ yyfequal(_jj(_, t, 64)._fj, 1) && (_._5F = 0),
                 yyfnotequal(_._Wy, 3) ? _Sc1(_, t) : yyGetBool(global._mu) && (_Tc1(_, t),
                     _di(_, t, _Uc1, "poki_commercial_break"));
             break;
@@ -59454,7 +59454,7 @@ function _tr1(_, t, i) {
 }
 function _m51(_, t, i) {
     var e = arguments[2];
-    return yyfequal(_jj(_, t, 64)._fj, 1) ? 0 : yyfgreater(_Ai(e, "xp_level"), 10) ? 5 : yyfgreater(_Ai(e, "xp_level"), 6) ? 4 : yyfgreater(_Ai(e, "xp_level"), 3) ? 3 : yyfgreater(_Ai(e, "xp_level"), 1) ? 2 : 1
+    return false /* [2P] was `year === 1 ? 0` — the QB audible COUNT was the real gate for a real QB (the year>1 arm above only covers the -4 placeholder). Zeroing it here hid CHANGE PLAY on any season-1 career, which is what a fresh per-device localStorage always is. */ ? 0 : yyfgreater(_Ai(e, "xp_level"), 10) ? 5 : yyfgreater(_Ai(e, "xp_level"), 6) ? 4 : yyfgreater(_Ai(e, "xp_level"), 3) ? 3 : yyfgreater(_Ai(e, "xp_level"), 1) ? 2 : 1
 }
 function _vr1(_, t) {
     _._wr1 = _oi(_, _MB)
@@ -66111,7 +66111,7 @@ function _Z6(_, t) {
         _._l51 = -1,
         _._5F = _Ko(yyfplus(2, _Ri(_jj(_, t, 64)._Ws)), 2, 3),
         _._u11 = 0,
-        yyfequal(_jj(_, t, 64)._fj, 1) && (_._5F = 0),
+        false && /* [2P] year-1 no longer zeroes TIMEOUTS: stock Retro Bowl hides them until season 2, but a 2P career lives in per-device localStorage so the two phones disagreed. Keep the count from the op_matchlength formula above. */ yyfequal(_jj(_, t, 64)._fj, 1) && (_._5F = 0),
         _._D31 = 0,
         _._nb1 = 0,
         _._B01 = 0,
