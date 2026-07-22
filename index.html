@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V306<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V307<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V306</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V307</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2777,6 +2777,15 @@
             };
             // Exposed for the lobby's read-only roster preview (V82).
             window._rb2p_TEAM_ROSTERS = TEAM_ROSTERS;
+            // V307: my team's QB surname (position 1) for the play-by-play feed.
+            window._rb2p_offQbName = function () {
+                try {
+                    var specs = TEAM_ROSTERS[Number(window._rb2p_myTeamUid)];
+                    if (specs) for (var i = 0; i < specs.length; i++)
+                        if (specs[i].pos === 1) return String(specs[i].ln || 'QB').toUpperCase();
+                } catch (e) {}
+                return 'QB';
+            };
             // Write one spec onto an existing player struct (in place).
             function writeRosterPlayer(p, s, i) {
                 _Yi(p, 'fname', s.fn);  _Yi(p, 'lname', s.ln);
@@ -3140,6 +3149,75 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
+                    // ===== V307: PLAY-BY-PLAY FEED (offense device) =====
+                    // Emit a per-play result with REAL names so the waiting opponent
+                    // gets "PURDY -> EVANS · 23 YDS". Additive only: it writes to a
+                    // feed/ node nothing in the game logic reads, so a failed/slow
+                    // write can never affect play. Only while I'm on offense.
+                    if (bkp !== prev && window._rb2p_userIsWaitingForOpponent !== true &&
+                        typeof window._rb2p_pushFeed === 'function') {
+                        try {
+                            var fem = RB.engineState(), fm = fem && fem.rawEngineMatch;
+                            if (fm) {
+                                // Snap: latch the pixel scrimmage + direction, reset state.
+                                if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
+                                    window._rb2p_feedSnapX = Number(fm._B01);
+                                    window._rb2p_feedDir   = Number(fm._501) || 1;
+                                    window._rb2p_feedPass  = false;
+                                    window._rb2p_feedRcv   = null;
+                                    window._rb2p_feedDone  = false;
+                                }
+                                if (bkp === 7) window._rb2p_feedPass = true;
+                                // Catch: the receiver is the nearest rostered OF to the ball.
+                                if (bkp === 5) {
+                                    var rx = ball.x, ry = ball.y, rBest = null, rB2 = 1e12, rp, rdx, rdy, rd2;
+                                    for (var ri = 0; ri < all.length; ri++) {
+                                        rp = all[ri];
+                                        if (!rp || rp._HL2 || !rp._eE2 || rp._eE2._fE2 !== 'obj_playerOF') continue;
+                                        if (!rp._7j || rp._7j === -4) continue;
+                                        rdx = rp.x - rx; rdy = rp.y - ry; rd2 = rdx * rdx + rdy * rdy;
+                                        if (rd2 < rB2) { rB2 = rd2; rBest = rp; }
+                                    }
+                                    if (rBest && rB2 <= 40 * 40) {
+                                        try { window._rb2p_feedRcv = String(_Ai(rBest._7j, 'lname') || '').toUpperCase(); } catch (eN) {}
+                                    }
+                                    window._rb2p_feedPass = true;
+                                }
+                                // Dead ball: tackle (4) or sack (11). Emit the play.
+                                if ((bkp === 4 || bkp === 11) && !window._rb2p_feedDone) {
+                                    var sX = Number(window._rb2p_feedSnapX);
+                                    var dr = Number(window._rb2p_feedDir) || 1;
+                                    var gain = isFinite(sX) ? Math.round((ball.x - sX) / 20 * dr) : NaN;
+                                    var qb = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
+                                    if (bkp === 11) {
+                                        window._rb2p_pushFeed({ k: 'sack', qb: qb, yds: isFinite(gain) ? gain : -7 });
+                                    } else if (window._rb2p_feedPass && window._rb2p_feedRcv) {
+                                        window._rb2p_pushFeed({ k: 'pass', qb: qb, rcv: window._rb2p_feedRcv, yds: gain });
+                                    } else if (!window._rb2p_feedPass) {
+                                        // A run: name the carrier (nearest rostered OF).
+                                        var cx = ball.x, cy = ball.y, cBest = null, cB2 = 1e12, cpp, cddx, cddy, cdd2;
+                                        for (var ci = 0; ci < all.length; ci++) {
+                                            cpp = all[ci];
+                                            if (!cpp || cpp._HL2 || !cpp._eE2 || cpp._eE2._fE2 !== 'obj_playerOF') continue;
+                                            if (!cpp._7j || cpp._7j === -4) continue;
+                                            cddx = cpp.x - cx; cddy = cpp.y - cy; cdd2 = cddx * cddx + cddy * cddy;
+                                            if (cdd2 < cB2) { cB2 = cdd2; cBest = cpp; }
+                                        }
+                                        var rbNm = '';
+                                        if (cBest && cB2 <= 44 * 44) { try { rbNm = String(_Ai(cBest._7j, 'lname') || '').toUpperCase(); } catch (eR) {} }
+                                        window._rb2p_pushFeed({ k: 'run', rb: rbNm, yds: gain });
+                                    }
+                                    window._rb2p_feedDone = true;
+                                }
+                                // Play reset to dead without a catch/tackle after a throw = incomplete.
+                                if (bkp === 0 && window._rb2p_feedPass && !window._rb2p_feedRcv && !window._rb2p_feedDone) {
+                                    var qbi = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
+                                    window._rb2p_pushFeed({ k: 'incomplete', qb: qbi });
+                                    window._rb2p_feedDone = true;
+                                }
+                            }
+                        } catch (eFeed) {}
+                    }
                     if (bkp === prev) return;
                     // V193: RECEPTIONS. BALL_RECEIVED (5) = a thrown pass was caught
                     // (handoffs/runs use a different state, so this won't over-count).
@@ -7561,6 +7639,13 @@
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
 
+                    // V307: fire the WAIT-screen big-event blast (read-only, purely
+                    // visual). PAT_RESULT is a bookkeeping echo, never a blast.
+                    if (outcome && outcome.type && outcome.type !== 'PAT_RESULT' &&
+                        window._rb2p_waitFeedBig) {
+                        window._rb2p_waitFeedBig(outcome.type, outcome.message);
+                    }
+
                     // V56: an inbound outcome supersedes any turnover send we
                     // were holding for a pick-6 upgrade — firing it later
                     // would ship a stale drive-end and knock the opponent out
@@ -8053,16 +8138,18 @@
             // user can't poke the stalled engine canvas underneath.
             var wait = document.createElement('div');
             wait.id = 'rb-waiting';
+            // V307: OPAQUE (was rgba .97) — a translucent cover let the stalled,
+            // wrong-perspective engine canvas bleed through behind the commentary.
             wait.style.cssText =
                 'position:fixed;inset:0;z-index:1500;display:none;' +
                 'align-items:center;justify-content:center;' +
-                'background:rgba(8,12,20,0.97);' +
+                'background:#0a1018;' +
                 'font-family:monospace;color:#fff;text-align:center;' +
                 'image-rendering:pixelated;';
             wait.innerHTML =
-                '<div style="padding:26px 52px;border:4px solid #fff;background:rgba(0,0,0,0.55);letter-spacing:4px;">' +
-                    '<div style="font-size:24px;font-weight:bold;">WAITING FOR OPPONENT</div>' +
-                    '<div style="margin:16px 0 6px 0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:14px;letter-spacing:3px;">' +
+                '<div style="padding:26px 52px;border:4px solid #fff;background:#0a1018;letter-spacing:4px;min-width:300px;">' +
+                    '<div style="font-size:15px;font-weight:bold;opacity:0.75;">WAITING FOR OPPONENT</div>' +
+                    '<div style="margin:14px 0 6px 0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:14px;letter-spacing:3px;">' +
                         '<span style="opacity:0.7;">YOU</span>' +
                         '<span id="rb-wait-myscore" style="font-size:30px;font-weight:bold;color:#3cff7a;letter-spacing:0;">0</span>' +
                         '<span style="opacity:0.5;">—</span>' +
@@ -8070,7 +8157,26 @@
                         '<span style="opacity:0.7;">OPP</span>' +
                     '</div>' +
                     '<div id="rb-wait-clock" style="font-size:14px;letter-spacing:3px;opacity:0.85;">1ST QTR 2:00</div>' +
-                    '<div id="rb-waiting-sub" style="font-size:11px;margin-top:10px;opacity:0.55;letter-spacing:2px;">opponent is on offense</div>' +
+                    // ===== V307: live commentary =====
+                    // A two-line ticker fed by the opponent's live/ push (down &
+                    // distance + field position), a new feed/ node (per-play result
+                    // with real passer/receiver/yards), and outcomes/ (the big
+                    // blasts). Purely a spectator readout on the DEFENSE device — it
+                    // reads data already on the wire and never touches game logic.
+                    '<div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.15);">' +
+                        '<div id="rb-wait-headline" style="font-size:15px;font-weight:bold;letter-spacing:1px;min-height:19px;color:#ffd23c;">&nbsp;</div>' +
+                        '<div id="rb-wait-situation" style="font-size:12px;letter-spacing:2px;margin-top:7px;opacity:0.8;min-height:15px;">opponent is on offense</div>' +
+                    '</div>' +
+                '</div>' +
+                // Full-overlay BIG-EVENT blast (TOUCHDOWN / INTERCEPTION / …). Hidden
+                // until an outcome fires it; held >= 1s so the moment lands.
+                '<div id="rb-wait-blast" style="position:absolute;inset:0;display:none;' +
+                    'align-items:center;justify-content:center;flex-direction:column;' +
+                    'background:rgba(10,16,24,0.86);z-index:2;">' +
+                    '<div id="rb-wait-blast-text" style="font-size:min(13vw,86px);font-weight:900;' +
+                        'letter-spacing:2px;text-align:center;line-height:1.05;' +
+                        'text-shadow:0 0 24px currentColor;padding:0 4vw;">TOUCHDOWN</div>' +
+                    '<div id="rb-wait-blast-sub" style="font-size:16px;letter-spacing:4px;margin-top:18px;opacity:0.85;"></div>' +
                 '</div>';
             document.body.appendChild(wait);
             var waitSub = wait.querySelector('#rb-waiting-sub');
@@ -8108,6 +8214,156 @@
                     if ($os && oppScore != null) $os.textContent = String(oppScore);
                     if ($ck && clockText) $ck.textContent = clockText;
                 } catch (e) {}
+            };
+
+            // ===== V307: WAIT-SCREEN LIVE COMMENTARY CONTROLLER =====
+            // A tiny priority renderer for the DEFENSE device's WAIT screen. Three
+            // inputs, all data already on the wire:
+            //   • live()   — the opponent's 500ms push: down/distance + field spot
+            //                + a coarse ball-state action hint. This is the BASE.
+            //   • result() — a per-play feed event (real passer/receiver/yards),
+            //                emitted by the offense's ball observer. Held ~2.4s.
+            //   • big()    — a scoring / turnover outcome. A full blast, held ~1.8s
+            //                (>= the 1s the user asked for so the moment registers).
+            // Priority: big > result > action > base. A 120ms loop renders the
+            // top live item and expires the timed ones. Nothing here mutates engine
+            // or Firebase state — it only writes DOM text.
+            var RB2P_TEAM_ABBR = ['BUF','MIA','NE','NYJ','DEN','KC','LAC','LV','BAL','CIN',
+                'CLE','PIT','HOU','IND','JAX','TEN','DAL','NYG','PHI','WAS','ARI','LAR',
+                'SF','SEA','CHI','DET','GB','MIN','ATL','CAR','NO','TB'];
+            window._rb2p_teamAbbr = function (uid) {
+                uid = Number(uid);
+                return (uid >= 0 && uid < RB2P_TEAM_ABBR.length) ? RB2P_TEAM_ABBR[uid] : 'OPP';
+            };
+            // Field position from the DEFENSE device's own perspective. yard is the
+            // offense's signed _6F (>0 = driven into the waiting player's half).
+            // Exposed for tests; also used by the base-line builder below.
+            window._rb2p_fieldSpot = function (yard) {
+                yard = Number(yard);
+                if (!isFinite(yard)) return '';
+                var myAbbr  = window._rb2p_teamAbbr(window._rb2p_myTeamUid);
+                var oppAbbr = window._rb2p_teamAbbr(window._rb2p_oppTeamUid);
+                if (Math.abs(yard) < 1) return 'MIDFIELD';
+                var n = 50 - Math.abs(yard);
+                if (n < 1) n = 1;
+                return (yard > 0 ? myAbbr : oppAbbr) + ' ' + Math.round(n);
+            };
+            var wf = {
+                base: '', action: '', actionUntil: 0,
+                result: '', resultUntil: 0,
+                bigText: '', bigSub: '', bigColor: '', bigUntil: 0,
+                // Ordinal for a down number.
+                ord: function (d) { return d === 1 ? '1ST' : d === 2 ? '2ND' : d === 3 ? '3RD' : d === 4 ? '4TH' : (d + 'TH'); },
+                fieldSpot: function (yard) { return window._rb2p_fieldSpot(yard); }
+            };
+            // BASE: down & distance + field spot, plus a coarse in-play action from
+            // the ball state. down/toGo/yard come straight from the opponent's push.
+            window._rb2p_waitFeedLive = function (down, toGo, yard, ballKp) {
+                try {
+                    down = Number(down); toGo = Number(toGo);
+                    var spot = wf.fieldSpot(yard);
+                    if (down >= 1 && down <= 4) {
+                        // Round the distance for display — the engine carries a float.
+                        var toGoR = Math.max(1, Math.round(Number(toGo) || 0));
+                        var dist = (Number(yard) > 0 && (50 - Math.abs(Number(yard))) <= Number(toGo)) ? 'GOAL' : toGoR;
+                        wf.base = wf.ord(down) + ' & ' + dist + (spot ? '  ·  ' + spot : '');
+                    } else if (spot) {
+                        wf.base = spot;
+                    }
+                    // Coarse "something is happening" hint (the 500ms push is too slow
+                    // to catch a throw reliably — feed() carries the real result — but
+                    // this keeps the screen alive between plays). kp: 7 pass in air,
+                    // 5 caught & running, 2/3 at the snap.
+                    var k = Number(ballKp);
+                    var act = (k === 7) ? 'PASS IS UP…'
+                            : (k === 5) ? 'ON THE RUN…'
+                            : (k === 2 || k === 3 || k === 1) ? 'AT THE SNAP…' : '';
+                    if (act) { wf.action = act; wf.actionUntil = Date.now() + 900; }
+                } catch (e) {}
+            };
+            // RESULT: a completed play with real names. evt = {k,qb,rcv,rb,yds}.
+            window._rb2p_waitFeedResult = function (evt) {
+                try {
+                    if (!evt || !evt.k) return;
+                    var y = Number(evt.yds);
+                    // Signed yard text: "12 YDS" / "-3 YDS" (a loss keeps its sign).
+                    var yTxt = isFinite(y) ? (y + ' YD' + (Math.abs(y) === 1 ? '' : 'S')) : '';
+                    var txt = '';
+                    if (evt.k === 'pass') {
+                        // The nearest-player receiver can resolve to the QB himself on
+                        // a scramble — never render "PURDY → PURDY".
+                        if (evt.rcv && evt.qb && evt.rcv === evt.qb) {
+                            txt = (evt.qb || 'QB') + ' SCRAMBLES' + (yTxt ? '  ·  ' + yTxt : '');
+                        } else {
+                            txt = (evt.qb || 'QB') + ' → ' + (evt.rcv || 'REC') +
+                                  (yTxt ? '  ·  ' + yTxt : '');
+                        }
+                    } else if (evt.k === 'incomplete') {
+                        txt = (evt.qb || 'QB') + ' — INCOMPLETE';
+                    } else if (evt.k === 'sack') {
+                        txt = (evt.qb || 'QB') + ' SACKED' + (isFinite(y) ? '  ·  ' + y + ' YDS' : '');
+                    } else if (evt.k === 'run') {
+                        txt = (evt.rb ? evt.rb + (yTxt ? '  ·  ' + yTxt : '') : ('RUSH' + (yTxt ? '  ·  ' + yTxt : '')));
+                    } else { return; }
+                    wf.result = txt; wf.resultUntil = Date.now() + 2400;
+                    wf.action = ''; wf.actionUntil = 0;
+                } catch (e) {}
+            };
+            // BIG: a scoring / turnover blast. Called from applyOpponentOutcome
+            // (read-only). Mapped from the DEFENSE device's perspective.
+            window._rb2p_waitFeedBig = function (type, message) {
+                try {
+                    var map = {
+                        TD:     { t: 'TOUCHDOWN', c: '#ff5a5a', s: 'OPPONENT SCORES' },
+                        FG:     { t: 'FIELD GOAL', c: '#ffd23c', s: 'OPPONENT SCORES' },
+                        INT:    { t: 'INTERCEPTED', c: '#3cff7a', s: 'YOUR BALL' },
+                        FUMBLE: { t: 'FUMBLE', c: '#3cff7a', s: 'YOUR BALL' },
+                        PICK6:  { t: 'PICK SIX!', c: '#3cff7a', s: 'DEFENSIVE TOUCHDOWN' }
+                    };
+                    var m = map[type];
+                    if (!m) return;   // PUNT/DOWNS/OTHER are not blast-worthy
+                    wf.bigText = m.t; wf.bigColor = m.c;
+                    wf.bigSub = m.s || (message || '');
+                    wf.bigUntil = Date.now() + 1800;   // >= the 1s the user asked for
+                } catch (e) {}
+            };
+            // The 120ms render loop: pick the top-priority live item and paint it.
+            (function () {
+                var $head = null, $sit = null, $blast = null, $bt = null, $bs = null;
+                setInterval(function () {
+                    try {
+                        if (wait.style.display === 'none') return;
+                        if (!$head) {
+                            $head = document.getElementById('rb-wait-headline');
+                            $sit  = document.getElementById('rb-wait-situation');
+                            $blast = document.getElementById('rb-wait-blast');
+                            $bt = document.getElementById('rb-wait-blast-text');
+                            $bs = document.getElementById('rb-wait-blast-sub');
+                        }
+                        var now = Date.now();
+                        // Blast layer.
+                        if ($blast) {
+                            if (now < wf.bigUntil) {
+                                if ($bt) { $bt.textContent = wf.bigText; $bt.style.color = wf.bigColor; }
+                                if ($bs) $bs.textContent = wf.bigSub;
+                                $blast.style.display = 'flex';
+                            } else {
+                                $blast.style.display = 'none';
+                            }
+                        }
+                        // Headline: result (timed) beats action (timed); else blank.
+                        var head = (now < wf.resultUntil) ? wf.result
+                                 : (now < wf.actionUntil) ? wf.action : '';
+                        if ($head) $head.textContent = head || ' ';
+                        if ($sit)  $sit.textContent = wf.base || 'opponent is on offense';
+                    } catch (e) {}
+                }, 120);
+            })();
+            // Reset the ticker at the start of each opponent possession so a stale
+            // headline/blast from the previous drive never lingers.
+            window._rb2p_waitFeedReset = function () {
+                wf.result = ''; wf.resultUntil = 0; wf.action = ''; wf.actionUntil = 0;
+                wf.bigUntil = 0;
             };
 
             // ===== V88: star the OPPONENT's named defenders (offense device) =====
@@ -12686,6 +12942,17 @@
                         down:        Number(engineMatch.engineDownNumber)   || 0,
                         toGo:        Number(engineMatch.engineYardsToGo)    || 0,
                         yardLine:    Number(engineMatch.engineYardLineSigned) || 0,
+                        // V307: coarse ball state for the opponent's WAIT-screen
+                        // commentary action hint (7=pass up, 5=running, 2/3=snap).
+                        ballKp:      (function () {
+                            try {
+                                var a = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                for (var i = 0; i < a.length; i++)
+                                    if (a[i] && !a[i]._HL2 && a[i]._eE2 && a[i]._eE2._fE2 === 'obj_ball')
+                                        return Number(a[i]._kp);
+                            } catch (e) {}
+                            return 0;
+                        })(),
                         seq: ++userLivePushSeq,
                         ts: Date.now()
                     };
@@ -12693,6 +12960,33 @@
                         .catch(function () {});
                 } catch (e) {}
             }, 500);
+
+            // ===== V307: play-by-play feed (offense writes, defense reads) =====
+            // The offense's ball observer calls this with a per-play result. It is
+            // a fire-and-forget write to a node nothing in the game logic consumes,
+            // so it can never affect play. A seq + ts lets the reader dedupe/order.
+            var feedSeq = 0;
+            window._rb2p_pushFeed = function (evt) {
+                try {
+                    if (!myRoom || !myRole || !evt) return;
+                    evt.seq = ++feedSeq;
+                    evt.ts = Date.now();
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/feed/' + myRole), evt).catch(function () {});
+                } catch (e) {}
+            };
+            // Read the opponent's feed and surface it on the WAIT commentary line.
+            var lastFeedTs = 0;
+            FB.onValue(
+                FB.ref(db, 'rooms/' + myRoom + '/feed/' + otherRole),
+                function (snap) {
+                    try {
+                        var evt = snap.val();
+                        if (!evt || !evt.ts || evt.ts <= lastFeedTs) return;
+                        lastFeedTs = evt.ts;
+                        if (window._rb2p_waitFeedResult) window._rb2p_waitFeedResult(evt);
+                    } catch (e) {}
+                }
+            );
 
             // Subscribe to opponent's live state. When it arrives and the
             // user is on defense (or just not yet on offense), mirror it
@@ -12816,6 +13110,15 @@
                             opponentLivePayload.myScore,    // opp,  from sender's perspective
                             clockText
                         );
+                        // V307: feed the commentary base line. The opponent is on
+                        // offense, so their down/toGo/yardLine describe the live
+                        // situation. yardLine is their signed _6F; the controller
+                        // renders the field spot from the defense device's own POV.
+                        if (window._rb2p_waitFeedLive && opponentLivePayload.iHaveBall) {
+                            window._rb2p_waitFeedLive(
+                                opponentLivePayload.down, opponentLivePayload.toGo,
+                                opponentLivePayload.yardLine, opponentLivePayload.ballKp);
+                        }
                     }
                 }
             );
@@ -12878,6 +13181,7 @@
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/live')).catch(function () {});
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/snap')).catch(function () {});
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/box')).catch(function () {});
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/feed')).catch(function () {});   // V307
             try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
 
             // V60: lock in the agreed quarter length right before launch so
