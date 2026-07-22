@@ -88,16 +88,26 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     check('T3 result line shows "QB -> RCV · N YDS"',
           /PURDY/.test(t3head) && /EVANS/.test(t3head) && /23 YDS/.test(t3head),
           'got "' + t3head + '"');
-    // incomplete + sack + run variants
-    const variants = await def.page.evaluate(() => {
-        const out = {};
-        window._rb2p_waitFeedResult({ k: 'incomplete', qb: 'PURDY' });
-        out.incomplete = document.getElementById('rb-wait-headline'); // read after tick
-        return true;
-    });
-    await sleep(200);
-    const incTxt = await def.page.evaluate(() => document.getElementById('rb-wait-headline').textContent);
-    check('T3 incomplete pass renders', /INCOMPLETE/.test(incTxt), 'got "' + incTxt + '"');
+    // Every result variant renders with the right label.
+    const variant = async (evt) => {
+        await def.page.evaluate((e) => window._rb2p_waitFeedResult(e), evt);
+        await sleep(180);
+        return def.page.evaluate(() => document.getElementById('rb-wait-headline').textContent);
+    };
+    const incTxt = await variant({ k: 'incomplete', qb: 'PURDY' });
+    check('T3 incomplete renders as "INCOMPLETE PASS"', /INCOMPLETE PASS/.test(incTxt), 'got "' + incTxt + '"');
+    const runTxt = await variant({ k: 'run', rb: 'COOK', yds: 7 });
+    check('T3 RB run renders with name + "RUN"', /COOK/.test(runTxt) && /RUN/.test(runTxt) && /7 YDS/.test(runTxt), 'got "' + runTxt + '"');
+    const qbRunTxt = await variant({ k: 'run', rb: 'ALLEN', yds: 3 });
+    check('T3 QB run renders with the QB name + "RUN"', /ALLEN/.test(qbRunTxt) && /RUN/.test(qbRunTxt), 'got "' + qbRunTxt + '"');
+    const scrTxt = await variant({ k: 'scramble', qb: 'PURDY', yds: 12 });
+    check('T3 scramble renders', /PURDY/.test(scrTxt) && /SCRAMBLES/.test(scrTxt), 'got "' + scrTxt + '"');
+    const sackTxt = await variant({ k: 'sack', qb: 'PURDY', yds: -8 });
+    check('T3 sack renders with the loss', /SACKED/.test(sackTxt) && /-8/.test(sackTxt), 'got "' + sackTxt + '"');
+    const fumTxt = await variant({ k: 'fumble', by: 'COOK' });
+    check('T3 fumble renders "FUMBLE! LOST BY <name>"', /FUMBLE/.test(fumTxt) && /COOK/.test(fumTxt), 'got "' + fumTxt + '"');
+    const lossTxt = await variant({ k: 'run', rb: 'COOK', yds: -2 });
+    check('T3 a run for a loss keeps the minus sign', /-2 YDS/.test(lossTxt), 'got "' + lossTxt + '"');
 
     // ---- T4: the big blast fires and holds >= 1s.
     const startBlast = Date.now();
@@ -123,6 +133,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     check('T4 blast clears after its hold window', blastGone, 'blast never cleared');
     // INT and PICK6 map to the defense-favourable colour/text. The blast text is
     // repainted on the 120ms render loop, so wait a tick before reading the DOM.
+    // Clear any fumble stamp from the T3 variants first (a fumble within 5s would
+    // legitimately re-label an INT as FUMBLE — tested separately below).
+    await def.page.evaluate(() => { window._rb2p_lastFumbleMs = 0; });
     await def.page.evaluate(() => window._rb2p_waitFeedBig('INT', 'Intercepted.'));
     await sleep(200);
     const intBlast = await def.page.evaluate(() => document.getElementById('rb-wait-blast-text').textContent);
@@ -131,6 +144,17 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     await sleep(200);
     const p6Blast = await def.page.evaluate(() => document.getElementById('rb-wait-blast-text').textContent);
     check('T4 PICK6 maps to a PICK SIX blast', /PICK SIX/.test(p6Blast), 'got "' + p6Blast + '"');
+    // A fumble ships as an INT-typed outcome; a recent fumble feed must re-label
+    // that blast FUMBLE (not INTERCEPTED).
+    const fumBlast = await def.page.evaluate(() => {
+        window._rb2p_waitFeedResult({ k: 'fumble', by: 'COOK' });   // stamps lastFumbleMs
+        window._rb2p_waitFeedBig('INT', 'Interception.');           // the bucketed turnover
+        return document.getElementById('rb-wait-blast-text').textContent;
+    });
+    await sleep(200);
+    const fumBlast2 = await def.page.evaluate(() => document.getElementById('rb-wait-blast-text').textContent);
+    check('T4 a turnover just after a fumble blasts FUMBLE, not INTERCEPTED',
+          /FUMBLE/.test(fumBlast2), 'got "' + fumBlast2 + '"');
 
     // ---- T6: the offense's live push now carries ballKp.
     // Read the offense device's own live payload shape via the wire.
