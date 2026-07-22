@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V299<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V301<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V299</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V301</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2124,6 +2124,39 @@
             // Call this after ANY write to the yard line or distance-to-go. It is
             // exactly the engine's own arithmetic, so it is idempotent and safe to
             // call even when s_set_up_play did run.
+            // V300: carry the PLAYERS AND BALL with a relocated scrimmage.
+            // Moving _6F/_B01 alone only moves the logical spot and the chain
+            // markers — the sprites stay where they were, so the ball physically
+            // sits at the OLD spot while the scrimmage marker is at the new one.
+            // The engine then scores the next play as (ballX - _B01)/20 and reads
+            // that gap as a huge phantom gain/loss (device report: relocated to
+            // own 30, threw an incomplete pass, got "-60 yards, 2nd & 60").
+            // Shifting every field object by the same pixel delta keeps the
+            // formation intact and leaves sprites, scrimmage and yard line all
+            // agreeing. Field objects only — never UI (obj_playerprofile etc).
+            var RB2P_FIELD_OBJECTS = {
+                obj_ball: true, obj_player: true, obj_playerOF: true, obj_playerDF: true
+            };
+            function relocateFieldSprites(dx) {
+                var moved = 0;
+                try {
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < all.length; i++) {
+                        var inst = all[i];
+                        if (!inst || inst._HL2 || !inst._eE2 || !inst._eE2._fE2) continue;
+                        if (!RB2P_FIELD_OBJECTS[inst._eE2._fE2]) continue;
+                        if (typeof inst.x !== 'number') continue;
+                        inst.x += dx;
+                        // Keep the motion history with it so the engine's own
+                        // step/collision code doesn't see a one-frame teleport.
+                        if (typeof inst.xprevious === 'number') inst.xprevious += dx;
+                        if (typeof inst.xstart    === 'number') inst.xstart    += dx;
+                        moved++;
+                    }
+                } catch (e) {}
+                return moved;
+            }
+
             function resyncScrimmage(em, why) {
                 try {
                     if (!em) em = RB.engineState();
@@ -2134,8 +2167,19 @@
                     if (isNaN(yd) || isNaN(dir) || dir === 0) return false;
                     if (isNaN(tg)) tg = 0;
                     var b01 = 1300 + (yd * 20 * dir);
+                    var prevB01 = Number(em.engineScrimmagePx);
                     em.engineScrimmagePx = b01;
                     em.engineFirstDownPx = b01 + (tg * 20 * dir);
+                    // V300: only when the scrimmage genuinely MOVED. After a fresh
+                    // s_set_up_play the engine has already placed the formation at
+                    // this exact spot, so the delta is 0 and nothing is touched.
+                    if (isFinite(prevB01) && Math.abs(b01 - prevB01) > 1) {
+                        var n = relocateFieldSprites(b01 - prevB01);
+                        if (n) {
+                            console.log('[2P SCRIMMAGE] moved ' + n + ' field sprites by ' +
+                                        Math.round(b01 - prevB01) + 'px to follow the ball');
+                        }
+                    }
                     if (window._rb2p_qsyncLog !== false) {
                         console.log('[2P SCRIMMAGE] re-synced (' + (why || '?') + ') — yard ' +
                                     yd.toFixed(1) + ', toGo ' + tg + ', dir ' + dir +

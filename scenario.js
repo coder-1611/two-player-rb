@@ -84,6 +84,28 @@
         window._rb2p_userIsWaitingForOpponent  = false;
         window._rb2p_userOutcomeSendInProgress = false;
         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
+
+        // Clear the field first. forceUserOffenseDrive SKIPS s_set_up_play when a
+        // ball is already out (its mid-drive path), which would leave the old,
+        // possibly scattered formation to be shifted across the field instead of
+        // a clean pre-snap set. With the field empty it takes the full spawn path
+        // and the engine places players and ball at the new scrimmage itself.
+        try {
+            var FIELD = { obj_ball: 1, obj_player: 1, obj_playerOF: 1, obj_playerDF: 1 };
+            var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+            var doomed = [];
+            for (var i = 0; i < all.length; i++) {
+                var x = all[i];
+                if (x && !x._HL2 && x._eE2 && x._eE2._fE2 && FIELD[x._eE2._fE2]) doomed.push(x);
+            }
+            for (var j = 0; j < doomed.length; j++) {
+                try { (typeof _cr === 'function') ? _cr(doomed[j]) : (doomed[j]._HL2 = true); }
+                catch (eD) { try { doomed[j]._HL2 = true; } catch (eD2) {} }
+            }
+            if (doomed.length) console.log('[scenario] cleared ' + doomed.length +
+                                           ' field sprites for a clean respawn');
+        } catch (eClr) {}
+
         var spawned = true;
         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
             spawned = window._rb2p_forceUserOffenseDrive(yard) !== false;
