@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V301<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V302<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V301</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V302</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5396,17 +5396,27 @@
                             // incremented it). HALFTIME (Q2→Q3) is NOT handled here —
                             // it's owned by the dedicated Q3 LAW enforcer, which always
                             // gives B the ball.
-                            var keepYard = (typeof window._rb2p_preRolloverYard === 'number')
+                            // V302: prefer the spot latched at the Vy=13 park — it
+                            // includes the final play of the quarter, which the
+                            // clock-gated preRollover capture always misses.
+                            var qEnd = (typeof window._rb2p_qEndSpot === 'function')
+                                ? window._rb2p_qEndSpot(halfQ) : null;
+                            var keepYard = qEnd ? qEnd.yard
+                                : (typeof window._rb2p_preRolloverYard === 'number')
                                 ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
-                            var keepDown = (typeof window._rb2p_preRolloverDown === 'number')
+                            var keepDown = qEnd ? qEnd.down
+                                : (typeof window._rb2p_preRolloverDown === 'number')
                                 ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
-                            var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
+                            var keepToGo = qEnd ? qEnd.toGo
+                                : (typeof window._rb2p_preRolloverToGo === 'number')
                                 ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
                             console.log('[2P QTR-ADVANCE] Vy=13 (end of Q' + (halfQ - 1) + ' → Q' + halfQ +
                                         ') — KEEPING ball, ' + qmin + ':' + ('0' + qrem).slice(-2) +
-                                        ' at yard ' + keepYard + ' down ' + keepDown + '&' + keepToGo);
+                                        ' at yard ' + keepYard + ' down ' + keepDown + '&' + keepToGo +
+                                        (qEnd ? '  [V302 settled latch]' : '  [preRollover fallback]'));
                             doKeepDrive(keepYard, keepDown, keepToGo);
                             window._rb2p_qGovToppedQ = null;   // V295: consumed
+                            window._rb2p_qEndLatchQ  = null;   // V302: consumed
                             stuckEngineFsmStage = null;
                             engineFsmStageStuckSinceMs = Date.now();
                         }
@@ -5461,11 +5471,19 @@
                         // Resume where the user actually was when the quarter ended
                         // (the tracker captured the last live offensive spot), not the
                         // cascade's drifted value.
-                        var keepYard = (typeof window._rb2p_preRolloverYard === 'number')
+                        // V302: same latch preference as the Vy=13 path above — the
+                        // settled spot from the quarter park beats the clock-gated
+                        // preRollover capture, which never sees the quarter's last play.
+                        var qEndD = (typeof window._rb2p_qEndSpot === 'function')
+                            ? window._rb2p_qEndSpot(qTo) : null;
+                        var keepYard = qEndD ? qEndD.yard
+                            : (typeof window._rb2p_preRolloverYard === 'number')
                             ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
-                        var keepDown = (typeof window._rb2p_preRolloverDown === 'number')
+                        var keepDown = qEndD ? qEndD.down
+                            : (typeof window._rb2p_preRolloverDown === 'number')
                             ? window._rb2p_preRolloverDown : engineMatch.engineDownNumber;
-                        var keepToGo = (typeof window._rb2p_preRolloverToGo === 'number')
+                        var keepToGo = qEndD ? qEndD.toGo
+                            : (typeof window._rb2p_preRolloverToGo === 'number')
                             ? window._rb2p_preRolloverToGo : engineMatch.engineYardsToGo;
                         // Re-establish a PLAYABLE drive (not just possession). A plain
                         // forceUserOffenseDrive does NOT stick here: after a rollover the
@@ -5495,6 +5513,7 @@
                                 var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
                                 if (typeof setUpPlay === 'function') setUpPlay(raw, _Sc2, 0);
                                 resyncScrimmage(engineMatch, 'quarter-keep');   // V298
+                                window._rb2p_qEndLatchQ = null;                // V302: consumed
                                 engineMatch.engineDriveFsmStage   = 2;
                                 engineMatch.engineControllerState = 2;
                                 var hn = 0;
@@ -5579,6 +5598,21 @@
             window._rb2p_preRolloverYard = null;        // user's live spot just before the quarter ended
             window._rb2p_preRolloverDown = null;
             window._rb2p_preRolloverToGo = null;
+            // V302: the SETTLED post-play spot latched at the Vy=13 quarter park (see
+            // the latch block below). Preferred over preRollover* by every quarter-keep
+            // resume, because preRollover misses the final play of the quarter.
+            window._rb2p_qEndLatchQ    = null;
+            window._rb2p_qEndLatchYard = null;
+            window._rb2p_qEndLatchDown = null;
+            window._rb2p_qEndLatchToGo = null;
+            // Returns the latched settled spot for the quarter being ENTERED, or null.
+            window._rb2p_qEndSpot = function (q) {
+                if (window._rb2p_qEndLatchQ == null || Number(window._rb2p_qEndLatchQ) !== Number(q)) return null;
+                if (typeof window._rb2p_qEndLatchYard !== 'number') return null;
+                return { yard: window._rb2p_qEndLatchYard,
+                         down: window._rb2p_qEndLatchDown,
+                         toGo: window._rb2p_qEndLatchToGo };
+            };
             var qkPrevQuarterSeen = null;
             var qkQuarterStartSec = null;               // the new quarter's starting clock (seconds), captured after the clock resets
             setInterval(function () {
@@ -5645,6 +5679,42 @@
                         window._rb2p_preRolloverYard = em.engineYardLineSigned;
                         window._rb2p_preRolloverDown = qkDown;
                         window._rb2p_preRolloverToGo = em.engineYardsToGo;
+                    }
+
+                    // ===== V302: latch the SETTLED spot at the quarter park (Vy=13) =====
+                    // Device report (room UYJU): "on the quarter switch from 1st to 2nd
+                    // I got bumped back 10 yards."
+                    //
+                    // The quarter-keep resumes from _rb2p_preRolloverYard, which the
+                    // block above captures ONLY while the clock is RUNNING. But the last
+                    // play of a quarter is precisely the one that runs the clock to
+                    // 0:00 — so when it settles, `clockRunning` is already false and its
+                    // RESULT is never captured. preRollover therefore still holds the
+                    // PRE-SNAP spot of that final play, and the resume silently erases
+                    // whatever it gained: a 10-yard completion to end Q1 = "bumped back
+                    // 10 yards" into Q2. (The hard clock gate is deliberate — it stops
+                    // the rollover cascade's reset values from being latched — so it
+                    // can't simply be relaxed.)
+                    //
+                    // The engine's case 19 (retrobowl.js ~1487005) sets the end-quarter
+                    // banner, _Vy = 13, _UU[1] = 0 and the per-quarter line score, and
+                    // NEVER touches _6F / _t11 / _l61. So at the Vy=13 park those three
+                    // ARE the settled post-play spot — the exact value the drive should
+                    // resume from. Latch them once per boundary, before the FSM drifts
+                    // on to Vy=4 and the cascade smears them.
+                    if (Number(em.engineDriveFsmStage) === 13 &&
+                        window._rb2p_qEndLatchQ !== qNow &&
+                        userHasBall && window._rb2p_userIsWaitingForOpponent !== true &&
+                        qkDown >= 1 && qkDown <= 4 &&
+                        Math.abs(Number(em.engineYardLineSigned)) <= 50) {
+                        window._rb2p_qEndLatchQ    = qNow;
+                        window._rb2p_qEndLatchYard = Number(em.engineYardLineSigned);
+                        window._rb2p_qEndLatchDown = qkDown;
+                        window._rb2p_qEndLatchToGo = Number(em.engineYardsToGo);
+                        console.log('[2P QTR-SPOT] latched settled end-of-quarter spot for Q' + qNow +
+                                    ': yard ' + window._rb2p_qEndLatchYard +
+                                    ', ' + window._rb2p_qEndLatchDown + '&' + window._rb2p_qEndLatchToGo +
+                                    ' (preRollover was ' + window._rb2p_preRolloverYard + ')');
                     }
 
                     if (clockRunning) window._rb2p_lastStableQuarter = qNow;
@@ -8649,6 +8719,9 @@
                         window._rb2p_q3KickoffPending = false;   // V204: clear Q3 watchdog park
                         window._rb2p_q3LawApplied     = false;   // V204: re-arm the Q3 law
                         window._rb2p_otKickoffAppliedPeriod = null;   // V296
+                        window._rb2p_otFlipSeenPeriod = null;        // V302
+                        window._rb2p_otIllegalLogged  = null;        // V302
+                        window._rb2p_qEndLatchQ       = null;        // V302
                         try { sessionStorage.removeItem('rb2p_otPoss'); } catch (eRP) {}   // V296
                         return;
                     }
@@ -8702,6 +8775,48 @@
                     // (pre-V109 sudden death, resurrected through the reload path).
                     // Being in period 5+ with the game still live is a complete
                     // definition of overtime, so arm from that alone.
+                    // ===== V302: ...but ONLY if overtime was legitimately ENTERED =====
+                    // Device report (room UYJU, final 29-0): "the game went to OT after
+                    // a score of 23-0". V296 armed overtime from `q >= 5` ALONE, and
+                    // this block sits ABOVE the tie check — so a DECIDED regulation game
+                    // whose quarter rolled to 5 armed OT too. That is fatal, because the
+                    // game-over detector's very first OT guard is
+                    //     if (q >= 5 && window._rb2p_inOvertime) return;
+                    // which sits ABOVE its own `u === o` tie check. Both loops run at
+                    // 300ms, so the OT loop armed the flag before the FINAL detector
+                    // could collect its 4 confirm ticks — the detector then bailed
+                    // forever, the OT clock pin (below) refilled the clock to 9:00, and
+                    // a 23-0 blowout that should have ended at the Q4 whistle played on
+                    // as "overtime". V296 only meant to fix the RELOAD case (mid-OT the
+                    // score is normally NOT level), so keep that and reject the rest:
+                    // overtime is entered from a TIE and nothing else, and every genuine
+                    // OT leaves durable evidence that survives a reload —
+                    //   • the shared coin flip at rooms/{code}/ot/p{N} (written only
+                    //     from a tie, purged at match start, seen by BOTH devices), or
+                    //   • this device's own persisted equal-possession counters.
+                    var otTied = Number(em.userScore) === Number(em.opponentScore);
+                    var otLegit = otTied ||
+                        Number(window._rb2p_otFlipSeenPeriod)       === q ||
+                        Number(window._rb2p_otKickoffAppliedPeriod) === q;
+                    if (!otLegit) {
+                        try {
+                            var rawL = sessionStorage.getItem('rb2p_otPoss');
+                            if (rawL) {
+                                var ppL = JSON.parse(rawL);
+                                if (ppL && Number(ppL.q) === q) otLegit = true;
+                            }
+                        } catch (eL) {}
+                    }
+                    if (!otLegit) {
+                        if (window._rb2p_otIllegalLogged !== q) {
+                            window._rb2p_otIllegalLogged = q;
+                            console.log('[2P OT] period ' + q + ' reached with a DECIDED score (' +
+                                        em.userScore + '-' + em.opponentScore + ') and no coin flip — ' +
+                                        'this is the end of regulation, NOT overtime. Leaving OT disarmed ' +
+                                        'so the FINAL detector can end the game.');
+                        }
+                        return;
+                    }
                     if (!window._rb2p_inOvertime) {
                         window._rb2p_inOvertime  = true;
                         window._rb2p_otWasWaiting = (window._rb2p_userIsWaitingForOpponent === true);
@@ -12023,6 +12138,16 @@
                             FB.remove(FB.ref(db, 'rooms/' + code + '/ot/' + key)).catch(function () {});
                             return;
                         }
+                        // V302: durable, SHARED proof that overtime was legitimately
+                        // entered for this period. The flip is seeded only from a
+                        // regulation tie and is purged at match start, so it is the
+                        // authoritative discriminator the OT arming check needs to tell
+                        // "mid-OT reload with an unlevel score" apart from "regulation
+                        // ended decided and the quarter happened to roll past 4".
+                        // Set BEFORE the applied-once guard so a reload still records it.
+                        var otPeriodSeen = Number(entry.period) ||
+                                           Number(String(key).replace(/^p/, '')) || 0;
+                        if (otPeriodSeen >= 5) window._rb2p_otFlipSeenPeriod = otPeriodSeen;
                         if (otAppliedPeriods[key]) return;
                         otAppliedPeriods[key] = true;
                         console.log('[2P OT] applying ' + key + ' — receiver=' + entry.receiver);

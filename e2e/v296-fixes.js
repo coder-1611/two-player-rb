@@ -85,6 +85,31 @@ const fbDelete = TP.fbDelete;
     // T2: simulate the mid-OT reload state — Q5, NOT tied, inOvertime lost.
     const drv = (await g.a.page.evaluate(() => window._rb2p_userIsWaitingForOpponent === true))
         ? g.b : g.a;
+    // V302: a reload loses PAGE MEMORY (_rb2p_inOvertime) but keeps
+    // sessionStorage, and the OT possession counters are written through to it
+    // every tick while overtime is live. That surviving record is exactly what
+    // distinguishes this case — "mid-OT reload, score legitimately unlevel" —
+    // from "regulation ended DECIDED and the quarter rolled past 4", which used
+    // to arm overtime too and stranded a 23-0 blowout in a fake OT (room UYJU).
+    // Simulating the reload without it modelled a state that cannot occur.
+    // Order matters: put BOTH engines in period 5 first, then plant the record.
+    // The OT loop's fresh-match branch (q <= 1) purges rb2p_otPoss, so a marker
+    // written while the other device is still in Q1 gets wiped before its
+    // quarter catches up — which is a test artifact, not a real reload (a real
+    // one resumes with the engine already restored to the OT period).
+    for (const side of [g.a, g.b]) {
+        await side.page.evaluate(() => {
+            const s = RB.engineState();
+            s.engineQuarter = 5;
+            s.engineMinutesLeft = 9; s.engineSecondsLeft = 0;
+        });
+    }
+    for (const side of [g.a, g.b]) {
+        await side.page.evaluate(() => {
+            try { sessionStorage.setItem('rb2p_otPoss', JSON.stringify({ q: 5, my: 1, opp: 0 })); }
+            catch (e) {}
+        });
+    }
     await drv.page.evaluate(() => {
         const s = RB.engineState();
         window._rb2p_inOvertime = false;          // what a reload leaves behind
