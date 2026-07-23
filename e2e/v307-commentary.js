@@ -189,25 +189,19 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             }
         }
         if (!rp) return { err: 'no RB in roster' };
-        // Establish the play state the EDGE-DETECT run watcher needs: a per-tick
-        // baseline of every player's carries (_rb2p_raPrev), the snap yard line +
-        // down for the resolver, and a clean (non-pass) play.
-        var to2 = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n2 = _wi(to2._Ln), rb0 = {};
-        for (var j = 0; j < n2; j++) { var pj = _zi(to2._Ln, j); if (pj) rb0[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev     = rb0;   // V314: edge-detect baseline
-        window._rb2p_feedCatch  = false;
-        window._rb2p_feedThrew  = false;
-        window._rb2p_feedEmitted = false;
-        window._rb2p_feedPending = null;
-        window._rb2p_feedDir    = Number(RB.engineState().rawEngineMatch._501) || 1;
-        window._rb2p_feedYard0  = Number(RB.engineState().rawEngineMatch._6F);
-        window._rb2p_feedDown0  = Number(RB.engineState().rawEngineMatch._t11);
-        // Credit the RB one carry, the way the engine would at the tackle.
-        var car0 = Number(_Ai(rp, 'stat_rush_attempts')) || 0;
-        _Yi(rp, 'stat_rush_attempts', car0 + 1);
-        // Let the observer's run watcher detect the delta and push the feed.
-        await new Promise(function (r) { setTimeout(r, 1100); });
+        // V318: the emitter classifies at SETTLE by which box stat the engine
+        // credited. Seed rush+receive baselines, mark the play live, and set a
+        // yard/down that make it "settled" so the observer emits this tick.
+        var m = RB.engineState().rawEngineMatch;
+        var ra = {}, rc = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) { ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; rc[j] = Number(_Ai(pj, 'stat_receive')) || 0; } }
+        window._rb2p_raPrev = ra; window._rb2p_rcPrev = rc;
+        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
+        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;   // != current → settle
+        // The RB carried: the engine credits the true carrier's rush attempts.
+        _Yi(rp, 'stat_rush_attempts', (Number(_Ai(rp, 'stat_rush_attempts')) || 0) + 1);
+        await new Promise(function (r) { setTimeout(r, 700); });
         return { name: name, qb: window._rb2p_offQbName() };
     });
     if (t7.err) {
@@ -238,19 +232,18 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         // Simulate the QB being elevated by a PRIOR scramble: QB carries = RB+5.
         var rbC = Number(_Ai(rbP, 'stat_rush_attempts')) || 0;
         _Yi(qbP, 'stat_rush_attempts', rbC + 5);
-        // The new play's per-tick baseline captures THAT elevated QB count.
-        var to2 = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n2 = _wi(to2._Ln), rb0 = {};
-        for (var j = 0; j < n2; j++) { var pj = _zi(to2._Ln, j); if (pj) rb0[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev = rb0;
-        window._rb2p_feedCatch = false; window._rb2p_feedThrew = false;
-        window._rb2p_feedEmitted = false; window._rb2p_feedPending = null;
-        window._rb2p_feedDir = Number(RB.engineState().rawEngineMatch._501) || 1;
-        window._rb2p_feedYard0 = Number(RB.engineState().rawEngineMatch._6F);
-        window._rb2p_feedDown0 = Number(RB.engineState().rawEngineMatch._t11);
+        // Baselines capture THAT elevated QB count. Only a fresh increment (the RB's,
+        // this play) is a rush; the QB's already-high count is baseline, not a bump.
+        var m = RB.engineState().rawEngineMatch;
+        var ra = {}, rc = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) { ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; rc[j] = Number(_Ai(pj, 'stat_receive')) || 0; } }
+        window._rb2p_raPrev = ra; window._rb2p_rcPrev = rc;
+        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
+        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;
         // This play: only the RB carries (RB +1). QB's absolute count stays higher.
         _Yi(rbP, 'stat_rush_attempts', rbC + 1);
-        await new Promise(function (r) { setTimeout(r, 1100); });
+        await new Promise(function (r) { setTimeout(r, 700); });
         return { rbName: rbName, qbName: qbName };
     });
     if (t7b.err) {
@@ -271,18 +264,23 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     const t9 = await off.page.evaluate(async () => {
         window._rb2p_userIsWaitingForOpponent = false;
         var m = RB.engineState().rawEngineMatch;
-        var dir = Number(m._501) || 1, dsign = (dir < 0) ? 1 : -1;
+        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n = _wi(to._Ln), rcv = null;
+        for (var i = 0; i < n; i++) { var p = _zi(to._Ln, i); if (p && Number(_Ai(p, 'position')) !== 1) { rcv = p; break; } }
         var y0 = Number(m._6F), d0 = Number(m._t11);
-        window._rb2p_feedThrew = true; window._rb2p_feedCatch = true;
-        window._rb2p_feedRcv = 'EVANS'; window._rb2p_feedEmitted = false;
-        window._rb2p_feedDir = dir; window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
-        window._rb2p_feedPending = { k: 'pass', qb: 'PURDY', rcv: 'EVANS' };
-        window._rb2p_raPrev = null;   // not a run
-        // Move the ball 7 yards downfield in the drive direction + advance the down.
-        m._6F  = y0 + 7 * dsign;
-        m._t11 = d0 + 1;
-        await new Promise(function (r) { setTimeout(r, 900); });
-        return { dir: dir };
+        var ra = {}, rc = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) { ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; rc[j] = Number(_Ai(pj, 'stat_receive')) || 0; } }
+        window._rb2p_raPrev = ra; window._rb2p_rcPrev = rc;
+        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
+        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
+        // A completion: the receiver gets a reception (no rush credit) → PASS.
+        _Yi(rcv, 'stat_receive', (Number(_Ai(rcv, 'stat_receive')) || 0) + 1);
+        // The engine resolves the down: _6F moves +7 (== the forward gain, no _501
+        // factor now) and the down advances.
+        m._6F = y0 + 7; m._t11 = d0 + 1;
+        await new Promise(function (r) { setTimeout(r, 700); });
+        return { dir: Number(m._501) };
     });
     {
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);

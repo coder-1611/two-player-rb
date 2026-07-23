@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V317<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V318<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V317</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V318</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3256,88 +3256,77 @@
                                 if (b && b2 <= maxD * maxD) { try { return String(_Ai(b._7j, 'lname') || '').toUpperCase(); } catch (e) {} }
                                 return '';
                             };
-                            if (fm && bkp !== prev) {
-                                // Snap: latch the AUTHORITATIVE yard line + down + direction,
-                                // and seed the rush-attempt edge tracker.
+                            if (fm) {
+                                // Snap: latch the AUTHORITATIVE yard line + down, and the
+                                // per-player rush + receive baselines. (bkp 1/2 from a dead
+                                // ball is the snap; the prev===0 gate makes this edge-only.)
                                 if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
-                                    window._rb2p_feedDir      = Number(fm._501) || 1;
                                     window._rb2p_feedYard0    = Number(fm._6F);    // signed yard line at snap
                                     window._rb2p_feedDown0    = Number(fm._t11);   // down at snap
                                     window._rb2p_feedThrew    = false;
-                                    window._rb2p_feedCatch    = false;
-                                    window._rb2p_feedRcv      = '';
-                                    window._rb2p_feedRunner   = '';
+                                    window._rb2p_feedSawSack  = false;
+                                    window._rb2p_feedWasLive  = false;
                                     window._rb2p_feedEmitted  = false;
-                                    window._rb2p_feedPending  = null;
-                                    var rp0 = window._rb2p_raPrev = {};
-                                    rosterEach(function (p, i2) { rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
+                                    var rp0 = window._rb2p_raPrev = {}, rc0 = window._rb2p_rcPrev = {};
+                                    rosterEach(function (p, i2) {
+                                        rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0;
+                                        rc0[i2] = Number(_Ai(p, 'stat_receive')) || 0;
+                                    });
                                 }
-                                if (bkp === 7) window._rb2p_feedThrew = true;
-                                if (bkp === 5 && !window._rb2p_feedCatch) {
-                                    window._rb2p_feedCatch = true;
-                                    window._rb2p_feedRcv = nearestOF(ball.x, ball.y, 44);
-                                }
-                                // Dead ball on a PASS/SACK: latch a PENDING result. Yardage is
-                                // filled in by the resolver below from the engine's own _6F
-                                // delta — NOT ball.x, which at the tackle frame sits ~2 yards
-                                // short of the spotted ball ("a 7-yard pass shown as 5").
-                                if ((bkp === 4 || bkp === 11) && !window._rb2p_feedEmitted &&
-                                    !window._rb2p_feedPending) {
-                                    if (bkp === 11) {
-                                        window._rb2p_feedPending = { k: 'sack', qb: qbNm };
-                                    } else if (window._rb2p_feedCatch) {
-                                        window._rb2p_feedPending = { k: 'pass', qb: qbNm, rcv: window._rb2p_feedRcv };
+                                if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball thrown (only on an incompletion)
+                                if (bkp === 11) window._rb2p_feedSawSack = true;
+                                if (bkp === 2 || bkp === 5 || bkp === 4) window._rb2p_feedWasLive = true;
+                                // SETTLE + CLASSIFY once the down resolves (or the ball is
+                                // dead after a live play). Classify by WHICH BOX STAT the
+                                // engine credited — the reliable ground truth. kp5 fires on
+                                // EVERY play (a live-data trace showed 0→1→2→5→4 for runs AND
+                                // passes), so kp cannot tell a pass from a run; the credited
+                                // stat can. Priority: a rush attempt = a RUN by that carrier
+                                // (prefer a non-QB back over the QB); else a reception = a
+                                // PASS to that receiver; else a thrown ball = INCOMPLETE.
+                                // Settle only once the engine has RESOLVED the down: it does
+                                // `_l61-=s; _t11+=1; _6F+=s` atomically, so the down number
+                                // changing OR _6F moving off the snap value both mean the
+                                // spot is final. (Settling on the dead ball, bkp===0, fired a
+                                // few frames too early — before `_6F += s` ran — so gains read
+                                // as 0.) The _6F term also catches a 1st-down conversion on
+                                // 1st down, where the down number stays 1.
+                                var settledNow = window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
+                                    ((Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
+                                     (Math.abs(Number(fm._6F) - Number(window._rb2p_feedYard0)) >= 0.5));
+                                if (settledNow && window._rb2p_raPrev) {
+                                    var raP = window._rb2p_raPrev, rcP = window._rb2p_rcPrev || {};
+                                    var runner = '', runnerQB = '', receiver = '';
+                                    rosterEach(function (p, i2) {
+                                        var ra = Number(_Ai(p, 'stat_rush_attempts')) || 0;
+                                        var rc = Number(_Ai(p, 'stat_receive')) || 0;
+                                        var nm = ''; try { nm = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
+                                        if (ra > (Number(raP[i2]) || 0)) {
+                                            if (Number(_Ai(p, 'position')) === 1) { if (!runnerQB) runnerQB = nm; }
+                                            else if (!runner) runner = nm;
+                                        }
+                                        if (rc > (Number(rcP[i2]) || 0) && !receiver) receiver = nm;
+                                    });
+                                    var carrier = runner || runnerQB;   // a non-QB rusher wins
+                                    var evt = null;
+                                    if (window._rb2p_feedSawSack)    evt = { k: 'sack', qb: qbNm };
+                                    else if (carrier)                evt = { k: 'run', rb: carrier };
+                                    else if (receiver)               evt = { k: 'pass', qb: qbNm, rcv: receiver };
+                                    else if (window._rb2p_feedThrew) evt = { k: 'incomplete', qb: qbNm };
+                                    if (evt) {
+                                        var y0 = Number(window._rb2p_feedYard0);
+                                        // Gain = the engine's own _6F delta (== s in `_6F += s`).
+                                        // _6F rises toward the opponent goal in BOTH drive
+                                        // directions, so this is the true forward gain with NO
+                                        // _501 factor — the old dsign negated every dir=+1 play
+                                        // ("+4 shown as -4"). Incomplete carries no yardage.
+                                        if (isFinite(y0) && evt.k !== 'incomplete') {
+                                            var g = Math.round(Number(fm._6F) - y0);
+                                            if (Math.abs(g) <= 99) evt.yds = g;
+                                        }
+                                        window._rb2p_pushFeed(evt);
                                     }
-                                }
-                                // A throw with no catch, ball dead = incomplete (no yardage).
-                                if (bkp === 0 && window._rb2p_feedThrew && !window._rb2p_feedCatch &&
-                                    !window._rb2p_feedEmitted && !window._rb2p_feedPending) {
-                                    window._rb2p_pushFeed({ k: 'incomplete', qb: qbNm });
                                     window._rb2p_feedEmitted = true;
-                                }
-                            }
-                            // ---- RUN carrier via EDGE-DETECT (every tick) ----
-                            // The engine credits +1 stat_rush_attempts to the TRUE carrier
-                            // (_._X_) at the tackle. Detect the exact tick a player's count
-                            // ticks up rather than comparing against a snap baseline: a stale
-                            // baseline let a QB's count (elevated by an earlier scramble) keep
-                            // "exceeding" it, so every later RB run was mis-named the QB
-                            // ("after a QB run, even RB runs show as QB"). Only on a non-pass.
-                            if (fm && window._rb2p_raPrev &&
-                                !window._rb2p_feedCatch && !window._rb2p_feedThrew) {
-                                var raPrev = window._rb2p_raPrev, edgeRunner = '';
-                                rosterEach(function (p, i2) {
-                                    var cur = Number(_Ai(p, 'stat_rush_attempts')) || 0;
-                                    if (cur > (Number(raPrev[i2]) || 0) && !edgeRunner) {
-                                        try { edgeRunner = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
-                                    }
-                                    raPrev[i2] = cur;
-                                });
-                                if (edgeRunner && !window._rb2p_feedEmitted && !window._rb2p_feedPending) {
-                                    window._rb2p_feedRunner  = edgeRunner;
-                                    window._rb2p_feedPending  = { k: 'run', rb: edgeRunner };
-                                }
-                            }
-                            // ---- RESOLVER: fill the pending result's yardage from the
-                            // engine's resolved _6F, then emit once. Gain = signed _6F delta
-                            // from the snap (the engine's own play-resolution math = the
-                            // on-field spot), direction-corrected. Fires when the down number
-                            // advances (so _6F is settled) or the ball is fully dead. An
-                            // absurd |gain| means a possession flip negated _6F — drop the
-                            // number and still name the play.
-                            if (fm && window._rb2p_feedPending && !window._rb2p_feedEmitted) {
-                                var pnd = window._rb2p_feedPending, y0 = Number(window._rb2p_feedYard0);
-                                var settled = (Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
-                                              (Number(ball._kp) === 0);
-                                if (settled) {
-                                    if (isFinite(y0)) {
-                                        var dsign = (Number(window._rb2p_feedDir) < 0) ? 1 : -1;
-                                        var gain = Math.round((Number(fm._6F) - y0) * dsign);
-                                        if (Math.abs(gain) <= 99) pnd.yds = gain;
-                                    }
-                                    window._rb2p_pushFeed(pnd);
-                                    window._rb2p_feedEmitted = true;
-                                    window._rb2p_feedPending  = null;
                                 }
                             }
                             // Fumble: watch the roster's total fumbles; on an increase,
@@ -7783,17 +7772,31 @@
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
 
-                    // V307: fire the WAIT-screen big-event blast (read-only, purely
-                    // visual). PAT_RESULT is a bookkeeping echo, never a blast.
-                    // V317: a real INT/fumble ships as type OTHER (prevVy stale), so
-                    // map a flagged turnover to an INT blast — waitFeedBig re-labels
-                    // it to FUMBLE if the fumble feed has just arrived on this device.
+                    // V318: fire the WAIT-screen big-event blast (read-only, visual).
+                    // The outcome TYPE is unreliable — a stale prevVy types real TDs
+                    // and INTs as OTHER (confirmed live: turnovers ship as OTHER, and
+                    // no room ever shows a 'TD' type), which is why the popups "never
+                    // show." Derive the event from signals that DON'T depend on the
+                    // type: a jump in the SCORER's (opponent's) points = TD (>=6) / FG
+                    // (==3), and the _Vy=8 turnover flag = INT/FUMBLE. PICK6 is already
+                    // typed reliably (via the _Ak1 hook). PAT_RESULT is a score echo.
                     if (outcome && window._rb2p_waitFeedBig) {
-                        var blastType = outcome.type;
-                        if ((blastType === 'OTHER' || !blastType) && outcome.turnover) blastType = 'INT';
-                        if (blastType && blastType !== 'PAT_RESULT') {
-                            window._rb2p_waitFeedBig(blastType, outcome.message);
-                        }
+                        var scorerNow = Number(outcome.scoreUser);        // opponent's cumulative score
+                        if (!isFinite(scorerNow)) scorerNow = 0;
+                        var prevScorer = Number(window._rb2p_blastPrevScorerScore);
+                        if (!isFinite(prevScorer)) prevScorer = Number(engineMatch.opponentScore) || 0;
+                        var dScore = scorerNow - prevScorer;
+                        window._rb2p_blastPrevScorerScore = scorerNow;
+                        var blastType = null;
+                        if (outcome.type === 'PICK6')                     blastType = 'PICK6';
+                        else if (outcome.type === 'PAT_RESULT')           blastType = null;   // echo, never a blast
+                        else if (dScore >= 6)                             blastType = 'TD';
+                        else if (dScore === 3)                            blastType = 'FG';
+                        else if (outcome.turnover || outcome.type === 'INT') blastType = 'INT';
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'blast type=' + outcome.type + ' turn=' + outcome.turnover +
+                            ' dScore=' + dScore + ' -> ' + (blastType || 'none'));
+                        if (blastType) window._rb2p_waitFeedBig(blastType, outcome.message);
                     }
 
                     // V56: an inbound outcome supersedes any turnover send we
@@ -8525,13 +8528,15 @@
                     } else if (spot) {
                         wf.base = spot;
                     }
-                    // Coarse "something is happening" hint (the 500ms push is too slow
-                    // to catch a throw reliably — feed() carries the real result — but
-                    // this keeps the screen alive between plays). kp: 7 pass in air,
-                    // 5 caught & running, 2/3 at the snap.
+                    // Coarse "something is happening" hint. A live-data trace showed
+                    // the ball reaches kp5 on EVERY play (runs AND passes go 0→1→2→5→4),
+                    // so kp5 canNOT mean "on the run" — it just means the play is live.
+                    // Calling it "ON THE RUN" mislabelled every pass. Keep it neutral;
+                    // the real pass/run + names land in the result line a moment later
+                    // (feed()). kp7 only appears on an incompletion (ball in the air).
                     var k = Number(ballKp);
                     var act = (k === 7) ? 'PASS IS UP…'
-                            : (k === 5) ? 'ON THE RUN…'
+                            : (k === 5) ? 'PLAY IS LIVE…'
                             : (k === 2 || k === 3 || k === 1) ? 'AT THE SNAP…' : '';
                     if (act) { wf.action = act; wf.actionUntil = Date.now() + 900; }
                     // V314: drive the arena field bar from the same wire. The opponent
@@ -13495,6 +13500,7 @@
             window._rb2p_resumeRawOffStats = null;    // V198: consume-once on resume
             window._rb2p_lastBoxSig = null;           // V298: re-arm the box write-through
             window._rb2p_gameOverReported = false;
+            window._rb2p_blastPrevScorerScore = 0;   // V318: re-baseline the score-delta blast
             window._rb2p_inOvertime = false;   // V109: re-arm equal-possession OT
             window._rb2p_otMyPoss   = 0;
             window._rb2p_otOppPoss  = 0;

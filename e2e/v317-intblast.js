@@ -34,6 +34,7 @@ async function resetBlast(page) {
     await page.evaluate(() => {
         try { window._rb2p_waitFeedReset(); } catch (e) {}
         window._rb2p_lastFumbleMs = 0; window._rb2p_lastTurnoverVy8Ms = 0;
+        window._rb2p_blastPrevScorerScore = 0;   // V318 score-delta baseline
         var b = document.getElementById('rb-wait-blast'); if (b) b.style.display = 'none';
     });
     await sleep(200);
@@ -88,6 +89,24 @@ async function resetBlast(page) {
         });
         check('T4 the _Vy=8 turnover stage is stamped in real time (sender signal)',
               t4.stamped, 'no fresh _rb2p_lastTurnoverVy8Ms stamp');
+
+        // ---- T5: a TD is blasted from the SCORE DELTA (type-independent) ----
+        await resetBlast(page);
+        await page.evaluate(o => { window._rb2p_applyOpponentOutcome(o); }, OUTCOME({ type: 'OTHER', turnover: false, scoreUser: 7 }));
+        await sleep(350);
+        const t5 = await blastState(page);
+        console.log('  T5 blast: ' + JSON.stringify(t5));
+        check('T5 an OTHER-typed drive that scored 7 blasts TOUCHDOWN (score-delta)',
+              t5.shown && /TOUCHDOWN/.test(t5.text), JSON.stringify(t5));
+
+        // ---- T6: a 3-point drive blasts FIELD GOAL ----
+        await resetBlast(page);
+        await page.evaluate(o => { window._rb2p_applyOpponentOutcome(o); }, OUTCOME({ type: 'OTHER', turnover: false, scoreUser: 3 }));
+        await sleep(350);
+        const t6 = await blastState(page);
+        console.log('  T6 blast: ' + JSON.stringify(t6));
+        check('T6 an OTHER-typed drive that scored 3 blasts FIELD GOAL (score-delta)',
+              t6.shown && /FIELD GOAL/.test(t6.text), JSON.stringify(t6));
     } finally {
         await browser.close();
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
