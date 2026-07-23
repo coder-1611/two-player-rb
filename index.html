@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V329<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V330<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V329</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V330</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5892,6 +5892,25 @@
                                         if (em2) {
                                             em2.engineControllerState = 2;
                                             if (em2.engineDriveFsmStage > 2) em2.engineDriveFsmStage = 2;
+                                        }
+                                        // V330: NUKE the kickoff button. Device trace (room
+                                        // AVQT): at Q1->Q2 the engine's gutted AI-kickoff path
+                                        // spawns an obj_btn_kickoff even though the offense KEPT
+                                        // the ball — the tap lands on it ("KY fired"), the real
+                                        // scrimmage snap never runs, the clock stays frozen at
+                                        // the quarter start, and this resume re-fires forever
+                                        // (the "infinite play change": QTR-KEEP resume x34,
+                                        // clk constant). The OT resume already nukes this button
+                                        // every tick; the quarter-keep resume must too so the
+                                        // spawned scrimmage play is the ONLY thing to snap.
+                                        var kinsts = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                                        for (var ki = 0; ki < kinsts.length; ki++) {
+                                            var kinst = kinsts[ki];
+                                            if (kinst && !kinst._HL2 && kinst._eE2 &&
+                                                kinst._eE2._fE2 === 'obj_btn_kickoff') {
+                                                try { _cr(kinst); } catch (eKk) { kinst._HL2 = true; }
+                                                try { kinst._g2 = 0; } catch (eKv) {}   // never paint a corpse
+                                            }
                                         }
                                     } catch (eH) {}
                                     if (++hn > 90) { clearInterval(hiv); qkResumeHoldActive = false; }
