@@ -253,6 +253,40 @@
         .rb-roster-body tr:nth-child(even) td { background: rgba(255,255,255,0.025); }
         .rb-roster-body td.pos { color: #3cb0ff; font-weight: bold; }
 
+        /* ===== V312: shared retro-field skin for the WAIT + FINAL overlays =====
+           Same design language as the lobby (Press Start 2P headers, field-blue
+           gridlines, navy hard shadows, white panels, CRT scanlines) so the in-
+           game screens are seamless with it. */
+        #rb-waiting.rb-fx, #rb-final.rb-fx {
+            font-family: 'Press Start 2P', monospace;
+            -webkit-font-smoothing: none; image-rendering: pixelated; color: #fff;
+            background-color: #1f63cf;
+            background-image:
+                repeating-linear-gradient(0deg, transparent 0 62px, rgba(255,255,255,.07) 62px 64px),
+                repeating-linear-gradient(90deg, transparent 0 118px, rgba(255,255,255,.04) 118px 120px),
+                linear-gradient(180deg, #2a73e0 0%, #1f63cf 45%, #164da8 100%);
+        }
+        /* CRT scanline + vignette lasered over the overlay (non-interactive). */
+        .rb-fx-crt { position: absolute; inset: 0; z-index: 3; pointer-events: none;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+            animation: rb-scan 9s linear infinite, rb-flicker 6s steps(1) infinite;
+            mix-blend-mode: multiply; }
+        .rb-fx-vig { position: absolute; inset: 0; z-index: 3; pointer-events: none;
+            background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(4,10,30,.6) 100%); }
+        .rb-fx-corner { position: absolute; width: 30px; height: 30px; z-index: 4; pointer-events: none; }
+        .rb-fx-corner.tl { left: 20px;  top: 20px;    border-left: 5px solid rgba(255,255,255,.5); border-top: 5px solid rgba(255,255,255,.5); }
+        .rb-fx-corner.tr { right: 20px; top: 20px;    border-right:5px solid rgba(255,255,255,.5); border-top: 5px solid rgba(255,255,255,.5); }
+        .rb-fx-corner.bl { left: 20px;  bottom: 20px; border-left: 5px solid rgba(255,255,255,.5); border-bottom:5px solid rgba(255,255,255,.5); }
+        .rb-fx-corner.br { right: 20px; bottom: 20px; border-right:5px solid rgba(255,255,255,.5); border-bottom:5px solid rgba(255,255,255,.5); }
+        /* A navy hard-shadow white panel — the signature card of the design. */
+        .rb-fx-panel { position: relative; z-index: 2; background: rgba(8,20,52,.55);
+            border: 4px solid #fff; box-shadow: 8px 8px 0 #0a1838; }
+        .rb-fx-btn { font-family: 'Press Start 2P', monospace; color: #1f63cf;
+            background: #fff; border: 5px solid #0a1838; box-shadow: 6px 6px 0 #0a1838;
+            cursor: pointer; transition: transform .07s, box-shadow .07s;
+            -webkit-font-smoothing: none; }
+        .rb-fx-btn:active { transform: translate(3px,3px); box-shadow: 3px 3px 0 #0a1838; }
+
         /* ============ 2-Player Lobby — retro pixel redesign (V211) ============ */
         @keyframes rb-flicker{0%,100%{opacity:.94}50%{opacity:.88}}
         @keyframes rb-scan{0%{background-position:0 0}100%{background-position:0 6px}}
@@ -955,7 +989,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V311<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V312<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1057,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V311</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V312</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8195,36 +8229,40 @@
             // user can't poke the stalled engine canvas underneath.
             var wait = document.createElement('div');
             wait.id = 'rb-waiting';
-            // V307: OPAQUE (was rgba .97) — a translucent cover let the stalled,
-            // wrong-perspective engine canvas bleed through behind the commentary.
+            wait.className = 'rb-fx';   // V312: retro-field skin (see CSS)
+            // V307: OPAQUE — a translucent cover let the stalled, wrong-perspective
+            // engine canvas bleed through behind the commentary. V312: the field
+            // background + CRT overlays come from the .rb-fx class.
             wait.style.cssText =
                 'position:fixed;inset:0;z-index:1500;display:none;' +
-                'align-items:center;justify-content:center;' +
-                'background:#0a1018;' +
-                'font-family:monospace;color:#fff;text-align:center;' +
-                'image-rendering:pixelated;';
+                'align-items:center;justify-content:center;text-align:center;';
             wait.innerHTML =
-                '<div style="padding:26px 52px;border:4px solid #fff;background:#0a1018;letter-spacing:4px;min-width:300px;">' +
-                    '<div style="font-size:15px;font-weight:bold;opacity:0.75;">WAITING FOR OPPONENT</div>' +
-                    '<div style="margin:14px 0 6px 0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:14px;letter-spacing:3px;">' +
-                        '<span style="opacity:0.7;">YOU</span>' +
-                        '<span id="rb-wait-myscore" style="font-size:30px;font-weight:bold;color:#3cff7a;letter-spacing:0;">0</span>' +
-                        '<span style="opacity:0.5;">—</span>' +
-                        '<span id="rb-wait-oppscore" style="font-size:30px;font-weight:bold;color:#ff8c8c;letter-spacing:0;">0</span>' +
-                        '<span style="opacity:0.7;">OPP</span>' +
+                // background decorations (match the lobby's field aesthetic)
+                '<div class="rb-fx-corner tl"></div><div class="rb-fx-corner tr"></div>' +
+                '<div class="rb-fx-corner bl"></div><div class="rb-fx-corner br"></div>' +
+                '<div class="rb-fx-panel" style="padding:26px 40px 30px;letter-spacing:2px;min-width:min(90vw,340px);max-width:92vw;">' +
+                    '<div style="font-size:11px;letter-spacing:3px;color:#9fbcf0;">WAITING FOR OPPONENT</div>' +
+                    // scoreboard
+                    '<div style="margin:18px 0 4px 0;display:flex;align-items:center;justify-content:center;gap:16px;font-size:10px;letter-spacing:2px;">' +
+                        '<span style="color:#9fbcf0;">YOU</span>' +
+                        '<span id="rb-wait-myscore" style="font-size:34px;color:#36e07a;letter-spacing:0;text-shadow:3px 3px 0 #0a1838;">0</span>' +
+                        '<span style="color:#5b8ce8;">–</span>' +
+                        '<span id="rb-wait-oppscore" style="font-size:34px;color:#ff6a6a;letter-spacing:0;text-shadow:3px 3px 0 #0a1838;">0</span>' +
+                        '<span style="color:#9fbcf0;">OPP</span>' +
                     '</div>' +
-                    '<div id="rb-wait-clock" style="font-size:14px;letter-spacing:3px;opacity:0.85;">1ST QTR 2:00</div>' +
+                    '<div id="rb-wait-clock" style="font-size:11px;letter-spacing:2px;color:#ffd23f;">1ST QTR 2:00</div>' +
                     // ===== V307: live commentary =====
                     // A two-line ticker fed by the opponent's live/ push (down &
                     // distance + field position), a new feed/ node (per-play result
                     // with real passer/receiver/yards), and outcomes/ (the big
                     // blasts). Purely a spectator readout on the DEFENSE device — it
                     // reads data already on the wire and never touches game logic.
-                    '<div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.15);">' +
-                        '<div id="rb-wait-headline" style="font-size:15px;font-weight:bold;letter-spacing:1px;min-height:19px;color:#ffd23c;">&nbsp;</div>' +
-                        '<div id="rb-wait-situation" style="font-size:12px;letter-spacing:2px;margin-top:7px;opacity:0.8;min-height:15px;">opponent is on offense</div>' +
+                    '<div style="margin-top:18px;padding-top:16px;border-top:3px solid rgba(255,255,255,0.18);">' +
+                        '<div id="rb-wait-headline" style="font-size:12px;letter-spacing:1px;min-height:16px;color:#ffd23f;line-height:1.5;">&nbsp;</div>' +
+                        '<div id="rb-wait-situation" style="font-size:9px;letter-spacing:2px;margin-top:9px;color:#cdddff;min-height:12px;line-height:1.6;">opponent is on offense</div>' +
                     '</div>' +
-                '</div>';
+                '</div>' +
+                '<div class="rb-fx-crt"></div><div class="rb-fx-vig"></div>';
             document.body.appendChild(wait);
             // V311: the BIG-EVENT blast (TOUCHDOWN / INTERCEPTED / …) is a SEPARATE
             // top-level overlay, NOT a child of the wait cover. As a child it vanished
@@ -8237,14 +8275,18 @@
             waitBlast.style.cssText =
                 'position:fixed;inset:0;display:none;z-index:2400;pointer-events:none;' +
                 'align-items:center;justify-content:center;flex-direction:column;' +
-                'background:rgba(10,16,24,0.86);font-family:monospace;';
+                "background:rgba(10,24,56,0.9);font-family:'Press Start 2P',monospace;" +
+                '-webkit-font-smoothing:none;image-rendering:pixelated;';
+            // V312: Press Start 2P with the design's navy hard drop-shadow.
             waitBlast.innerHTML =
-                '<div id="rb-wait-blast-text" style="font-size:min(13vw,86px);font-weight:900;' +
-                    'letter-spacing:2px;text-align:center;line-height:1.05;' +
-                    'text-shadow:0 0 24px currentColor;padding:0 4vw;">TOUCHDOWN</div>' +
-                '<div id="rb-wait-blast-sub" style="font-size:16px;letter-spacing:4px;margin-top:18px;opacity:0.85;color:#fff;"></div>';
+                '<div id="rb-wait-blast-text" style="font-size:min(11vw,72px);' +
+                    'letter-spacing:2px;text-align:center;line-height:1.15;' +
+                    'text-shadow:6px 6px 0 #0a1838;padding:0 5vw;">TOUCHDOWN</div>' +
+                '<div id="rb-wait-blast-sub" style="font-size:13px;letter-spacing:4px;margin-top:26px;color:#cdddff;"></div>';
             document.body.appendChild(waitBlast);
-            var waitSub = wait.querySelector('#rb-waiting-sub');
+            // V312: the old #rb-waiting-sub line folded into the commentary
+            // situation line; point showWait's status text there (null-guarded).
+            var waitSub = wait.querySelector('#rb-wait-situation');
             // V59: overlay re-enabled (V32 had hidden it for an opponent-AI
             // design that no longer exists — there is no AI drive to watch,
             // so without the cover the user just sees the stalled engine and
@@ -8264,7 +8306,7 @@
                     return;
                 }
                 wait.style.display = 'flex';
-                if (msg) waitSub.textContent = msg;
+                if (msg && waitSub) waitSub.textContent = msg;
             }
             function hideWait() { wait.style.display = 'none'; }
 
@@ -9618,10 +9660,9 @@
         // even though each only computed its own side.
         var finalOverlay = document.createElement('div');
         finalOverlay.id = 'rb-final';
+        finalOverlay.className = 'rb-fx';   // V312: retro-field skin
         finalOverlay.style.cssText =
-            'position:fixed;inset:0;z-index:2000;display:none;overflow:auto;' +
-            'background:rgba(6,10,16,0.98);color:#fff;font-family:monospace;' +
-            'image-rendering:pixelated;padding:24px 16px;box-sizing:border-box;';
+            'position:fixed;inset:0;z-index:2000;display:none;overflow:hidden;box-sizing:border-box;';
         document.body.appendChild(finalOverlay);
 
         var localFinalReport = null;
@@ -9700,21 +9741,24 @@
             // column alignment via white-space:pre) and a flexible stat cell that
             // wraps on the " · " separators. min-width:0 lets the flex child
             // actually shrink; overflow-wrap is the fallback for one long token.
+            // V312: stat rows stay in a readable MONOSPACE (Press Start 2P is too
+            // wide for dense stat lines) — the overlay's default is the pixel font,
+            // so each row overrides font-family. pad() alignment relies on monospace.
             var rows = players.map(function (p) {
                 return '<div style="display:flex;align-items:baseline;font-size:12px;' +
-                       'line-height:1.7;padding:1px 0;' +
-                       'border-bottom:1px solid rgba(255,255,255,0.07);">' +
-                       '<span style="white-space:pre;flex:0 0 auto;">' +
+                       "line-height:1.7;padding:2px 0;font-family:'Courier New',monospace;" +
+                       'border-bottom:1px solid rgba(255,255,255,0.10);">' +
+                       '<span style="white-space:pre;flex:0 0 auto;color:#fff;">' +
                          '<b>' + esc(pad(p.pos, 3)) + '</b>' + esc(pad(p.name, 15)) +
                        '</span>' +
-                       '<span style="opacity:0.85;flex:1 1 auto;min-width:0;' +
+                       '<span style="color:#cdddff;flex:1 1 auto;min-width:0;' +
                        'overflow-wrap:anywhere;">' + esc(p.line) + '</span></div>';
             }).join('');
-            if (!rows) rows = '<div style="opacity:0.5;padding:8px 0;">no recorded stats</div>';
-            return '<div style="flex:1;min-width:240px;max-width:440px;">' +
-                   '<div style="font-size:18px;font-weight:bold;letter-spacing:2px;color:' + accent + ';' +
-                   'border-bottom:3px solid ' + accent + ';padding-bottom:6px;margin-bottom:8px;">' +
-                   esc(rep.team || 'TEAM') + ' — ' + (rep.score != null ? rep.score : 0) + '</div>' +
+            if (!rows) rows = '<div style="opacity:0.6;padding:8px 0;font-family:\'Courier New\',monospace;">no recorded stats</div>';
+            return '<div class="rb-fx-panel" style="flex:1 1 300px;min-width:260px;max-width:440px;padding:14px 16px;background:rgba(8,20,52,.5);">' +
+                   "<div style=\"font-size:11px;letter-spacing:1px;color:" + accent + ';' +
+                   'border-bottom:3px solid ' + accent + ';padding-bottom:10px;margin-bottom:10px;line-height:1.4;">' +
+                   esc(rep.team || 'TEAM') + '  ' + (rep.score != null ? rep.score : 0) + '</div>' +
                    rows + '</div>';
         }
         function esc(s) {
@@ -9732,31 +9776,39 @@
             var oppTeam  = me ? (me.oppTeam || (opp ? opp.team : 'OPP')) : (opp ? opp.team : 'OPP');
             var verdict = myScore > oppScore ? 'YOU WIN'
                         : myScore < oppScore ? 'YOU LOSE' : 'TIE GAME';
-            var vColor  = myScore > oppScore ? '#3cff7a'
-                        : myScore < oppScore ? '#ff8c8c' : '#ffd23c';
+            var vColor  = myScore > oppScore ? '#36e07a'
+                        : myScore < oppScore ? '#ff6a6a' : '#ffd23f';
+            // V312: retro-field FINAL. Field decorations sit outside the scroll
+            // container so they stay pinned; the content scrolls under the CRT.
             finalOverlay.innerHTML =
-                '<div style="max-width:920px;margin:0 auto;">' +
-                  '<div style="text-align:center;font-size:13px;letter-spacing:6px;opacity:0.6;">FINAL</div>' +
-                  '<div style="text-align:center;font-size:22px;font-weight:bold;letter-spacing:3px;' +
-                       'color:' + vColor + ';margin:4px 0 14px 0;">' + verdict + '</div>' +
-                  '<div style="display:flex;align-items:center;justify-content:center;gap:22px;' +
-                       'font-size:20px;letter-spacing:2px;margin-bottom:22px;">' +
-                    '<span>' + esc(myTeam) + '</span>' +
-                    '<span style="font-size:40px;font-weight:bold;color:#3cff7a;">' + myScore + '</span>' +
-                    '<span style="opacity:0.5;">–</span>' +
-                    '<span style="font-size:40px;font-weight:bold;color:#ff8c8c;">' + oppScore + '</span>' +
-                    '<span>' + esc(oppTeam) + '</span>' +
+                '<div class="rb-fx-corner tl"></div><div class="rb-fx-corner tr"></div>' +
+                '<div class="rb-fx-corner bl"></div><div class="rb-fx-corner br"></div>' +
+                '<div style="position:absolute;inset:0;overflow-y:auto;z-index:2;' +
+                     'padding:52px 16px 40px;box-sizing:border-box;">' +
+                  '<div style="max-width:940px;margin:0 auto;text-align:center;">' +
+                    '<div style="font-size:11px;letter-spacing:6px;color:#9fbcf0;">FINAL</div>' +
+                    '<div style="font-size:clamp(20px,5vw,30px);letter-spacing:3px;' +
+                         'color:' + vColor + ';margin:12px 0 20px 0;text-shadow:4px 4px 0 #0a1838;">' + verdict + '</div>' +
+                    '<div class="rb-fx-panel" style="display:inline-flex;align-items:center;justify-content:center;' +
+                         'gap:min(5vw,22px);font-size:11px;letter-spacing:1px;margin-bottom:26px;' +
+                         'padding:16px 24px;background:rgba(8,20,52,.5);">' +
+                      '<span style="color:#cdddff;max-width:26vw;line-height:1.4;">' + esc(myTeam) + '</span>' +
+                      '<span style="font-size:clamp(30px,8vw,46px);color:#36e07a;letter-spacing:0;text-shadow:4px 4px 0 #0a1838;">' + myScore + '</span>' +
+                      '<span style="color:#5b8ce8;">–</span>' +
+                      '<span style="font-size:clamp(30px,8vw,46px);color:#ff6a6a;letter-spacing:0;text-shadow:4px 4px 0 #0a1838;">' + oppScore + '</span>' +
+                      '<span style="color:#cdddff;max-width:26vw;line-height:1.4;">' + esc(oppTeam) + '</span>' +
+                    '</div>' +
+                    '<div style="display:flex;flex-wrap:wrap;gap:24px;justify-content:center;text-align:left;">' +
+                      teamColumnHtml(me, '#36e07a') +
+                      teamColumnHtml(opp, '#ff6a6a') +
+                    '</div>' +
+                    '<div style="margin-top:30px;">' +
+                      '<button id="rb-final-leave" class="rb-fx-btn" style="letter-spacing:2px;' +
+                         'font-size:13px;padding:16px 30px;">BACK TO LOBBY</button>' +
+                    '</div>' +
                   '</div>' +
-                  '<div style="display:flex;flex-wrap:wrap;gap:28px;justify-content:center;">' +
-                    teamColumnHtml(me, '#3cff7a') +
-                    teamColumnHtml(opp, '#ff8c8c') +
-                  '</div>' +
-                  '<div style="text-align:center;margin-top:26px;">' +
-                    '<button id="rb-final-leave" style="font-family:monospace;font-weight:bold;' +
-                       'letter-spacing:2px;font-size:14px;background:#fff;color:#0a1018;border:none;' +
-                       'padding:10px 22px;cursor:pointer;">BACK TO LOBBY</button>' +
-                  '</div>' +
-                '</div>';
+                '</div>' +
+                '<div class="rb-fx-crt"></div><div class="rb-fx-vig"></div>';
             finalOverlay.style.display = 'block';
             try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
             if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
