@@ -319,6 +319,35 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
               'feed=' + JSON.stringify(feed) + ' (expect pass → ' + t9.rcv + ', yds 7)');
     }
 
+    // ---- T9b: a SHORT completion — a non-QB catch with LOW flight (< threshold)
+    // is still a PASS, not a run. This is the reported "a completed pass sometimes
+    // reads as a run": the classifier used to check flight before the catch name.
+    const t9b = await off.page.evaluate(async () => {
+        window._rb2p_userIsWaitingForOpponent = false;
+        var m = RB.engineState().rawEngineMatch;
+        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n = _wi(to._Ln), rcv = null;
+        for (var i = 0; i < n; i++) { var p = _zi(to._Ln, i); if (p && Number(_Ai(p, 'position')) !== 1) { rcv = p; break; } }
+        var rcvName = String(_Ai(rcv, 'lname') || '').toUpperCase();
+        var y0 = Number(m._6F), d0 = Number(m._t11), ra = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_raPrev = ra;
+        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
+        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedMaxOFdist = 40; window._rb2p_feedCatchName = rcvName;   // LOW flight, non-QB catch
+        window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
+        m._6F = y0 + 3; m._t11 = d0 + 1;
+        await new Promise(function (r) { setTimeout(r, 700); });
+        return { rcv: rcvName };
+    });
+    {
+        const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
+        console.log('  short-completion rcv=' + t9b.rcv + '  feed=' + JSON.stringify(feed));
+        check('T9b a SHORT (low-flight) non-QB catch is still a PASS, not a run',
+              feed && feed.k === 'pass' && feed.rcv === t9b.rcv,
+              'feed=' + JSON.stringify(feed) + ' (must be pass → ' + t9b.rcv + ', not a run)');
+    }
+
     // ---- T8: the big-event blast is a STANDALONE overlay (not a child of the
     // wait cover), so an interception's blast survives the flip to offense.
     const t8 = await def.page.evaluate(() => {

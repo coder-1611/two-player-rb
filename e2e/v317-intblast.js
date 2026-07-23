@@ -107,6 +107,17 @@ async function resetBlast(page) {
         console.log('  T6 blast: ' + JSON.stringify(t6));
         check('T6 an OTHER-typed drive that scored 3 blasts FIELD GOAL (score-delta)',
               t6.shown && /FIELD GOAL/.test(t6.text), JSON.stringify(t6));
+
+        // ---- T7: once the game is OVER, a late outcome must NOT blast (V324) ----
+        await resetBlast(page);
+        await page.evaluate(() => { window._rb2p_gameOverReported = true; });
+        await page.evaluate(o => { window._rb2p_applyOpponentOutcome(o); }, OUTCOME({ turnover: true }));
+        await sleep(350);
+        const t7 = await blastState(page);
+        await page.evaluate(() => { window._rb2p_gameOverReported = false; });   // restore
+        console.log('  T7 blast: ' + JSON.stringify(t7));
+        check('T7 a late turnover after the game is over does NOT blast',
+              !t7.shown, 'blasted post-game: ' + JSON.stringify(t7));
     } finally {
         await browser.close();
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');

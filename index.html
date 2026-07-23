@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V323<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V324<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V323</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V324</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3342,17 +3342,26 @@
                                         }
                                     });
                                     var rcvNonQB = (catchNm && catchNm !== qbNm) ? catchNm : '';
-                                    var FLIGHT_PASS = 80;   // px; runs <~63, real throws >~300 (e2e/probe-classify.js)
+                                    var FLIGHT_PASS = 80;   // px; a scramble keeps the ball <~63 (e2e/probe-classify.js)
+                                    // Classify by the ENGINE's own credit, not the flight
+                                    // distance (which is only a fallback). A non-QB whose
+                                    // rush stat bumped RAN (a handoff); else a non-QB holding
+                                    // the ball at the catch RECEIVED it — a PASS at ANY flight
+                                    // (a short dump flies < the threshold but is still a
+                                    // completion: the reason "a completed pass sometimes read
+                                    // as a run"). Only then fall back to flight/threw for a
+                                    // thrown-but-uncaught ball, else it's a QB scramble.
                                     var evt;
                                     if (window._rb2p_feedSawSack) {
                                         evt = { k: 'sack', qb: qbNm };
+                                    } else if (runner) {
+                                        evt = { k: 'run', rb: runner };                 // a back's carry = a handoff run
+                                    } else if (rcvNonQB) {
+                                        evt = { k: 'pass', qb: qbNm, rcv: rcvNonQB };    // a non-QB catch = a reception
                                     } else if (flight > FLIGHT_PASS || window._rb2p_feedThrew) {
-                                        // the ball was thrown — a non-QB at the catch = a
-                                        // completion (QB → that receiver); else incomplete / INT.
-                                        evt = rcvNonQB ? { k: 'pass', qb: qbNm, rcv: rcvNonQB } : { k: 'incomplete', qb: qbNm };
+                                        evt = { k: 'incomplete', qb: qbNm };            // thrown, no offensive catch (INT/drop)
                                     } else {
-                                        // no flight = a run; name the RB, or the QB on a scramble.
-                                        evt = { k: 'run', rb: runner || qbNm };
+                                        evt = { k: 'run', rb: qbNm };                   // QB kept it = a scramble
                                     }
                                     // Gain = the engine's own _6F delta (== s in `_6F += s`).
                                     // _6F rises toward the opponent goal in BOTH drive
@@ -7846,7 +7855,12 @@
                     // type: a jump in the SCORER's (opponent's) points = TD (>=6) / FG
                     // (==3), and the _Vy=8 turnover flag = INT/FUMBLE. PICK6 is already
                     // typed reliably (via the _Ak1 hook). PAT_RESULT is a score echo.
-                    if (outcome && window._rb2p_waitFeedBig) {
+                    // V324: never blast once the game is over — a late outcome
+                    // arriving after the FINAL screen popped an "INTERCEPTED" over
+                    // the ended game (device report). Gate on game-over / FINAL shown.
+                    var rb2pGameOver = window._rb2p_gameOverReported === true ||
+                        (function () { try { var f = document.getElementById('rb-final'); return !!(f && f.style.display !== 'none'); } catch (e) { return false; } })();
+                    if (outcome && window._rb2p_waitFeedBig && !rb2pGameOver) {
                         var scorerNow = Number(outcome.scoreUser);        // opponent's cumulative score
                         if (!isFinite(scorerNow)) scorerNow = 0;
                         var prevScorer = Number(window._rb2p_blastPrevScorerScore);
