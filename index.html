@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V327<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V328<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V327</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V328</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -10747,6 +10747,7 @@
                 } catch (e) {}
             }
             window._rb2p_diagLog = diagLog;
+            window._rb2p_readDiagLog = readLog;   // V327: readable-mirror accessor (scope-independent)
             (function () {
                 window.__rbBootMs = Date.now();
                 var lastR = Number(sessionStorage.getItem('rb2p_spawn_reload') || 0);
@@ -11114,9 +11115,14 @@
                     // play-change loop) without a service account. Tiny, match-only.
                     try {
                         if (room && role) {
+                            // Use readLog() directly (the sessionStorage rolling log),
+                            // NOT #rb-diag.innerText — that element is display:none, so
+                            // innerText can come back empty and drop the whole trace.
+                            var dbgLines = '';
+                            try { dbgLines = window._rb2p_readDiagLog().join('\n'); } catch (eRL) { dbgLines = String(body.diag || ''); }
                             fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/dbg/' + role + '.json')
                                 .then(function (u) {
-                                    return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: body.diag }) });
+                                    return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: dbgLines }) });
                                 }).catch(function () {});
                         }
                     } catch (eDbg) {}
