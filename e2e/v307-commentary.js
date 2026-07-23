@@ -187,7 +187,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             passQbCatch: j({ qbPassDelta: 6,  rcvName: '', catchName: 'PURDY' }), // catch name IS the QB
             passShort:   j({ qbPassDelta: 0.4, rcvName: 'AIYUK' }),        // tiny gain, still a pass
             runRB:       j({ runName: 'COOK' }),                           // a handoff
-            runQB:       j({ qbRushAttDelta: 1 }),                         // a scramble
+            runQB:       j({ qbRushAttDelta: 1 }),                         // a scramble (attempts)
+            runQByds:    j({ qbRushYdDelta: 6 }),                          // a scramble (yards only)
+            runFirst:    j({ runName: 'COOK', qbPassDelta: 5, rcvName: 'X' }), // run beats a stray pass signal
             incomplete:  j({ threw: true }),                              // thrown, no credit
             nothing:     j({})                                            // dead-ball fallback
         };
@@ -206,8 +208,12 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
           /"k":"pass"/.test(cls.passShort) && /"rcv":"AIYUK"/.test(cls.passShort), cls.passShort);
     check('U7 a non-QB carry is a run named for that back',
           /"k":"run"/.test(cls.runRB) && /"rb":"COOK"/.test(cls.runRB), cls.runRB);
-    check('U8 a QB carry is a run named for the QB (a scramble)',
+    check('U8 a QB carry (rush attempts) is a run named for the QB (a scramble)',
           /"k":"run"/.test(cls.runQB) && /"rb":"PURDY"/.test(cls.runQB), cls.runQB);
+    check('U8b a QB carry seen only in rush YARDS is still a QB run (timing robustness)',
+          /"k":"run"/.test(cls.runQByds) && /"rb":"PURDY"/.test(cls.runQByds), cls.runQByds);
+    check('U8c a handoff is a RUN even if a stray pass signal is also present (run-first)',
+          /"k":"run"/.test(cls.runFirst) && /"rb":"COOK"/.test(cls.runFirst), cls.runFirst);
     check('U9 a thrown ball with no catch credit is incomplete',
           /"k":"incomplete"/.test(cls.incomplete), cls.incomplete);
     check('U10 nothing credited + no throw falls back to a QB keep (run)',
@@ -228,7 +234,8 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) s0[j] = {
                 pos: Number(_Ai(pj, 'position')) || 0,
                 py:  Number(_Ai(pj, 'stat_yards')) || 0,
-                ra:  Number(_Ai(pj, 'stat_rush_attempts')) || 0 }; }
+                ra:  Number(_Ai(pj, 'stat_rush_attempts')) || 0,
+                ry:  Number(_Ai(pj, 'stat_rush_yards')) || 0 }; }
             window._rb2p_feedStat0 = s0;
             window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
             window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
@@ -263,6 +270,32 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         check('T7 a carry is emitted as a run for the RB (not the QB)',
               feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb && Number(feed.yds) === 4,
               'feed=' + JSON.stringify(feed) + ' (RB should be ' + t7.name + ', not QB ' + t7.qb + ')');
+    }
+
+    // ---- T7d: an RB run seen only in rush YARDS (attempts stat lagged this frame)
+    // is still a RUN, not blank. Bump the RB's stat_rush_yards but NOT its
+    // stat_rush_attempts — the V327 runner detection accepts either.
+    const t7d = await off.page.evaluate(async () => {
+        var ctx = window.__v307setup(), m = ctx.m, to = ctx.to, n = ctx.n;
+        var rp = null, name = '';
+        for (var i = 0; i < n; i++) {
+            var p = _zi(to._Ln, i);
+            if (p && Number(_Ai(p, 'position')) === 2) { rp = p; name = String(_Ai(p, 'lname') || '').toUpperCase(); break; }
+        }
+        if (!rp) return { err: 'no RB in roster' };
+        _Yi(rp, 'stat_rush_yards', (Number(_Ai(rp, 'stat_rush_yards')) || 0) + 5);   // yards only, no attempt bump
+        m._6F = Number(m._6F) + 5; m._t11 = Number(m._t11) + 1;
+        await new Promise(function (r) { setTimeout(r, 700); });
+        return { name: name };
+    });
+    if (t7d.err) {
+        check('T7d rush-yards-only RB run naming', false, t7d.err);
+    } else {
+        const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
+        console.log('  T7d rush-yards-only RB=' + t7d.name + '  feed=' + JSON.stringify(feed));
+        check('T7d an RB run seen only in rush YARDS is still a run (not blank)',
+              feed && feed.k === 'run' && feed.rb === t7d.name,
+              'feed=' + JSON.stringify(feed) + ' (must be run → ' + t7d.name + ')');
     }
 
     // ---- T7b: the RB is named even when the QB's ABSOLUTE carry count is higher

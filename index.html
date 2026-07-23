@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V326<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V327<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V326</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V327</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3213,21 +3213,27 @@
                 sig = sig || {};
                 var qbNm = sig.qbName || 'QB';
                 if (sig.sawSack) return { k: 'sack', qb: qbNm };
-                // Proof the ball was thrown AND caught: the QB was credited passing
-                // yards, or some non-QB was credited receiving yards. The receiver
-                // is NEVER the QB (rcvName is picked from non-QB slots only; the
-                // catch-name fallback excludes the QB) — so this can never emit the
-                // old "PURDY -> PURDY" that the renderer turned into "Purdy runs".
+                // A HANDOFF is checked FIRST: a non-QB back credited a carry this
+                // down RAN it. Verified safe against passes — the box score shows a
+                // catch never adds a rush attempt (an RB's stat_rush_attempts equals
+                // its runs, not runs+catches), so a completion never sets runName and
+                // can't be swallowed here. (Run-first also matches the pre-V326
+                // ordering that reliably named RB runs.)
+                if (sig.runName) return { k: 'run', rb: sig.runName };
+                // Otherwise a completed pass: the QB was credited passing yards, or a
+                // non-QB was credited receiving yards — either proves a throw + catch.
+                // The receiver is NEVER the QB (rcvName is from non-QB slots only; the
+                // catch-name fallback excludes the QB) — so this can never emit the old
+                // "PURDY -> PURDY" that the renderer turned into "Purdy runs".
                 var passed = (Number(sig.qbPassDelta) || 0) > 0.01 || !!sig.rcvName;
                 if (passed) {
                     var rcv = sig.rcvName ||
                               (sig.catchName && sig.catchName !== qbNm ? sig.catchName : '');
                     return { k: 'pass', qb: qbNm, rcv: rcv };
                 }
-                // A handoff: a non-QB back was credited a carry this down.
-                if (sig.runName) return { k: 'run', rb: sig.runName };
-                // A QB scramble: the QB himself was credited a carry.
-                if ((Number(sig.qbRushAttDelta) || 0) > 0) return { k: 'run', rb: qbNm };
+                // A QB scramble: the QB himself carried (rush attempt or rush yards).
+                if ((Number(sig.qbRushAttDelta) || 0) > 0 ||
+                    Math.abs(Number(sig.qbRushYdDelta) || 0) > 0.01) return { k: 'run', rb: qbNm };
                 // Ball left the QB's hand but no catch was credited: an incompletion.
                 if (sig.threw) return { k: 'incomplete', qb: qbNm };
                 // Nothing moved and no throw was seen: treat as a QB keeper.
@@ -3329,7 +3335,8 @@
                                         s0[i2] = {
                                             pos: Number(_Ai(p, 'position')) || 0,
                                             py:  Number(_Ai(p, 'stat_yards')) || 0,          // passing (QB) | receiving (non-QB)
-                                            ra:  Number(_Ai(p, 'stat_rush_attempts')) || 0
+                                            ra:  Number(_Ai(p, 'stat_rush_attempts')) || 0,
+                                            ry:  Number(_Ai(p, 'stat_rush_yards')) || 0      // carrier's rushing yards
                                         };
                                     });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
@@ -3373,24 +3380,31 @@
                                     //   • non-QB rush attempt up -> that back RAN it (a handoff)
                                     //   • QB rush attempt up     -> a QB scramble
                                     var s0 = window._rb2p_feedStat0 || {};
-                                    var qbPassDelta = 0, qbRushAttDelta = 0;
+                                    var qbPassDelta = 0, qbRushAttDelta = 0, qbRushYdDelta = 0;
                                     var rcvName = '', rcvBest = 0.01;   // largest non-QB receiving-yds move
-                                    var runName = '', runBest = 0;      // largest non-QB rush-attempt bump
+                                    var runName = '', runBest = 0;      // strongest non-QB rush signal
                                     rosterEach(function (p, i2) {
                                         var b = s0[i2]; if (!b) return;
                                         var pos = Number(_Ai(p, 'position')) || 0;
                                         var dPy = (Number(_Ai(p, 'stat_yards')) || 0)         - Number(b.py || 0);
                                         var dRa = (Number(_Ai(p, 'stat_rush_attempts')) || 0) - Number(b.ra || 0);
+                                        var dRy = (Number(_Ai(p, 'stat_rush_yards')) || 0)    - Number(b.ry || 0);
                                         if (pos === 1) {
                                             qbPassDelta    = dPy;   // QB stat_yards delta = passing yards
                                             qbRushAttDelta = dRa;   // QB rush-attempt delta = a scramble
+                                            qbRushYdDelta  = dRy;
                                         } else {
                                             if (Math.abs(dPy) > rcvBest) {   // this non-QB gained receiving yards = the target
                                                 rcvBest = Math.abs(dPy);
                                                 try { rcvName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                             }
-                                            if (dRa > runBest) {             // this non-QB gained a carry = the ball carrier
-                                                runBest = dRa;
+                                            // A carry: rush ATTEMPT or rush YARDS moved. Checking both
+                                            // guards against a frame where the engine credited one
+                                            // before the other (a real handoff always moves at least
+                                            // one — the reported "RB run shows blank").
+                                            var runSig = dRa + (Math.abs(dRy) > 0.01 ? 0.5 : 0);
+                                            if ((dRa > 0 || Math.abs(dRy) > 0.01) && runSig > runBest) {
+                                                runBest = runSig;
                                                 try { runName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                             }
                                         }
@@ -3401,6 +3415,7 @@
                                         qbName:         qbNm,
                                         qbPassDelta:    qbPassDelta,
                                         qbRushAttDelta: qbRushAttDelta,
+                                        qbRushYdDelta:  qbRushYdDelta,
                                         rcvName:        rcvName,
                                         runName:        runName,
                                         catchName:      window._rb2p_feedCatchName || ''
@@ -11091,6 +11106,20 @@
                         .then(function (u) {
                             return fetch(u, { method: 'PUT', body: JSON.stringify(body) });
                         }).catch(function () {});
+                    // V327: mirror the rolling diag lines to a ROOM-scoped node.
+                    // diag/ is admin-read-only, but rooms/ is readable with the
+                    // game's own anon auth — so the per-play cFEED classifier trace
+                    // (and any tight-loop line, which the diag dedup stamps "xN")
+                    // can be pulled to diagnose device-only bugs (RB-run naming, the
+                    // play-change loop) without a service account. Tiny, match-only.
+                    try {
+                        if (room && role) {
+                            fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/dbg/' + role + '.json')
+                                .then(function (u) {
+                                    return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: body.diag }) });
+                                }).catch(function () {});
+                        }
+                    } catch (eDbg) {}
                     // V265: opponent-visible liveness. Every prior death was
                     // INVISIBLE to the other player — A sat in WAIT forever with
                     // no idea B's phone was asleep. Write a tiny hb/{role}
