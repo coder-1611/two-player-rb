@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V319<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V320<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V319</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V320</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3206,6 +3206,12 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
+                    // V320: a play has DEVELOPED on this device (ball received/tackled)
+                    // — so the game is past the opening-kickoff staging. The STUCK@
+                    // staging self-healer must stand down after this (see its gate), or
+                    // it re-fires at a 0-0 quarter change and cycles the play like the
+                    // audible button. Reset per match in startMatch.
+                    if (bkp === 4 || bkp === 5) window._rb2p_anyPlayRun = true;
                     // ===== V311: PLAY-BY-PLAY FEED (offense device) =====
                     // Emit a per-play result with REAL names so the waiting opponent
                     // gets "PURDY -> EVANS · 23 YDS". Additive only: it writes to a
@@ -11200,7 +11206,17 @@
                             // is 0 on device, so it never fired. Now: any obj_btn_
                             // kickoff + a formation + 0-0 + not waiting = stuck.
                             var koAny = (live > 0 || ghost > 0);
+                            // V320: this healer targets the OPENING-kickoff freeze (GET
+                            // READY won't clear before the first play). It is gated on
+                            // 0-0 — but a 0-0 game reached via timelapse/testing keeps
+                            // 0-0 across quarters, and a lingering kickoff-button GHOST
+                            // kept `koAny` true, so at a quarter change it fired every
+                            // 700ms (proceedKickoff → _7z=1, a button press the engine
+                            // consumed as a play-change) and cycled the play "like the
+                            // audible button, infinitely". Once ANY play has developed
+                            // this session, the opening freeze is impossible — stand down.
                             var atStaging = inMH && !waiting && !patPlay && koAny && plOF >= 1 &&
+                                window._rb2p_anyPlayRun !== true &&
                                 em && (em.userScore | 0) === 0 && (em.opponentScore | 0) === 0;
                             if (atStaging) {
                                 if (!window.__rbStagingStuckSince) window.__rbStagingStuckSince = Date.now();
@@ -13527,6 +13543,7 @@
             window._rb2p_lastBoxSig = null;           // V298: re-arm the box write-through
             window._rb2p_gameOverReported = false;
             window._rb2p_blastPrevScorerScore = 0;   // V318: re-baseline the score-delta blast
+            window._rb2p_anyPlayRun = false;         // V320: re-arm the opening-only staging healer
             window._rb2p_inOvertime = false;   // V109: re-arm equal-possession OT
             window._rb2p_otMyPoss   = 0;
             window._rb2p_otOppPoss  = 0;
