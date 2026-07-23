@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V330<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V331<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V330</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V331</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3310,14 +3310,22 @@
                             };
                             if (fm) {
                                 // Snap: latch the AUTHORITATIVE yard line + down, and a
-                                // per-player BOX-STAT baseline. (bkp 1/2 from a dead ball is
-                                // the snap; the prev-dead gate makes this edge-only.)
-                                // Re-latch from ANY dead/resolved prior state (0/4/11), not
-                                // only a sampled 0, so a missed dead-ball frame can't leave
-                                // feedEmitted stuck true and DROP the next play ("RB run showed
-                                // nothing").
-                                if ((bkp === 1 || bkp === 2) &&
-                                    (prev === 0 || prev === 4 || prev === 11 || prev == null)) {
+                                // per-player BOX-STAT baseline. (bkp 1/2 is the snap.)
+                                // V331: re-arm on entering the snap from ANY non-snap state
+                                // (prev !== 1/2), not only the sampled dead states (0/4/11).
+                                // The 16ms observer can SKIP the dead-ball frame, leaving prev
+                                // at 5/7/3/6 at the next snap — the old gate then didn't match,
+                                // feedEmitted stayed true from the prior play, and this play was
+                                // DROPPED with no feed ("RB run shows blank"). Excluding only
+                                // the 1->2 self-transition keeps it edge-only within a play.
+                                if ((bkp === 1 || bkp === 2) && prev !== 1 && prev !== 2) {
+                                    // DIAG (V331): the prior play went live but never emitted a
+                                    // feed = a DROPPED play (the reported blank). Log it before
+                                    // the reset wipes the flags, so the trace shows it directly.
+                                    if (window._rb2p_feedWasLive === true && window._rb2p_feedEmitted !== true &&
+                                        window._rb2p_diagLog) window._rb2p_diagLog(
+                                            'cDROP y=' + Math.round(Number(window._rb2p_feedYard0)) +
+                                            ' d=' + Number(window._rb2p_feedDown0) + ' prevbkp=' + prev);
                                     window._rb2p_feedYard0     = Number(fm._6F);    // signed yard line at snap
                                     window._rb2p_feedDown0     = Number(fm._t11);   // down at snap
                                     window._rb2p_feedThrew     = false;
