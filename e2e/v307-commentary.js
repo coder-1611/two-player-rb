@@ -189,15 +189,16 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             }
         }
         if (!rp) return { err: 'no RB in roster' };
-        // V318: the emitter classifies at SETTLE by which box stat the engine
-        // credited. Seed rush+receive baselines, mark the play live, and set a
-        // yard/down that make it "settled" so the observer emits this tick.
+        // V319: the emitter classifies at SETTLE by the FLIGHT metric (throw vs
+        // run) and names a run by the rush stat. No flight (feedMaxOFdist=0) = a
+        // run; the non-QB whose rush stat bumped is the carrier.
         var m = RB.engineState().rawEngineMatch;
-        var ra = {}, rc = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) { ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; rc[j] = Number(_Ai(pj, 'stat_receive')) || 0; } }
-        window._rb2p_raPrev = ra; window._rb2p_rcPrev = rc;
+        var ra = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_raPrev = ra;
         window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
         window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedMaxOFdist = 0; window._rb2p_feedCatchName = '';   // no flight = a RUN
         window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;   // != current → settle
         // The RB carried: the engine credits the true carrier's rush attempts.
         _Yi(rp, 'stat_rush_attempts', (Number(_Ai(rp, 'stat_rush_attempts')) || 0) + 1);
@@ -235,11 +236,12 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         // Baselines capture THAT elevated QB count. Only a fresh increment (the RB's,
         // this play) is a rush; the QB's already-high count is baseline, not a bump.
         var m = RB.engineState().rawEngineMatch;
-        var ra = {}, rc = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) { ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; rc[j] = Number(_Ai(pj, 'stat_receive')) || 0; } }
-        window._rb2p_raPrev = ra; window._rb2p_rcPrev = rc;
+        var ra = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_raPrev = ra;
         window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
         window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedMaxOFdist = 0; window._rb2p_feedCatchName = '';   // no flight = a RUN
         window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;
         // This play: only the RB carries (RB +1). QB's absolute count stays higher.
         _Yi(rbP, 'stat_rush_attempts', rbC + 1);
@@ -256,6 +258,32 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
               'feed=' + JSON.stringify(feed) + ' (should name RB ' + t7b.rbName + ', not QB ' + t7b.qbName + ')');
     }
 
+    // ---- T7c: the VJYC regression — a play where the QB is nearest the ball at
+    // the catch must NEVER render as "pass QB→QB" (which the renderer turned into
+    // "Purdy runs"). With flight naming, a QB catch-name is not a valid receiver.
+    const t7c = await off.page.evaluate(async () => {
+        window._rb2p_userIsWaitingForOpponent = false;
+        var m = RB.engineState().rawEngineMatch;
+        var qb = window._rb2p_offQbName();
+        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n = _wi(to._Ln), ra = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_raPrev = ra;
+        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
+        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        window._rb2p_feedMaxOFdist = 120; window._rb2p_feedCatchName = qb;   // ball flew, QB nearest at catch
+        window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;
+        await new Promise(function (r) { setTimeout(r, 700); });
+        return { qb: qb };
+    });
+    {
+        const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
+        console.log('  QB=' + t7c.qb + '  feed=' + JSON.stringify(feed));
+        check('T7c a QB-at-catch flown ball is NEVER "pass QB→QB" (the VJYC bug)',
+              feed && !(feed.k === 'pass' && feed.rcv === t7c.qb),
+              'feed=' + JSON.stringify(feed) + ' (must not be pass ' + t7c.qb + '→' + t7c.qb + ')');
+    }
+
     // ---- T9: yardage comes from the engine's resolved _6F delta, not the
     // tackle-frame ball.x (which sat ~2 yards short: "a 7-yard pass shown as 5").
     // Latch a pending pass at a known yard line, move _6F by a known amount +
@@ -267,27 +295,28 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
         var n = _wi(to._Ln), rcv = null;
         for (var i = 0; i < n; i++) { var p = _zi(to._Ln, i); if (p && Number(_Ai(p, 'position')) !== 1) { rcv = p; break; } }
+        var rcvName = String(_Ai(rcv, 'lname') || '').toUpperCase();
         var y0 = Number(m._6F), d0 = Number(m._t11);
-        var ra = {}, rc = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) { ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; rc[j] = Number(_Ai(pj, 'stat_receive')) || 0; } }
-        window._rb2p_raPrev = ra; window._rb2p_rcPrev = rc;
+        var ra = {};
+        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_raPrev = ra;
         window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
         window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+        // A completion: the ball FLEW (flight past threshold) and a NON-QB caught it.
+        window._rb2p_feedMaxOFdist = 120; window._rb2p_feedCatchName = rcvName;
         window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
-        // A completion: the receiver gets a reception (no rush credit) → PASS.
-        _Yi(rcv, 'stat_receive', (Number(_Ai(rcv, 'stat_receive')) || 0) + 1);
         // The engine resolves the down: _6F moves +7 (== the forward gain, no _501
         // factor now) and the down advances.
         m._6F = y0 + 7; m._t11 = d0 + 1;
         await new Promise(function (r) { setTimeout(r, 700); });
-        return { dir: Number(m._501) };
+        return { dir: Number(m._501), rcv: rcvName };
     });
     {
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
-        console.log('  dir=' + t9.dir + '  feed=' + JSON.stringify(feed));
-        check('T9 pass yardage = the resolved _6F delta (7), not a short ball.x read',
-              feed && feed.k === 'pass' && Number(feed.yds) === 7,
-              'feed=' + JSON.stringify(feed) + ' (yds should be 7)');
+        console.log('  rcv=' + t9.rcv + '  feed=' + JSON.stringify(feed));
+        check('T9 a flown ball caught by a non-QB is a PASS named QB→receiver with the _6F-delta yards',
+              feed && feed.k === 'pass' && feed.rcv === t9.rcv && Number(feed.yds) === 7,
+              'feed=' + JSON.stringify(feed) + ' (expect pass → ' + t9.rcv + ', yds 7)');
     }
 
     // ---- T8: the big-event blast is a STANDALONE overlay (not a child of the

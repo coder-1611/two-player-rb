@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V318<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V319<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V318</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V319</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3260,72 +3260,98 @@
                                 // Snap: latch the AUTHORITATIVE yard line + down, and the
                                 // per-player rush + receive baselines. (bkp 1/2 from a dead
                                 // ball is the snap; the prev===0 gate makes this edge-only.)
-                                if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
-                                    window._rb2p_feedYard0    = Number(fm._6F);    // signed yard line at snap
-                                    window._rb2p_feedDown0    = Number(fm._t11);   // down at snap
-                                    window._rb2p_feedThrew    = false;
-                                    window._rb2p_feedSawSack  = false;
-                                    window._rb2p_feedWasLive  = false;
-                                    window._rb2p_feedEmitted  = false;
-                                    var rp0 = window._rb2p_raPrev = {}, rc0 = window._rb2p_rcPrev = {};
-                                    rosterEach(function (p, i2) {
-                                        rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0;
-                                        rc0[i2] = Number(_Ai(p, 'stat_receive')) || 0;
-                                    });
+                                // Re-latch from ANY dead/resolved prior state (0/4/11), not
+                                // only a sampled 0, so a missed dead-ball frame can't leave
+                                // feedEmitted stuck true and DROP the next play ("RB run showed
+                                // nothing"). Reset the flight + catch trackers here too.
+                                if ((bkp === 1 || bkp === 2) &&
+                                    (prev === 0 || prev === 4 || prev === 11 || prev == null)) {
+                                    window._rb2p_feedYard0     = Number(fm._6F);    // signed yard line at snap
+                                    window._rb2p_feedDown0     = Number(fm._t11);   // down at snap
+                                    window._rb2p_feedThrew     = false;
+                                    window._rb2p_feedSawSack   = false;
+                                    window._rb2p_feedWasLive   = false;
+                                    window._rb2p_feedEmitted   = false;
+                                    window._rb2p_feedMaxOFdist = 0;    // flight metric (px)
+                                    window._rb2p_feedCatchName = '';   // nearest OF at the catch
+                                    var rp0 = window._rb2p_raPrev = {};
+                                    rosterEach(function (p, i2) { rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
                                 }
-                                if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball thrown (only on an incompletion)
+                                if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball airborne + uncaught (an incompletion)
                                 if (bkp === 11) window._rb2p_feedSawSack = true;
                                 if (bkp === 2 || bkp === 5 || bkp === 4) window._rb2p_feedWasLive = true;
-                                // SETTLE + CLASSIFY once the down resolves (or the ball is
-                                // dead after a live play). Classify by WHICH BOX STAT the
-                                // engine credited — the reliable ground truth. kp5 fires on
-                                // EVERY play (a live-data trace showed 0→1→2→5→4 for runs AND
-                                // passes), so kp cannot tell a pass from a run; the credited
-                                // stat can. Priority: a rush attempt = a RUN by that carrier
-                                // (prefer a non-QB back over the QB); else a reception = a
-                                // PASS to that receiver; else a thrown ball = INCOMPLETE.
-                                // Settle only once the engine has RESOLVED the down: it does
-                                // `_l61-=s; _t11+=1; _6F+=s` atomically, so the down number
-                                // changing OR _6F moving off the snap value both mean the
-                                // spot is final. (Settling on the dead ball, bkp===0, fired a
-                                // few frames too early — before `_6F += s` ran — so gains read
-                                // as 0.) The _6F term also catches a 1st-down conversion on
-                                // 1st down, where the down number stays 1.
+                                // FLIGHT METRIC: max distance from the ball to the NEAREST
+                                // offensive player over the play. A THROWN ball is briefly far
+                                // from everyone (~300px in a real-play trace); a run/handoff
+                                // keeps the ball with a carrier (<~63px). This — not the box
+                                // stats, which credit a spurious reception on EVERY play — is
+                                // the reliable pass/run discriminator. Latch the catch NAME
+                                // (nearest OF at the first bkp5) as V313 did: the WR on a real
+                                // throw, the QB on a scramble/dump.
+                                if (window._rb2p_feedWasLive && !window._rb2p_feedEmitted) {
+                                    var mind = 1e12, oi, oo, odx, ody, od2;
+                                    for (oi = 0; oi < all.length; oi++) {
+                                        oo = all[oi];
+                                        if (!oo || oo._HL2 || !oo._eE2 || oo._eE2._fE2 !== 'obj_playerOF') continue;
+                                        if (!oo._7j || oo._7j === -4) continue;
+                                        odx = oo.x - ball.x; ody = oo.y - ball.y; od2 = odx * odx + ody * ody;
+                                        if (od2 < mind) mind = od2;
+                                    }
+                                    if (mind < 1e12) {
+                                        var dnow = Math.sqrt(mind);
+                                        if (dnow > Number(window._rb2p_feedMaxOFdist || 0)) window._rb2p_feedMaxOFdist = dnow;
+                                    }
+                                    if (bkp === 5 && !window._rb2p_feedCatchName) window._rb2p_feedCatchName = nearestOF(ball.x, ball.y, 44);
+                                }
+                                // SETTLE + CLASSIFY once the engine has RESOLVED the down: it
+                                // does `_l61-=s; _t11+=1; _6F+=s` atomically, so the down number
+                                // changing OR _6F moving off the snap value both mean the spot
+                                // is final. (Settling on the dead ball, bkp===0, fired a few
+                                // frames too early — before `_6F += s` ran — so gains read as
+                                // 0.) The _6F term also catches a 1st-down conversion on 1st
+                                // down, where the down number stays 1. Classification uses the
+                                // FLIGHT metric (throw vs run); naming uses the catch name (for
+                                // a pass) and the rush stat (for a run).
                                 var settledNow = window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
                                     ((Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
                                      (Math.abs(Number(fm._6F) - Number(window._rb2p_feedYard0)) >= 0.5));
-                                if (settledNow && window._rb2p_raPrev) {
-                                    var raP = window._rb2p_raPrev, rcP = window._rb2p_rcPrev || {};
-                                    var runner = '', runnerQB = '', receiver = '';
+                                if (settledNow) {
+                                    var flight  = Number(window._rb2p_feedMaxOFdist) || 0;
+                                    var catchNm = window._rb2p_feedCatchName || '';
+                                    // Run carrier from the box stat (the engine credits the true
+                                    // carrier; a non-QB back wins over the QB). Used only to NAME
+                                    // a run, never to classify it.
+                                    var runner = '', raP = window._rb2p_raPrev || {};
                                     rosterEach(function (p, i2) {
-                                        var ra = Number(_Ai(p, 'stat_rush_attempts')) || 0;
-                                        var rc = Number(_Ai(p, 'stat_receive')) || 0;
-                                        var nm = ''; try { nm = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
-                                        if (ra > (Number(raP[i2]) || 0)) {
-                                            if (Number(_Ai(p, 'position')) === 1) { if (!runnerQB) runnerQB = nm; }
-                                            else if (!runner) runner = nm;
+                                        if (!runner && Number(_Ai(p, 'position')) !== 1 &&
+                                            (Number(_Ai(p, 'stat_rush_attempts')) || 0) > (Number(raP[i2]) || 0)) {
+                                            try { runner = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                         }
-                                        if (rc > (Number(rcP[i2]) || 0) && !receiver) receiver = nm;
                                     });
-                                    var carrier = runner || runnerQB;   // a non-QB rusher wins
-                                    var evt = null;
-                                    if (window._rb2p_feedSawSack)    evt = { k: 'sack', qb: qbNm };
-                                    else if (carrier)                evt = { k: 'run', rb: carrier };
-                                    else if (receiver)               evt = { k: 'pass', qb: qbNm, rcv: receiver };
-                                    else if (window._rb2p_feedThrew) evt = { k: 'incomplete', qb: qbNm };
-                                    if (evt) {
-                                        var y0 = Number(window._rb2p_feedYard0);
-                                        // Gain = the engine's own _6F delta (== s in `_6F += s`).
-                                        // _6F rises toward the opponent goal in BOTH drive
-                                        // directions, so this is the true forward gain with NO
-                                        // _501 factor — the old dsign negated every dir=+1 play
-                                        // ("+4 shown as -4"). Incomplete carries no yardage.
-                                        if (isFinite(y0) && evt.k !== 'incomplete') {
-                                            var g = Math.round(Number(fm._6F) - y0);
-                                            if (Math.abs(g) <= 99) evt.yds = g;
-                                        }
-                                        window._rb2p_pushFeed(evt);
+                                    var rcvNonQB = (catchNm && catchNm !== qbNm) ? catchNm : '';
+                                    var FLIGHT_PASS = 80;   // px; runs <~63, real throws >~300 (e2e/probe-classify.js)
+                                    var evt;
+                                    if (window._rb2p_feedSawSack) {
+                                        evt = { k: 'sack', qb: qbNm };
+                                    } else if (flight > FLIGHT_PASS || window._rb2p_feedThrew) {
+                                        // the ball was thrown — a non-QB at the catch = a
+                                        // completion (QB → that receiver); else incomplete / INT.
+                                        evt = rcvNonQB ? { k: 'pass', qb: qbNm, rcv: rcvNonQB } : { k: 'incomplete', qb: qbNm };
+                                    } else {
+                                        // no flight = a run; name the RB, or the QB on a scramble.
+                                        evt = { k: 'run', rb: runner || qbNm };
                                     }
+                                    // Gain = the engine's own _6F delta (== s in `_6F += s`).
+                                    // _6F rises toward the opponent goal in BOTH drive
+                                    // directions, so this is the true forward gain with NO
+                                    // _501 factor. Incomplete carries no yardage.
+                                    var y0 = Number(window._rb2p_feedYard0);
+                                    if (isFinite(y0) && evt.k !== 'incomplete') {
+                                        var g = Math.round(Number(fm._6F) - y0);
+                                        if (Math.abs(g) <= 99) evt.yds = g;
+                                    }
+                                    evt.fm = Math.round(flight);   // DEBUG: flight metric, for on-device threshold tuning
+                                    window._rb2p_pushFeed(evt);
                                     window._rb2p_feedEmitted = true;
                                 }
                             }
