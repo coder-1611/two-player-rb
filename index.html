@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V324<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V325<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V324</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V325</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -7955,6 +7955,54 @@
                         if (typeof window._rb2p_ackTurnoverApplied === 'function')
                             window._rb2p_ackTurnoverApplied();
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
+
+                        // ===== V325: END-OF-GAME PICK-6 WALK-OFF (regulation) =====
+                        // A pick-6 as regulation expires is a walk-off exactly like
+                        // the OT case above: the +6 is already credited, so the PAT
+                        // cannot change who won and is moot. Playing it anyway yanked
+                        // the scorer into a phantom PAT scene that then vanished the
+                        // instant the FINAL landed — the device report was "it brings
+                        // the team that intercepts into the middle of the field,
+                        // treats it like a PAT, and then goes back to normal."
+                        // Skip the PAT and declare FINAL directly. Fires when the WIRE
+                        // clock (authoritative — it's the live thrower's) shows
+                        // regulation is over (Q4+ at 0:00) with a NON-TIED score, OR
+                        // when this device has ALREADY been told the game is over (the
+                        // thrower's FINAL can race ahead of this PICK6 outcome, and a
+                        // late PICK6 must never re-pop a PAT over an ended game). A tie
+                        // (-> overtime) still plays the PAT — there the extra point can
+                        // win it in regulation, so that path is left unchanged.
+                        var p6WireExpired = (Number(outcome.quarter) || 0) >= 4 &&
+                                            Number(outcome.minutesLeft) === 0 &&
+                                            Number(outcome.secondsLeft) === 0 &&
+                                            Number(engineMatch.userScore) !== Number(engineMatch.opponentScore);
+                        var p6AlreadyOver = window._rb2p_gameOverReported === true ||
+                            (function () { try { var ff = document.getElementById('rb-final'); return !!(ff && ff.style.display !== 'none'); } catch (e) { return false; } })();
+                        if (p6WireExpired || p6AlreadyOver) {
+                            console.log('[2P PICK6] end-of-regulation defensive TD — skipping PAT, ' +
+                                        'declaring FINAL (wireExpired=' + p6WireExpired +
+                                        ' alreadyOver=' + p6AlreadyOver + ')');
+                            window._rb2p_pickSixPatCascadeActive    = false;
+                            window._rb2p_pickSixThisDeviceIsThrower = false;
+                            window._rb2p_userOutcomeSendInProgress  = false;
+                            window._rb2p_patPlayPending             = false;
+                            window._rb2p_patPlayResolved            = false;
+                            // reportGameOver does NOT set the flag itself — every
+                            // caller latches it first (cf. _rb2p_otDeclareGameOver).
+                            // Order matters: latch, THEN report (and only if we
+                            // haven't already reported, so an already-over pick-6
+                            // just skips the PAT and rides the existing FINAL).
+                            if (!window._rb2p_gameOverReported &&
+                                typeof window._rb2p_reportGameOver === 'function') {
+                                window._rb2p_gameOverReported = true;
+                                var p6rep = (typeof window._rb2p_collectBoxScore === 'function')
+                                    ? window._rb2p_collectBoxScore()
+                                    : { team: 'YOU', score: Number(engineMatch.userScore) || 0,
+                                        oppScore: Number(engineMatch.opponentScore) || 0, players: [] };
+                                window._rb2p_reportGameOver(p6rep);
+                            }
+                            return true;
+                        }
 
                         if (outcome.needsPAT === true) {
                             try {
