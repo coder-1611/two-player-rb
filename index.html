@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V310<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V311<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V310</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V311</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3149,85 +3149,130 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
-                    // ===== V310: STAT-DRIVEN PLAY FEED (offense device) =====
+                    // ===== V311: PLAY-BY-PLAY FEED (offense device) =====
                     // Emit a per-play result with REAL names so the waiting opponent
                     // gets "PURDY -> EVANS · 23 YDS". Additive only: it writes to a
                     // feed/ node nothing in the game logic reads, so a failed/slow
                     // write can never affect play. Only while I'm on offense.
                     //
-                    // NAMING BY STAT, NOT BY POSITION. The ball-holder instance wears
-                    // the QB's roster struct (_7j) no matter who actually has the ball —
-                    // a running back instance reports _7j = the QB (verified live). So
-                    // "nearest player to the ball" named EVERY rush after the QB, which
-                    // is the reported "RB runs show up as QB runs" bug. Instead, name by
-                    // the roster player whose OFFICIAL box stat changed this play:
-                    //   stat_rush_attempts++  -> that player carried (engine-credited to
-                    //                            the true runner — the box shows QB and
-                    //                            RB carries separately, so it's accurate)
-                    //   stat_receive++        -> that player caught it
-                    //   stat_fumbles++        -> that player fumbled
-                    // Yardage comes from the same stats (rush/receiving yard deltas), so
-                    // the ticker matches the final box score exactly. Ball-state edges
-                    // still drive the no-stat events: a throw (BALL_THROWN 7) with no
-                    // reception = incomplete; a sack (BALL_SACKED 11).
+                    // Two independent facts, from a 30ms trace of real plays:
+                    //   • YARDAGE must come from the SCRIMMAGE (ball.x vs the pixel line
+                    //     of scrimmage at the snap). The per-player stat_*_yards are
+                    //     fractional internal values (e.g. 2.56) and a single completion
+                    //     credits BOTH a reception and a rush attempt — useless for
+                    //     yardage. The scrimmage delta at the tackle is a clean integer
+                    //     and is the engine's own play-resolution math. (This is why the
+                    //     stat-yards attempt showed "8-yard pass = 0".)
+                    //   • The play TYPE comes from ball states: a catch reaches
+                    //     BALL_RECEIVED (5), a throw BALL_THROWN (7), a sack
+                    //     BALL_SACKED (11); anything else ending in a tackle is a run.
+                    // NAMING: the receiver is the nearest rostered player at the CATCH
+                    // frame (correct — the box-score receptions are credited the same
+                    // way). The runner is named by stat_rush_attempts, because at the
+                    // TACKLE the ball-holder instance wears the QB's roster struct, so
+                    // "nearest player" wrongly named every rush after the QB ("RB runs
+                    // show up as QB runs"). Rush attempts are credited to the true
+                    // carrier's struct, so a delta names the right back.
                     if (window._rb2p_userIsWaitingForOpponent !== true &&
                         typeof window._rb2p_pushFeed === 'function') {
                         try {
                             var fem = RB.engineState(), fm = fem && fem.rawEngineMatch;
                             var qbNm = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
-                            // ---- play phase (ball state): snap / throw / sack / incomplete
+                            // Roster iterator (obj 64's player list).
+                            var rosterEach = function (cb) {
+                                var c = _si(64), to = null;
+                                for (var k in c) { if (c.hasOwnProperty(k)) { to = c[k]; break; } }
+                                if (!to || to._Ln == null) return;
+                                var n = _wi(to._Ln);
+                                for (var i2 = 0; i2 < n; i2++) { var p = _zi(to._Ln, i2); if (p != null) cb(p, i2); }
+                            };
+                            // Nearest rostered OF to a point (the receiver at the catch).
+                            var nearestOF = function (px, py, maxD) {
+                                var b = null, b2 = 1e12, p, dx, dy, d2;
+                                for (var ii = 0; ii < all.length; ii++) {
+                                    p = all[ii];
+                                    if (!p || p._HL2 || !p._eE2 || p._eE2._fE2 !== 'obj_playerOF') continue;
+                                    if (!p._7j || p._7j === -4) continue;
+                                    dx = p.x - px; dy = p.y - py; d2 = dx * dx + dy * dy;
+                                    if (d2 < b2) { b2 = d2; b = p; }
+                                }
+                                if (b && b2 <= maxD * maxD) { try { return String(_Ai(b._7j, 'lname') || '').toUpperCase(); } catch (e) {} }
+                                return '';
+                            };
                             if (fm && bkp !== prev) {
+                                // Snap: latch scrimmage + direction, snapshot rush attempts.
                                 if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
-                                    window._rb2p_feedThrew   = false;
-                                    window._rb2p_feedEmitted = false;
                                     window._rb2p_feedSnapX   = Number(fm._B01);
                                     window._rb2p_feedDir     = Number(fm._501) || 1;
+                                    window._rb2p_feedThrew   = false;
+                                    window._rb2p_feedCatch   = false;
+                                    window._rb2p_feedRcv     = '';
+                                    window._rb2p_feedEmitted = false;
+                                    var rb0 = window._rb2p_rushBase = {};
+                                    rosterEach(function (p, i2) { rb0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
                                 }
                                 if (bkp === 7) window._rb2p_feedThrew = true;
-                                if (bkp === 11 && !window._rb2p_feedEmitted) {   // sack
-                                    var sX = Number(window._rb2p_feedSnapX), dr = Number(window._rb2p_feedDir) || 1;
-                                    var sl = isFinite(sX) ? Math.round((ball.x - sX) / 20 * dr) : -7;
-                                    window._rb2p_pushFeed({ k: 'sack', qb: qbNm, yds: sl });
-                                    window._rb2p_feedEmitted = true;
+                                if (bkp === 5 && !window._rb2p_feedCatch) {
+                                    window._rb2p_feedCatch = true;
+                                    window._rb2p_feedRcv = nearestOF(ball.x, ball.y, 44);
                                 }
-                                if (bkp === 0 && window._rb2p_feedThrew && !window._rb2p_feedEmitted) {   // incomplete
+                                // Dead ball on a PASS: emit at the tackle with scrimmage yards.
+                                if ((bkp === 4 || bkp === 11) && !window._rb2p_feedEmitted) {
+                                    var sX = Number(window._rb2p_feedSnapX), dr = Number(window._rb2p_feedDir) || 1;
+                                    var gain = isFinite(sX) ? Math.round((ball.x - sX) / 20 * dr) : 0;
+                                    if (bkp === 11) {
+                                        window._rb2p_pushFeed({ k: 'sack', qb: qbNm, yds: gain });
+                                        window._rb2p_feedEmitted = true;
+                                    } else if (window._rb2p_feedCatch) {
+                                        window._rb2p_pushFeed({ k: 'pass', qb: qbNm, rcv: window._rb2p_feedRcv, yds: gain });
+                                        window._rb2p_feedEmitted = true;
+                                    }
+                                    // A pure run is NOT emitted here — it's the continuous
+                                    // rush-attempt watcher below (the tackle instance wears
+                                    // the QB struct, so the runner must come from the stat).
+                                }
+                                // Reset to dead after a throw with no catch = incomplete.
+                                if (bkp === 0 && window._rb2p_feedThrew && !window._rb2p_feedCatch &&
+                                    !window._rb2p_feedEmitted) {
                                     window._rb2p_pushFeed({ k: 'incomplete', qb: qbNm });
                                     window._rb2p_feedEmitted = true;
                                 }
                             }
-                            // ---- stat deltas (authoritative naming): run / catch / fumble
-                            var ctrlS = _si(64), toS = null;
-                            for (var ks in ctrlS) { if (ctrlS.hasOwnProperty(ks)) { toS = ctrlS[ks]; break; } }
-                            if (toS && toS._Ln != null) {
-                                var rn = _wi(toS._Ln);
-                                var base = window._rb2p_statBase;
-                                if (!base || base.length !== rn) base = window._rb2p_statBase = [];
-                                for (var si = 0; si < rn; si++) {
-                                    var rp = _zi(toS._Ln, si);
-                                    if (rp == null) continue;
-                                    var ru  = Number(_Ai(rp, 'stat_rush_attempts')) || 0;
-                                    var ruy = Number(_Ai(rp, 'stat_rush_yards'))    || 0;
-                                    var re  = Number(_Ai(rp, 'stat_receive'))       || 0;
-                                    var rey = Number(_Ai(rp, 'stat_yards'))         || 0;
-                                    var fu  = Number(_Ai(rp, 'stat_fumbles'))       || 0;
-                                    var b = base[si];
-                                    if (b) {
-                                        var nm = '';
-                                        try { nm = String(_Ai(rp, 'lname') || '').toUpperCase(); } catch (eNm) {}
-                                        if (fu > b.fu) {
-                                            window._rb2p_pushFeed({ k: 'fumble', by: nm });
-                                            window._rb2p_feedEmitted = true;
-                                        } else if (ru > b.ru && !window._rb2p_feedEmitted) {
-                                            window._rb2p_pushFeed({ k: 'run', rb: nm, yds: Math.round(ruy - b.ruy) });
-                                            window._rb2p_feedEmitted = true;
-                                        } else if (re > b.re && !window._rb2p_feedEmitted) {
-                                            window._rb2p_pushFeed({ k: 'pass', qb: qbNm, rcv: nm, yds: Math.round(rey - b.rey) });
-                                            window._rb2p_feedEmitted = true;
+                            // ---- continuous RUN watcher (every tick) ----
+                            // A carry credits the true runner's stat_rush_attempts. When it
+                            // exceeds the snap baseline — and this play is NOT a pass (no
+                            // catch, no throw) — emit a run for that back, with the yardage
+                            // read from the scrimmage at that moment (the credit lands at
+                            // the tackle, so the ball is already at the final spot).
+                            if (fm && !window._rb2p_feedEmitted &&
+                                !window._rb2p_feedCatch && !window._rb2p_feedThrew) {
+                                var rbBase = window._rb2p_rushBase, runner = '';
+                                if (rbBase) {
+                                    rosterEach(function (p, i2) {
+                                        if (runner) return;
+                                        if ((Number(_Ai(p, 'stat_rush_attempts')) || 0) > (Number(rbBase[i2]) || 0)) {
+                                            try { runner = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                         }
+                                    });
+                                    if (runner) {
+                                        var sX2 = Number(window._rb2p_feedSnapX), dr2 = Number(window._rb2p_feedDir) || 1;
+                                        var g2 = isFinite(sX2) ? Math.round((ball.x - sX2) / 20 * dr2) : 0;
+                                        window._rb2p_pushFeed({ k: 'run', rb: runner, yds: g2 });
+                                        window._rb2p_feedEmitted = true;
                                     }
-                                    base[si] = { ru: ru, ruy: ruy, re: re, rey: rey, fu: fu };
                                 }
                             }
+                            // Fumble: watch the roster's total fumbles; on an increase,
+                            // emit a fumble feed (the turnover blast is re-labelled).
+                            var totF = 0, fName = '';
+                            rosterEach(function (p) { totF += Number(_Ai(p, 'stat_fumbles')) || 0; });
+                            var prevF = Number(window._rb2p_offFumbleTotal);
+                            if (isFinite(prevF) && totF > prevF) {
+                                fName = nearestOF(ball.x, ball.y, 60);
+                                window._rb2p_pushFeed({ k: 'fumble', by: fName });
+                                window._rb2p_feedEmitted = true;
+                            }
+                            window._rb2p_offFumbleTotal = totF;
                         } catch (eFeed) {}
                     }
                     if (bkp === prev) return;
@@ -8179,18 +8224,26 @@
                         '<div id="rb-wait-headline" style="font-size:15px;font-weight:bold;letter-spacing:1px;min-height:19px;color:#ffd23c;">&nbsp;</div>' +
                         '<div id="rb-wait-situation" style="font-size:12px;letter-spacing:2px;margin-top:7px;opacity:0.8;min-height:15px;">opponent is on offense</div>' +
                     '</div>' +
-                '</div>' +
-                // Full-overlay BIG-EVENT blast (TOUCHDOWN / INTERCEPTION / …). Hidden
-                // until an outcome fires it; held >= 1s so the moment lands.
-                '<div id="rb-wait-blast" style="position:absolute;inset:0;display:none;' +
-                    'align-items:center;justify-content:center;flex-direction:column;' +
-                    'background:rgba(10,16,24,0.86);z-index:2;">' +
-                    '<div id="rb-wait-blast-text" style="font-size:min(13vw,86px);font-weight:900;' +
-                        'letter-spacing:2px;text-align:center;line-height:1.05;' +
-                        'text-shadow:0 0 24px currentColor;padding:0 4vw;">TOUCHDOWN</div>' +
-                    '<div id="rb-wait-blast-sub" style="font-size:16px;letter-spacing:4px;margin-top:18px;opacity:0.85;"></div>' +
                 '</div>';
             document.body.appendChild(wait);
+            // V311: the BIG-EVENT blast (TOUCHDOWN / INTERCEPTED / …) is a SEPARATE
+            // top-level overlay, NOT a child of the wait cover. As a child it vanished
+            // the instant the wait screen hid — which is exactly what an INTERCEPTION
+            // does (you take the ball and leave WAIT), so the pick blast never showed.
+            // Standalone, it can hold for its full ~1.8s across the possession flip.
+            // pointer-events:none so it never eats a tap on the field underneath.
+            var waitBlast = document.createElement('div');
+            waitBlast.id = 'rb-wait-blast';
+            waitBlast.style.cssText =
+                'position:fixed;inset:0;display:none;z-index:2400;pointer-events:none;' +
+                'align-items:center;justify-content:center;flex-direction:column;' +
+                'background:rgba(10,16,24,0.86);font-family:monospace;';
+            waitBlast.innerHTML =
+                '<div id="rb-wait-blast-text" style="font-size:min(13vw,86px);font-weight:900;' +
+                    'letter-spacing:2px;text-align:center;line-height:1.05;' +
+                    'text-shadow:0 0 24px currentColor;padding:0 4vw;">TOUCHDOWN</div>' +
+                '<div id="rb-wait-blast-sub" style="font-size:16px;letter-spacing:4px;margin-top:18px;opacity:0.85;color:#fff;"></div>';
+            document.body.appendChild(waitBlast);
             var waitSub = wait.querySelector('#rb-waiting-sub');
             // V59: overlay re-enabled (V32 had hidden it for an opponent-AI
             // design that no longer exists — there is no AI drive to watch,
@@ -8364,8 +8417,7 @@
                 var $head = null, $sit = null, $blast = null, $bt = null, $bs = null;
                 setInterval(function () {
                     try {
-                        if (wait.style.display === 'none') return;
-                        if (!$head) {
+                        if (!$blast) {
                             $head = document.getElementById('rb-wait-headline');
                             $sit  = document.getElementById('rb-wait-situation');
                             $blast = document.getElementById('rb-wait-blast');
@@ -8373,7 +8425,8 @@
                             $bs = document.getElementById('rb-wait-blast-sub');
                         }
                         var now = Date.now();
-                        // Blast layer.
+                        // Blast renders ALWAYS, independent of the wait cover, so an
+                        // interception's blast survives the flip to offense.
                         if ($blast) {
                             if (now < wf.bigUntil) {
                                 if ($bt) { $bt.textContent = wf.bigText; $bt.style.color = wf.bigColor; }
@@ -8383,11 +8436,13 @@
                                 $blast.style.display = 'none';
                             }
                         }
-                        // Headline: result (timed) beats action (timed); else blank.
-                        var head = (now < wf.resultUntil) ? wf.result
-                                 : (now < wf.actionUntil) ? wf.action : '';
-                        if ($head) $head.textContent = head || ' ';
-                        if ($sit)  $sit.textContent = wf.base || 'opponent is on offense';
+                        // Ticker text lives on the wait cover — paint only when shown.
+                        if (wait.style.display !== 'none') {
+                            var head = (now < wf.resultUntil) ? wf.result
+                                     : (now < wf.actionUntil) ? wf.action : '';
+                            if ($head) $head.textContent = head || ' ';
+                            if ($sit)  $sit.textContent = wf.base || 'opponent is on offense';
+                        }
                     } catch (e) {}
                 }, 120);
             })();

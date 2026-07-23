@@ -189,14 +189,21 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             }
         }
         if (!rp) return { err: 'no RB in roster' };
-        // Let the observer capture a baseline for this player.
-        await new Promise(function (r) { setTimeout(r, 900); });
+        // Establish the play state the continuous run watcher needs: a snap
+        // baseline of every player's carries, and a clean (non-pass) play.
+        var to2 = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n2 = _wi(to2._Ln), rb0 = {};
+        for (var j = 0; j < n2; j++) { var pj = _zi(to2._Ln, j); if (pj) rb0[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_rushBase   = rb0;
+        window._rb2p_feedCatch  = false;
+        window._rb2p_feedThrew  = false;
+        window._rb2p_feedEmitted = false;
+        window._rb2p_feedSnapX  = Number(RB.engineState().rawEngineMatch._B01);
+        window._rb2p_feedDir    = Number(RB.engineState().rawEngineMatch._501) || 1;
+        // Credit the RB one carry, the way the engine would at the tackle.
         var car0 = Number(_Ai(rp, 'stat_rush_attempts')) || 0;
-        var yds0 = Number(_Ai(rp, 'stat_rush_yards')) || 0;
-        // Credit the RB one carry for 8 yards, the way the engine would.
         _Yi(rp, 'stat_rush_attempts', car0 + 1);
-        _Yi(rp, 'stat_rush_yards', yds0 + 8);
-        // Let the observer detect the delta and push the feed.
+        // Let the observer's run watcher detect the delta and push the feed.
         await new Promise(function (r) { setTimeout(r, 1100); });
         return { name: name, qb: window._rb2p_offQbName() };
     });
@@ -208,9 +215,38 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         check('T7 a carry is emitted as a run for the RB (not the QB)',
               feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb,
               'feed=' + JSON.stringify(feed) + ' (RB should be ' + t7.name + ', not QB ' + t7.qb + ')');
-        check('T7 the run carries the real yardage from the box stat',
-              feed && Number(feed.yds) === 8, 'yds=' + (feed && feed.yds));
     }
+
+    // ---- T8: the big-event blast is a STANDALONE overlay (not a child of the
+    // wait cover), so an interception's blast survives the flip to offense.
+    const t8 = await def.page.evaluate(() => {
+        const blast = document.getElementById('rb-wait-blast');
+        const wait = document.getElementById('rb-waiting');
+        return {
+            childOfWait: !!(blast && wait && wait.contains(blast)),
+            fixed: blast ? getComputedStyle(blast).position : null,
+            passThrough: blast ? getComputedStyle(blast).pointerEvents : null
+        };
+    });
+    check('T8 the blast is NOT nested inside the wait cover', t8.childOfWait === false,
+          'blast is a child of the wait overlay (would vanish on the possession flip)');
+    check('T8 the blast is a fixed, click-through overlay',
+          t8.fixed === 'fixed' && t8.passThrough === 'none',
+          'position=' + t8.fixed + ' pointer-events=' + t8.passThrough);
+    // Fire an INT blast, then HIDE the wait cover (what an interception does), and
+    // confirm the blast is still visible.
+    const t8b = await def.page.evaluate(async () => {
+        window._rb2p_lastFumbleMs = 0;
+        window._rb2p_waitFeedBig('INT', 'Intercepted.');
+        document.getElementById('rb-waiting').style.display = 'none';   // flip to offense
+        await new Promise(r => setTimeout(r, 250));
+        const b = document.getElementById('rb-wait-blast');
+        return { shown: getComputedStyle(b).display !== 'none',
+                 text: document.getElementById('rb-wait-blast-text').textContent };
+    });
+    check('T8 the INT blast still shows after the wait cover hides',
+          t8b.shown && /INTERCEPT/.test(t8b.text),
+          'shown=' + t8b.shown + ' text="' + t8b.text + '" (the pick blast must survive the flip)');
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
