@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V331<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V332<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V331</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V332</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3349,6 +3349,38 @@
                                     });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fm._6F)) + ' d=' + Number(fm._t11));
+                                }
+                                // V332: DEAD-BALL re-arm. The snap latch above only fires when
+                                // the observer actually SAMPLES bkp 1/2. A fast handoff can go
+                                // 0 -> 4 between 16ms ticks (or the tab is momentarily busy), so
+                                // the snap frame is skipped, feedEmitted stays stuck true from
+                                // the prior play, and the next play can never settle — it is
+                                // DROPPED (the reported "RB run shows blank"; repro
+                                // e2e/v332-rbrun.js T7). The ball ALWAYS rests at the dead state
+                                // (0) between plays, and that IS reliably sampled — so once the
+                                // current play has emitted, re-arm here: reset the per-play flags
+                                // and re-baseline from the now-resolved state (== the next play's
+                                // start). Gated on feedEmitted===true so it can't wipe a play
+                                // whose _6F is still resolving at bkp 0 (that play still needs to
+                                // settle first). Being at the DEAD ball (not mid-play) means this
+                                // can never trigger a spurious re-emit.
+                                if (bkp === 0 && window._rb2p_feedEmitted === true) {
+                                    window._rb2p_feedWasLive   = false;
+                                    window._rb2p_feedEmitted   = false;
+                                    window._rb2p_feedThrew     = false;
+                                    window._rb2p_feedSawSack   = false;
+                                    window._rb2p_feedCatchName = '';
+                                    window._rb2p_feedYard0     = Number(fm._6F);
+                                    window._rb2p_feedDown0     = Number(fm._t11);
+                                    var s0d = window._rb2p_feedStat0 = {};
+                                    rosterEach(function (p, i2) {
+                                        s0d[i2] = {
+                                            pos: Number(_Ai(p, 'position')) || 0,
+                                            py:  Number(_Ai(p, 'stat_yards')) || 0,
+                                            ra:  Number(_Ai(p, 'stat_rush_attempts')) || 0,
+                                            ry:  Number(_Ai(p, 'stat_rush_yards')) || 0
+                                        };
+                                    });
                                 }
                                 if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball airborne + uncaught (an incompletion)
                                 if (bkp === 11) window._rb2p_feedSawSack = true;
