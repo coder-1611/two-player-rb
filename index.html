@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V322<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V323<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V322</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V323</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5035,9 +5035,28 @@
                     if (!em) em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     var gq = Number(em.engineQuarter) || 1;
+                    // gBase = the highest quarter LEGITIMATELY reached: a quarter this
+                    // device stably played (clock running) or the wire-authoritative
+                    // opponent quarter. Both are burst-immune (a burst rolls at 0:00, so
+                    // lastStableQuarter never latches it; wireQuarter is the opponent's
+                    // post-governor value). Reset to 1/0 at match start.
+                    var gBase = Math.max(Number(window._rb2p_lastStableQuarter) || 1,
+                                         Number(window._rb2p_wireQuarter) || 0);
+                    // ===== V323: UNIVERSAL — GAME TIME ONLY MOVES FORWARD =====
+                    // The quarter may never drop below gBase. A rollover glitch or a
+                    // stale re-apply that shoves the quarter BACKWARDS (device report:
+                    // "the time shifts back quarters") is pulled forward here, every
+                    // 16ms, so it can never stick. The clock still resets within a
+                    // quarter — it is the QUARTER number that is monotonic.
+                    if (gBase >= 2 && gq < gBase) {
+                        em.engineQuarter = gBase; gq = gBase;
+                        if (Date.now() - (window._rb2p_qBackLogMs || 0) > 4000) {
+                            window._rb2p_qBackLogMs = Date.now();
+                            console.warn('[2P Q-GOV] quarter went BACKWARDS — restored to Q' + gBase);
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-BACK -> Q' + gBase);
+                        }
+                    }
                     if (gq >= 2 && gq <= 4) {
-                        var gBase = Math.max(Number(window._rb2p_lastStableQuarter) || 1,
-                                             Number(window._rb2p_wireQuarter) || 0);
                         if (gq > gBase + 1) {
                             console.warn('[2P Q-GOV] burst quarter roll Q' + gq +
                                          ' clamped back to Q' + (gBase + 1) +
@@ -6002,7 +6021,12 @@
                                     ' (preRollover was ' + window._rb2p_preRolloverYard + ')');
                     }
 
-                    if (clockRunning) window._rb2p_lastStableQuarter = qNow;
+                    // V323: monotonic — the last stable quarter only advances (never
+                    // regresses within a match; reset to 1 at match start). This keeps
+                    // it burst-immune (a burst rolls at 0:00, so clockRunning is false)
+                    // AND uncorruptable by a regression, so it's a trustworthy floor.
+                    if (clockRunning && qNow >= (Number(window._rb2p_lastStableQuarter) || 1))
+                        window._rb2p_lastStableQuarter = qNow;
 
                     if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen) {
                         // Quarter just incremented.
@@ -13567,6 +13591,13 @@
             window._rb2p_gameOverReported = false;
             window._rb2p_blastPrevScorerScore = 0;   // V318: re-baseline the score-delta blast
             window._rb2p_anyPlayRun = false;         // V320: re-arm the opening-only staging healer
+            // V323: reset the monotonic quarter FLOOR at match start, BEFORE the
+            // governor can run — otherwise a prior game's high floor (e.g. Q4)
+            // would clamp this fresh Q1 straight up to Q4 (and the q<=1 reset would
+            // then never fire). These are also reset reactively when q<=1.
+            window._rb2p_lastStableQuarter = 1;
+            window._rb2p_wireQuarter       = 0;
+            window._rb2p_qBackLogMs        = 0;
             window._rb2p_inOvertime = false;   // V109: re-arm equal-possession OT
             window._rb2p_otMyPoss   = 0;
             window._rb2p_otOppPoss  = 0;

@@ -64,13 +64,15 @@ async function readState(page) {
         check('T2 role A relinquishes the ball (goes to WAIT)', a.waiting === true, 'A did not go to WAIT');
         check('T2 role A jumps to Q3 (no longer stuck in Q2)', a.q === 3, 'A quarter = ' + a.q);
 
-        // ---- T3: role B is NOT caught up by this path ----
+        // ---- T3: role B must NEVER relinquish at the half (B receives the
+        // 2nd-half kickoff). Its quarter may legitimately catch up to the wire via
+        // the V323 monotonic floor, but it keeps the ball (does not go to WAIT).
         await setupHalftime(page, 'b');
         await sleep(700);
         const b = await readState(page);
         console.log('  role B after: ' + JSON.stringify(b));
-        check('T3 role B in Q2 is NOT forced to relinquish by the catch-up',
-              b.waiting === false && b.q === 2, 'B state changed: ' + JSON.stringify(b));
+        check('T3 role B is NOT forced to relinquish (keeps the ball at the half)',
+              b.waiting === false, 'B was sent to WAIT: ' + JSON.stringify(b));
     } finally {
         await browser.close();
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
