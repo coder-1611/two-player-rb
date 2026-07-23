@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V309<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V310<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V309</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V310</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3149,117 +3149,86 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
-                    // ===== V307: PLAY-BY-PLAY FEED (offense device) =====
+                    // ===== V310: STAT-DRIVEN PLAY FEED (offense device) =====
                     // Emit a per-play result with REAL names so the waiting opponent
                     // gets "PURDY -> EVANS · 23 YDS". Additive only: it writes to a
                     // feed/ node nothing in the game logic reads, so a failed/slow
                     // write can never affect play. Only while I'm on offense.
-                    if (bkp !== prev && window._rb2p_userIsWaitingForOpponent !== true &&
-                        typeof window._rb2p_pushFeed === 'function') {
-                        try {
-                            var fem = RB.engineState(), fm = fem && fem.rawEngineMatch;
-                            if (fm) {
-                                // Nearest rostered OF (skill player) to a point — the
-                                // receiver on a catch, the carrier on a run.
-                                var nearestOF = function (px, py, maxD) {
-                                    var b = null, b2 = 1e12, p, dx, dy, d2;
-                                    for (var ii = 0; ii < all.length; ii++) {
-                                        p = all[ii];
-                                        if (!p || p._HL2 || !p._eE2 || p._eE2._fE2 !== 'obj_playerOF') continue;
-                                        if (!p._7j || p._7j === -4) continue;
-                                        dx = p.x - px; dy = p.y - py; d2 = dx * dx + dy * dy;
-                                        if (d2 < b2) { b2 = d2; b = p; }
-                                    }
-                                    if (b && b2 <= maxD * maxD) { try { return String(_Ai(b._7j, 'lname') || '').toUpperCase(); } catch (e) {} }
-                                    return '';
-                                };
-                                // Snap: latch the pixel scrimmage + direction, reset state.
-                                // Run vs pass is inferred from the ball state, NOT from
-                                // _C31 (running_play): _C31 defaults to 1 and isn't
-                                // decided at snap time, so latching it here tags every
-                                // play a run. Per the engine (V193 note below), a THROWN
-                                // pass is the only thing that reaches BALL_RECEIVED (5),
-                                // and a throw reaches BALL_THROWN (7) — so those two
-                                // states reliably mark a pass; anything ending in a
-                                // tackle without them is a run/scramble.
-                                if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
-                                    window._rb2p_feedSnapX = Number(fm._B01);
-                                    window._rb2p_feedDir   = Number(fm._501) || 1;
-                                    window._rb2p_feedThrew = false;
-                                    window._rb2p_feedRcv   = null;
-                                    window._rb2p_feedDone  = false;
-                                }
-                                if (bkp === 7) window._rb2p_feedThrew = true;
-                                if (bkp === 5 && !window._rb2p_feedRcv) {
-                                    window._rb2p_feedThrew = true;   // a catch implies a throw
-                                    window._rb2p_feedRcv = nearestOF(ball.x, ball.y, 40);
-                                }
-                                // Dead ball: tackle (4) or sack (11). Emit the play.
-                                if ((bkp === 4 || bkp === 11) && !window._rb2p_feedDone) {
-                                    var sX = Number(window._rb2p_feedSnapX);
-                                    var dr = Number(window._rb2p_feedDir) || 1;
-                                    var gain = isFinite(sX) ? Math.round((ball.x - sX) / 20 * dr) : NaN;
-                                    var qb = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
-                                    var carrier = nearestOF(ball.x, ball.y, 44);
-                                    if (bkp === 11) {
-                                        window._rb2p_pushFeed({ k: 'sack', qb: qb, yds: isFinite(gain) ? gain : -7 });
-                                    } else if (window._rb2p_feedRcv) {
-                                        window._rb2p_pushFeed({ k: 'pass', qb: qb, rcv: window._rb2p_feedRcv, yds: gain });
-                                    } else if (window._rb2p_feedThrew) {
-                                        window._rb2p_pushFeed({ k: 'pass', qb: qb, rcv: '', yds: gain });
-                                    } else {
-                                        // A rush — QB or RB, named. No scramble/keeper
-                                        // distinction: a QB run is just a QB rush.
-                                        window._rb2p_pushFeed({ k: 'run', rb: carrier || qb, yds: gain });
-                                    }
-                                    window._rb2p_feedDone = true;
-                                }
-                                // Reset to dead after a throw with no catch = incomplete.
-                                if (bkp === 0 && window._rb2p_feedThrew && !window._rb2p_feedRcv &&
-                                    !window._rb2p_feedDone) {
-                                    var qbi = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
-                                    window._rb2p_pushFeed({ k: 'incomplete', qb: qbi });
-                                    window._rb2p_feedDone = true;
-                                }
-                            }
-                        } catch (eFeed) {}
-                    }
-                    // ===== V308: FUMBLE detection (offense device) =====
-                    // A fumble increments the fumbler's stat_fumbles at the moment it
-                    // happens, then the possession change ships as an INT (the engine
-                    // buckets INT/fumble into one turnover type — inferUserDriveEndType).
-                    // So without this a lost fumble reads "INTERCEPTED". Watch the
-                    // roster's total fumbles; on an increase, name the fumbler (the
-                    // carrier, i.e. the nearest rostered OF to the ball) and emit a
-                    // fumble feed. Runs every tick (a fumble isn't tied to a kp edge).
+                    //
+                    // NAMING BY STAT, NOT BY POSITION. The ball-holder instance wears
+                    // the QB's roster struct (_7j) no matter who actually has the ball —
+                    // a running back instance reports _7j = the QB (verified live). So
+                    // "nearest player to the ball" named EVERY rush after the QB, which
+                    // is the reported "RB runs show up as QB runs" bug. Instead, name by
+                    // the roster player whose OFFICIAL box stat changed this play:
+                    //   stat_rush_attempts++  -> that player carried (engine-credited to
+                    //                            the true runner — the box shows QB and
+                    //                            RB carries separately, so it's accurate)
+                    //   stat_receive++        -> that player caught it
+                    //   stat_fumbles++        -> that player fumbled
+                    // Yardage comes from the same stats (rush/receiving yard deltas), so
+                    // the ticker matches the final box score exactly. Ball-state edges
+                    // still drive the no-stat events: a throw (BALL_THROWN 7) with no
+                    // reception = incomplete; a sack (BALL_SACKED 11).
                     if (window._rb2p_userIsWaitingForOpponent !== true &&
                         typeof window._rb2p_pushFeed === 'function') {
                         try {
-                            var ctrlF = _si(64), toF = null;
-                            for (var kf in ctrlF) { if (ctrlF.hasOwnProperty(kf)) { toF = ctrlF[kf]; break; } }
-                            if (toF && toF._Ln != null) {
-                                var rnF = _wi(toF._Ln), totF = 0, rf, rpF;
-                                for (rf = 0; rf < rnF; rf++) {
-                                    rpF = _zi(toF._Ln, rf);
-                                    if (rpF != null) totF += Number(_Ai(rpF, 'stat_fumbles')) || 0;
+                            var fem = RB.engineState(), fm = fem && fem.rawEngineMatch;
+                            var qbNm = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
+                            // ---- play phase (ball state): snap / throw / sack / incomplete
+                            if (fm && bkp !== prev) {
+                                if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
+                                    window._rb2p_feedThrew   = false;
+                                    window._rb2p_feedEmitted = false;
+                                    window._rb2p_feedSnapX   = Number(fm._B01);
+                                    window._rb2p_feedDir     = Number(fm._501) || 1;
                                 }
-                                var prevF = Number(window._rb2p_offFumbleTotal);
-                                if (isFinite(prevF) && totF > prevF) {
-                                    var fby = '', fbx = ball.x, fby2 = ball.y, fB = null, fB2 = 1e12, fp, fdx, fdy, fd2;
-                                    for (rf = 0; rf < all.length; rf++) {
-                                        fp = all[rf];
-                                        if (!fp || fp._HL2 || !fp._eE2 || fp._eE2._fE2 !== 'obj_playerOF') continue;
-                                        if (!fp._7j || fp._7j === -4) continue;
-                                        fdx = fp.x - fbx; fdy = fp.y - fby2; fd2 = fdx * fdx + fdy * fdy;
-                                        if (fd2 < fB2) { fB2 = fd2; fB = fp; }
-                                    }
-                                    if (fB) { try { fby = String(_Ai(fB._7j, 'lname') || '').toUpperCase(); } catch (eFb) {} }
-                                    window._rb2p_pushFeed({ k: 'fumble', by: fby });
-                                    window._rb2p_feedDone = true;   // don't also emit a tackle result
+                                if (bkp === 7) window._rb2p_feedThrew = true;
+                                if (bkp === 11 && !window._rb2p_feedEmitted) {   // sack
+                                    var sX = Number(window._rb2p_feedSnapX), dr = Number(window._rb2p_feedDir) || 1;
+                                    var sl = isFinite(sX) ? Math.round((ball.x - sX) / 20 * dr) : -7;
+                                    window._rb2p_pushFeed({ k: 'sack', qb: qbNm, yds: sl });
+                                    window._rb2p_feedEmitted = true;
                                 }
-                                window._rb2p_offFumbleTotal = totF;
+                                if (bkp === 0 && window._rb2p_feedThrew && !window._rb2p_feedEmitted) {   // incomplete
+                                    window._rb2p_pushFeed({ k: 'incomplete', qb: qbNm });
+                                    window._rb2p_feedEmitted = true;
+                                }
                             }
-                        } catch (eFum) {}
+                            // ---- stat deltas (authoritative naming): run / catch / fumble
+                            var ctrlS = _si(64), toS = null;
+                            for (var ks in ctrlS) { if (ctrlS.hasOwnProperty(ks)) { toS = ctrlS[ks]; break; } }
+                            if (toS && toS._Ln != null) {
+                                var rn = _wi(toS._Ln);
+                                var base = window._rb2p_statBase;
+                                if (!base || base.length !== rn) base = window._rb2p_statBase = [];
+                                for (var si = 0; si < rn; si++) {
+                                    var rp = _zi(toS._Ln, si);
+                                    if (rp == null) continue;
+                                    var ru  = Number(_Ai(rp, 'stat_rush_attempts')) || 0;
+                                    var ruy = Number(_Ai(rp, 'stat_rush_yards'))    || 0;
+                                    var re  = Number(_Ai(rp, 'stat_receive'))       || 0;
+                                    var rey = Number(_Ai(rp, 'stat_yards'))         || 0;
+                                    var fu  = Number(_Ai(rp, 'stat_fumbles'))       || 0;
+                                    var b = base[si];
+                                    if (b) {
+                                        var nm = '';
+                                        try { nm = String(_Ai(rp, 'lname') || '').toUpperCase(); } catch (eNm) {}
+                                        if (fu > b.fu) {
+                                            window._rb2p_pushFeed({ k: 'fumble', by: nm });
+                                            window._rb2p_feedEmitted = true;
+                                        } else if (ru > b.ru && !window._rb2p_feedEmitted) {
+                                            window._rb2p_pushFeed({ k: 'run', rb: nm, yds: Math.round(ruy - b.ruy) });
+                                            window._rb2p_feedEmitted = true;
+                                        } else if (re > b.re && !window._rb2p_feedEmitted) {
+                                            window._rb2p_pushFeed({ k: 'pass', qb: qbNm, rcv: nm, yds: Math.round(rey - b.rey) });
+                                            window._rb2p_feedEmitted = true;
+                                        }
+                                    }
+                                    base[si] = { ru: ru, ruy: ruy, re: re, rey: rey, fu: fu };
+                                }
+                            }
+                        } catch (eFeed) {}
                     }
                     if (bkp === prev) return;
                     // V193: RECEPTIONS. BALL_RECEIVED (5) = a thrown pass was caught

@@ -172,6 +172,46 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     console.log('  offense QB surname: ' + qb);
     check('offense QB name resolves (not the fallback)', qb && qb !== 'QB', 'got "' + qb + '"');
 
+    // ---- T7: stat-driven naming — an RB carry names the RB, not the QB.
+    // The reported bug: "RB runs show up as QB runs", because the ball-holder
+    // instance wears the QB's roster struct. V310 names by whose carry stat
+    // (stat_rush_attempts) incremented. Bump a real RB's carry stat on the
+    // offense device and confirm the emitted feed names that RB with the right
+    // yards — the harness bot can't hand off, so this drives the credit directly.
+    const t7 = await off.page.evaluate(async () => {
+        window._rb2p_userIsWaitingForOpponent = false;
+        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n = _wi(to._Ln), idx = -1, rp = null, name = '';
+        for (var i = 0; i < n; i++) {
+            var p = _zi(to._Ln, i);
+            if (p && Number(_Ai(p, 'position')) === 2) {   // RB
+                idx = i; rp = p; name = String(_Ai(p, 'lname') || '').toUpperCase(); break;
+            }
+        }
+        if (!rp) return { err: 'no RB in roster' };
+        // Let the observer capture a baseline for this player.
+        await new Promise(function (r) { setTimeout(r, 900); });
+        var car0 = Number(_Ai(rp, 'stat_rush_attempts')) || 0;
+        var yds0 = Number(_Ai(rp, 'stat_rush_yards')) || 0;
+        // Credit the RB one carry for 8 yards, the way the engine would.
+        _Yi(rp, 'stat_rush_attempts', car0 + 1);
+        _Yi(rp, 'stat_rush_yards', yds0 + 8);
+        // Let the observer detect the delta and push the feed.
+        await new Promise(function (r) { setTimeout(r, 1100); });
+        return { name: name, qb: window._rb2p_offQbName() };
+    });
+    if (t7.err) {
+        check('T7 stat-driven RB run naming', false, t7.err);
+    } else {
+        const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
+        console.log('  RB=' + t7.name + ' QB=' + t7.qb + '  feed=' + JSON.stringify(feed));
+        check('T7 a carry is emitted as a run for the RB (not the QB)',
+              feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb,
+              'feed=' + JSON.stringify(feed) + ' (RB should be ' + t7.name + ', not QB ' + t7.qb + ')');
+        check('T7 the run carries the real yardage from the box stat',
+              feed && Number(feed.yds) === 8, 'yds=' + (feed && feed.yds));
+    }
+
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);
