@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V321<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V322<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V321</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V322</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9613,7 +9613,21 @@
                     if (!em || em.engineUserTeamIdx == null) return;
                     var q = Number(em.engineQuarter);
                     if (q <= 1) { window._rb2p_q3LawApplied = false; return; }   // re-arm on fresh match
-                    if (q !== 3 || window._rb2p_q3LawApplied === true) return;
+                    var role = window._rb2p_myFirebaseRole;
+                    if (role !== 'a' && role !== 'b') return;   // need the authoritative A/B identity
+                    // V322: normally fire once the engine reaches Q3. CATCH-UP (role A
+                    // only): a missed FG at the Q2→Q3 boundary can leave A on offense
+                    // stuck in Q2 while B has already advanced to Q3 — so A never runs
+                    // this law, keeps the ball (repeated force-NO-BALL spawns), and the
+                    // two devices sit on DIFFERENT quarters, BOTH on offense (room DBEK).
+                    // When the wire says the 2nd half began and A genuinely finished Q2,
+                    // treat Q3 as reached: A relinquishes (B is always the 2nd-half
+                    // receiver) and jumps to Q3.
+                    var wireQ = Number(window._rb2p_wireQuarter) || 0;
+                    var q3Reached = (q === 3) ||
+                        (role === 'a' && q === 2 && wireQ >= 3 &&
+                         Number(window._rb2p_lastStableQuarter || 1) >= 2);
+                    if (!q3Reached || window._rb2p_q3LawApplied === true) return;
                     // V294: a pick-6 (or normal TD) PAT landing at the END of Q2
                     // must PLAY OUT before the Q3 handoff. Otherwise this enforcer
                     // clears the cascade (below) and hands B a normal Q3 kickoff
@@ -9633,11 +9647,10 @@
                     // the wire saying Q3.
                     if (Number(window._rb2p_lastStableQuarter || 1) < 2 &&
                         Number(window._rb2p_wireQuarter || 0) < 3) return;
-                    var role = window._rb2p_myFirebaseRole;
-                    if (role !== 'a' && role !== 'b') return;   // need the authoritative A/B identity
                     window._rb2p_q3LawApplied   = true;
                     window._rb2p_q3KickoffPending = false;   // release the watchdog park
                     window._rb2p_qGovToppedQ    = null;      // V295: Q3-LAW owns this clock reset
+                    if (Number(em.engineQuarter) < 3) em.engineQuarter = 3;   // V322: sync the catch-up device to Q3
                     // Clear stale pick-6 cascade so this can't be misread as a pick-6.
                     window._rb2p_pickSixPatCascadeActive    = false;
                     window._rb2p_pickSixThisDeviceIsThrower = false;
