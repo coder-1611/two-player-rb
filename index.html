@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V328<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V329<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V328</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V329</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5857,6 +5857,15 @@
                         // commits to active play. Guarded so the hold-loop can't stack.
                         if (!qkResumeHoldActive) {
                             qkResumeHoldActive = true;
+                            // V329: mirror to the diag log (deduped -> "xN") so a
+                            // RE-FIRING quarter-keep resume (the reported "infinite play
+                            // change" at Q1->Q2: the resume re-spawns every ~1.5s until
+                            // the clock ticks a completed snap; if the re-spawn blocks a
+                            // clean snap, the clock stays frozen and it loops) is visible
+                            // in the readable rooms/{code}/dbg trace, not just console.
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'QTR-KEEP resume Q' + qTo + ' y' + Math.round(Number(keepYard)) +
+                                ' d' + keepDown + ' clk=' + (Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft)));
                             console.log('[2P QTR-KEEP] FSM parked at dead Vy=' + engineMatch.engineDriveFsmStage +
                                         ' (COMM_STAGE_DRIVE) after rollover into Q' + qTo + ' — offense KEEPS the ball; ' +
                                         'force-spawning a playable drive (yard ' + keepYard + ', down ' + keepDown + '&' + keepToGo + ')');
