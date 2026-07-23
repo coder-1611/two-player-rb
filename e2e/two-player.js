@@ -121,6 +121,25 @@ async function joinRoom(label, page, code) {
     throw new Error('[' + label + '] join failed for room ' + code);
 }
 
+// HOST a room via the PLAY 2P button (the real host flow — it creates the room
+// so a joiner's typed code has something to reference). Pins the code via the
+// generateRoomCode test seam. Returns the claimed role ('a').
+async function hostRoom(label, page, code) {
+    await page.evaluate(c => { window._rb2p_forceRoomCode = c; }, code);
+    for (let attempt = 0; attempt < 10; attempt++) {
+        await page.evaluate(() => { const p = document.getElementById('rb-play2p'); if (p) p.click(); });
+        const inRoom = await waitFor(page,
+            () => { const l = document.getElementById('rb-lobby');
+                    return !!(l && l.getAttribute('data-active') === 'room'); }, 8000);
+        if (inRoom) {
+            return page.evaluate(
+                () => ((document.getElementById('rb-you-role') || {}).textContent || '').trim().toLowerCase());
+        }
+        await H.sleep(1000);   // FB not ready yet — try again
+    }
+    throw new Error('[' + label + '] host (PLAY 2P) failed for room ' + code);
+}
+
 // Click READY once it's enabled (it enables only when both slots are filled).
 async function readyUp(label, page) {
     const enabled = await waitFor(page,
@@ -165,7 +184,9 @@ async function startTwoPlayerGame(opts) {
 
     const a = await openLobbyPage(browser, 'A', opts);
     const b = await openLobbyPage(browser, 'B', opts);
-    a.role = await joinRoom('A', a.page, code);
+    // A HOSTS (PLAY 2P creates the room), then B JOINS the now-existing code.
+    // A typed code must reference a real room, so the host must go first.
+    a.role = await hostRoom('A', a.page, code);
     b.role = await joinRoom('B', b.page, code);
     await readyUp('A', a.page);
     await readyUp('B', b.page);
@@ -189,5 +210,5 @@ async function startTwoPlayerGame(opts) {
 module.exports = {
     FB_DB, FB_API_KEY, fbToken, fbGet, fbPut, fbDelete,
     randomCode, deleteRoom, waitFor, openLobbyPage,
-    joinRoom, readyUp, waitForMatch, snapshot, startTwoPlayerGame
+    joinRoom, hostRoom, readyUp, waitForMatch, snapshot, startTwoPlayerGame
 };

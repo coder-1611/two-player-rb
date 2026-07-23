@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V315<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V316<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V315</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V316</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5076,7 +5076,7 @@
                             // or the engine rolls the quarter and loops/freezes.
                             if (Number(engineMatch.engineQuarter) > 5) engineMatch.engineQuarter = 5;
                             if (Number(engineMatch.engineMinutesLeft) < 5) {
-                                engineMatch.engineMinutesLeft   = 9;
+                                engineMatch.engineMinutesLeft   = 10;
                                 engineMatch.engineSecondsLeft   = 0;
                                 engineMatch.engineTickAllowance = 0;
                             }
@@ -8239,7 +8239,7 @@
                         // kp=2 so a hand-off that lands near a quarter boundary
                         // can't be re-parked into WAIT.
                         if (window._rb2p_inOvertime) {
-                            engineMatch.engineMinutesLeft   = 9;
+                            engineMatch.engineMinutesLeft   = 10;
                             engineMatch.engineSecondsLeft   = 0;
                             engineMatch.engineTickAllowance = 0;
                             if (typeof window._rb2p_otHoldKp2 === 'function') window._rb2p_otHoldKp2();
@@ -9411,7 +9411,7 @@
                         // cosmetic. A possession ends ONLY via score/punt/turnover.
                         if (Number(em.engineQuarter) > 5) em.engineQuarter = 5;
                         if (Number(em.engineMinutesLeft) < 5) {
-                            em.engineMinutesLeft   = 9;
+                            em.engineMinutesLeft   = 10;
                             em.engineSecondsLeft   = 0;
                             em.engineTickAllowance = 0;
                         }
@@ -9660,7 +9660,7 @@
                         // V109: OT inherits the regulation-end clock (0:00). Give
                         // this possession a clock so it doesn't instantly roll the
                         // quarter (the coordinator keeps it topped up thereafter).
-                        em.engineMinutesLeft   = 9;
+                        em.engineMinutesLeft   = 10;
                         em.engineSecondsLeft   = 0;
                         em.engineTickAllowance = 0;
                         // V110: HOLD kp=2 to overpower the engine's per-frame
@@ -12458,6 +12458,9 @@
         // never types anything. The code is shown on the room screen for sharing.
         var $play2p = document.getElementById('rb-play2p');
         function generateRoomCode() {
+            // Test seam: the e2e harness pins a deterministic host code so a room
+            // can be pre-cleaned and referenced. Unset in normal play.
+            try { if (window._rb2p_forceRoomCode) return String(window._rb2p_forceRoomCode).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); } catch (e) {}
             var L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', s = '';
             for (var i = 0; i < 4; i++) s += L.charAt(Math.floor(Math.random() * 26));
             return s;
@@ -12510,6 +12513,10 @@
             $join.disabled = true;
             try {
                 var role = await claimSlot(code);
+                if (role === 'notfound') {
+                    $entryMsg.textContent = 'No room "' + code + '" — ask your friend for their code, or press PLAY 2P to host one.';
+                    return;
+                }
                 if (!role) {
                     $entryMsg.textContent = 'Room ' + code + ' is full.';
                     return;
@@ -12543,7 +12550,14 @@
         }
 
         async function claimSlot(code) {
-            // Try A, then B; return the role we ended up with (or null).
+            // V316: the room must ALREADY EXIST (someone hosted it via PLAY 2P).
+            // Previously the A-slot transaction below would happily commit into a
+            // null slot of a NON-existent room, so typing a random code silently
+            // CREATED a brand-new game instead of joining. A joiner may only enter a
+            // room whose /players node is already present; otherwise it's 'notfound'.
+            var playersSnap = await FB.get(FB.ref(db, 'rooms/' + code + '/players'));
+            if (!playersSnap.exists() || playersSnap.val() == null) return 'notfound';
+            // Try A, then B; return the role we ended up with (or null = full).
             var resA = await FB.runTransaction(
                 FB.ref(db, 'rooms/' + code + '/players/a'),
                 function (cur) { return cur === null ? { ts: Date.now(), ready: false, sid: mySessionId() } : undefined; }
