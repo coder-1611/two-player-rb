@@ -172,36 +172,86 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     console.log('  offense QB surname: ' + qb);
     check('offense QB name resolves (not the fallback)', qb && qb !== 'QB', 'got "' + qb + '"');
 
-    // ---- T7: stat-driven naming — an RB carry names the RB, not the QB.
-    // The reported bug: "RB runs show up as QB runs", because the ball-holder
-    // instance wears the QB's roster struct. V310 names by whose carry stat
-    // (stat_rush_attempts) incremented. Bump a real RB's carry stat on the
-    // offense device and confirm the emitted feed names that RB with the right
-    // yards — the harness bot can't hand off, so this drives the credit directly.
+    // ---- V326 CLASSIFIER UNIT TESTS: _rb2p_classifyPlay is pure — it decides
+    // the play TYPE purely from the box-stat deltas passed in. Drive it directly
+    // with synthetic signals (no engine needed) to prove every branch.
+    const cls = await off.page.evaluate(() => {
+        const C = window._rb2p_classifyPlay;
+        const base = { qbName: 'PURDY' };
+        const j = o => JSON.stringify(C(Object.assign({}, base, o)));
+        return {
+            sack:        j({ sawSack: true }),
+            passBoth:    j({ qbPassDelta: 11, rcvName: 'EVANS' }),         // QB threw, receiver caught
+            passRcvOnly: j({ qbPassDelta: 0,  rcvName: 'COOK' }),          // only the receiver got credited
+            passQbOnly:  j({ qbPassDelta: 6,  rcvName: '', catchName: '' }),// only QB passing moved
+            passQbCatch: j({ qbPassDelta: 6,  rcvName: '', catchName: 'PURDY' }), // catch name IS the QB
+            passShort:   j({ qbPassDelta: 0.4, rcvName: 'AIYUK' }),        // tiny gain, still a pass
+            runRB:       j({ runName: 'COOK' }),                           // a handoff
+            runQB:       j({ qbRushAttDelta: 1 }),                         // a scramble
+            incomplete:  j({ threw: true }),                              // thrown, no credit
+            nothing:     j({})                                            // dead-ball fallback
+        };
+    });
+    console.log('  classifyPlay: ' + JSON.stringify(cls, null, 0));
+    check('U1 a sack is a sack', /"k":"sack"/.test(cls.sack), cls.sack);
+    check('U2 QB passing + receiver credit = pass to that receiver',
+          /"k":"pass"/.test(cls.passBoth) && /"rcv":"EVANS"/.test(cls.passBoth), cls.passBoth);
+    check('U3 receiver receiving-yards alone = pass to that receiver',
+          /"k":"pass"/.test(cls.passRcvOnly) && /"rcv":"COOK"/.test(cls.passRcvOnly), cls.passRcvOnly);
+    check('U4 QB passing alone (no named catcher) = pass with empty rcv (renders COMPLETE)',
+          /"k":"pass"/.test(cls.passQbOnly) && /"rcv":""/.test(cls.passQbOnly), cls.passQbOnly);
+    check('U5 a QB-valued catch name is NEVER the receiver (no pass QB→QB)',
+          /"k":"pass"/.test(cls.passQbCatch) && !/"rcv":"PURDY"/.test(cls.passQbCatch), cls.passQbCatch);
+    check('U6 a SHORT completion (tiny receiving gain) is still a pass',
+          /"k":"pass"/.test(cls.passShort) && /"rcv":"AIYUK"/.test(cls.passShort), cls.passShort);
+    check('U7 a non-QB carry is a run named for that back',
+          /"k":"run"/.test(cls.runRB) && /"rb":"COOK"/.test(cls.runRB), cls.runRB);
+    check('U8 a QB carry is a run named for the QB (a scramble)',
+          /"k":"run"/.test(cls.runQB) && /"rb":"PURDY"/.test(cls.runQB), cls.runQB);
+    check('U9 a thrown ball with no catch credit is incomplete',
+          /"k":"incomplete"/.test(cls.incomplete), cls.incomplete);
+    check('U10 nothing credited + no throw falls back to a QB keep (run)',
+          /"k":"run"/.test(cls.nothing) && /"rb":"PURDY"/.test(cls.nothing), cls.nothing);
+
+    // A shared page-side helper: baseline EVERY roster slot's box stats into
+    // _rb2p_feedStat0 (what the V326 snap latch captures), arm the settle flags,
+    // and set the yard/down snap so the next _6F/_t11 move settles the play.
+    // Returns the rawEngineMatch + roster handle + count so each test can bump
+    // specific stats. Registered on window so every evaluate can call it.
+    await off.page.evaluate(() => {
+        window.__v307setup = function () {
+            window._rb2p_userIsWaitingForOpponent = false;
+            var m = RB.engineState().rawEngineMatch;
+            var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+            var n = _wi(to._Ln);
+            var s0 = {};
+            for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) s0[j] = {
+                pos: Number(_Ai(pj, 'position')) || 0,
+                py:  Number(_Ai(pj, 'stat_yards')) || 0,
+                ra:  Number(_Ai(pj, 'stat_rush_attempts')) || 0 }; }
+            window._rb2p_feedStat0 = s0;
+            window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
+            window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
+            window._rb2p_feedCatchName = '';
+            window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11);
+            return { m: m, to: to, n: n };
+        };
+    });
+
+    // ---- T7: an RB carry names the RB, not the QB. The reported bug ("RB runs
+    // show up as QB runs") came from the ball-holder wearing the QB struct at the
+    // tackle. V326 classifies off the box-stat delta: the non-QB whose rush
+    // attempt bumped is the carrier. Bump a real RB's carry stat and confirm.
     const t7 = await off.page.evaluate(async () => {
-        window._rb2p_userIsWaitingForOpponent = false;
-        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n = _wi(to._Ln), idx = -1, rp = null, name = '';
+        var ctx = window.__v307setup(), m = ctx.m, to = ctx.to, n = ctx.n;
+        var rp = null, name = '';
         for (var i = 0; i < n; i++) {
             var p = _zi(to._Ln, i);
-            if (p && Number(_Ai(p, 'position')) === 2) {   // RB
-                idx = i; rp = p; name = String(_Ai(p, 'lname') || '').toUpperCase(); break;
-            }
+            if (p && Number(_Ai(p, 'position')) === 2) { rp = p; name = String(_Ai(p, 'lname') || '').toUpperCase(); break; }
         }
         if (!rp) return { err: 'no RB in roster' };
-        // V319: the emitter classifies at SETTLE by the FLIGHT metric (throw vs
-        // run) and names a run by the rush stat. No flight (feedMaxOFdist=0) = a
-        // run; the non-QB whose rush stat bumped is the carrier.
-        var m = RB.engineState().rawEngineMatch;
-        var ra = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev = ra;
-        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
-        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
-        window._rb2p_feedMaxOFdist = 0; window._rb2p_feedCatchName = '';   // no flight = a RUN
-        window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;   // != current → settle
-        // The RB carried: the engine credits the true carrier's rush attempts.
-        _Yi(rp, 'stat_rush_attempts', (Number(_Ai(rp, 'stat_rush_attempts')) || 0) + 1);
+        _Yi(rp, 'stat_rush_attempts', (Number(_Ai(rp, 'stat_rush_attempts')) || 0) + 1);   // the RB carried
+        m._6F = Number(m._6F) + 4; m._t11 = Number(m._t11) + 1;                            // gained 4, down advances
         await new Promise(function (r) { setTimeout(r, 700); });
         return { name: name, qb: window._rb2p_offQbName() };
     });
@@ -211,40 +261,31 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
         console.log('  RB=' + t7.name + ' QB=' + t7.qb + '  feed=' + JSON.stringify(feed));
         check('T7 a carry is emitted as a run for the RB (not the QB)',
-              feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb,
+              feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb && Number(feed.yds) === 4,
               'feed=' + JSON.stringify(feed) + ' (RB should be ' + t7.name + ', not QB ' + t7.qb + ')');
     }
 
-    // ---- T7b: the RB is named even when the QB's ABSOLUTE carry count is
-    // higher (the reported regression: "after a QB run, even RB runs show as
-    // QB"). Edge-detect keys on the per-tick increment, not a level vs a stale
-    // baseline, so a QB elevated by an earlier scramble can't win a later RB run.
+    // ---- T7b: the RB is named even when the QB's ABSOLUTE carry count is higher
+    // (the reported "after a QB run, even RB runs show as QB"). The delta is per-
+    // play against the snap baseline, so a QB elevated by an EARLIER scramble
+    // (baked into the baseline) can't win a later RB carry.
     const t7b = await off.page.evaluate(async () => {
         window._rb2p_userIsWaitingForOpponent = false;
-        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n = _wi(to._Ln), rbP = null, qbP = null, rbName = '', qbName = '';
-        for (var i = 0; i < n; i++) {
-            var p = _zi(to._Ln, i); if (!p) continue;
+        var to0 = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n0 = _wi(to0._Ln), rbP = null, qbP = null, rbName = '', qbName = '';
+        for (var i = 0; i < n0; i++) {
+            var p = _zi(to0._Ln, i); if (!p) continue;
             var pos = Number(_Ai(p, 'position'));
             if (pos === 1 && !qbP) { qbP = p; qbName = String(_Ai(p, 'lname') || '').toUpperCase(); }
             if (pos === 2 && !rbP) { rbP = p; rbName = String(_Ai(p, 'lname') || '').toUpperCase(); }
         }
         if (!rbP || !qbP) return { err: 'need both QB and RB' };
-        // Simulate the QB being elevated by a PRIOR scramble: QB carries = RB+5.
+        // QB elevated by a prior scramble BEFORE the baseline is taken.
         var rbC = Number(_Ai(rbP, 'stat_rush_attempts')) || 0;
         _Yi(qbP, 'stat_rush_attempts', rbC + 5);
-        // Baselines capture THAT elevated QB count. Only a fresh increment (the RB's,
-        // this play) is a rush; the QB's already-high count is baseline, not a bump.
-        var m = RB.engineState().rawEngineMatch;
-        var ra = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev = ra;
-        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
-        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
-        window._rb2p_feedMaxOFdist = 0; window._rb2p_feedCatchName = '';   // no flight = a RUN
-        window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;
-        // This play: only the RB carries (RB +1). QB's absolute count stays higher.
-        _Yi(rbP, 'stat_rush_attempts', rbC + 1);
+        var m = window.__v307setup().m;   // baseline now captures the QB's elevated count
+        _Yi(rbP, 'stat_rush_attempts', rbC + 1);   // this play: only the RB carries (+1 vs baseline)
+        m._6F = Number(m._6F) + 6; m._t11 = Number(m._t11) + 1;
         await new Promise(function (r) { setTimeout(r, 700); });
         return { rbName: rbName, qbName: qbName };
     });
@@ -258,92 +299,77 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
               'feed=' + JSON.stringify(feed) + ' (should name RB ' + t7b.rbName + ', not QB ' + t7b.qbName + ')');
     }
 
-    // ---- T7c: the VJYC regression — a play where the QB is nearest the ball at
-    // the catch must NEVER render as "pass QB→QB" (which the renderer turned into
-    // "Purdy runs"). With flight naming, a QB catch-name is not a valid receiver.
+    // ---- T7c: a completion the fork failed to credit a receiver for (only the
+    // QB's passing yards moved) must render "<QB> COMPLETE" — NEVER "pass QB→QB"
+    // (the VJYC bug the renderer turned into "Purdy runs"). Bump ONLY the QB's
+    // passing stat and set the catch name to the QB himself.
     const t7c = await off.page.evaluate(async () => {
-        window._rb2p_userIsWaitingForOpponent = false;
-        var m = RB.engineState().rawEngineMatch;
-        var qb = window._rb2p_offQbName();
-        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n = _wi(to._Ln), ra = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev = ra;
-        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
-        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
-        window._rb2p_feedMaxOFdist = 120; window._rb2p_feedCatchName = qb;   // ball flew, QB nearest at catch
-        window._rb2p_feedYard0 = Number(m._6F); window._rb2p_feedDown0 = Number(m._t11) - 1;
+        var ctx = window.__v307setup(), m = ctx.m, to = ctx.to, n = ctx.n;
+        var qb = window._rb2p_offQbName(), qbP = null;
+        for (var i = 0; i < n; i++) { var p = _zi(to._Ln, i); if (p && Number(_Ai(p, 'position')) === 1) { qbP = p; break; } }
+        _Yi(qbP, 'stat_yards', (Number(_Ai(qbP, 'stat_yards')) || 0) + 9);   // QB threw for 9, receiver uncredited
+        window._rb2p_feedCatchName = qb;                                     // nearest-at-catch resolved to the QB
+        m._6F = Number(m._6F) + 9; m._t11 = Number(m._t11) + 1;
         await new Promise(function (r) { setTimeout(r, 700); });
         return { qb: qb };
     });
     {
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
         console.log('  QB=' + t7c.qb + '  feed=' + JSON.stringify(feed));
-        check('T7c a QB-at-catch flown ball is NEVER "pass QB→QB" (the VJYC bug)',
-              feed && !(feed.k === 'pass' && feed.rcv === t7c.qb),
-              'feed=' + JSON.stringify(feed) + ' (must not be pass ' + t7c.qb + '→' + t7c.qb + ')');
+        check('T7c a QB-passing-only completion is a PASS with no QB receiver (never pass QB→QB)',
+              feed && feed.k === 'pass' && feed.rcv !== t7c.qb,
+              'feed=' + JSON.stringify(feed) + ' (must be a pass, rcv != ' + t7c.qb + ')');
     }
 
-    // ---- T9: yardage comes from the engine's resolved _6F delta, not the
-    // tackle-frame ball.x (which sat ~2 yards short: "a 7-yard pass shown as 5").
-    // Latch a pending pass at a known yard line, move _6F by a known amount +
-    // advance the down (so the resolver treats it as settled), and assert the
-    // emitted yards equal that exact delta.
+    // ---- T9: a completion — the receiver's RECEIVING yards (stat_yards on a
+    // non-QB) go up — is a PASS named QB→receiver, with the _6F-delta yardage.
     const t9 = await off.page.evaluate(async () => {
-        window._rb2p_userIsWaitingForOpponent = false;
-        var m = RB.engineState().rawEngineMatch;
-        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n = _wi(to._Ln), rcv = null;
-        for (var i = 0; i < n; i++) { var p = _zi(to._Ln, i); if (p && Number(_Ai(p, 'position')) !== 1) { rcv = p; break; } }
+        var ctx = window.__v307setup(), m = ctx.m, to = ctx.to, n = ctx.n;
+        var qbP = null, rcv = null;
+        for (var i = 0; i < n; i++) {
+            var p = _zi(to._Ln, i); if (!p) continue;
+            if (Number(_Ai(p, 'position')) === 1 && !qbP) qbP = p;
+            else if (Number(_Ai(p, 'position')) !== 1 && !rcv) rcv = p;
+        }
         var rcvName = String(_Ai(rcv, 'lname') || '').toUpperCase();
-        var y0 = Number(m._6F), d0 = Number(m._t11);
-        var ra = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev = ra;
-        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
-        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
-        // A completion: the ball FLEW (flight past threshold) and a NON-QB caught it.
-        window._rb2p_feedMaxOFdist = 120; window._rb2p_feedCatchName = rcvName;
-        window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
-        // The engine resolves the down: _6F moves +7 (== the forward gain, no _501
-        // factor now) and the down advances.
-        m._6F = y0 + 7; m._t11 = d0 + 1;
+        _Yi(qbP, 'stat_yards', (Number(_Ai(qbP, 'stat_yards')) || 0) + 7);   // QB passing +7
+        _Yi(rcv, 'stat_yards', (Number(_Ai(rcv, 'stat_yards')) || 0) + 7);   // receiver receiving +7
+        m._6F = Number(m._6F) + 7; m._t11 = Number(m._t11) + 1;
         await new Promise(function (r) { setTimeout(r, 700); });
-        return { dir: Number(m._501), rcv: rcvName };
+        return { rcv: rcvName };
     });
     {
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
         console.log('  rcv=' + t9.rcv + '  feed=' + JSON.stringify(feed));
-        check('T9 a flown ball caught by a non-QB is a PASS named QB→receiver with the _6F-delta yards',
+        check('T9 a completion (receiver yards up) is a PASS named QB→receiver with _6F-delta yards',
               feed && feed.k === 'pass' && feed.rcv === t9.rcv && Number(feed.yds) === 7,
               'feed=' + JSON.stringify(feed) + ' (expect pass → ' + t9.rcv + ', yds 7)');
     }
 
-    // ---- T9b: a SHORT completion — a non-QB catch with LOW flight (< threshold)
-    // is still a PASS, not a run. This is the reported "a completed pass sometimes
-    // reads as a run": the classifier used to check flight before the catch name.
+    // ---- T9b: a SHORT completion — the receiver right next to the QB, tiny gain
+    // — is still a PASS, not a run. This is THE reported bug: "short passes to
+    // receivers count as QB runs." Only the receiver's receiving yards move (+2);
+    // the old nearest-player heuristic saw the QB at the catch and said "QB run."
     const t9b = await off.page.evaluate(async () => {
-        window._rb2p_userIsWaitingForOpponent = false;
-        var m = RB.engineState().rawEngineMatch;
-        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
-        var n = _wi(to._Ln), rcv = null;
-        for (var i = 0; i < n; i++) { var p = _zi(to._Ln, i); if (p && Number(_Ai(p, 'position')) !== 1) { rcv = p; break; } }
+        var ctx = window.__v307setup(), m = ctx.m, to = ctx.to, n = ctx.n;
+        var qbP = null, rcv = null;
+        for (var i = 0; i < n; i++) {
+            var p = _zi(to._Ln, i); if (!p) continue;
+            if (Number(_Ai(p, 'position')) === 1 && !qbP) qbP = p;
+            else if (Number(_Ai(p, 'position')) !== 1 && !rcv) rcv = p;
+        }
         var rcvName = String(_Ai(rcv, 'lname') || '').toUpperCase();
-        var y0 = Number(m._6F), d0 = Number(m._t11), ra = {};
-        for (var j = 0; j < n; j++) { var pj = _zi(to._Ln, j); if (pj) ra[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_raPrev = ra;
-        window._rb2p_feedThrew = false; window._rb2p_feedSawSack = false;
-        window._rb2p_feedWasLive = true; window._rb2p_feedEmitted = false;
-        window._rb2p_feedMaxOFdist = 40; window._rb2p_feedCatchName = rcvName;   // LOW flight, non-QB catch
-        window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
-        m._6F = y0 + 3; m._t11 = d0 + 1;
+        _Yi(qbP, 'stat_yards', (Number(_Ai(qbP, 'stat_yards')) || 0) + 2);   // QB passing +2
+        _Yi(rcv, 'stat_yards', (Number(_Ai(rcv, 'stat_yards')) || 0) + 2);   // receiver receiving +2
+        window._rb2p_feedCatchName = window._rb2p_offQbName();               // QB was nearest at the (short) catch
+        m._6F = Number(m._6F) + 2; m._t11 = Number(m._t11) + 1;
         await new Promise(function (r) { setTimeout(r, 700); });
         return { rcv: rcvName };
     });
     {
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
         console.log('  short-completion rcv=' + t9b.rcv + '  feed=' + JSON.stringify(feed));
-        check('T9b a SHORT (low-flight) non-QB catch is still a PASS, not a run',
+        check('T9b a SHORT completion (receiver next to the QB) is still a PASS, not a QB run',
               feed && feed.k === 'pass' && feed.rcv === t9b.rcv,
               'feed=' + JSON.stringify(feed) + ' (must be pass → ' + t9b.rcv + ', not a run)');
     }

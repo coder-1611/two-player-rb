@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V325<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V326<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V325</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V326</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3189,6 +3189,51 @@
             // credit the starred defender nearest the ball (= the carrier's spot).
             var rb2pPrevBallKp = null;
             window._rb2p_defObsLog = [];
+
+            // ===== V326: play classifier — driven ENTIRELY by the engine's own
+            // box stats (what it CREDITED this down), never by where the ball was
+            // on screen. The FINAL box score proves the field map (retrobowl.js
+            // 55855-55871): stat_yards = PASSING yards on the QB (position 1) and
+            // RECEIVING yards on everyone else; stat_rush_* = the carrier's.
+            //
+            // So the play type falls straight out of which stat MOVED:
+            //   • the QB gained passing yards       -> a COMPLETED PASS (receiver =
+            //     whichever non-QB gained receiving yards; if the fork failed to
+            //     resolve the catcher, fall back to the on-field catch name, else
+            //     render "<QB> COMPLETE")
+            //   • a non-QB gained a rush attempt     -> a HANDOFF RUN by that back
+            //   • the QB gained a rush attempt       -> a QB SCRAMBLE
+            //   • the ball was thrown, nobody credited -> an INCOMPLETION
+            //
+            // This replaces the old flight-distance / nearest-player-at-the-catch
+            // heuristic, which mis-named a short completion (receiver standing next
+            // to the QB) as a QB run. Pure + side-effect-free so it unit-tests
+            // directly with a synthetic signal object.
+            window._rb2p_classifyPlay = function (sig) {
+                sig = sig || {};
+                var qbNm = sig.qbName || 'QB';
+                if (sig.sawSack) return { k: 'sack', qb: qbNm };
+                // Proof the ball was thrown AND caught: the QB was credited passing
+                // yards, or some non-QB was credited receiving yards. The receiver
+                // is NEVER the QB (rcvName is picked from non-QB slots only; the
+                // catch-name fallback excludes the QB) — so this can never emit the
+                // old "PURDY -> PURDY" that the renderer turned into "Purdy runs".
+                var passed = (Number(sig.qbPassDelta) || 0) > 0.01 || !!sig.rcvName;
+                if (passed) {
+                    var rcv = sig.rcvName ||
+                              (sig.catchName && sig.catchName !== qbNm ? sig.catchName : '');
+                    return { k: 'pass', qb: qbNm, rcv: rcv };
+                }
+                // A handoff: a non-QB back was credited a carry this down.
+                if (sig.runName) return { k: 'run', rb: sig.runName };
+                // A QB scramble: the QB himself was credited a carry.
+                if ((Number(sig.qbRushAttDelta) || 0) > 0) return { k: 'run', rb: qbNm };
+                // Ball left the QB's hand but no catch was credited: an incompletion.
+                if (sig.threw) return { k: 'incomplete', qb: qbNm };
+                // Nothing moved and no throw was seen: treat as a QB keeper.
+                return { k: 'run', rb: qbNm };
+            };
+
             function rb2pObserveTackles() {
                 try {
                     if (!RB.isEngineInMatchRoom()) { rb2pPrevBallKp = null; return; }
@@ -3218,24 +3263,19 @@
                     // feed/ node nothing in the game logic reads, so a failed/slow
                     // write can never affect play. Only while I'm on offense.
                     //
-                    // Two independent facts, from a 30ms trace of real plays:
-                    //   • YARDAGE must come from the SCRIMMAGE (ball.x vs the pixel line
-                    //     of scrimmage at the snap). The per-player stat_*_yards are
-                    //     fractional internal values (e.g. 2.56) and a single completion
-                    //     credits BOTH a reception and a rush attempt — useless for
-                    //     yardage. The scrimmage delta at the tackle is a clean integer
-                    //     and is the engine's own play-resolution math. (This is why the
-                    //     stat-yards attempt showed "8-yard pass = 0".)
-                    //   • The play TYPE comes from ball states: a catch reaches
-                    //     BALL_RECEIVED (5), a throw BALL_THROWN (7), a sack
-                    //     BALL_SACKED (11); anything else ending in a tackle is a run.
-                    // NAMING: the receiver is the nearest rostered player at the CATCH
-                    // frame (correct — the box-score receptions are credited the same
-                    // way). The runner is named by stat_rush_attempts, because at the
-                    // TACKLE the ball-holder instance wears the QB's roster struct, so
-                    // "nearest player" wrongly named every rush after the QB ("RB runs
-                    // show up as QB runs"). Rush attempts are credited to the true
-                    // carrier's struct, so a delta names the right back.
+                    // TYPE + NAMES (V326): classify off the engine's BOX-STAT deltas —
+                    // the record of what it credited this down (see _rb2p_classifyPlay).
+                    // A non-QB's receiving-yards bump = the receiver of a completion; a
+                    // non-QB's rush-attempt bump = the ball carrier; the QB's passing-
+                    // yards bump = he threw it; the QB's rush-attempt bump = a scramble.
+                    // This replaced the old flight-distance + nearest-player-at-the-catch
+                    // heuristic, which mis-named a short completion (the receiver next to
+                    // the QB) as a QB run, and named runs off the QB struct the ball
+                    // holder wears at the tackle ("RB runs show up as QB runs").
+                    // YARDAGE still comes from the SCRIMMAGE (the _6F delta at settle) —
+                    // a clean integer that is the engine's own play-resolution math;
+                    // the per-player stat_*_yards are fractional internals unsuited to
+                    // display (they're used only as up/down SIGNALS here, not amounts).
                     if (window._rb2p_userIsWaitingForOpponent !== true &&
                         typeof window._rb2p_pushFeed === 'function') {
                         try {
@@ -3263,13 +3303,13 @@
                                 return '';
                             };
                             if (fm) {
-                                // Snap: latch the AUTHORITATIVE yard line + down, and the
-                                // per-player rush + receive baselines. (bkp 1/2 from a dead
-                                // ball is the snap; the prev===0 gate makes this edge-only.)
+                                // Snap: latch the AUTHORITATIVE yard line + down, and a
+                                // per-player BOX-STAT baseline. (bkp 1/2 from a dead ball is
+                                // the snap; the prev-dead gate makes this edge-only.)
                                 // Re-latch from ANY dead/resolved prior state (0/4/11), not
                                 // only a sampled 0, so a missed dead-ball frame can't leave
                                 // feedEmitted stuck true and DROP the next play ("RB run showed
-                                // nothing"). Reset the flight + catch trackers here too.
+                                // nothing").
                                 if ((bkp === 1 || bkp === 2) &&
                                     (prev === 0 || prev === 4 || prev === 11 || prev == null)) {
                                     window._rb2p_feedYard0     = Number(fm._6F);    // signed yard line at snap
@@ -3278,10 +3318,20 @@
                                     window._rb2p_feedSawSack   = false;
                                     window._rb2p_feedWasLive   = false;
                                     window._rb2p_feedEmitted   = false;
-                                    window._rb2p_feedMaxOFdist = 0;    // flight metric (px)
-                                    window._rb2p_feedCatchName = '';   // nearest OF at the catch
-                                    var rp0 = window._rb2p_raPrev = {};
-                                    rosterEach(function (p, i2) { rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
+                                    window._rb2p_feedCatchName = '';   // on-field catch name — receiver-naming FALLBACK only
+                                    // V326: per-player box-stat baseline (by roster slot). The
+                                    // delta at settle is the SOLE classification signal — see
+                                    // _rb2p_classifyPlay. stat_yards is passing yds on the QB
+                                    // (pos 1) and receiving yds on everyone else; stat_rush_*
+                                    // is the carrier's. Nothing spatial.
+                                    var s0 = window._rb2p_feedStat0 = {};
+                                    rosterEach(function (p, i2) {
+                                        s0[i2] = {
+                                            pos: Number(_Ai(p, 'position')) || 0,
+                                            py:  Number(_Ai(p, 'stat_yards')) || 0,          // passing (QB) | receiving (non-QB)
+                                            ra:  Number(_Ai(p, 'stat_rush_attempts')) || 0
+                                        };
+                                    });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fm._6F)) + ' d=' + Number(fm._t11));
                                 }
@@ -3293,89 +3343,81 @@
                                 // dropping the whole play ("RB run showed blank"). The snap
                                 // latch resets this false each down, so it stays play-scoped.
                                 if (bkp > 0) window._rb2p_feedWasLive = true;
-                                // FLIGHT METRIC: max distance from the ball to the NEAREST
-                                // offensive player over the play. A THROWN ball is briefly far
-                                // from everyone (~300px in a real-play trace); a run/handoff
-                                // keeps the ball with a carrier (<~63px). This — not the box
-                                // stats, which credit a spurious reception on EVERY play — is
-                                // the reliable pass/run discriminator. Latch the catch NAME
-                                // (nearest OF at the first bkp5) as V313 did: the WR on a real
-                                // throw, the QB on a scramble/dump.
-                                if (window._rb2p_feedWasLive && !window._rb2p_feedEmitted) {
-                                    var mind = 1e12, oi, oo, odx, ody, od2;
-                                    for (oi = 0; oi < all.length; oi++) {
-                                        oo = all[oi];
-                                        if (!oo || oo._HL2 || !oo._eE2 || oo._eE2._fE2 !== 'obj_playerOF') continue;
-                                        if (!oo._7j || oo._7j === -4) continue;
-                                        odx = oo.x - ball.x; ody = oo.y - ball.y; od2 = odx * odx + ody * ody;
-                                        if (od2 < mind) mind = od2;
-                                    }
-                                    if (mind < 1e12) {
-                                        var dnow = Math.sqrt(mind);
-                                        if (dnow > Number(window._rb2p_feedMaxOFdist || 0)) window._rb2p_feedMaxOFdist = dnow;
-                                    }
-                                    if (bkp === 5 && !window._rb2p_feedCatchName) window._rb2p_feedCatchName = nearestOF(ball.x, ball.y, 44);
+                                // Catch-NAME fallback: nearest OF at the first BALL_RECEIVED
+                                // (5). Used ONLY to name a receiver the box stats couldn't
+                                // (never to classify — a run reaches bkp5 too). The play TYPE
+                                // is decided purely by the stat deltas at settle.
+                                if (window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
+                                    bkp === 5 && !window._rb2p_feedCatchName) {
+                                    window._rb2p_feedCatchName = nearestOF(ball.x, ball.y, 44);
                                 }
-                                // SETTLE + CLASSIFY once the engine has RESOLVED the down: it
-                                // does `_l61-=s; _t11+=1; _6F+=s` atomically, so the down number
+                                // SETTLE once the engine has RESOLVED the down: it does
+                                // `_l61-=s; _t11+=1; _6F+=s` atomically, so the down number
                                 // changing OR _6F moving off the snap value both mean the spot
                                 // is final. (Settling on the dead ball, bkp===0, fired a few
                                 // frames too early — before `_6F += s` ran — so gains read as
                                 // 0.) The _6F term also catches a 1st-down conversion on 1st
-                                // down, where the down number stays 1. Classification uses the
-                                // FLIGHT metric (throw vs run); naming uses the catch name (for
-                                // a pass) and the rush stat (for a run).
+                                // down, where the down number stays 1.
                                 var settledNow = window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
                                     ((Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
                                      (Math.abs(Number(fm._6F) - Number(window._rb2p_feedYard0)) >= 0.5));
                                 if (settledNow) {
-                                    var flight  = Number(window._rb2p_feedMaxOFdist) || 0;
-                                    var catchNm = window._rb2p_feedCatchName || '';
-                                    // Run carrier from the box stat (the engine credits the true
-                                    // carrier; a non-QB back wins over the QB). Used only to NAME
-                                    // a run, never to classify it.
-                                    var runner = '', raP = window._rb2p_raPrev || {};
+                                    // V326: CLASSIFY off the box-stat deltas — the engine's own
+                                    // record of what it credited. Diff every skill player vs the
+                                    // snap baseline: whichever stat MOVED is what happened.
+                                    //   • QB stat_yards up      -> he threw a completion
+                                    //   • non-QB stat_yards up  -> that player CAUGHT it (the
+                                    //     receiver — even on a 2-yard dump right next to the QB,
+                                    //     which the old nearest-player heuristic mis-read as a
+                                    //     QB run)
+                                    //   • non-QB rush attempt up -> that back RAN it (a handoff)
+                                    //   • QB rush attempt up     -> a QB scramble
+                                    var s0 = window._rb2p_feedStat0 || {};
+                                    var qbPassDelta = 0, qbRushAttDelta = 0;
+                                    var rcvName = '', rcvBest = 0.01;   // largest non-QB receiving-yds move
+                                    var runName = '', runBest = 0;      // largest non-QB rush-attempt bump
                                     rosterEach(function (p, i2) {
-                                        if (!runner && Number(_Ai(p, 'position')) !== 1 &&
-                                            (Number(_Ai(p, 'stat_rush_attempts')) || 0) > (Number(raP[i2]) || 0)) {
-                                            try { runner = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
+                                        var b = s0[i2]; if (!b) return;
+                                        var pos = Number(_Ai(p, 'position')) || 0;
+                                        var dPy = (Number(_Ai(p, 'stat_yards')) || 0)         - Number(b.py || 0);
+                                        var dRa = (Number(_Ai(p, 'stat_rush_attempts')) || 0) - Number(b.ra || 0);
+                                        if (pos === 1) {
+                                            qbPassDelta    = dPy;   // QB stat_yards delta = passing yards
+                                            qbRushAttDelta = dRa;   // QB rush-attempt delta = a scramble
+                                        } else {
+                                            if (Math.abs(dPy) > rcvBest) {   // this non-QB gained receiving yards = the target
+                                                rcvBest = Math.abs(dPy);
+                                                try { rcvName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
+                                            }
+                                            if (dRa > runBest) {             // this non-QB gained a carry = the ball carrier
+                                                runBest = dRa;
+                                                try { runName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
+                                            }
                                         }
                                     });
-                                    var rcvNonQB = (catchNm && catchNm !== qbNm) ? catchNm : '';
-                                    var FLIGHT_PASS = 80;   // px; a scramble keeps the ball <~63 (e2e/probe-classify.js)
-                                    // Classify by the ENGINE's own credit, not the flight
-                                    // distance (which is only a fallback). A non-QB whose
-                                    // rush stat bumped RAN (a handoff); else a non-QB holding
-                                    // the ball at the catch RECEIVED it — a PASS at ANY flight
-                                    // (a short dump flies < the threshold but is still a
-                                    // completion: the reason "a completed pass sometimes read
-                                    // as a run"). Only then fall back to flight/threw for a
-                                    // thrown-but-uncaught ball, else it's a QB scramble.
-                                    var evt;
-                                    if (window._rb2p_feedSawSack) {
-                                        evt = { k: 'sack', qb: qbNm };
-                                    } else if (runner) {
-                                        evt = { k: 'run', rb: runner };                 // a back's carry = a handoff run
-                                    } else if (rcvNonQB) {
-                                        evt = { k: 'pass', qb: qbNm, rcv: rcvNonQB };    // a non-QB catch = a reception
-                                    } else if (flight > FLIGHT_PASS || window._rb2p_feedThrew) {
-                                        evt = { k: 'incomplete', qb: qbNm };            // thrown, no offensive catch (INT/drop)
-                                    } else {
-                                        evt = { k: 'run', rb: qbNm };                   // QB kept it = a scramble
-                                    }
-                                    // Gain = the engine's own _6F delta (== s in `_6F += s`).
-                                    // _6F rises toward the opponent goal in BOTH drive
-                                    // directions, so this is the true forward gain with NO
-                                    // _501 factor. Incomplete carries no yardage.
+                                    var evt = window._rb2p_classifyPlay({
+                                        sawSack:        window._rb2p_feedSawSack,
+                                        threw:          window._rb2p_feedThrew,
+                                        qbName:         qbNm,
+                                        qbPassDelta:    qbPassDelta,
+                                        qbRushAttDelta: qbRushAttDelta,
+                                        rcvName:        rcvName,
+                                        runName:        runName,
+                                        catchName:      window._rb2p_feedCatchName || ''
+                                    });
+                                    // Gain = the engine's own _6F delta (== s in `_6F += s`),
+                                    // the true forward gain in BOTH drive directions. Incomplete
+                                    // carries no yardage.
                                     var y0 = Number(window._rb2p_feedYard0);
                                     if (isFinite(y0) && evt.k !== 'incomplete') {
                                         var g = Math.round(Number(fm._6F) - y0);
                                         if (Math.abs(g) <= 99) evt.yds = g;
                                     }
-                                    evt.fm = Math.round(flight);   // DEBUG: flight metric, for on-device threshold tuning
-                                    if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
-                                        'cFEED ' + evt.k + ' rb=' + (evt.rb || '-') + ' rcv=' + (evt.rcv || '-') +
-                                        ' f=' + Math.round(flight) + ' catch=' + (catchNm || '-') + ' runner=' + (runner || '-'));
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog(   // V326 DEBUG — stat deltas per play
+                                        'cFEED ' + evt.k + ' rcv=' + (evt.rcv || '-') + ' rb=' + (evt.rb || '-') +
+                                        ' qbPass=' + qbPassDelta.toFixed(1) + ' qbRush=' + qbRushAttDelta +
+                                        ' rcvN=' + (rcvName || '-') + ' runN=' + (runName || '-') +
+                                        ' yds=' + (evt.yds != null ? evt.yds : '-'));
                                     window._rb2p_pushFeed(evt);
                                     window._rb2p_feedEmitted = true;
                                 }
