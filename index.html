@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V320<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V321<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V320</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V321</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3282,10 +3282,17 @@
                                     window._rb2p_feedCatchName = '';   // nearest OF at the catch
                                     var rp0 = window._rb2p_raPrev = {};
                                     rosterEach(function (p, i2) { rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
+                                        'cSNAP y=' + Math.round(Number(fm._6F)) + ' d=' + Number(fm._t11));
                                 }
                                 if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball airborne + uncaught (an incompletion)
                                 if (bkp === 11) window._rb2p_feedSawSack = true;
-                                if (bkp === 2 || bkp === 5 || bkp === 4) window._rb2p_feedWasLive = true;
+                                // ANY live ball state (not the dead 0) means the play went
+                                // live — so it must settle + emit. Keying only on 2/5/4 could
+                                // miss a run whose ball passes through another live kp (e.g. 6),
+                                // dropping the whole play ("RB run showed blank"). The snap
+                                // latch resets this false each down, so it stays play-scoped.
+                                if (bkp > 0) window._rb2p_feedWasLive = true;
                                 // FLIGHT METRIC: max distance from the ball to the NEAREST
                                 // offensive player over the play. A THROWN ball is briefly far
                                 // from everyone (~300px in a real-play trace); a run/handoff
@@ -3357,6 +3364,9 @@
                                         if (Math.abs(g) <= 99) evt.yds = g;
                                     }
                                     evt.fm = Math.round(flight);   // DEBUG: flight metric, for on-device threshold tuning
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
+                                        'cFEED ' + evt.k + ' rb=' + (evt.rb || '-') + ' rcv=' + (evt.rcv || '-') +
+                                        ' f=' + Math.round(flight) + ' catch=' + (catchNm || '-') + ' runner=' + (runner || '-'));
                                     window._rb2p_pushFeed(evt);
                                     window._rb2p_feedEmitted = true;
                                 }
