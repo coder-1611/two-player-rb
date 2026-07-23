@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V313<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V314<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V313</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V314</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2246,6 +2246,12 @@
                 28: ['000000', '000000', '000000'], 29: ['bab9b9', '101820', '101820'],
                 30: ['aba537', '000000', '000000'], 31: ['434044', 'bd0101', '434044']
             };
+            // V314: expose to the arena theme. TEAM_COLORS is a local var in THIS
+            // scope; _rb2p_teamAccent lives in a different closure that cannot see
+            // it, so it was silently ReferenceError-ing into its pink fallback and
+            // painting EVERY team the same colour. Publish it so the theme can read
+            // the real per-team hexes. (RGB order — writeRGB does the BGR flip.)
+            window._rb2p_TEAM_COLORS = TEAM_COLORS;
             function writeRGB(arr, hex, div) {
                 // V79 ROOT CAUSE FIX: GameMaker stores colors BLUE-FIRST
                 // ($BBGGRR — c_red is $0000FF). The jersey shader reads
@@ -3222,66 +3228,87 @@
                                 return '';
                             };
                             if (fm && bkp !== prev) {
-                                // Snap: latch scrimmage + direction, snapshot rush attempts.
+                                // Snap: latch the AUTHORITATIVE yard line + down + direction,
+                                // and seed the rush-attempt edge tracker.
                                 if ((bkp === 1 || bkp === 2) && (prev === 0 || prev == null)) {
-                                    window._rb2p_feedSnapX   = Number(fm._B01);
-                                    window._rb2p_feedDir     = Number(fm._501) || 1;
-                                    window._rb2p_feedThrew   = false;
-                                    window._rb2p_feedCatch   = false;
-                                    window._rb2p_feedRcv     = '';
-                                    window._rb2p_feedEmitted = false;
-                                    var rb0 = window._rb2p_rushBase = {};
-                                    rosterEach(function (p, i2) { rb0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
+                                    window._rb2p_feedDir      = Number(fm._501) || 1;
+                                    window._rb2p_feedYard0    = Number(fm._6F);    // signed yard line at snap
+                                    window._rb2p_feedDown0    = Number(fm._t11);   // down at snap
+                                    window._rb2p_feedThrew    = false;
+                                    window._rb2p_feedCatch    = false;
+                                    window._rb2p_feedRcv      = '';
+                                    window._rb2p_feedRunner   = '';
+                                    window._rb2p_feedEmitted  = false;
+                                    window._rb2p_feedPending  = null;
+                                    var rp0 = window._rb2p_raPrev = {};
+                                    rosterEach(function (p, i2) { rp0[i2] = Number(_Ai(p, 'stat_rush_attempts')) || 0; });
                                 }
                                 if (bkp === 7) window._rb2p_feedThrew = true;
                                 if (bkp === 5 && !window._rb2p_feedCatch) {
                                     window._rb2p_feedCatch = true;
                                     window._rb2p_feedRcv = nearestOF(ball.x, ball.y, 44);
                                 }
-                                // Dead ball on a PASS: emit at the tackle with scrimmage yards.
-                                if ((bkp === 4 || bkp === 11) && !window._rb2p_feedEmitted) {
-                                    var sX = Number(window._rb2p_feedSnapX), dr = Number(window._rb2p_feedDir) || 1;
-                                    var gain = isFinite(sX) ? Math.round((ball.x - sX) / 20 * dr) : 0;
+                                // Dead ball on a PASS/SACK: latch a PENDING result. Yardage is
+                                // filled in by the resolver below from the engine's own _6F
+                                // delta — NOT ball.x, which at the tackle frame sits ~2 yards
+                                // short of the spotted ball ("a 7-yard pass shown as 5").
+                                if ((bkp === 4 || bkp === 11) && !window._rb2p_feedEmitted &&
+                                    !window._rb2p_feedPending) {
                                     if (bkp === 11) {
-                                        window._rb2p_pushFeed({ k: 'sack', qb: qbNm, yds: gain });
-                                        window._rb2p_feedEmitted = true;
+                                        window._rb2p_feedPending = { k: 'sack', qb: qbNm };
                                     } else if (window._rb2p_feedCatch) {
-                                        window._rb2p_pushFeed({ k: 'pass', qb: qbNm, rcv: window._rb2p_feedRcv, yds: gain });
-                                        window._rb2p_feedEmitted = true;
+                                        window._rb2p_feedPending = { k: 'pass', qb: qbNm, rcv: window._rb2p_feedRcv };
                                     }
-                                    // A pure run is NOT emitted here — it's the continuous
-                                    // rush-attempt watcher below (the tackle instance wears
-                                    // the QB struct, so the runner must come from the stat).
                                 }
-                                // Reset to dead after a throw with no catch = incomplete.
+                                // A throw with no catch, ball dead = incomplete (no yardage).
                                 if (bkp === 0 && window._rb2p_feedThrew && !window._rb2p_feedCatch &&
-                                    !window._rb2p_feedEmitted) {
+                                    !window._rb2p_feedEmitted && !window._rb2p_feedPending) {
                                     window._rb2p_pushFeed({ k: 'incomplete', qb: qbNm });
                                     window._rb2p_feedEmitted = true;
                                 }
                             }
-                            // ---- continuous RUN watcher (every tick) ----
-                            // A carry credits the true runner's stat_rush_attempts. When it
-                            // exceeds the snap baseline — and this play is NOT a pass (no
-                            // catch, no throw) — emit a run for that back, with the yardage
-                            // read from the scrimmage at that moment (the credit lands at
-                            // the tackle, so the ball is already at the final spot).
-                            if (fm && !window._rb2p_feedEmitted &&
+                            // ---- RUN carrier via EDGE-DETECT (every tick) ----
+                            // The engine credits +1 stat_rush_attempts to the TRUE carrier
+                            // (_._X_) at the tackle. Detect the exact tick a player's count
+                            // ticks up rather than comparing against a snap baseline: a stale
+                            // baseline let a QB's count (elevated by an earlier scramble) keep
+                            // "exceeding" it, so every later RB run was mis-named the QB
+                            // ("after a QB run, even RB runs show as QB"). Only on a non-pass.
+                            if (fm && window._rb2p_raPrev &&
                                 !window._rb2p_feedCatch && !window._rb2p_feedThrew) {
-                                var rbBase = window._rb2p_rushBase, runner = '';
-                                if (rbBase) {
-                                    rosterEach(function (p, i2) {
-                                        if (runner) return;
-                                        if ((Number(_Ai(p, 'stat_rush_attempts')) || 0) > (Number(rbBase[i2]) || 0)) {
-                                            try { runner = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
-                                        }
-                                    });
-                                    if (runner) {
-                                        var sX2 = Number(window._rb2p_feedSnapX), dr2 = Number(window._rb2p_feedDir) || 1;
-                                        var g2 = isFinite(sX2) ? Math.round((ball.x - sX2) / 20 * dr2) : 0;
-                                        window._rb2p_pushFeed({ k: 'run', rb: runner, yds: g2 });
-                                        window._rb2p_feedEmitted = true;
+                                var raPrev = window._rb2p_raPrev, edgeRunner = '';
+                                rosterEach(function (p, i2) {
+                                    var cur = Number(_Ai(p, 'stat_rush_attempts')) || 0;
+                                    if (cur > (Number(raPrev[i2]) || 0) && !edgeRunner) {
+                                        try { edgeRunner = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                     }
+                                    raPrev[i2] = cur;
+                                });
+                                if (edgeRunner && !window._rb2p_feedEmitted && !window._rb2p_feedPending) {
+                                    window._rb2p_feedRunner  = edgeRunner;
+                                    window._rb2p_feedPending  = { k: 'run', rb: edgeRunner };
+                                }
+                            }
+                            // ---- RESOLVER: fill the pending result's yardage from the
+                            // engine's resolved _6F, then emit once. Gain = signed _6F delta
+                            // from the snap (the engine's own play-resolution math = the
+                            // on-field spot), direction-corrected. Fires when the down number
+                            // advances (so _6F is settled) or the ball is fully dead. An
+                            // absurd |gain| means a possession flip negated _6F — drop the
+                            // number and still name the play.
+                            if (fm && window._rb2p_feedPending && !window._rb2p_feedEmitted) {
+                                var pnd = window._rb2p_feedPending, y0 = Number(window._rb2p_feedYard0);
+                                var settled = (Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
+                                              (Number(ball._kp) === 0);
+                                if (settled) {
+                                    if (isFinite(y0)) {
+                                        var dsign = (Number(window._rb2p_feedDir) < 0) ? 1 : -1;
+                                        var gain = Math.round((Number(fm._6F) - y0) * dsign);
+                                        if (Math.abs(gain) <= 99) pnd.yds = gain;
+                                    }
+                                    window._rb2p_pushFeed(pnd);
+                                    window._rb2p_feedEmitted = true;
+                                    window._rb2p_feedPending  = null;
                                 }
                             }
                             // Fumble: watch the roster's total fumbles; on an increase,
@@ -8389,7 +8416,8 @@
             // the arena legibly on its near-black turf.
             window._rb2p_teamAccent = function (uid) {
                 try {
-                    var cols = TEAM_COLORS[Number(uid)];
+                    var TC = window._rb2p_TEAM_COLORS;   // V314: published above (scope fix)
+                    var cols = TC && TC[Number(uid)];
                     if (!cols) return '#ff5b6e';
                     var best = cols[1], bestScore = -1;
                     for (var i = 0; i < cols.length; i++) {
@@ -8462,13 +8490,17 @@
                             : (k === 5) ? 'ON THE RUN…'
                             : (k === 2 || k === 3 || k === 1) ? 'AT THE SNAP…' : '';
                     if (act) { wf.action = act; wf.actionUntil = Date.now() + 900; }
-                    // V313: drive the arena field bar + possession from the same wire.
-                    // The opponent is on offense; their _6F (yard) is the ball spot,
-                    // signed from midfield (-50 = their own goal, +50 = MY goal). Map
-                    // to 0..100 across the bar (left = their own end, right = my end,
-                    // so the marker sliding right = the opponent closing on my end zone).
+                    // V314: drive the arena field bar from the same wire. The opponent
+                    // is on offense; their _6F (yard) is the ball spot, signed from
+                    // midfield: -50 = their own goal, +50 = MY (the viewer's) goal.
+                    // The bar's labels are "◄ OWN · OPP ►" — OWN (left, pct 0) is the
+                    // VIEWER's own end, OPP (right, pct 100) the opponent's end (the
+                    // design's convention: 0=own goal line, 100=opp). So the opponent
+                    // advancing into my half (yard → +) must slide the ball LEFT toward
+                    // OWN, i.e. pct = 50 - yard. (The old `yard + 50` mirrored it — the
+                    // ball drifted toward OPP as they closed on my goal.)
                     if (isFinite(Number(yard))) {
-                        var pct = Math.max(0, Math.min(100, Number(yard) + 50));
+                        var pct = Math.max(0, Math.min(100, 50 - Number(yard)));
                         var $ball = document.getElementById('rb-wait-ball');
                         if ($ball) $ball.style.left = 'calc(' + pct + '% - 2px)';
                     }

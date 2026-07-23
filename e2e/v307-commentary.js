@@ -189,17 +189,20 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             }
         }
         if (!rp) return { err: 'no RB in roster' };
-        // Establish the play state the continuous run watcher needs: a snap
-        // baseline of every player's carries, and a clean (non-pass) play.
+        // Establish the play state the EDGE-DETECT run watcher needs: a per-tick
+        // baseline of every player's carries (_rb2p_raPrev), the snap yard line +
+        // down for the resolver, and a clean (non-pass) play.
         var to2 = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
         var n2 = _wi(to2._Ln), rb0 = {};
         for (var j = 0; j < n2; j++) { var pj = _zi(to2._Ln, j); if (pj) rb0[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
-        window._rb2p_rushBase   = rb0;
+        window._rb2p_raPrev     = rb0;   // V314: edge-detect baseline
         window._rb2p_feedCatch  = false;
         window._rb2p_feedThrew  = false;
         window._rb2p_feedEmitted = false;
-        window._rb2p_feedSnapX  = Number(RB.engineState().rawEngineMatch._B01);
+        window._rb2p_feedPending = null;
         window._rb2p_feedDir    = Number(RB.engineState().rawEngineMatch._501) || 1;
+        window._rb2p_feedYard0  = Number(RB.engineState().rawEngineMatch._6F);
+        window._rb2p_feedDown0  = Number(RB.engineState().rawEngineMatch._t11);
         // Credit the RB one carry, the way the engine would at the tackle.
         var car0 = Number(_Ai(rp, 'stat_rush_attempts')) || 0;
         _Yi(rp, 'stat_rush_attempts', car0 + 1);
@@ -215,6 +218,78 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         check('T7 a carry is emitted as a run for the RB (not the QB)',
               feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb,
               'feed=' + JSON.stringify(feed) + ' (RB should be ' + t7.name + ', not QB ' + t7.qb + ')');
+    }
+
+    // ---- T7b: the RB is named even when the QB's ABSOLUTE carry count is
+    // higher (the reported regression: "after a QB run, even RB runs show as
+    // QB"). Edge-detect keys on the per-tick increment, not a level vs a stale
+    // baseline, so a QB elevated by an earlier scramble can't win a later RB run.
+    const t7b = await off.page.evaluate(async () => {
+        window._rb2p_userIsWaitingForOpponent = false;
+        var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n = _wi(to._Ln), rbP = null, qbP = null, rbName = '', qbName = '';
+        for (var i = 0; i < n; i++) {
+            var p = _zi(to._Ln, i); if (!p) continue;
+            var pos = Number(_Ai(p, 'position'));
+            if (pos === 1 && !qbP) { qbP = p; qbName = String(_Ai(p, 'lname') || '').toUpperCase(); }
+            if (pos === 2 && !rbP) { rbP = p; rbName = String(_Ai(p, 'lname') || '').toUpperCase(); }
+        }
+        if (!rbP || !qbP) return { err: 'need both QB and RB' };
+        // Simulate the QB being elevated by a PRIOR scramble: QB carries = RB+5.
+        var rbC = Number(_Ai(rbP, 'stat_rush_attempts')) || 0;
+        _Yi(qbP, 'stat_rush_attempts', rbC + 5);
+        // The new play's per-tick baseline captures THAT elevated QB count.
+        var to2 = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+        var n2 = _wi(to2._Ln), rb0 = {};
+        for (var j = 0; j < n2; j++) { var pj = _zi(to2._Ln, j); if (pj) rb0[j] = Number(_Ai(pj, 'stat_rush_attempts')) || 0; }
+        window._rb2p_raPrev = rb0;
+        window._rb2p_feedCatch = false; window._rb2p_feedThrew = false;
+        window._rb2p_feedEmitted = false; window._rb2p_feedPending = null;
+        window._rb2p_feedDir = Number(RB.engineState().rawEngineMatch._501) || 1;
+        window._rb2p_feedYard0 = Number(RB.engineState().rawEngineMatch._6F);
+        window._rb2p_feedDown0 = Number(RB.engineState().rawEngineMatch._t11);
+        // This play: only the RB carries (RB +1). QB's absolute count stays higher.
+        _Yi(rbP, 'stat_rush_attempts', rbC + 1);
+        await new Promise(function (r) { setTimeout(r, 1100); });
+        return { rbName: rbName, qbName: qbName };
+    });
+    if (t7b.err) {
+        check('T7b RB run named RB despite QB having a higher total', false, t7b.err);
+    } else {
+        const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
+        console.log('  QB(higher total)=' + t7b.qbName + ' RB(carried)=' + t7b.rbName + '  feed=' + JSON.stringify(feed));
+        check('T7b RB run named RB despite QB having a higher total carry count',
+              feed && feed.k === 'run' && feed.rb === t7b.rbName && feed.rb !== t7b.qbName,
+              'feed=' + JSON.stringify(feed) + ' (should name RB ' + t7b.rbName + ', not QB ' + t7b.qbName + ')');
+    }
+
+    // ---- T9: yardage comes from the engine's resolved _6F delta, not the
+    // tackle-frame ball.x (which sat ~2 yards short: "a 7-yard pass shown as 5").
+    // Latch a pending pass at a known yard line, move _6F by a known amount +
+    // advance the down (so the resolver treats it as settled), and assert the
+    // emitted yards equal that exact delta.
+    const t9 = await off.page.evaluate(async () => {
+        window._rb2p_userIsWaitingForOpponent = false;
+        var m = RB.engineState().rawEngineMatch;
+        var dir = Number(m._501) || 1, dsign = (dir < 0) ? 1 : -1;
+        var y0 = Number(m._6F), d0 = Number(m._t11);
+        window._rb2p_feedThrew = true; window._rb2p_feedCatch = true;
+        window._rb2p_feedRcv = 'EVANS'; window._rb2p_feedEmitted = false;
+        window._rb2p_feedDir = dir; window._rb2p_feedYard0 = y0; window._rb2p_feedDown0 = d0;
+        window._rb2p_feedPending = { k: 'pass', qb: 'PURDY', rcv: 'EVANS' };
+        window._rb2p_raPrev = null;   // not a run
+        // Move the ball 7 yards downfield in the drive direction + advance the down.
+        m._6F  = y0 + 7 * dsign;
+        m._t11 = d0 + 1;
+        await new Promise(function (r) { setTimeout(r, 900); });
+        return { dir: dir };
+    });
+    {
+        const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
+        console.log('  dir=' + t9.dir + '  feed=' + JSON.stringify(feed));
+        check('T9 pass yardage = the resolved _6F delta (7), not a short ball.x read',
+              feed && feed.k === 'pass' && Number(feed.yds) === 7,
+              'feed=' + JSON.stringify(feed) + ' (yds should be 7)');
     }
 
     // ---- T8: the big-event blast is a STANDALONE overlay (not a child of the
