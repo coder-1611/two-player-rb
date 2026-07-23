@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V316<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V317<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V316</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V317</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3192,6 +3192,13 @@
             function rb2pObserveTackles() {
                 try {
                     if (!RB.isEngineInMatchRoom()) { rb2pPrevBallKp = null; return; }
+                    // V317: stamp the TURNOVER moment in real time. The FSM sets
+                    // _Vy = 8 the instant a defender takes the ball (INT/fumble); by
+                    // the time _1c1 fires and we read prevVy it's usually stale (2 =
+                    // active-play → typed OTHER), so a genuine interception shipped
+                    // with no type and the INTERCEPTED blast never fired. This latch
+                    // is the reliable signal buildUserDriveEndOutcome needs.
+                    try { if (Number((RB.engineState() || {}).engineDriveFsmStage) === 8) window._rb2p_lastTurnoverVy8Ms = Date.now(); } catch (eV8) {}
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var i, x, ball = null;
                     for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { ball = x; break; } }
@@ -7714,6 +7721,14 @@
 
             function buildUserDriveEndOutcome(pre, post, prevVy) {
                 var type = inferUserDriveEndType(prevVy);
+                // V317: prevVy is frequently stale on a genuine INT/fumble (reads
+                // active-play → typed OTHER). The real-time _Vy=8 latch is reliable;
+                // if it fired in the last few seconds this possession change IS a
+                // turnover. Carried as a COSMETIC hint (type is left untouched, so
+                // the possession handoff is unchanged) so the receiver can blast
+                // INTERCEPTED / FUMBLE instead of showing nothing.
+                var isTurnover = isFinite(Number(window._rb2p_lastTurnoverVy8Ms)) &&
+                                 (Date.now() - Number(window._rb2p_lastTurnoverVy8Ms)) < 6000;
                 // yardLine after _1c1 is already mirrored: the engine does
                 // `yardLine = -yardLine` inside _1c1 (verified by reading
                 // the script body in retrobowl.js). That mirror flips A's
@@ -7738,6 +7753,7 @@
                 var secLeft = (live && typeof live.engineSecondsLeft === 'number') ? live.engineSecondsLeft : 0;
                 return {
                     type: type,
+                    turnover: isTurnover,   // V317: cosmetic blast hint (see above)
                     yardLine: yard,
                     ownSide: ownSide,
                     scoreUser: post.engineScoreboard[post.engineUserTeamIdx],
@@ -7769,9 +7785,15 @@
 
                     // V307: fire the WAIT-screen big-event blast (read-only, purely
                     // visual). PAT_RESULT is a bookkeeping echo, never a blast.
-                    if (outcome && outcome.type && outcome.type !== 'PAT_RESULT' &&
-                        window._rb2p_waitFeedBig) {
-                        window._rb2p_waitFeedBig(outcome.type, outcome.message);
+                    // V317: a real INT/fumble ships as type OTHER (prevVy stale), so
+                    // map a flagged turnover to an INT blast — waitFeedBig re-labels
+                    // it to FUMBLE if the fumble feed has just arrived on this device.
+                    if (outcome && window._rb2p_waitFeedBig) {
+                        var blastType = outcome.type;
+                        if ((blastType === 'OTHER' || !blastType) && outcome.turnover) blastType = 'INT';
+                        if (blastType && blastType !== 'PAT_RESULT') {
+                            window._rb2p_waitFeedBig(blastType, outcome.message);
+                        }
                     }
 
                     // V56: an inbound outcome supersedes any turnover send we
