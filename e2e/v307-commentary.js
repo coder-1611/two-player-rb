@@ -99,9 +99,12 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     const runTxt = await variant({ k: 'run', rb: 'COOK', yds: 7 });
     check('T3 RB run renders with name + "RUN"', /COOK/.test(runTxt) && /RUN/.test(runTxt) && /7 YDS/.test(runTxt), 'got "' + runTxt + '"');
     const qbRunTxt = await variant({ k: 'run', rb: 'ALLEN', yds: 3 });
-    check('T3 QB run renders with the QB name + "RUN"', /ALLEN/.test(qbRunTxt) && /RUN/.test(qbRunTxt), 'got "' + qbRunTxt + '"');
-    const scrTxt = await variant({ k: 'scramble', qb: 'PURDY', yds: 12 });
-    check('T3 scramble renders', /PURDY/.test(scrTxt) && /SCRAMBLES/.test(scrTxt), 'got "' + scrTxt + '"');
+    check('T3 QB run renders identically to an RB run (name + "RUN")',
+          /ALLEN/.test(qbRunTxt) && /RUN/.test(qbRunTxt) && !/SCRAMBLE/.test(qbRunTxt), 'got "' + qbRunTxt + '"');
+    // A "receiver" that resolves to the QB himself is a QB rush, not a scramble.
+    const qbCatchTxt = await variant({ k: 'pass', qb: 'PURDY', rcv: 'PURDY', yds: 4 });
+    check('T3 QB-as-nearest renders as a QB rush (not SCRAMBLES)',
+          /PURDY/.test(qbCatchTxt) && /RUN/.test(qbCatchTxt) && !/SCRAMBLE/.test(qbCatchTxt), 'got "' + qbCatchTxt + '"');
     const sackTxt = await variant({ k: 'sack', qb: 'PURDY', yds: -8 });
     check('T3 sack renders with the loss', /SACKED/.test(sackTxt) && /-8/.test(sackTxt), 'got "' + sackTxt + '"');
     const fumTxt = await variant({ k: 'fumble', by: 'COOK' });

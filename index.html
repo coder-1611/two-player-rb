@@ -955,7 +955,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V308<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V309<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1023,7 +1023,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V308</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V309</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3207,12 +3207,10 @@
                                         window._rb2p_pushFeed({ k: 'pass', qb: qb, rcv: window._rb2p_feedRcv, yds: gain });
                                     } else if (window._rb2p_feedThrew) {
                                         window._rb2p_pushFeed({ k: 'pass', qb: qb, rcv: '', yds: gain });
-                                    } else if (carrier && carrier === qb) {
-                                        // The QB carried it himself with no pass = a scramble.
-                                        window._rb2p_pushFeed({ k: 'scramble', qb: qb, yds: gain });
                                     } else {
-                                        // A run — the carrier is named (QB or RB).
-                                        window._rb2p_pushFeed({ k: 'run', rb: carrier, yds: gain });
+                                        // A rush — QB or RB, named. No scramble/keeper
+                                        // distinction: a QB run is just a QB rush.
+                                        window._rb2p_pushFeed({ k: 'run', rb: carrier || qb, yds: gain });
                                     }
                                     window._rb2p_feedDone = true;
                                 }
@@ -8334,10 +8332,15 @@
                     // Signed yard text: "12 YDS" / "-3 YDS" (a loss keeps its sign).
                     var yTxt = isFinite(y) ? (y + ' YD' + (Math.abs(y) === 1 ? '' : 'S')) : '';
                     var txt = '';
+                    // A rush line: "<NAME>  ·  N YDS RUN" (QB and RB identical).
+                    var rushTxt = function (name) {
+                        return (name || 'RUSH') + (yTxt ? '  ·  ' + yTxt : '') + ' RUN';
+                    };
                     if (evt.k === 'pass') {
-                        // rcv can resolve to the QB on a scramble — never "PURDY → PURDY".
+                        // rcv can resolve to the QB himself — that's a QB rush, not a
+                        // pass to self (and never "PURDY → PURDY").
                         if (evt.rcv && evt.qb && evt.rcv === evt.qb) {
-                            txt = (evt.qb || 'QB') + ' SCRAMBLES' + (yTxt ? '  ·  ' + yTxt : '');
+                            txt = rushTxt(evt.qb);
                         } else if (evt.rcv) {
                             txt = (evt.qb || 'QB') + ' → ' + evt.rcv + (yTxt ? '  ·  ' + yTxt : '');
                         } else {
@@ -8347,11 +8350,10 @@
                         txt = (evt.qb || 'QB') + ' — INCOMPLETE PASS';
                     } else if (evt.k === 'sack') {
                         txt = (evt.qb || 'QB') + ' SACKED' + (isFinite(y) ? '  ·  ' + y + ' YDS' : '');
-                    } else if (evt.k === 'run') {
-                        // A designed run — QB or RB, named. "COOK · 7 YD RUN".
-                        txt = (evt.rb || 'RUSH') + (yTxt ? '  ·  ' + yTxt : '') + ' RUN';
-                    } else if (evt.k === 'scramble') {
-                        txt = (evt.qb || 'QB') + ' SCRAMBLES' + (yTxt ? '  ·  ' + yTxt : '');
+                    } else if (evt.k === 'run' || evt.k === 'scramble') {
+                        // A rush — QB or RB, named. No keeper/scramble distinction.
+                        // ('scramble' kept only to render any stale feed record.)
+                        txt = rushTxt(evt.rb || evt.qb);
                     } else if (evt.k === 'fumble') {
                         // A lost fumble: headline it now AND remember it, so the
                         // turnover outcome that follows (bucketed as INT by the engine)
