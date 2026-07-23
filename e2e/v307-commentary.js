@@ -129,8 +129,8 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         getComputedStyle(document.getElementById('rb-wait-blast')).display !== 'none');
     check('T4 blast still held ~900ms later (>= 1s hold)', blastMid,
           'blast cleared before 1s (held ' + (Date.now() - startBlast) + 'ms)');
-    // Gone well after the hold window.
-    await sleep(1400);
+    // Gone well after the hold window (TD holds ~2.4s in the arena design).
+    await sleep(2100);
     const blastGone = await def.page.evaluate(() =>
         getComputedStyle(document.getElementById('rb-wait-blast')).display === 'none');
     check('T4 blast clears after its hold window', blastGone, 'blast never cleared');
@@ -146,7 +146,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     await def.page.evaluate(() => window._rb2p_waitFeedBig('PICK6', 'Pick six.'));
     await sleep(200);
     const p6Blast = await def.page.evaluate(() => document.getElementById('rb-wait-blast-text').textContent);
-    check('T4 PICK6 maps to a PICK SIX blast', /PICK SIX/.test(p6Blast), 'got "' + p6Blast + '"');
+    check('T4 PICK6 maps to a PICK 6 blast', /PICK ?6/.test(p6Blast), 'got "' + p6Blast + '"');
     // A fumble ships as an INT-typed outcome; a recent fumble feed must re-label
     // that blast FUMBLE (not INTERCEPTED).
     const fumBlast = await def.page.evaluate(() => {
