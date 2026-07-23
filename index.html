@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V314<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V315<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V314</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V315</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1744,7 +1744,7 @@
                 }
             } catch (eI) {}
 
-            function forceUserOffenseDrive(yardLine) {
+            function forceUserOffenseDrive(yardLine, freshDrive) {
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
@@ -1901,6 +1901,28 @@
                     // Setting controllerKp to 0 or 1 here = silent freeze.
                     engineMatch.engineControllerState = 2;
 
+                    // V315: a FRESH possession (OT kickoff) inherits the PREVIOUS
+                    // play's ball + strung-out sprites. The "skip if a ball exists"
+                    // path below would then just SHIFT those scattered end-of-play
+                    // positions to the new spot instead of re-forming the huddle, so
+                    // the players end up ~10 yards off the line of scrimmage / play-
+                    // art (device report: "position of players vs play arrows").
+                    // Clear the stale field so s_set_up_play spawns a clean formation.
+                    // Repro-confirmed: without this, OFspread/OFtoB01 stay at the
+                    // scattered values after the force; with it they reset to a huddle.
+                    if (freshDrive) {
+                        var fld = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || allInstances;
+                        for (var fi = 0; fi < fld.length; fi++) {
+                            var fx = fld[fi];
+                            if (!fx || fx._HL2 || !fx._eE2 || !fx._eE2._fE2) continue;
+                            var fn = fx._eE2._fE2;
+                            if (fn === 'obj_ball' || fn === 'obj_playerOF' ||
+                                fn === 'obj_playerDF' || fn === 'obj_player') {
+                                try { (typeof _cr === 'function') ? _cr(fx) : (fx._HL2 = true); }
+                                catch (eFD) { try { fx._HL2 = true; } catch (e2FD) {} }
+                            }
+                        }
+                    }
                     // Skip s_set_up_play if ball already on the field (mid-drive).
                     var ballCount = 0;
                     for (var j = 0; j < allInstances.length; j++) {
@@ -9630,7 +9652,10 @@
                         em.engineSubCommentaryText  = '';
                         try { if (Number(rawOt._Nb1) < 1) rawOt._Nb1 = 1; } catch (eN) {}
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
-                            window._rb2p_forceUserOffenseDrive(yard);
+                            // V315: freshDrive — clear the regulation drive's stale
+                            // field so the OT huddle re-forms at the LOS instead of
+                            // inheriting the last play's scattered sprites.
+                            window._rb2p_forceUserOffenseDrive(yard, true);
                         }
                         // V109: OT inherits the regulation-end clock (0:00). Give
                         // this possession a clock so it doesn't instantly roll the
