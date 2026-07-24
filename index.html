@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V334<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V335<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V334</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V335</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4719,6 +4719,19 @@
                             return;   // skip normal INT-send, do NOT enter waiting
                         }
 
+                        // V335 (DEQC Bug 7/2): the takeaway popup fires AT the
+                        // event, on the INTERCEPTOR's device — the other side.
+                        // This thrower never blasts its own pick (DEQC showed
+                        // INTERCEPTED on the thrower). A fresh on-field fumble
+                        // re-labels the event exactly like the receive side did.
+                        if ((outcome.turnover === true || outcome.type === 'INT') &&
+                            typeof window._rb2p_sendEventBlast === 'function') {
+                            var evKind335 = (isFinite(Number(window._rb2p_lastFumbleMs)) &&
+                                             Date.now() - Number(window._rb2p_lastFumbleMs) < 5000)
+                                            ? 'FUMBLE' : 'INT';
+                            window._rb2p_sendEventBlast(evKind335);
+                        }
+
                         // ===== V57: B's post-PAT send becomes PAT_RESULT =====
                         // V56 keyed this off pre.engineDownNumber === 6 — DEAD
                         // CODE on the real engine: s_action_result (_hB)'s
@@ -4946,6 +4959,8 @@
                     window._rb2p_userOutcomeSendInProgress = true;
                     window._rb2p_userIsWaitingForOpponent = true;
                     console.log('[2P PICK6] cascade entered via ' + source);
+                    if (typeof window._rb2p_sendEventBlast === 'function')
+                        window._rb2p_sendEventBlast('PICK6');   // V335: the scorer's popup fires NOW
                     if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('THROWER', source);
                     // ===== V57: deferred PICK6 send =====
                     // The engine credits the pick-6 +6 in s_action_result
@@ -8002,6 +8017,22 @@
                         else if (dScore >= 6)                             blastType = 'TD';
                         else if (dScore === 3)                            blastType = 'FG';
                         else if (outcome.turnover || outcome.type === 'INT') blastType = 'INT';
+                        // V335: when the opponent runs the event-blast build,
+                        // events own every popup — this legacy score-delta path
+                        // stands down (it still serves older opponents). Never
+                        // re-blast a kind an event just blasted (INT may have
+                        // shipped as FUMBLE), and never blast a takeaway on the
+                        // device that THREW it — its own drive just ended in
+                        // the turnover (DEQC Bug 2: INTERCEPTED on the thrower).
+                        if (blastType && Number(window._rb2p_oppVer) >= 335) blastType = null;
+                        if (blastType && window._rb2p_evtBlastedAt &&
+                            (Date.now() - (Number(window._rb2p_evtBlastedAt[blastType]) || 0) < 45000 ||
+                             (blastType === 'INT' &&
+                              Date.now() - (Number(window._rb2p_evtBlastedAt.FUMBLE) || 0) < 45000))) blastType = null;
+                        if ((blastType === 'INT' || blastType === 'FUMBLE') &&
+                            isFinite(Number(window._rb2p_lastTurnoverVy8Ms)) &&
+                            Number(window._rb2p_lastTurnoverVy8Ms) > 0 &&
+                            Date.now() - Number(window._rb2p_lastTurnoverVy8Ms) < 10000) blastType = null;
                         if (window._rb2p_diagLog) window._rb2p_diagLog(
                             'blast type=' + outcome.type + ' turn=' + outcome.turnover +
                             ' dScore=' + dScore + ' -> ' + (blastType || 'none'));
@@ -8884,7 +8915,8 @@
                         FG:     { t: 'FIELD GOAL', acc: oppAcc, eye: '● ' + oppNm,               sub: 'ON THE BOARD',        conf: false },
                         INT:    { t: 'INTERCEPTED',acc: youAcc, eye: '● DEFENSE',                sub: youNm + ' BALL',       conf: true  },
                         FUMBLE: { t: 'FUMBLE',     acc: youAcc, eye: '● DEFENSE',                sub: youNm + ' BALL',       conf: true  },
-                        PICK6:  { t: 'PICK 6',     acc: youAcc, eye: '● PICK SIX · DEFENSE SCORES', sub: youNm + ' · TAKEN TO THE HOUSE', conf: true }
+                        PICK6:  { t: 'PICK 6',     acc: youAcc, eye: '● PICK SIX · DEFENSE SCORES', sub: youNm + ' · TAKEN TO THE HOUSE', conf: true },
+                        SAFETY: { t: 'SAFETY',     acc: youAcc, eye: '● DEFENSE',                sub: youNm + ' · +2', conf: true }
                     };
                     var m = map[type];
                     if (!m) return;   // PUNT/DOWNS/OTHER are not blast-worthy
@@ -12976,6 +13008,7 @@
                     try {
                         var v = vs.val() || {};
                         var opp = role === 'a' ? v.b : v.a;
+                        if (opp) window._rb2p_oppVer = Number(opp) || 0;   // V335: event-blast capability gate
                         if (opp && window._rb2p_myVer && opp !== window._rb2p_myVer) {
                             if (window._rb2p_diagLog) window._rb2p_diagLog(
                                 'VERSION MISMATCH: me V' + window._rb2p_myVer + ' vs opp V' + opp);
@@ -13752,6 +13785,74 @@
                 }
             );
 
+            // ===== V335 (DEQC Bug 7): dedicated EVENT blasts =====
+            // The V318 popup fired off the drive-end outcome, which ships only
+            // after the PAT resolves — so the waiting player's TOUCHDOWN waited
+            // for the PAT, a MISSED PAT swallowed it entirely, and a dead/slow
+            // opponent (DEQC: B's engine died backgrounded) dropped every
+            // popup. Now the device where a scoring/takeaway event happens
+            // publishes it to rooms/{code}/evt/{role} the MOMENT it lands; the
+            // other device blasts on receive and de-dups by seq/ts. The legacy
+            // outcome-driven blast stands down when the opponent is on >= V335
+            // (it stays for older opponents — e2e/v317-intblast covers it).
+            var evtBlastSeq = 0;
+            window._rb2p_sendEventBlast = function (kind, sub) {
+                try {
+                    if (!myRoom || !myRole || !kind) return;
+                    var rec = { kind: String(kind), sub: sub == null ? '' : String(sub),
+                                seq: ++evtBlastSeq, ts: Date.now() };
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/evt/' + myRole), rec).catch(function () {});
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('EVT-> ' + rec.kind);
+                } catch (e) {}
+            };
+            var lastEvtBlastTs = 0, lastEvtBlastSeq = 0;
+            FB.onValue(
+                FB.ref(db, 'rooms/' + myRoom + '/evt/' + otherRole),
+                function (snap) {
+                    try {
+                        var evt = snap.val();
+                        if (!evt || !evt.ts) return;
+                        if (evt.ts <= lastEvtBlastTs && Number(evt.seq || 0) <= lastEvtBlastSeq) return;
+                        lastEvtBlastTs = evt.ts; lastEvtBlastSeq = Number(evt.seq || 0);
+                        if (Date.now() - Number(evt.ts) > 45000) return;   // stale replay on (re)join
+                        if (window._rb2p_gameOverReported === true) return; // the V324 rule holds for events
+                        if (!window._rb2p_evtBlastedAt) window._rb2p_evtBlastedAt = {};
+                        window._rb2p_evtBlastedAt[evt.kind] = Date.now();
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('EVT<- ' + evt.kind);
+                        if (window._rb2p_waitFeedBig) window._rb2p_waitFeedBig(evt.kind, evt.sub || '');
+                    } catch (e) {}
+                }
+            );
+            // The sender watches its OWN score jumps (300ms): +6 = TD the
+            // moment it hits the board (fully independent of the PAT), +3 =
+            // FG; +1/+2 are PAT results (never their own blast); +2 to the
+            // DEFENSE while my offense is on the field = SAFETY. Points
+            // applied FROM the wire (an opponent outcome landing) are the
+            // opponent's events, already evented on their side — the 3s
+            // apply-window skips them.
+            var evtPrevMyScore = null, evtPrevOppScore = null, evtLastTdMs = 0;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { evtPrevMyScore = null; evtPrevOppScore = null; return; }
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var s = Number(em.userScore) || 0, so = Number(em.opponentScore) || 0;
+                    if (evtPrevMyScore == null) { evtPrevMyScore = s; evtPrevOppScore = so; return; }
+                    var d = s - evtPrevMyScore, dOpp = so - evtPrevOppScore;
+                    evtPrevMyScore = s; evtPrevOppScore = so;
+                    if (window._rb2p_gameOverReported === true) return;
+                    if (Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) < 3000) return;
+                    if (d >= 6)       { evtLastTdMs = Date.now(); window._rb2p_sendEventBlast('TD'); }
+                    else if (d === 3) { window._rb2p_sendEventBlast('FG'); }
+                    if (dOpp === 2 && window._rb2p_userIsWaitingForOpponent !== true &&
+                        window._rb2p_patPlayPending !== true &&
+                        window._rb2p_pickSixPatCascadeActive !== true &&
+                        Date.now() - evtLastTdMs > 25000) {
+                        window._rb2p_sendEventBlast('SAFETY');   // my offense got safetied — their popup
+                    }
+                } catch (e) {}
+            }, 300);
+
             // Subscribe to opponent's live state. When it arrives and the
             // user is on defense (or just not yet on offense), mirror it
             // into the local engine match instance and refresh the WAITING
@@ -13956,6 +14057,7 @@
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/box')).catch(function () {});
             if (typeof window._rb2p_resetBoxHighWater === 'function') window._rb2p_resetBoxHighWater();   // V334
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/feed')).catch(function () {});   // V307
+            FB.remove(FB.ref(db, 'rooms/' + myRoom + '/evt')).catch(function () {});    // V335
             try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
 
             // V60: lock in the agreed quarter length right before launch so
