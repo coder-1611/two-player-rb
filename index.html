@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V336<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V337<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V336</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V337</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5177,6 +5177,19 @@
                     if (!em) em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     var gq = Number(em.engineQuarter) || 1;
+                    // ===== V337 (DEQC Bug 5): HARD CEILING — the quarter NEVER
+                    // exceeds 5. Room DEQC ran to quarter:123: a parked engine
+                    // re-expiring at 0:00 rolled unbounded once past the 2..4
+                    // burst window (nothing above it clamped), and the wire then
+                    // mirrored the runaway to the other device. Regulation is
+                    // 1..4 and OT is pinned at 5 — nothing above 5 exists, on
+                    // the engine OR the wire.
+                    if (Number(window._rb2p_wireQuarter) > 5) window._rb2p_wireQuarter = 5;
+                    if (gq > 5) {
+                        console.warn('[2P Q-GOV] quarter ' + gq + ' beyond the ceiling — clamped to 5');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-CEIL ' + gq + ' -> 5');
+                        em.engineQuarter = gq = 5;
+                    }
                     // gBase = the highest quarter LEGITIMATELY reached: a quarter this
                     // device stably played (clock running) or the wire-authoritative
                     // opponent quarter. Both are burst-immune (a burst rolls at 0:00, so
@@ -5198,7 +5211,7 @@
                             if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-BACK -> Q' + gBase);
                         }
                     }
-                    if (gq >= 2 && gq <= 4) {
+                    if (gq >= 2 && gq <= 5) {   // V337: 5 joins the burst window (legit only off a played Q4)
                         if (gq > gBase + 1) {
                             console.warn('[2P Q-GOV] burst quarter roll Q' + gq +
                                          ' clamped back to Q' + (gBase + 1) +
@@ -5207,7 +5220,7 @@
                             gq = gBase + 1;
                             em.engineQuarter = gq;
                         }
-                        if (gq !== window._rb2p_qGovPrevQ &&
+                        if (gq <= 4 && gq !== window._rb2p_qGovPrevQ &&
                             (Number(em.engineMinutesLeft) * 60 +
                              Number(em.engineSecondsLeft)) <= 0) {
                             var gSec = window._rb2p_agreedQuarterSec();
@@ -9640,6 +9653,26 @@
                                           em.engineControllerState !== 2 &&
                                           em.engineDriveFsmStage !== 13 &&
                                           q4ActiveMs > 5000);   // Q4 truly played, not the entry blip
+                    // ===== V337 (DEQC root cause): a DEAD opponent cannot strand
+                    // a decided game. B's engine died backgrounded holding the
+                    // last 19 seconds; nothing could ever finish the match A had
+                    // already won 22-0 (the parked engine then rolled its own
+                    // quarter unbounded). If it is Q4+ with a winner, WE are
+                    // parked waiting, under a minute remains, and the opponent's
+                    // live push has been silent >45s, the FINAL is declared from
+                    // this side alone.
+                    var oppRx337 = Number(window._rb2p_oppLiveRxAt) || 0;
+                    var deadOppEnd = q >= 4 &&
+                                     window._rb2p_userIsWaitingForOpponent === true &&
+                                     (mn * 60 + sc) <= 60 &&
+                                     oppRx337 > 0 && (Date.now() - oppRx337) > 45000;
+                    if (deadOppEnd && Date.now() - (window._rb2p_deadOppLogMs || 0) > 10000) {
+                        window._rb2p_deadOppLogMs = Date.now();
+                        console.warn('[2P FINAL] opponent silent ' +
+                                     Math.round((Date.now() - oppRx337) / 1000) + 's in a decided Q' +
+                                     q + ' endgame — declaring the FINAL from this side');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('DEAD-OPP END');
+                    }
                     // V179: also gate through the shared canGameEnd() (Q4+/OT only)
                     // and require the end signal to be SUSTAINED. The Q3->Q4 boundary
                     // reads q=4, clock 0:00 for a blip before the engine resets the Q4
@@ -9648,7 +9681,7 @@
                     // that moment, defeating the Vy!=13 guard). A real end stays at
                     // 0:00 / q>=5; the boundary blip clears within ~1s. Require the
                     // signal to hold ~1.2s (4 × 300ms) before declaring FINAL.
-                    var endSignal = (pastRegulation || regulationOver) &&
+                    var endSignal = (pastRegulation || regulationOver || deadOppEnd) &&
                                     (typeof window._rb2p_canGameEnd !== 'function' ||
                                      window._rb2p_canGameEnd());
                     if (!endSignal) { gameOverConfirmTicks = 0; gameOverPlayWaitTicks = 0; return; }
@@ -13607,6 +13640,9 @@
             var rb2pSnapWritten = false;
             function rb2pWriteSnap(em) {
                 try {
+                    // V337: a FINAL game publishes no more snaps — DEQC's
+                    // quarter:123 kept shipping long after the game was over.
+                    if (window._rb2p_gameOverReported === true) return;
                     var waiting = window._rb2p_userIsWaitingForOpponent === true;
                     // Stable = parked in WAIT (opponent is authoritative; just keep
                     // my score/clock fresh) OR staging my own next snap (state 1).
