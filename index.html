@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V333<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V334<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V333</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V334</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3475,6 +3475,8 @@
                                         ' yds=' + (evt.yds != null ? evt.yds : '-'));
                                     window._rb2p_pushFeed(evt);
                                     window._rb2p_feedEmitted = true;
+                                    if (typeof window._rb2p_publishBoxNow === 'function')
+                                        window._rb2p_publishBoxNow('settle');   // V334: every play persists the box
                                 }
                             }
                             // Fumble: watch the roster's total fumbles; on an increase,
@@ -3486,6 +3488,8 @@
                                 fName = nearestOF(ball.x, ball.y, 60);
                                 window._rb2p_pushFeed({ k: 'fumble', by: fName });
                                 window._rb2p_feedEmitted = true;
+                                if (typeof window._rb2p_publishBoxNow === 'function')
+                                    window._rb2p_publishBoxNow('fumble');   // V334
                             }
                             window._rb2p_offFumbleTotal = totF;
                         } catch (eFeed) {}
@@ -12511,6 +12515,8 @@
                     if (myBox && myBox.stats &&
                         (!boxAnchor || (Number(myBox.ts) || 0) >= boxAnchor)) {
                         window._rb2p_resumeRawOffStats = myBox.stats;
+                        if (typeof window._rb2p_seedBoxHighWater === 'function')
+                            window._rb2p_seedBoxHighWater(myBox.stats);   // V334: the ratchet adopts the saved record
                         console.log('[2P RESUME] restoring saved offensive stats (' +
                                     myBox.stats.length + ' players, age ' +
                                     Math.round((Date.now() - (Number(myBox.ts) || 0)) / 1000) + 's)');
@@ -13582,21 +13588,79 @@
                     // change while on offense, so writing whenever the SIGNATURE
                     // changes captures the last play, keeps the record current, and
                     // costs no extra writes while parked in WAIT.
-                    if (typeof window._rb2p_collectRawOffStats === 'function') {
-                        var raw = window._rb2p_collectRawOffStats();
-                        var rawSig = raw && raw.length ? JSON.stringify(raw) : '';
-                        if (raw && raw.length && rawSig !== window._rb2p_lastBoxSig) {
-                            window._rb2p_lastBoxSig = rawSig;
-                            FB.set(FB.ref(db, 'rooms/' + myRoom + '/box/' + myRole),
-                                   { stats: raw, ts: Date.now() }).catch(function () {});
-                            if (typeof window._rb2p_collectBoxScore === 'function') {
-                                var full = window._rb2p_collectBoxScore();
-                                if (full && full.players && full.players.length) window._rb2p_lastGoodBoxScore = full;
-                            }
+                    // V334 (DEQC R1): the stable-boundary publish now rides the
+                    // same monotonic per-play publisher the observer settle uses.
+                    if (typeof window._rb2p_publishBoxNow === 'function') window._rb2p_publishBoxNow('snap');
+                } catch (e) {}
+            }
+
+            // ===== V334 (DEQC R1): the FULL box score persists EVERY play =====
+            // rooms/{code}/box/{role} used to be written only at stable snap
+            // boundaries, so a desync / refresh / dead engine could strand the
+            // last plays' stats (the user asked for per-play redundancy: "may
+            // be overkill but to make sure they are counted"). Now the
+            // observer's settle publishes after EVERY play resolution too, and
+            // the record is a RATCHET: each stat ships as the max ever seen
+            // this match (per roster slot), so a post-refresh zeroed roster or
+            // a late lower write can never shrink a published count.
+            // Fire-and-forget like the feed/diag writes — gameplay never waits
+            // on it. The V333 QB re-attribution runs inside collectRawOffStats,
+            // so only clean lines ever ship.
+            var rb2pBoxHighWater = {};
+            window._rb2p_resetBoxHighWater = function () {
+                rb2pBoxHighWater = {};
+                window._rb2p_boxPubSeq = 0;
+                window._rb2p_lastBoxSig = '';
+            };
+            window._rb2p_seedBoxHighWater = function (arr) {
+                try {
+                    if (!arr || !arr.length) return;
+                    for (var a = 0; a < arr.length; a++) {
+                        var rec = arr[a];
+                        if (!rec || rec.i == null || !rec.st) continue;
+                        var hw = rb2pBoxHighWater[rec.i] || (rb2pBoxHighWater[rec.i] = {});
+                        for (var k in rec.st) {
+                            if (!rec.st.hasOwnProperty(k)) continue;
+                            var v = Number(rec.st[k]) || 0;
+                            if (v > (Number(hw[k]) || 0)) hw[k] = v;
                         }
                     }
                 } catch (e) {}
-            }
+            };
+            window._rb2p_publishBoxNow = function (why) {
+                try {
+                    if (!myRoom || !myRole) return;
+                    if (typeof window._rb2p_collectRawOffStats !== 'function') return;
+                    var raw = window._rb2p_collectRawOffStats();
+                    for (var a = 0; a < raw.length; a++) {
+                        var rec = raw[a];
+                        var hw = rb2pBoxHighWater[rec.i] || (rb2pBoxHighWater[rec.i] = {});
+                        for (var k in rec.st) {
+                            if (!rec.st.hasOwnProperty(k)) continue;
+                            var v = Number(rec.st[k]) || 0;
+                            if (v > (Number(hw[k]) || 0)) hw[k] = v;
+                        }
+                    }
+                    var out = [];
+                    for (var i2 in rb2pBoxHighWater) {
+                        if (!rb2pBoxHighWater.hasOwnProperty(i2)) continue;
+                        out.push({ i: Number(i2), st: rb2pBoxHighWater[i2] });
+                    }
+                    if (!out.length) return;
+                    out.sort(function (x, y) { return x.i - y.i; });
+                    var sig = JSON.stringify(out);
+                    if (sig === window._rb2p_lastBoxSig) return;   // nothing moved — no write
+                    window._rb2p_lastBoxSig = sig;
+                    window._rb2p_boxPubSeq = (Number(window._rb2p_boxPubSeq) || 0) + 1;
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/box/' + myRole),
+                           { stats: out, ts: Date.now(), n: window._rb2p_boxPubSeq })
+                        .catch(function () {});
+                    if (typeof window._rb2p_collectBoxScore === 'function') {
+                        var full = window._rb2p_collectBoxScore();
+                        if (full && full.players && full.players.length) window._rb2p_lastGoodBoxScore = full;
+                    }
+                } catch (e) {}
+            };
 
             var userLivePushSeq = 0;
             setInterval(function () {
@@ -13890,6 +13954,7 @@
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/live')).catch(function () {});
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/snap')).catch(function () {});
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/box')).catch(function () {});
+            if (typeof window._rb2p_resetBoxHighWater === 'function') window._rb2p_resetBoxHighWater();   // V334
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/feed')).catch(function () {});   // V307
             try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
 
