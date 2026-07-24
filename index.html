@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V337<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V338<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V337</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V338</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8221,6 +8221,21 @@
                                 // the fresh TD scene left the ball on the goal line.
                                 engineMatch.engineYardLineSigned   = 48;
                                 engineMatch.engineControllerState  = 2;
+                                // ===== V338 (DEQC Bug 3): the pin must STICK =====
+                                // Unlike the normal branch below, this branch never
+                                // cleared a pending QTR-KEEP resume — a stale
+                                // pre-rollover capture (exactly what the halftime
+                                // chaos leaves behind) could restore its old yard
+                                // over the pin, which is how A's PAT played from
+                                // ~the opponent's 20 in room DEQC. Clear it, and
+                                // arm the 100ms hold that re-pins the scrimmage
+                                // while the PAT is pending and the 1PT/2PT choice
+                                // is still up.
+                                window._rb2p_quarterResumePending = false;
+                                window._rb2p_preRolloverYard = null;
+                                window._rb2p_preRolloverDown = null;
+                                window._rb2p_preRolloverToGo = null;
+                                window._rb2p_patPinHoldUntil = Date.now() + 15000;
                                 // V255: on a RESUMED room the drive FSM is still
                                 // at stage 0 and drives are un-armed — the modal
                                 // paints but the engine never processes the
@@ -13974,6 +13989,29 @@
                     if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-HEAL -> WAIT (owner=' + t.owner + ')');
                 } catch (e) {}
             }, 500);
+
+            // ===== V338 (DEQC Bug 3): pick-6 PAT pin hold =====
+            // While the pick-6 PAT is pending and the 1PT/2PT choice is still
+            // up (engineDownNumber === 6), the scrimmage must stay at the
+            // pinned 2-yard line (+48). Anything that moves it — a stale
+            // QTR-KEEP restore, a stray spawn reusing an old ball spot — is
+            // snapped back within 100ms. Released the moment the choice is
+            // made (the down leaves 6), the PAT resolves, or 15s pass.
+            setInterval(function () {
+                try {
+                    if (window._rb2p_patPlayPending !== true ||
+                        window._rb2p_patPlayResolved === true) return;
+                    if (Date.now() > (Number(window._rb2p_patPinHoldUntil) || 0)) return;
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    if (Number(em.engineDownNumber) !== 6) return;   // choice made — the scene owns the ball
+                    if (Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5) {
+                        em.engineYardLineSigned = 48;
+                        em.engineYardsToGo = 2;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PIN re-pinned to 48');
+                    }
+                } catch (e) {}
+            }, 100);
 
             // Subscribe to opponent's live state. When it arrives and the
             // user is on defense (or just not yet on offense), mirror it
