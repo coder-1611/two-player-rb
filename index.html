@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V335<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V336<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V335</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V336</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3824,6 +3824,12 @@
                 // else outside this function) can decide possession by role
                 // rather than the unreliable engineUserTeamIdx→role guess.
                 window._rb2p_myFirebaseRole = role;
+                // V336: the host opens on offense — declare the turn owner so
+                // the single-offense reconciler has its ground truth from snap
+                // one (this overwrite is also what retires a stale record from
+                // a previous match in a reused room).
+                if (role === 'a' && typeof window._rb2p_declareTurnOwner === 'function')
+                    window._rb2p_declareTurnOwner('a', 'match-start');
                 try {
                     var anyInst = null;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
@@ -4774,6 +4780,10 @@
                             outcome.message = 'PAT result';
                             window._rb2p_userOutcomeSendInProgress = true;
                             window._rb2p_userIsWaitingForOpponent = true;
+                            // V336: the scorer's PAT is done — the thrower
+                            // receives the post-pick-6 kickoff drive.
+                            if (typeof window._rb2p_declareTurnOwner === 'function')
+                                window._rb2p_declareTurnOwner('OPP', 'pat-result');
                             try { window._twoPlayer.send(outcome); }
                             catch (e) { console.log('[2P] send err', e); }
                             window._rb2p_patResultSentMs = Date.now();
@@ -4811,6 +4821,10 @@
                         } catch (eLog) {}
                         window._rb2p_userOutcomeSendInProgress = true;
                         window._rb2p_userIsWaitingForOpponent = true;
+                        // V336: the drive-end send IS the yield — declare the
+                        // opponent the turn owner (INT/punt/downs/score alike).
+                        if (typeof window._rb2p_declareTurnOwner === 'function')
+                            window._rb2p_declareTurnOwner('OPP', 'send-' + (outcome && outcome.type));
                         // V128: the user just LOST the ball (turnover/punt/score).
                         // Any pending quarter-resume of this drive is void — clear
                         // it and the stale pre-rollover capture so QTR-KEEP can't
@@ -4958,6 +4972,9 @@
                     window._rb2p_pickSixPatCascadeRaisedMs = Date.now();
                     window._rb2p_userOutcomeSendInProgress = true;
                     window._rb2p_userIsWaitingForOpponent = true;
+                    // V336: the pick-6 hands the scene to the scorer (their PAT).
+                    if (typeof window._rb2p_declareTurnOwner === 'function')
+                        window._rb2p_declareTurnOwner('OPP', 'pick6');
                     console.log('[2P PICK6] cascade entered via ' + source);
                     if (typeof window._rb2p_sendEventBlast === 'function')
                         window._rb2p_sendEventBlast('PICK6');   // V335: the scorer's popup fires NOW
@@ -9977,6 +9994,10 @@
                         console.log('[2P Q3-LAW] 3rd quarter — B TAKES POSSESSION (forced offense at own ' +
                                     (50 + koY) + ', ' + em.engineMinutesLeft + ':' +
                                     ('0' + em.engineSecondsLeft).slice(-2) + ')');
+                        // V336: the LAW is role-deterministic — only the taker
+                        // (B) writes the turn record.
+                        if (typeof window._rb2p_declareTurnOwner === 'function')
+                            window._rb2p_declareTurnOwner('ME', 'q3-law');
                     } else {
                         // A → WAIT (B has the ball this half).
                         em.enginePossessingTeamIdx = em.engineOpponentTeamIdx;
@@ -10009,6 +10030,10 @@
                     if (myRole === receiverRole) {
                         // I receive the OT kickoff → I'm on offense.
                         window._rb2p_userIsWaitingForOpponent = false;
+                        // V336: the shared coin flip is deterministic on both
+                        // devices — only the receiver writes the turn record.
+                        if (typeof window._rb2p_declareTurnOwner === 'function')
+                            window._rb2p_declareTurnOwner('ME', 'ot-kickoff');
                         window._rb2p_userOutcomeSendInProgress = false;
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         var yard = window._rb2p_kickoffReturnYard();
@@ -13853,6 +13878,67 @@
                 } catch (e) {}
             }, 300);
 
+            // ===== V336 (DEQC Bug 8): the SINGLE-OFFENSE invariant =====
+            // Exactly one side is on offense at any instant; the other waits.
+            // Room DEQC broke it (possession bounced back to the thrower after
+            // his own pick). The YIELDING device declares the next owner to
+            // rooms/{code}/turn at every legitimate possession change (match
+            // start, drive-end send, PAT_RESULT send, pick-6 cascade entry,
+            // Q3 LAW, OT kickoff); this reconciler DEMOTES a device that
+            // believes it is on offense while the latest record names the
+            // opponent — only when the conflict persists ~1.5s AND the record
+            // is fresher than our own take of offense (or the opponent's live
+            // push visibly also claims the ball). It never PROMOTES a waiting
+            // device, so PAT cascades and staging flows are untouched.
+            var turnConflictTicks = 0, turnPrevOff = false, tookOffenseMs = 0;
+            window._rb2p_declareTurnOwner = function (owner, why) {
+                try {
+                    if (!myRoom || !myRole) return;
+                    if (owner === 'ME') owner = myRole;
+                    if (owner === 'OPP') owner = otherRole;
+                    if (owner !== 'a' && owner !== 'b') return;
+                    var seq = (Number(window._rb2p_turnSeq) || 0) + 1;
+                    window._rb2p_turnSeq = seq;
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/turn'),
+                           { owner: owner, by: myRole, why: String(why || ''), seq: seq, ts: Date.now() })
+                        .catch(function () {});
+                    // Adopt our own declaration at once (don't wait for the echo).
+                    window._rb2p_turnRec = { owner: owner, at: Date.now() };
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-> ' + owner + ' (' + String(why || '') + ')');
+                } catch (e) {}
+            };
+            FB.onValue(FB.ref(db, 'rooms/' + myRoom + '/turn'), function (snap) {
+                try {
+                    var t = snap.val();
+                    if (!t || (t.owner !== 'a' && t.owner !== 'b')) return;
+                    window._rb2p_turnRec = { owner: t.owner, at: Date.now() };
+                } catch (e) {}
+            });
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { turnPrevOff = false; turnConflictTicks = 0; return; }
+                    if (window._rb2p_gameOverReported === true) return;
+                    if (window._rb2p_pickSixPatCascadeActive === true ||
+                        window._rb2p_patPlayPending === true) return;   // the cascade owns possession
+                    var onOff = window._rb2p_userIsWaitingForOpponent !== true;
+                    if (!onOff) { turnPrevOff = false; turnConflictTicks = 0; return; }
+                    if (!turnPrevOff) { turnPrevOff = true; tookOffenseMs = Date.now(); }
+                    var t = window._rb2p_turnRec;
+                    if (!t || t.owner === myRole) { turnConflictTicks = 0; return; }
+                    // The record names the OPPONENT while I'm on offense.
+                    var ol = window._rb2p_oppLiveRx;
+                    var oppClaims = !!(ol && Date.now() - (Number(ol.at) || 0) < 4000 && ol.iHaveBall === true);
+                    var recNewer = (Number(t.at) || 0) >= tookOffenseMs - 1000;
+                    if (!recNewer && !oppClaims) { turnConflictTicks = 0; return; }
+                    if (++turnConflictTicks < 3) return;
+                    turnConflictTicks = 0;
+                    window._rb2p_userIsWaitingForOpponent = true;
+                    console.warn('[2P TURN] double-offense healed — turn record names ' +
+                                 t.owner + ', parking in WAIT');
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-HEAL -> WAIT (owner=' + t.owner + ')');
+                } catch (e) {}
+            }, 500);
+
             // Subscribe to opponent's live state. When it arrives and the
             // user is on defense (or just not yet on offense), mirror it
             // into the local engine match instance and refresh the WAITING
@@ -13865,6 +13951,11 @@
                     if (!opponentLivePayload || !opponentLivePayload.ts ||
                         opponentLivePayload.ts <= lastOpponentLiveTs) return;
                     lastOpponentLiveTs = opponentLivePayload.ts;
+                    // V336/V337: track the opponent's liveness + claimed possession
+                    // (local receipt clock — never the sender's, to dodge skew).
+                    window._rb2p_oppLiveRxAt = Date.now();
+                    window._rb2p_oppLiveRx = { at: Date.now(),
+                                               iHaveBall: opponentLivePayload.iHaveBall === true };
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineScoreboard == null ||
                         engineMatch.engineUserTeamIdx == null) return;
