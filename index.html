@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V332<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V333<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V332</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V333</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9201,9 +9201,49 @@
                 // some stats (e.g. yards) as fractional accumulators.
                 try { return Math.round(Number(_Ai(s, key)) || 0); } catch (e) { return 0; }
             }
+            // ===== V333 (DEQC Bug 4): passing stats NEVER live on a non-QB =====
+            // stat_complete / stat_attempts are PASSER stats (field map below),
+            // but the engine credits a play's passing line to an "active player"
+            // index that is sometimes a non-QB — room DEQC: PURDY showed 3/5
+            // while a WR carried an impossible 2/1 (and the other team leaked
+            // identically), so the FINAL undercounted the QB. There are no
+            // non-QB passes in Retro Bowl, so any completion/attempt found on a
+            // non-QB roster player is moved back to the starting QB (position 1)
+            // and zeroed on the leaker. stat_yards is NOT moved: on a non-QB it
+            // is his RECEIVING yardage (real production) and a leaked passing-
+            // yard credit cannot be split back out of it. Idempotent (the
+            // source is zeroed), so every collect/publish can run it.
+            window._rb2p_reattributePassingStats = function () {
+                var moved = 0;
+                try {
+                    var roster = rb2pOffRoster(); if (!roster) return 0;
+                    var n = _wi(roster), qb = null, i, s;
+                    for (i = 0; i < n; i++) {
+                        s = _zi(roster, i);
+                        if (s && Number(_Ai(s, 'position')) === 1) { qb = s; break; }
+                    }
+                    if (!qb) return 0;
+                    for (i = 0; i < n; i++) {
+                        s = _zi(roster, i); if (!s || s === qb) continue;
+                        if (Number(_Ai(s, 'position')) === 1) continue;   // a backup QB keeps his own line
+                        var c = Number(_Ai(s, 'stat_complete')) || 0;
+                        var a = Number(_Ai(s, 'stat_attempts')) || 0;
+                        if (c <= 0 && a <= 0) continue;
+                        _Yi(qb, 'stat_complete', (Number(_Ai(qb, 'stat_complete')) || 0) + c);
+                        _Yi(qb, 'stat_attempts', (Number(_Ai(qb, 'stat_attempts')) || 0) + a);
+                        _Yi(s, 'stat_complete', 0);
+                        _Yi(s, 'stat_attempts', 0);
+                        moved++;
+                    }
+                    if (moved && window._rb2p_diagLog)
+                        window._rb2p_diagLog('QB-REATTR c/a moved from ' + moved + ' non-QB');
+                } catch (e) {}
+                return moved;
+            };
             window._rb2p_collectBoxScore = function () {
                 var report = { team: '', score: 0, oppScore: 0, players: [] };
                 try {
+                    window._rb2p_reattributePassingStats();
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return report;
                     report.score    = Math.round(Number(em.userScore) || 0);
@@ -9362,6 +9402,7 @@
             window._rb2p_collectRawOffStats = function () {
                 var out = [];
                 try {
+                    window._rb2p_reattributePassingStats();   // V333: publish clean lines only
                     var roster = rb2pOffRoster(); if (!roster) return out;
                     var n = _wi(roster);
                     for (var i = 0; i < n; i++) {
