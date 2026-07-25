@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V345<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V346<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V345</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V346</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3253,6 +3253,49 @@
             // heuristic, which mis-named a short completion (receiver standing next
             // to the QB) as a QB run. Pure + side-effect-free so it unit-tests
             // directly with a synthetic signal object.
+            // ===== V346: THE FEED LAW — seven checks, a delta or silence =====
+            // Every line the WAIT screen shows must be licensed by a box-score
+            // delta (the owner's law, now enforced twice: the master gate at
+            // settle AND this per-kind validator just before the push). Any
+            // event that fails its check is dropped and logged as cLAW.
+            //   L1 a RUN line needs the carrier's rush att/yds delta
+            //   L2 a SCRAMBLE (QB run) needs the QB's rush att/yds delta
+            //   L3 a PASS line needs a passing or receiving yards delta
+            //   L4 an INCOMPLETION needs the QB's pass-ATTEMPT delta (kicks
+            //      fly through the same airborne state and credit none)
+            //   L5 a SACK needs the engine's sack state (kp 11) this play
+            //   L6 a FUMBLE needs the roster fumble-total delta
+            //   L7 any other kind is unknown and never shows
+            window._rb2p_feedLawCheck = function (evt, sig) {
+                if (!evt || !evt.k) return 'L7 no kind';
+                sig = sig || {};
+                switch (evt.k) {
+                    case 'run':
+                        if (sig.qbName && evt.rb === sig.qbName) {
+                            if (!(sig.qbRushAttDelta > 0 || Math.abs(sig.qbRushYdDelta) > 0.01))
+                                return 'L2 scramble without a QB rush delta';
+                        } else if (!sig.runName) {
+                            return 'L1 run without a carrier rush delta';
+                        }
+                        return null;
+                    case 'pass':
+                        if (!(sig.qbPassDelta > 0.01 || sig.rcvName))
+                            return 'L3 pass without a passing/receiving delta';
+                        return null;
+                    case 'incomplete':
+                        if (!(sig.threw === true && sig.qbAttDelta > 0))
+                            return 'L4 incompletion without an attempt delta';
+                        return null;
+                    case 'sack':
+                        if (sig.sawSack !== true) return 'L5 sack without the sack state';
+                        return null;
+                    case 'fumble':
+                        if (!(sig.fumbleDelta > 0)) return 'L6 fumble without a fumble delta';
+                        return null;
+                    default:
+                        return 'L7 unknown kind "' + evt.k + '"';
+                }
+            };
             window._rb2p_classifyPlay = function (sig) {
                 sig = sig || {};
                 var qbNm = sig.qbName || 'QB';
@@ -3410,7 +3453,8 @@
                                             pos: Number(_Ai(p, 'position')) || 0,
                                             py:  Number(_Ai(p, 'stat_yards')) || 0,          // passing (QB) | receiving (non-QB)
                                             ra:  Number(_Ai(p, 'stat_rush_attempts')) || 0,
-                                            ry:  Number(_Ai(p, 'stat_rush_yards')) || 0      // carrier's rushing yards
+                                            ry:  Number(_Ai(p, 'stat_rush_yards')) || 0,     // carrier's rushing yards
+                                            at:  Number(_Ai(p, 'stat_attempts')) || 0        // V346: pass attempts (the incompletion delta)
                                         };
                                     });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
@@ -3444,7 +3488,8 @@
                                             pos: Number(_Ai(p, 'position')) || 0,
                                             py:  Number(_Ai(p, 'stat_yards')) || 0,
                                             ra:  Number(_Ai(p, 'stat_rush_attempts')) || 0,
-                                            ry:  Number(_Ai(p, 'stat_rush_yards')) || 0
+                                            ry:  Number(_Ai(p, 'stat_rush_yards')) || 0,
+                                            at:  Number(_Ai(p, 'stat_attempts')) || 0    // V346
                                         };
                                     });
                                 }
@@ -3498,6 +3543,7 @@
                                     //   • QB rush attempt up     -> a QB scramble
                                     var s0 = window._rb2p_feedStat0 || {};
                                     var qbPassDelta = 0, qbRushAttDelta = 0, qbRushYdDelta = 0;
+                                    var qbAttDelta = 0;                 // V346: pass-attempt delta — the ONLY licence for an incompletion line
                                     var rcvName = '', rcvBest = 0.01;   // largest non-QB receiving-yds move
                                     var runName = '', runBest = 0;      // strongest non-QB rush signal
                                     rosterEach(function (p, i2) {
@@ -3510,6 +3556,7 @@
                                             qbPassDelta    = dPy;   // QB stat_yards delta = passing yards
                                             qbRushAttDelta = dRa;   // QB rush-attempt delta = a scramble
                                             qbRushYdDelta  = dRy;
+                                            qbAttDelta     = (Number(_Ai(p, 'stat_attempts')) || 0) - Number(b.at || 0);
                                         } else {
                                             if (Math.abs(dPy) > rcvBest) {   // this non-QB gained receiving yards = the target
                                                 rcvBest = Math.abs(dPy);
@@ -3536,10 +3583,15 @@
                                     // nobody was sacked, the settle is consumed in
                                     // silence — whatever _6F did.
                                     if (!(window._rb2p_feedSawSack === true ||
-                                          window._rb2p_feedThrew === true ||
+                                          (window._rb2p_feedThrew === true && qbAttDelta > 0) ||
                                           qbPassDelta > 0.01 ||
                                           qbRushAttDelta > 0 || Math.abs(qbRushYdDelta) > 0.01 ||
                                           rcvName || runName)) {
+                                        // V346: `threw` alone no longer qualifies — punts and
+                                        // kickoffs sail through the airborne kp too, which is
+                                        // where the ghost "RODGERS — INCOMPLETE PASS" lines
+                                        // came from. A real incompletion always bumps the
+                                        // QB's stat_attempts; a kick never does.
                                         window._rb2p_feedEmitted = true;
                                         if (window._rb2p_diagLog) window._rb2p_diagLog(
                                             'cSKIP no-stat settle dY=' +
@@ -3569,10 +3621,28 @@
                                         ' qbPass=' + qbPassDelta.toFixed(1) + ' qbRush=' + qbRushAttDelta +
                                         ' rcvN=' + (rcvName || '-') + ' runN=' + (runName || '-') +
                                         ' yds=' + (evt.yds != null ? evt.yds : '-'));
+                                    // V346: the second lock on the same door — the
+                                    // per-kind law validator. The master gate above
+                                    // says SOMETHING moved; this says the specific
+                                    // line being pushed is licensed by ITS delta.
+                                    var v346Law = (typeof window._rb2p_feedLawCheck === 'function')
+                                        ? window._rb2p_feedLawCheck(evt, {
+                                              qbName: qbNm, runName: runName, rcvName: rcvName,
+                                              qbPassDelta: qbPassDelta, qbRushAttDelta: qbRushAttDelta,
+                                              qbRushYdDelta: qbRushYdDelta, qbAttDelta: qbAttDelta,
+                                              threw: window._rb2p_feedThrew === true,
+                                              sawSack: window._rb2p_feedSawSack === true,
+                                              fumbleDelta: 0 })
+                                        : null;
+                                    if (v346Law) {
+                                        window._rb2p_feedEmitted = true;
+                                        if (window._rb2p_diagLog) window._rb2p_diagLog('cLAW blocked: ' + v346Law);
+                                    } else {
                                     window._rb2p_pushFeed(evt);
                                     window._rb2p_feedEmitted = true;
                                     if (typeof window._rb2p_publishBoxNow === 'function')
                                         window._rb2p_publishBoxNow('settle');   // V334: every play persists the box
+                                    }   // V346 law
                                     }   // V345 no-stat gate
                                 }
                             }
@@ -3583,10 +3653,19 @@
                             var prevF = Number(window._rb2p_offFumbleTotal);
                             if (isFinite(prevF) && totF > prevF) {
                                 fName = nearestOF(ball.x, ball.y, 60);
+                                // V346: the fumble line rides the same law — its
+                                // licence is the roster fumble-total delta.
+                                var v346FumLaw = (typeof window._rb2p_feedLawCheck === 'function')
+                                    ? window._rb2p_feedLawCheck({ k: 'fumble' }, { fumbleDelta: totF - prevF })
+                                    : null;
+                                if (v346FumLaw) {
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('cLAW blocked: ' + v346FumLaw);
+                                } else {
                                 window._rb2p_pushFeed({ k: 'fumble', by: fName });
                                 window._rb2p_feedEmitted = true;
                                 if (typeof window._rb2p_publishBoxNow === 'function')
                                     window._rb2p_publishBoxNow('fumble');   // V334
+                                }
                             }
                             window._rb2p_offFumbleTotal = totF;
                         } catch (eFeed) {}
@@ -5349,6 +5428,38 @@
                 } catch (e) {}
             }, 16);
 
+            // ===== V346: SCORES NEVER GO BACKWARDS — the floor governor =====
+            // Two games lost points to rollbacks: the OT-entry wipe of a 2-pt
+            // conversion, and DJPK's FG+TD collapsing back to 8-8. The live
+            // mirror already rejects regressing pushes (V50), but outcome
+            // appliers and resume paths write scores ABSOLUTELY, so a stale
+            // record could still lower the board. This floor is the last word:
+            // each side's score only ratchets up; any write that lowers one is
+            // restored within 100ms. Re-arms on a fresh match (0-0 at Q1).
+            var scoreFloorUser = 0, scoreFloorOpp = 0;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { scoreFloorUser = 0; scoreFloorOpp = 0; return; }
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    var u = Number(em.userScore) || 0, o = Number(em.opponentScore) || 0;
+                    // (No in-match re-arm: a wipe TO 0-0 is exactly the attack this
+                    // floor exists to stop. A genuine rematch passes through the
+                    // lobby — not-in-match — which resets the floors above.)
+                    if (u < scoreFloorUser || o < scoreFloorOpp) {
+                        var ru = Math.max(u, scoreFloorUser), ro = Math.max(o, scoreFloorOpp);
+                        console.warn('[2P SCORE-FLOOR] regression ' + u + '-' + o +
+                                     ' restored to ' + ru + '-' + ro);
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'SCORE-FLOOR ' + u + '-' + o + ' -> ' + ru + '-' + ro);
+                        if (u < scoreFloorUser) em.setUserScore(scoreFloorUser);
+                        if (o < scoreFloorOpp) em.setOpponentScore(scoreFloorOpp);
+                    }
+                    scoreFloorUser = Math.max(scoreFloorUser, Number(em.userScore) || 0);
+                    scoreFloorOpp = Math.max(scoreFloorOpp, Number(em.opponentScore) || 0);
+                } catch (e) {}
+            }, 100);
+
             var hookedEngineCommentaryScript = false;
             function hookEngineCommentaryScript() {
                 if (hookedEngineCommentaryScript) return;
@@ -6251,8 +6362,8 @@
                     if (typeof cap === 'number' && (Number(em.userScore) || 0) !== cap) return 'score ' + cap + '->' + em.userScore;
                     var vyS = Number(em.engineDriveFsmStage);
                     if (Number(em.engineDownNumber) === 6) return 'down=6 (PAT pending)';
-                    if (vyS === 9 || vyS === 11) return 'Vy=' + vyS + ' (TD flow)';
-                    if (capMs && window._rb2p_vyTdSeenMs > capMs) return 'Vy=9 seen after capture';
+                    if (vyS === 9 || vyS === 11 || vyS === 14) return 'Vy=' + vyS + ' (scoring flow)';   // V346: 14 = made FG
+                    if (capMs && window._rb2p_vyTdSeenMs > capMs) return 'Vy=9/14 seen after capture';
                 } catch (eSC) {}
                 return null;
             };
@@ -6412,7 +6523,12 @@
                     // stage (Vy=9). The QTR-KEEP restore uses this (plus the
                     // score snapshots below) to refuse to roll back over a play
                     // that SCORED at the quarter boundary.
-                    if (Number(em.engineDriveFsmStage) === 9)
+                    // V346: a MADE FIELD GOAL (Vy=14) is the same hazard — room
+                    // DJPK: a FG kicked as Q3 expired was rolled back exactly
+                    // like the USFR touchdown, drive handed back to the kicker
+                    // at a fresh 1:00. Latch both scoring stages.
+                    if (Number(em.engineDriveFsmStage) === 9 ||
+                        Number(em.engineDriveFsmStage) === 14)
                         window._rb2p_vyTdSeenMs = Date.now();
 
                     if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen) {
@@ -9965,7 +10081,13 @@
                     // the ball is dead. Capped at ~12s (40 × 300ms) so a parked/stuck
                     // ball can never deadlock the end-of-game — after the cap we end
                     // anyway. This only DELAYS the FINAL; it never ends early.
-                    if (rb2pPlayInProgress() && ++gameOverPlayWaitTicks < 40) {
+                    // V346 (room DJPK): a pick-6 with 0:03 left armed the PAT and
+                    // the FINAL fired before it could be played. A pending PAT
+                    // (down 6) holds the FINAL exactly like a live ball — capped
+                    // at ~30s so an abandoned modal can't wedge the end forever.
+                    var v346PatHold = Number(em.engineDownNumber) === 6;
+                    if ((rb2pPlayInProgress() || v346PatHold) &&
+                        ++gameOverPlayWaitTicks < (v346PatHold ? 100 : 40)) {
                         if (gameOverPlayWaitTicks === 1)
                             console.log('[2P FINAL] clock 0:00 — holding FINAL until the final play completes');
                         return;
@@ -10841,6 +10963,41 @@
                     var oppR = myRole === 'a' ? 'b' : 'a';
                     var ods = (typeof window._rb2p_collectOppDefStats === 'function')
                         ? window._rb2p_collectOppDefStats() : [];
+                    // ===== V346: DEFENSIVE INTs RECONCILE TO THE THROWN COUNT =====
+                    // The defenders' INT credits are bridge-INFERRED (nearest
+                    // starred defender at the pick); the thrower's stat_int is
+                    // ENGINE truth. Screenshot report: Rodgers 2 INT while his
+                    // defense column carried 3 (Greenlaw 2 + Warner 1). If the
+                    // inferred sum exceeds the thrown truth, trim the excess from
+                    // the least-corroborated credits (lowest tackles first) so
+                    // the two sides of the card can never disagree.
+                    try {
+                        var truthInt = 0;
+                        var rosterR = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+                        if (rosterR && rosterR._Ln != null) {
+                            var nR = _wi(rosterR._Ln);
+                            for (var iR = 0; iR < nR; iR++) {
+                                var pR = _zi(rosterR._Ln, iR);
+                                if (pR) truthInt += Math.round(Number(_Ai(pR, 'stat_int')) || 0);
+                            }
+                        }
+                        var sumInt = 0;
+                        for (var oi = 0; oi < ods.length; oi++) sumInt += Math.round(Number(ods[oi].int) || 0);
+                        var guard = 0;
+                        while (sumInt > truthInt && guard++ < 40) {
+                            var worst = -1;
+                            for (var oj = 0; oj < ods.length; oj++) {
+                                if (Math.round(Number(ods[oj].int) || 0) <= 0) continue;
+                                if (worst < 0 ||
+                                    (Number(ods[oj].tck) || 0) < (Number(ods[worst].tck) || 0)) worst = oj;
+                            }
+                            if (worst < 0) break;
+                            ods[worst].int = Math.round(Number(ods[worst].int) || 0) - 1;
+                            sumInt--;
+                        }
+                        if (guard > 0 && window._rb2p_diagLog)
+                            window._rb2p_diagLog('DEF-INT reconciled to thrown=' + truthInt);
+                    } catch (eRC) {}
                     oppDefStatsLocal = ods;   // V106: keep a local copy to render the opp's D rows here
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/defstats/' + oppR), ods).catch(function () {});
                     if (oppFinalReport) renderFinal();   // re-render now that opp D is captured
@@ -14420,6 +14577,13 @@
                     if (Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5) {
                         em.engineYardLineSigned = 48;
                         em.engineYardsToGo = 2;
+                        // V346 (room DJPK): moving the register isn't enough — the
+                        // STAGED field (markers, huddle) was still drawn at the old
+                        // spot, so the modal sat over a midfield formation. Resync
+                        // the drawn scrimmage to the pinned register.
+                        if (typeof window._rb2p_resyncScrimmage === 'function') {
+                            try { window._rb2p_resyncScrimmage(em, 'pat-pin'); } catch (eRS) {}
+                        }
                         if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PIN re-pinned to 48');
                     }
                 } catch (e) {}
