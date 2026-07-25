@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V339<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V340<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V339</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V340</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -10049,6 +10049,20 @@
                     em.engineMinutesLeft   = Math.floor(qsec / 60);
                     em.engineSecondsLeft   = qsec % 60;
                     em.engineTickAllowance = 0;
+                    // ===== V340 (DEQC Bug 1 — the CONFIRMED trigger) =====
+                    // The Q2->Q3 boundary latches a pre-rollover capture
+                    // (yard/down/toGo) on BOTH devices, and the halftime
+                    // transition is LAW-driven — no outcome flows, so the V128
+                    // capture-clear never runs and the stale capture rode into
+                    // the 2nd half (e2e/v340-halffg.js reproduced it: preYard
+                    // armed on both sides after a missed FG at 0:00). That
+                    // leftover is exactly the poison that clobbered the pick-6
+                    // PAT pin in room DEQC ("PAT from the opponent's 20"). The
+                    // LAW starts a fresh, law-defined drive: void the captures.
+                    window._rb2p_quarterResumePending = false;
+                    window._rb2p_preRolloverYard = null;
+                    window._rb2p_preRolloverDown = null;
+                    window._rb2p_preRolloverToGo = null;
                     if (role === 'b') {
                         // B receives the 2nd-half kickoff → on offense, fresh 1st & 10.
                         window._rb2p_userIsWaitingForOpponent    = false;
