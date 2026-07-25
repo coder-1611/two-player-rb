@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V343<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V344<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V343</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V344</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -13996,8 +13996,15 @@
                     evtPrevMyScore = s; evtPrevOppScore = so;
                     if (window._rb2p_gameOverReported === true) return;
                     if (Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) < 3000) return;
-                    if (d >= 6)       { evtLastTdMs = Date.now(); window._rb2p_sendEventBlast('TD'); }
-                    else if (d === 3) { window._rb2p_sendEventBlast('FG'); }
+                    // V344: only the device ON OFFENSE may report a score event.
+                    // A waiting device's own score can only move via wire sync —
+                    // and when that lands outside the outcome-apply window (the
+                    // clean-PAT ordering), the old code evented it BACK at the
+                    // scorer: TOUCHDOWN popped on the throwing screen (device
+                    // report). The scorer's own celebration is the engine's.
+                    var evtOnOffense = window._rb2p_userIsWaitingForOpponent !== true;
+                    if (d >= 6 && evtOnOffense)       { evtLastTdMs = Date.now(); window._rb2p_sendEventBlast('TD'); }
+                    else if (d === 3 && evtOnOffense) { window._rb2p_sendEventBlast('FG'); }
                     if (dOpp === 2 && window._rb2p_userIsWaitingForOpponent !== true &&
                         window._rb2p_patPlayPending !== true &&
                         window._rb2p_pickSixPatCascadeActive !== true &&
@@ -14115,21 +14122,23 @@
                 } catch (e) {}
             }, 500);
 
-            // ===== V338 (DEQC Bug 3): pick-6 PAT pin hold =====
-            // While the pick-6 PAT is pending and the 1PT/2PT choice is still
-            // up (engineDownNumber === 6), the scrimmage must stay at the
-            // pinned 2-yard line (+48). Anything that moves it — a stale
-            // QTR-KEEP restore, a stray spawn reusing an old ball spot — is
-            // snapped back within 100ms. Released the moment the choice is
-            // made (the down leaves 6), the PAT resolves, or 15s pass.
+            // ===== V344: EVERY PAT snaps from the 2 — hard-coded, universal =====
+            // (Supersedes the V338 pick-6-only hold.) Device report with
+            // screenshot: a NORMAL touchdown's 1-or-2-point modal lined up at
+            // ~midfield — the conversion inherits whatever spot the TD play
+            // ended at, and V338's pin only covered the pick-6 cascade
+            // (patPlayPending). The engine's down 6 is the PAT-pending marker
+            // and NOTHING else, so the rule is absolute: while the down is 6,
+            // the scrimmage is +48 (the 2-yard line), whoever is converting,
+            // whatever put the ball elsewhere. Released the instant the choice
+            // is made (the engine resets the down when the scene starts).
             setInterval(function () {
                 try {
-                    if (window._rb2p_patPlayPending !== true ||
-                        window._rb2p_patPlayResolved === true) return;
-                    if (Date.now() > (Number(window._rb2p_patPinHoldUntil) || 0)) return;
+                    if (!RB.isEngineInMatchRoom()) return;
+                    if (window._rb2p_gameOverReported === true) return;
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
-                    if (Number(em.engineDownNumber) !== 6) return;   // choice made — the scene owns the ball
+                    if (Number(em.engineDownNumber) !== 6) return;   // 6 = PAT pending, nothing else
                     if (Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5) {
                         em.engineYardLineSigned = 48;
                         em.engineYardsToGo = 2;

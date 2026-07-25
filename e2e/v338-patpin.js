@@ -77,16 +77,20 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     check('T3 a stray yard write while the PAT is pending is re-pinned to 48',
           Math.abs(t3.yard - 48) <= 0.5, 'yard=' + t3.yard);
 
-    // ---- T4: the hold releases once the PAT resolves ----
+    // ---- T4: the pin releases when the choice is made (down leaves 6) ----
+    // V344 made the pin universal and keyed purely on the down-6 PAT marker:
+    // the engine resets the down the moment the 1PT/2PT choice starts the
+    // scene, and from then on the ball is the scene's to move.
     const t4 = await drv.page.evaluate(async () => {
         window._rb2p_patPlayResolved = true;
         window._rb2p_patPlayPending = false;
+        RB.engineState().engineDownNumber = 1;   // the choice was made — scene owns the ball
         RB.engineState().engineYardLineSigned = -20;
         await new Promise(r => setTimeout(r, 1000));
         return { yard: Number(RB.engineState().engineYardLineSigned) };
     });
-    console.log('  after resolve + move: ' + JSON.stringify(t4));
-    check('T4 the pin hold releases after the PAT resolves',
+    console.log('  after choice + move: ' + JSON.stringify(t4));
+    check('T4 the pin releases once the down leaves the PAT marker',
           Math.abs(t4.yard - (-20)) <= 0.5, 'yard=' + t4.yard);
 
     await g.cleanup();
