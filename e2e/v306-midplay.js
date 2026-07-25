@@ -159,7 +159,13 @@ const SET_BALL_KP = `(function (kp) {
             const s = RB.engineState();
             s.engineMinutesLeft = 0; s.engineSecondsLeft = 0; s.engineTickAllowance = 0;
         });
-        // Watch the park briefly.
+        // Watch the park briefly. Only QTR-ADVANCE lines logged DURING this
+        // watch window can flag — the old `seenAdvance` set was never
+        // populated, so a legit keep line from a PRIOR attempt (logged after
+        // its ball died) false-flagged any later live sample under CPU load
+        // (twice in loaded suite runs; serial reruns green, incl. one that
+        // reproduced the live park with the keep correctly holding).
+        const logLen0 = log.length;
         for (let i = 0; i < 30; i++) {
             const s = await drv.page.evaluate(() => {
                 const st = RB.engineState();
@@ -169,8 +175,8 @@ const SET_BALL_KP = `(function (kp) {
             });
             if (s.vy === 13 && s.live) { caughtLiveAtPark = true; reproduced = true; }
             // A keep that fires while the ball is live IS the bug.
-            if (s.live && log.some(l => l.indexOf('[2P QTR-ADVANCE] Vy=13') >= 0 &&
-                                        !seenAdvance.has(l))) keepFiredWhileLive = true;
+            if (s.live && log.slice(logLen0).some(l =>
+                    l.indexOf('[2P QTR-ADVANCE] Vy=13') >= 0)) keepFiredWhileLive = true;
             if (log.some(l => l.indexOf('holding the quarter-keep') >= 0)) held = true;
             await sleep(60);
         }

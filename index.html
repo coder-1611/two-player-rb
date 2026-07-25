@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V338<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V339<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V338</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V339</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3249,7 +3249,25 @@
                     // active-play → typed OTHER), so a genuine interception shipped
                     // with no type and the INTERCEPTED blast never fired. This latch
                     // is the reliable signal buildUserDriveEndOutcome needs.
-                    try { if (Number((RB.engineState() || {}).engineDriveFsmStage) === 8) window._rb2p_lastTurnoverVy8Ms = Date.now(); } catch (eV8) {}
+                    try {
+                        if (Number((RB.engineState() || {}).engineDriveFsmStage) === 8) {
+                            window._rb2p_lastTurnoverVy8Ms = Date.now();
+                            // V339: the takeaway popup fires from the CANONICAL
+                            // turnover moment itself — the _1c1 send path can be
+                            // deferred (V56 hold) or rerouted, and on-device the
+                            // INT popup was not showing at all. 5s dedupe so the
+                            // stage (re-stamped every 16ms) sends exactly one.
+                            if (window._rb2p_userIsWaitingForOpponent !== true &&
+                                Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
+                                typeof window._rb2p_sendEventBlast === 'function') {
+                                window._rb2p_lastIntEvtMs = Date.now();
+                                window._rb2p_sendEventBlast(
+                                    (isFinite(Number(window._rb2p_lastFumbleMs)) &&
+                                     Date.now() - Number(window._rb2p_lastFumbleMs) < 5000)
+                                    ? 'FUMBLE' : 'INT');
+                            }
+                        }
+                    } catch (eV8) {}
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var i, x, ball = null;
                     for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { ball = x; break; } }
@@ -3408,7 +3426,18 @@
                                 var settledNow = window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
                                     ((Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
                                      (Math.abs(Number(fm._6F) - Number(window._rb2p_feedYard0)) >= 0.5));
-                                if (settledNow) {
+                                if (settledNow &&
+                                    Date.now() - (Number(window._rb2p_lastTurnoverVy8Ms) || 0) < 4000) {
+                                    // ===== V339 (owner's rule: box-stat deltas ONLY) =====
+                                    // A possession-flip settle is NOT a play. The INT
+                                    // return moves _6F backwards with ZERO stat deltas,
+                                    // and the QB-keep fallback then invented lines like
+                                    // "PURDY -14 YDS" on the WAIT feed (device report).
+                                    // Inside the turnover window nothing is emitted —
+                                    // the INT/FUMBLE blast covers the moment.
+                                    window._rb2p_feedEmitted = true;
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('cSKIP turnover-window settle');
+                                } else if (settledNow) {
                                     // V326: CLASSIFY off the box-stat deltas — the engine's own
                                     // record of what it credited. Diff every skill player vs the
                                     // snap baseline: whichever stat MOVED is what happened.
@@ -4730,8 +4759,13 @@
                         // This thrower never blasts its own pick (DEQC showed
                         // INTERCEPTED on the thrower). A fresh on-field fumble
                         // re-labels the event exactly like the receive side did.
+                        // V339: the Vy=8 stamp (observer) is the PRIMARY sender
+                        // now; this send is the backstop, behind the same 5s
+                        // dedupe so a drive never ships two takeaway events.
                         if ((outcome.turnover === true || outcome.type === 'INT') &&
+                            Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
                             typeof window._rb2p_sendEventBlast === 'function') {
+                            window._rb2p_lastIntEvtMs = Date.now();
                             var evKind335 = (isFinite(Number(window._rb2p_lastFumbleMs)) &&
                                              Date.now() - Number(window._rb2p_lastFumbleMs) < 5000)
                                             ? 'FUMBLE' : 'INT';
@@ -13881,16 +13915,27 @@
                     if (window._rb2p_diagLog) window._rb2p_diagLog('EVT-> ' + rec.kind);
                 } catch (e) {}
             };
-            var lastEvtBlastTs = 0, lastEvtBlastSeq = 0;
+            var lastEvtBlastTs = 0, lastEvtBlastSeq = 0, evtBlastFirstReplay = true;
             FB.onValue(
                 FB.ref(db, 'rooms/' + myRoom + '/evt/' + otherRole),
                 function (snap) {
                     try {
                         var evt = snap.val();
+                        // V339 on-device fix: NEVER wall-clock-gate events. The
+                        // first build dropped anything whose SENDER timestamp
+                        // was >45s old — two phones' clocks routinely differ by
+                        // more than that, which silently ate every popup on
+                        // device (the tests never caught it because both test
+                        // tabs share one clock). Only the initial onValue
+                        // replay — the record that already existed when we
+                        // subscribed — is skipped; every event that arrives
+                        // LIVE blasts, whatever its clock says.
+                        var wasFirstReplay = evtBlastFirstReplay;
+                        evtBlastFirstReplay = false;
                         if (!evt || !evt.ts) return;
                         if (evt.ts <= lastEvtBlastTs && Number(evt.seq || 0) <= lastEvtBlastSeq) return;
                         lastEvtBlastTs = evt.ts; lastEvtBlastSeq = Number(evt.seq || 0);
-                        if (Date.now() - Number(evt.ts) > 45000) return;   // stale replay on (re)join
+                        if (wasFirstReplay) return;                         // pre-existing record, not a live event
                         if (window._rb2p_gameOverReported === true) return; // the V324 rule holds for events
                         if (!window._rb2p_evtBlastedAt) window._rb2p_evtBlastedAt = {};
                         window._rb2p_evtBlastedAt[evt.kind] = Date.now();
@@ -13941,7 +13986,7 @@
             // is fresher than our own take of offense (or the opponent's live
             // push visibly also claims the ball). It never PROMOTES a waiting
             // device, so PAT cascades and staging flows are untouched.
-            var turnConflictTicks = 0, turnPrevOff = false, tookOffenseMs = 0;
+            var turnConflictTicks = 0, turnPrevOff = false, tookOffenseMs = 0, turnRescueTicks = 0;
             window._rb2p_declareTurnOwner = function (owner, why) {
                 try {
                     if (!myRoom || !myRole) return;
@@ -13972,15 +14017,62 @@
                     if (window._rb2p_pickSixPatCascadeActive === true ||
                         window._rb2p_patPlayPending === true) return;   // the cascade owns possession
                     var onOff = window._rb2p_userIsWaitingForOpponent !== true;
-                    if (!onOff) { turnPrevOff = false; turnConflictTicks = 0; return; }
+                    if (!onOff) {
+                        turnPrevOff = false; turnConflictTicks = 0;
+                        // ===== V339 RESCUE: both sides parked is a dead game =====
+                        // Seen on device after a refresh around a pick-6: both
+                        // phones hung on WAIT forever (the demote-only design had
+                        // no way back). If the turn record names US, the
+                        // opponent's live push is fresh and explicitly NOT
+                        // claiming the ball, and no cascade owns the scene, take
+                        // the drive back after ~8s of that standoff.
+                        var tR = window._rb2p_turnRec, olR = window._rb2p_oppLiveRx;
+                        var bothParked = tR && tR.owner === myRole &&
+                            olR && Date.now() - (Number(olR.at) || 0) < 4000 &&
+                            olR.iHaveBall !== true &&
+                            window._rb2p_pickSixPatCascadeActive !== true &&
+                            window._rb2p_patPlayPending !== true &&
+                            window._rb2p_gameOverReported !== true;
+                        if (bothParked) {
+                            if (++turnRescueTicks >= 16) {
+                                turnRescueTicks = 0;
+                                console.warn('[2P TURN] both sides parked and the turn is OURS — rescuing the drive');
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE -> offense');
+                                try {
+                                    var yR = null;
+                                    try { yR = Number(RB.engineState().engineYardLineSigned); } catch (eY) {}
+                                    if (!isFinite(yR) || Math.abs(yR) > 49 || yR === 0) yR = -25;
+                                    if (typeof window._rb2p_forceUserOffenseDrive === 'function')
+                                        window._rb2p_forceUserOffenseDrive(yR);
+                                    else window._rb2p_userIsWaitingForOpponent = false;
+                                } catch (eR2) {}
+                            }
+                        } else turnRescueTicks = 0;
+                        return;
+                    }
+                    turnRescueTicks = 0;
                     if (!turnPrevOff) { turnPrevOff = true; tookOffenseMs = Date.now(); }
                     var t = window._rb2p_turnRec;
                     if (!t || t.owner === myRole) { turnConflictTicks = 0; return; }
                     // The record names the OPPONENT while I'm on offense.
+                    // ===== V339 on-device fix: demote ONLY on a LIVE double-claim =====
+                    // The first build also demoted off (a) a fresher turn record
+                    // alone and (b) an opponent claim up to 4s STALE — the
+                    // thrower's last pre-park push. That parked a legitimate
+                    // interceptor seconds after the takeaway (device report: the
+                    // Q3 interception "got skipped" and the thrower's wait screen
+                    // flickered). Now the opponent's push must claim the ball AND
+                    // be STRICTLY NEWER than our own take of offense, and fresh
+                    // legitimate transitions get a breathing window.
+                    if (Date.now() - (Number(window._rb2p_patResultSentMs) || 0) < 8000 ||
+                        Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) < 3000) {
+                        turnConflictTicks = 0; return;
+                    }
                     var ol = window._rb2p_oppLiveRx;
-                    var oppClaims = !!(ol && Date.now() - (Number(ol.at) || 0) < 4000 && ol.iHaveBall === true);
-                    var recNewer = (Number(t.at) || 0) >= tookOffenseMs - 1000;
-                    if (!recNewer && !oppClaims) { turnConflictTicks = 0; return; }
+                    var oppClaims = !!(ol && Date.now() - (Number(ol.at) || 0) < 4000 &&
+                                       Number(ol.at) > tookOffenseMs + 500 &&
+                                       ol.iHaveBall === true);
+                    if (!oppClaims) { turnConflictTicks = 0; return; }
                     if (++turnConflictTicks < 3) return;
                     turnConflictTicks = 0;
                     window._rb2p_userIsWaitingForOpponent = true;

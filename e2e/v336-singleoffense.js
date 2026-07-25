@@ -44,7 +44,7 @@ const waiting = t => t.page.evaluate(() => window._rb2p_userIsWaitingForOpponent
     // ---- T2: force BOTH onto offense; the non-owner must heal back to WAIT ----
     await def.page.evaluate(() => { window._rb2p_userIsWaitingForOpponent = false; });
     await off.page.evaluate(() => { window._rb2p_userIsWaitingForOpponent = false; });
-    await sleep(3000);
+    await sleep(4500);   // V339: demote needs the opponent's claim to be NEWER than the take
     const aW2 = await waiting(g.a), bW2 = await waiting(g.b);
     console.log('  after forced double-offense: a.waiting=' + aW2 + ' b.waiting=' + bW2);
     const healedRole = aW2 ? 'a' : (bW2 ? 'b' : null);
@@ -61,15 +61,22 @@ const waiting = t => t.page.evaluate(() => window._rb2p_userIsWaitingForOpponent
           (aW3 !== bW3) && ((aW3 ? 'a' : 'b') === def.role),
           'a=' + aW3 + ' b=' + bW3);
 
-    // ---- T4: the offense yields over the wire; its stale offense is parked ----
+    // ---- T4 (V339 semantics): a turn record ALONE never parks anyone ----
+    // The first build demoted off a fresher record with no live opposing
+    // claim — on device that parked legitimate drives mid-cascade (the Q3
+    // interception "skip"). Now the record must be corroborated by the
+    // opponent actually claiming the ball; a bare yield-declare while the
+    // opponent stays in WAIT must leave the offense alone.
     await off.page.evaluate((other) => {
         window._rb2p_declareTurnOwner(other, 'test-yield');
     }, def.role);
-    await sleep(3000);
+    await sleep(4000);
     const offW4 = await waiting(off);
-    console.log('  after yield: ' + off.role + '.waiting=' + offW4);
-    check('T4 after yielding the turn, the stale offense side is parked in WAIT',
-          offW4 === true, off.role + '.waiting=' + offW4);
+    // restore the record to the truth for cleanup symmetry
+    await off.page.evaluate((me) => { window._rb2p_declareTurnOwner(me, 'test-restore'); }, off.role);
+    console.log('  after bare yield-declare: ' + off.role + '.waiting=' + offW4);
+    check('T4 a bare turn record with no live opposing claim does NOT park the offense',
+          offW4 === false, off.role + '.waiting=' + offW4);
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
