@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V347<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V348<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V347</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V348</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8747,6 +8747,35 @@
                         return true;
                     }
 
+                    // ===== V348: THE TAKEAWAY POPUP GATES POSSESSION =====
+                    // Device reports kept coming back "INTERCEPTED/FUMBLE never
+                    // shows" — the evt wire is a separate Firebase write racing
+                    // the outcome, and losing that race silently ate the popup.
+                    // The OUTCOME is the one record that provably always arrives
+                    // (possession has never failed to transfer), so the blast
+                    // now fires HERE, synchronously, from the same record that
+                    // grants us the ball — popup first, possession immediately
+                    // after, one atomic sequence. De-duped against the evt path
+                    // (skip if it already blasted this takeaway <8s ago), and
+                    // still NEVER on the device that threw it (fresh Vy=8 stamp
+                    // = our own drive just ended in the turnover). waitFeedBig
+                    // itself re-labels INT->FUMBLE off the fumble feed stamp.
+                    if ((outcome.turnover === true || outcome.type === 'INT') && !rb2pGameOver) {
+                        try {
+                            var v348Eb = window._rb2p_evtBlastedAt || {};
+                            var v348Recent = Math.max(Number(v348Eb.INT) || 0, Number(v348Eb.FUMBLE) || 0);
+                            var v348IThrew = isFinite(Number(window._rb2p_lastTurnoverVy8Ms)) &&
+                                Number(window._rb2p_lastTurnoverVy8Ms) > 0 &&
+                                Date.now() - Number(window._rb2p_lastTurnoverVy8Ms) < 10000;
+                            if (Date.now() - v348Recent > 8000 && !v348IThrew &&
+                                typeof window._rb2p_waitFeedBig === 'function') {
+                                if (!window._rb2p_evtBlastedAt) window._rb2p_evtBlastedAt = {};
+                                window._rb2p_evtBlastedAt.INT = Date.now();
+                                window._rb2p_waitFeedBig('INT', outcome.message);
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('BLAST@possession INT/FUM');
+                            }
+                        } catch (eV348) {}
+                    }
                     // Bug 2/5: clear wait + send sentinels BEFORE any engineMatch
                     // mutation. If something below throws, we still leave the
                     // flags in a sane state and the next outcome can be drained.

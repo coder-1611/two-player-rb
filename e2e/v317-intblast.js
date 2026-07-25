@@ -34,6 +34,7 @@ async function resetBlast(page) {
     await page.evaluate(() => {
         try { window._rb2p_waitFeedReset(); } catch (e) {}
         window._rb2p_lastFumbleMs = 0; window._rb2p_lastTurnoverVy8Ms = 0;
+        window._rb2p_evtBlastedAt = {};   // V348: per-case fresh takeaway (dedupe state)
         window._rb2p_blastPrevScorerScore = 0;   // V318 score-delta baseline
         var b = document.getElementById('rb-wait-blast'); if (b) b.style.display = 'none';
     });
