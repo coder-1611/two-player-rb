@@ -1,4 +1,4 @@
-# Play-test checklist (V342+)
+# Play-test checklist — V343
 
 Run through this in a REAL two-phone game after any meaningful change. It replaces
 the old V321 checklist (lost to the iCloud wipe) and covers everything the
