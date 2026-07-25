@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V340<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V341<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V340</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V341</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -12069,6 +12069,25 @@
                         hiddenAtMs = 0;
                         diagLog('vis: visible' + (hidS ? ' (hidden ' + hidS + 's)' : ''));
                         try { if (window.__rbLayoutNow) window.__rbLayoutNow(); } catch (eL) {}
+                        // ===== V341 (DEQC root cause, MITIGATION): burst-kick the
+                        // engine the moment the tab returns. DEQC's B showed the
+                        // frame chain still dead after "vis: visible" (kicks
+                        // continued) — the 50ms watchdog waits out a 400ms
+                        // flatline before each kick; three quick kicks close the
+                        // gap and re-arm rAF sooner. Hidden-tab rAF throttling
+                        // itself is a browser policy — this cannot be "fixed" in
+                        // JS, only recovered from faster.
+                        try {
+                            if (document.documentElement.classList.contains('rb-in-match') &&
+                                typeof _fi5 === 'function') {
+                                var visKickN = 0;
+                                var visKickIv = setInterval(function () {
+                                    try { _fi5(); } catch (eVK) {}
+                                    if (++visKickN >= 3) clearInterval(visKickIv);
+                                }, 120);
+                                diagLog('VIS-KICK burst x3');
+                            }
+                        } catch (eVB) {}
                         // V264 HEAL-ON-UNLOCK. KRXI: the match wedged while the
                         // page was hidden (auto-lock), and the hidden AUTO-
                         // RECOVER reload couldn't rejoin while suspended. The
