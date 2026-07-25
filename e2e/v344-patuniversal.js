@@ -59,14 +59,16 @@ const blastState = page => page.evaluate(() => ({
     check('T2 the pin releases once the down leaves 6',
           Math.abs(t2.yard - (-20)) <= 0.5, JSON.stringify(t2));
 
-    // ---- T3: a WAITING device's score jump must NOT event a popup ----
-    // (the clean-PAT wire ordering: the waiting phone's own score rises via
-    // sync with no recent outcome apply — the old code sent 'TD' to the scorer)
+    // ---- T3: a WIRE-SYNCED score jump must NOT event a popup ----
+    // (the clean-PAT ordering: the waiting phone's own score rises via the
+    // live mirror — which stamps _rb2p_lastScoreSyncMs (V345) — with no recent
+    // outcome apply. The old code evented that jump BACK at the scorer.)
     await off.page.evaluate(() => {
         var b = document.getElementById('rb-wait-blast'); if (b) b.style.display = 'none';
     });
     await def.page.evaluate(() => {
         window._rb2p_lastOpponentOutcomeApplyMs = 0;   // outside the apply window
+        window._rb2p_lastScoreSyncMs = Date.now();     // what the mirror stamps on a synced write
         var em = RB.engineState();
         em.setUserScore(Number(em.userScore || 0) + 6);
     });

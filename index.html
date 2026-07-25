@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V344<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V345<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V344</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V345</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1924,10 +1924,54 @@
                         }
                     }
                     // Skip s_set_up_play if ball already on the field (mid-drive).
-                    var ballCount = 0;
+                    var ballCount = 0, ballIdleKp = null;
                     for (var j = 0; j < allInstances.length; j++) {
                         var x = allInstances[j];
-                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') ballCount++;
+                        if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') {
+                            ballCount++;
+                            if (ballIdleKp === null) ballIdleKp = Number(x._kp);
+                        }
+                    }
+                    // ===== V345: INSIDE-OUT FORMATION GUARD (room USFR, "plays run
+                    // BACKWARDS after halftime"). An engine quarter-roll the bridge
+                    // later reverts (the 0:00 re-expiry burst; governor drag-back)
+                    // runs _Sc1 (s_switch_drivedirection): _501 AND every live
+                    // player's _L11 flip, but POSITIONS and _B01 don't — probe-
+                    // verified: all 11 OF end up AHEAD of the scrimmage, and a
+                    // visually-forward play resolves as NEGATIVE yards (__6 measures
+                    // by _501). The skip path below used to ADOPT that formation
+                    // (resync just translates it, V300), so the first snap ran the
+                    // wrong way. Detect it pre-snap only (ball._kp 0 — mid-play a
+                    // receiver legitimately crosses the line, V306) and RESPAWN
+                    // instead of adopting: kill the field, fall through to the
+                    // fresh s_set_up_play, which bakes _L11 from the current _501.
+                    if (ballCount > 0 && ballIdleKp === 0) {
+                        var ofAhead = 0, ofTot = 0;
+                        for (var jg = 0; jg < allInstances.length; jg++) {
+                            var xg = allInstances[jg];
+                            if (!xg || xg._HL2 || !xg._eE2 || xg._eE2._fE2 !== 'obj_playerOF') continue;
+                            ofTot++;
+                            if ((Number(xg.x) - Number(engineMatch.engineScrimmagePx)) *
+                                Number(engineMatch.engineDriveDirection) > 4) ofAhead++;
+                        }
+                        if (ofTot >= 6 && ofAhead > ofTot / 2) {
+                            console.warn('[2p-rb] force: adopted formation is INSIDE-OUT (' +
+                                         ofAhead + '/' + ofTot + ' OF ahead of the line, dir ' +
+                                         engineMatch.engineDriveDirection + ') — respawning fresh');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'force INSIDE-OUT ' + ofAhead + '/' + ofTot + ' — respawn');
+                            for (var jk = 0; jk < allInstances.length; jk++) {
+                                var xk = allInstances[jk];
+                                if (!xk || xk._HL2 || !xk._eE2 || !xk._eE2._fE2) continue;
+                                var nk = xk._eE2._fE2;
+                                if (nk === 'obj_ball' || nk === 'obj_playerOF' ||
+                                    nk === 'obj_playerDF' || nk === 'obj_player') {
+                                    try { (typeof _cr === 'function') ? _cr(xk) : (xk._HL2 = true); }
+                                    catch (eIG) { try { xk._HL2 = true; } catch (e2IG) {} }
+                                }
+                            }
+                            ballCount = 0;   // fall through to the fresh spawn below
+                        }
                     }
                     if (ballCount > 0) {
                         killKickoffButtons();
@@ -3257,8 +3301,12 @@
                             // deferred (V56 hold) or rerouted, and on-device the
                             // INT popup was not showing at all. 5s dedupe so the
                             // stage (re-stamped every 16ms) sends exactly one.
-                            if (window._rb2p_userIsWaitingForOpponent !== true &&
-                                Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
+                            // V345: the waiting-flag guard is GONE — the INT flip
+                            // parks the thrower before this 16ms tick can sample
+                            // Vy=8, so the guard ate the very event it existed to
+                            // send (room USFR: INTERCEPTED never fired). A parked
+                            // engine can't reach Vy=8 anyway (it parks at 4/13).
+                            if (Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
                                 typeof window._rb2p_sendEventBlast === 'function') {
                                 window._rb2p_lastIntEvtMs = Date.now();
                                 window._rb2p_sendEventBlast(
@@ -3478,6 +3526,25 @@
                                             }
                                         }
                                     });
+                                    // ===== V345 (the owner's law, now ABSOLUTE): no
+                                    // box-stat movement, no line. Room USFR still
+                                    // produced "PURDY -64 YDS" — a settle where NO
+                                    // stat moved (the halftime field-flip shoved _6F
+                                    // under a parked snap) fell through to the QB-keep
+                                    // fallback and narrated pure ball-position noise.
+                                    // If nothing was credited, nothing was thrown, and
+                                    // nobody was sacked, the settle is consumed in
+                                    // silence — whatever _6F did.
+                                    if (!(window._rb2p_feedSawSack === true ||
+                                          window._rb2p_feedThrew === true ||
+                                          qbPassDelta > 0.01 ||
+                                          qbRushAttDelta > 0 || Math.abs(qbRushYdDelta) > 0.01 ||
+                                          rcvName || runName)) {
+                                        window._rb2p_feedEmitted = true;
+                                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                            'cSKIP no-stat settle dY=' +
+                                            Math.round(Number(fm._6F) - Number(window._rb2p_feedYard0)));
+                                    } else {
                                     var evt = window._rb2p_classifyPlay({
                                         sawSack:        window._rb2p_feedSawSack,
                                         threw:          window._rb2p_feedThrew,
@@ -3506,6 +3573,7 @@
                                     window._rb2p_feedEmitted = true;
                                     if (typeof window._rb2p_publishBoxNow === 'function')
                                         window._rb2p_publishBoxNow('settle');   // V334: every play persists the box
+                                    }   // V345 no-stat gate
                                 }
                             }
                             // Fumble: watch the roster's total fumbles; on an increase,
@@ -4867,6 +4935,7 @@
                         window._rb2p_preRolloverYard = null;
                         window._rb2p_preRolloverDown = null;
                         window._rb2p_preRolloverToGo = null;
+                        window._rb2p_preRolloverScore = null;   // V345
                         // V56: turnover-type outcomes are HELD briefly before
                         // sending. If this _1c1 was the INT-flip of a pick-6
                         // (the engine flips possession BEFORE the return-TD
@@ -5884,6 +5953,25 @@
                             // clock-gated preRollover capture always misses.
                             var qEnd = (typeof window._rb2p_qEndSpot === 'function')
                                 ? window._rb2p_qEndSpot(halfQ) : null;
+                            // ===== V345 (room USFR): NEVER restore over a play that
+                            // SCORED. A TD on the quarter's last play leaves down=6 /
+                            // Vy 9→11 — the qEndLatch refuses down 6, so this path
+                            // fell back to the PRE-SNAP preRollover capture and
+                            // resurrected the pre-TD drive ("Q4 began 1st & 2 in the
+                            // red zone"). patPlayPending never guards a NORMAL TD
+                            // (it's pick-6-scoped), so check the score/TD evidence
+                            // directly and VOID the whole keep: the TD stands, the
+                            // engine's own PAT/kickoff cascade owns the drive.
+                            var qkScored = (typeof window._rb2p_scoredSinceCapture === 'function')
+                                ? window._rb2p_scoredSinceCapture(engineMatch, !!qEnd) : null;
+                            if (qkScored) {
+                                if (typeof window._rb2p_voidQtrKeepCaptures === 'function')
+                                    window._rb2p_voidQtrKeepCaptures('Vy=13 keep into Q' + halfQ + ': ' + qkScored);
+                                window._rb2p_qGovToppedQ = null;
+                                stuckEngineFsmStage = null;
+                                engineFsmStageStuckSinceMs = Date.now();
+                                return;
+                            }
                             var keepYard = qEnd ? qEnd.yard
                                 : (typeof window._rb2p_preRolloverYard === 'number')
                                 ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
@@ -5959,6 +6047,21 @@
                         // preRollover capture, which never sees the quarter's last play.
                         var qEndD = (typeof window._rb2p_qEndSpot === 'function')
                             ? window._rb2p_qEndSpot(qTo) : null;
+                        // V345: same law as the Vy=13 keep — a capture from BEFORE a
+                        // score must never be restored over the scoring play. Vy=11
+                        // (PAT setup) is IN deadEngineFsmStages, so a boundary TD
+                        // parked there used to hit this resume and get rolled back
+                        // to the pre-TD spot. Void instead; the PAT guardian /
+                        // forced-end machinery below owns the post-TD drive.
+                        var qrScored = (typeof window._rb2p_scoredSinceCapture === 'function')
+                            ? window._rb2p_scoredSinceCapture(engineMatch, !!qEndD) : null;
+                        if (qrScored) {
+                            if (typeof window._rb2p_voidQtrKeepCaptures === 'function')
+                                window._rb2p_voidQtrKeepCaptures('dead-Vy resume into Q' + qTo + ': ' + qrScored);
+                            stuckEngineFsmStage = null;
+                            engineFsmStageStuckSinceMs = Date.now();
+                            return;
+                        }
                         var keepYard = qEndD ? qEndD.yard
                             : (typeof window._rb2p_preRolloverYard === 'number')
                             ? window._rb2p_preRolloverYard : engineMatch.engineYardLineSigned;
@@ -6109,6 +6212,8 @@
             window._rb2p_preRolloverYard = null;        // user's live spot just before the quarter ended
             window._rb2p_preRolloverDown = null;
             window._rb2p_preRolloverToGo = null;
+            window._rb2p_preRolloverScore = null;       // V345: my score at that spot
+            window._rb2p_preRolloverMs    = 0;
             // V302: the SETTLED post-play spot latched at the Vy=13 quarter park (see
             // the latch block below). Preferred over preRollover* by every quarter-keep
             // resume, because preRollover misses the final play of the quarter.
@@ -6116,6 +6221,9 @@
             window._rb2p_qEndLatchYard = null;
             window._rb2p_qEndLatchDown = null;
             window._rb2p_qEndLatchToGo = null;
+            window._rb2p_qEndLatchScore = null;         // V345
+            window._rb2p_qEndLatchMs    = 0;            // V345
+            window._rb2p_vyTdSeenMs     = 0;            // V345: last Vy=9 sighting
             // Returns the latched settled spot for the quarter being ENTERED, or null.
             window._rb2p_qEndSpot = function (q) {
                 if (window._rb2p_qEndLatchQ == null || Number(window._rb2p_qEndLatchQ) !== Number(q)) return null;
@@ -6123,6 +6231,44 @@
                 return { yard: window._rb2p_qEndLatchYard,
                          down: window._rb2p_qEndLatchDown,
                          toGo: window._rb2p_qEndLatchToGo };
+            };
+            // ===== V345: "did the drive SCORE after this capture was taken?" =====
+            // Room USFR: a TD at Q3 0:01 was rolled back — the Q3->Q4 keep restored
+            // the preRollover capture ({red zone, 1st, goal-line toGo}) OVER the
+            // touchdown, because nothing compared the capture to the present. The
+            // rule is absolute: a quarter-keep may only restore a spot from the SAME
+            // un-scored drive. Evidence that a score/TD happened since the capture:
+            //   - my score differs from the score snapshotted WITH the capture;
+            //   - the down is 6 (the engine's PAT-pending marker and nothing else);
+            //   - the FSM is on the TD replay (9) or PAT setup (11) stage;
+            //   - Vy=9 was SEEN after the capture was taken (the 100ms latch).
+            // Any of these => the restore must be VOIDED and the normal post-TD
+            // flow (PAT modal -> kickoff -> outcome send) left alone.
+            window._rb2p_scoredSinceCapture = function (em, usedQEnd) {
+                try {
+                    var cap = usedQEnd ? window._rb2p_qEndLatchScore : window._rb2p_preRolloverScore;
+                    var capMs = usedQEnd ? window._rb2p_qEndLatchMs : window._rb2p_preRolloverMs;
+                    if (typeof cap === 'number' && (Number(em.userScore) || 0) !== cap) return 'score ' + cap + '->' + em.userScore;
+                    var vyS = Number(em.engineDriveFsmStage);
+                    if (Number(em.engineDownNumber) === 6) return 'down=6 (PAT pending)';
+                    if (vyS === 9 || vyS === 11) return 'Vy=' + vyS + ' (TD flow)';
+                    if (capMs && window._rb2p_vyTdSeenMs > capMs) return 'Vy=9 seen after capture';
+                } catch (eSC) {}
+                return null;
+            };
+            // Voiding = drop every quarter-boundary capture AND the armed resume,
+            // so neither restore path (Vy=13 keep, dead-Vy resume) can fire on it.
+            window._rb2p_voidQtrKeepCaptures = function (why) {
+                window._rb2p_quarterResumePending = false;
+                window._rb2p_preRolloverYard = null;
+                window._rb2p_preRolloverDown = null;
+                window._rb2p_preRolloverToGo = null;
+                window._rb2p_preRolloverScore = null;
+                window._rb2p_qEndLatchQ = null;
+                window._rb2p_qEndLatchScore = null;
+                console.log('[2P QTR-KEEP] restore VOIDED — ' + why +
+                            ' — the scoring play stands; normal post-TD flow owns the drive');
+                if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP VOID (' + why + ')');
             };
             var qkPrevQuarterSeen = null;
             var qkQuarterStartSec = null;               // the new quarter's starting clock (seconds), captured after the clock resets
@@ -6190,6 +6336,11 @@
                         window._rb2p_preRolloverYard = em.engineYardLineSigned;
                         window._rb2p_preRolloverDown = qkDown;
                         window._rb2p_preRolloverToGo = em.engineYardsToGo;
+                        // V345: snapshot my score WITH the spot. If the score has
+                        // moved by restore time, the captured spot is PRE-SCORE
+                        // state and restoring it would roll the score's play back.
+                        window._rb2p_preRolloverScore = Number(em.userScore) || 0;
+                        window._rb2p_preRolloverMs    = Date.now();
                     }
 
                     // ===== V302: latch the SETTLED spot at the quarter park (Vy=13) =====
@@ -6232,6 +6383,8 @@
                         window._rb2p_qEndLatchYard = Number(em.engineYardLineSigned);
                         window._rb2p_qEndLatchDown = qkDown;
                         window._rb2p_qEndLatchToGo = Number(em.engineYardsToGo);
+                        window._rb2p_qEndLatchScore = Number(em.userScore) || 0;   // V345
+                        window._rb2p_qEndLatchMs    = Date.now();                  // V345
                         console.log('[2P QTR-SPOT] latched settled end-of-quarter spot for Q' + qNow +
                                     ': yard ' + window._rb2p_qEndLatchYard +
                                     ', ' + window._rb2p_qEndLatchDown + '&' + window._rb2p_qEndLatchToGo +
@@ -6244,6 +6397,23 @@
                     // AND uncorruptable by a regression, so it's a trustworthy floor.
                     if (clockRunning && qNow >= (Number(window._rb2p_lastStableQuarter) || 1))
                         window._rb2p_lastStableQuarter = qNow;
+
+                    // V345: latch the STABLE drive direction the same way. Every
+                    // rogue _Sc1 (a case-19 roll the governor later drags back)
+                    // flips _501 at 0:00 — clock-gating this latch means it only
+                    // ever holds a direction the game actually PLAYED. The Q3-LAW
+                    // restores it across halftime (the engine's own rule: case 19
+                    // into Q3 skips _Sc1, so Q3's direction === Q2's).
+                    var dirNow = Number(em.engineDriveDirection);
+                    if (clockRunning && (dirNow === 1 || dirNow === -1))
+                        window._rb2p_stableDir = dirNow;
+
+                    // V345: remember the last time the drive FSM showed the TD
+                    // stage (Vy=9). The QTR-KEEP restore uses this (plus the
+                    // score snapshots below) to refuse to roll back over a play
+                    // that SCORED at the quarter boundary.
+                    if (Number(em.engineDriveFsmStage) === 9)
+                        window._rb2p_vyTdSeenMs = Date.now();
 
                     if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen) {
                         // Quarter just incremented.
@@ -6295,6 +6465,59 @@
                         }
                     }
                 } catch (e) {}
+            }, 100);
+
+            // ===== V345: INSIDE-OUT FIELD WATCHDOG (room USFR, Bug A) =====
+            // The one-shot Q3-LAW direction restore is NOT enough: the harness
+            // proved the rogue _Sc1 can land AFTER the law heals — a Vy=12 parked
+            // by the 0:00 boundary window fires its case 19 SECONDS later (the
+            // engine's commentary FSM is timer-driven), flipping _501 + every
+            // live player's _L11 over a formation whose positions and _B01 were
+            // built for the other direction. The governor reverts the quarter
+            // NUMBER those rolls produce, but nothing reverted the direction
+            // side effect — so enforce the INVARIANT instead of the history:
+            // between plays (dead ball at rest — never mid-snap, V306), the
+            // offense must stand BEHIND its own scrimmage in the _501 sense. If
+            // the majority stands AHEAD, the field is inside-out; _Sc1 is its
+            // own inverse (positions/_B01 untouched), so one compensating call
+            // + a scrimmage resync restores the exact pre-flip world. Two
+            // consecutive 100ms samples required, 1.5s cooldown, so a mid-write
+            // transient can never trigger a false flip.
+            var insideOutStreak = 0, insideOutHealedMs = 0;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) return;
+                    if (window._rb2p_userIsWaitingForOpponent === true) { insideOutStreak = 0; return; }
+                    var emIO = RB.engineState();
+                    if (!emIO || emIO.engineUserTeamIdx == null ||
+                        emIO.enginePossessingTeamIdx !== emIO.engineUserTeamIdx) { insideOutStreak = 0; return; }
+                    var dirIO = Number(emIO.engineDriveDirection);
+                    if (dirIO !== 1 && dirIO !== -1) { insideOutStreak = 0; return; }
+                    var allIO = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var ballIO = null, ofAheadIO = 0, ofTotIO = 0;
+                    for (var io = 0; io < allIO.length; io++) {
+                        var xio = allIO[io];
+                        if (!xio || xio._HL2 || !xio._eE2) continue;
+                        if (xio._eE2._fE2 === 'obj_ball' && !ballIO) ballIO = xio;
+                        else if (xio._eE2._fE2 === 'obj_playerOF') {
+                            ofTotIO++;
+                            if ((Number(xio.x) - Number(emIO.engineScrimmagePx)) * dirIO > 4) ofAheadIO++;
+                        }
+                    }
+                    if (!ballIO || Number(ballIO._kp) !== 0 || ofTotIO < 6 ||
+                        ofAheadIO <= ofTotIO / 2) { insideOutStreak = 0; return; }
+                    if (++insideOutStreak < 2) return;
+                    insideOutStreak = 0;
+                    if (Date.now() - insideOutHealedMs < 1500) return;
+                    insideOutHealedMs = Date.now();
+                    console.warn('[2P DIR-GUARD] field is INSIDE-OUT (' + ofAheadIO + '/' + ofTotIO +
+                                 ' OF ahead of the line, dir ' + dirIO + ') — a reverted quarter ' +
+                                 'roll left its _Sc1 behind; compensating');
+                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                        'DIR-GUARD un-flip ' + ofAheadIO + '/' + ofTotIO + ' dir ' + dirIO);
+                    if (typeof _Sc1 === 'function') _Sc1(emIO.rawEngineMatch, _Sc2);
+                    resyncScrimmage(emIO, 'dir-guard');
+                } catch (eIO) {}
             }, 100);
 
             // ===== Bidirectional UD watchdog =====
@@ -8269,6 +8492,7 @@
                                 window._rb2p_preRolloverYard = null;
                                 window._rb2p_preRolloverDown = null;
                                 window._rb2p_preRolloverToGo = null;
+                                window._rb2p_preRolloverScore = null;   // V345
                                 window._rb2p_patPinHoldUntil = Date.now() + 15000;
                                 // V255: on a RESUMED room the drive FSM is still
                                 // at stage 0 and drives are un-armed — the modal
@@ -8381,6 +8605,7 @@
                     window._rb2p_preRolloverYard = null;
                     window._rb2p_preRolloverDown = null;
                     window._rb2p_preRolloverToGo = null;
+                    window._rb2p_preRolloverScore = null;   // V345
 
                     // V57: a generic outcome arriving while a pick-6 cascade
                     // is still up means the flow went off-script (expected:
@@ -10063,6 +10288,27 @@
                     window._rb2p_preRolloverYard = null;
                     window._rb2p_preRolloverDown = null;
                     window._rb2p_preRolloverToGo = null;
+                    window._rb2p_preRolloverScore = null;   // V345: score rides with the spot
+                    // ===== V345 (room USFR — "plays run BACKWARDS after halftime") =====
+                    // The engine's OWN halftime rule is: case 19 into Q3 SKIPS _Sc1,
+                    // so Q3's drive direction === Q2's. But a 0:00 re-expiry burst
+                    // (Q2→Q3→Q4, then the governor drags the quarter back) runs an
+                    // EXTRA _Sc1 that nothing compensates — _501 and every live
+                    // player's _L11 flip while their positions and _B01 stay, leaving
+                    // an INSIDE-OUT field. The quarter number is governed; the
+                    // direction register wasn't. Restore the last direction the game
+                    // STABLY PLAYED (clock-gated latch, so a burst can never poison
+                    // it) before spawning the 2nd-half drive.
+                    var sDir = Number(window._rb2p_stableDir);
+                    if ((sDir === 1 || sDir === -1) &&
+                        Number(em.engineDriveDirection) !== sDir) {
+                        console.warn('[2P Q3-LAW] drive direction ' + em.engineDriveDirection +
+                                     ' contradicts the last stably-played direction ' + sDir +
+                                     ' (rogue mid-boundary _Sc1) — restoring');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'Q3-LAW dir restored ' + em.engineDriveDirection + '->' + sDir);
+                        em.engineDriveDirection = sDir;
+                    }
                     if (role === 'b') {
                         // B receives the 2nd-half kickoff → on offense, fresh 1st & 10.
                         window._rb2p_userIsWaitingForOpponent    = false;
@@ -10074,8 +10320,16 @@
                         em.engineSubCommentaryText  = '';
                         try { if (Number(rawQ3._Nb1) < 1) rawQ3._Nb1 = 1; } catch (eN) {}
                         var koY = window._rb2p_kickoffReturnYard();   // own 25..40 (negative)
+                        // V345: freshDrive — the 2nd-half kickoff is a FRESH
+                        // possession, exactly like the OT kickoff (V315). Without
+                        // it, the skip-path ADOPTED whatever formation survived the
+                        // Vy=13 park — including the inside-out one a rogue _Sc1
+                        // leaves — and the first Q3 snap ran the wrong way. A dead
+                        // field + s_set_up_play rebuilds the huddle from the (just
+                        // restored) _501, so facings, positions, _B01/_vb1 and the
+                        // play resolution all agree by construction.
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function')
-                            window._rb2p_forceUserOffenseDrive(koY);
+                            window._rb2p_forceUserOffenseDrive(koY, true);
                         em.engineDownNumber = 1;
                         em.engineYardsToGo  = 10;
                         // V298: forceUserOffenseDrive already ran s_set_up_play, which
@@ -12460,6 +12714,7 @@
         var unsubscribeTeams = null;
         var unsubscribeDiffMode = null;
         var unsubscribeSharedDiff = null;
+        var lastSharedDiff = null;   // V345: last config/sharedDifficulty seen (even outside SAME mode)
         var otAppliedPeriods = {};
         var gameStarted = false;
 
@@ -13244,6 +13499,13 @@
                     var v = snap.val();
                     if (v === 'same' || v === 'different') {
                         applyDiffModeLocal(v);
+                        // V345: flipping INTO same via the subscription — adopt the
+                        // shared value this device DROPPED while still in 'different'
+                        // (the sharedDifficulty callback returns early outside SAME
+                        // mode and nothing ever replayed it). Equality guard = no echo.
+                        if (v === 'same' && lastSharedDiff &&
+                            lastSharedDiff !== getUserDifficultyPref())
+                            setUserDifficultyPref(lastSharedDiff);
                     } else if (role === 'a') {
                         FB.set(FB.ref(db, 'rooms/' + code + '/config/diffMode'),
                                currentDiffMode).catch(function () {});
@@ -13252,12 +13514,24 @@
             );
             // V209: the shared difficulty value, honored only while in SAME mode.
             // The equality guard stops the click→write→subscription→set echo.
+            // V345: NOBODY seeded this key — it was written only by explicit clicks
+            // (a DEFENSE button in SAME mode, or the SAME mode button itself), so two
+            // devices that RESTORED mode='same' from localStorage (no click this
+            // session) both showed "(SAME)" while silently keeping their OWN local
+            // rb2p_difficulty — room USFR: A ran EASY while B ran MAX. A now seeds it
+            // from its local pick when absent (the quarterMins/diffMode pattern), and
+            // the value is remembered in lastSharedDiff so a late flip into SAME
+            // (see the diffMode callback above) still converges.
             unsubscribeSharedDiff = FB.onValue(
                 FB.ref(db, 'rooms/' + code + '/config/sharedDifficulty'),
                 function (snap) {
                     var v = snap.val();
+                    lastSharedDiff = (typeof v === 'string' && v) ? v : null;
                     if (currentDiffMode !== 'same') return;
                     if (v && v !== getUserDifficultyPref()) setUserDifficultyPref(v);
+                    else if (!v && role === 'a')
+                        FB.set(FB.ref(db, 'rooms/' + code + '/config/sharedDifficulty'),
+                               getUserDifficultyPref()).catch(function () {});
                 }
             );
 
@@ -13469,6 +13743,7 @@
             if (unsubscribeTeams) { unsubscribeTeams(); unsubscribeTeams = null; }
             if (unsubscribeDiffMode) { unsubscribeDiffMode(); unsubscribeDiffMode = null; }
             if (unsubscribeSharedDiff) { unsubscribeSharedDiff(); unsubscribeSharedDiff = null; }
+            lastSharedDiff = null;   // V345: don't carry a stale shared value into the next room
             try {
                 if (myRoom && myRole) {
                     await FB.remove(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole));
@@ -13996,15 +14271,18 @@
                     evtPrevMyScore = s; evtPrevOppScore = so;
                     if (window._rb2p_gameOverReported === true) return;
                     if (Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) < 3000) return;
-                    // V344: only the device ON OFFENSE may report a score event.
-                    // A waiting device's own score can only move via wire sync —
-                    // and when that lands outside the outcome-apply window (the
-                    // clean-PAT ordering), the old code evented it BACK at the
-                    // scorer: TOUCHDOWN popped on the throwing screen (device
-                    // report). The scorer's own celebration is the engine's.
-                    var evtOnOffense = window._rb2p_userIsWaitingForOpponent !== true;
-                    if (d >= 6 && evtOnOffense)       { evtLastTdMs = Date.now(); window._rb2p_sendEventBlast('TD'); }
-                    else if (d === 3 && evtOnOffense) { window._rb2p_sendEventBlast('FG'); }
+                    // V345 (supersedes V344's on-offense gate): a score event is
+                    // suppressed only when the jump came off the WIRE — the live
+                    // mirror stamps _rb2p_lastScoreSyncMs whenever it changes our
+                    // score, and outcome applies stamp their own window above.
+                    // V344 gated on the WAITING flag instead, which ate the real
+                    // FIELD GOAL popup whenever the +3 credited after the
+                    // drive-end send had already parked the kicker (room USFR:
+                    // FG popups never fired). An engine-earned score events no
+                    // matter what the possession flag says; a synced one never.
+                    var evtWireSync = Date.now() - (Number(window._rb2p_lastScoreSyncMs) || 0) < 2500;
+                    if (d >= 6 && !evtWireSync)       { evtLastTdMs = Date.now(); window._rb2p_sendEventBlast('TD'); }
+                    else if (d === 3 && !evtWireSync) { window._rb2p_sendEventBlast('FG'); }
                     if (dOpp === 2 && window._rb2p_userIsWaitingForOpponent !== true &&
                         window._rb2p_patPlayPending !== true &&
                         window._rb2p_pickSixPatCascadeActive !== true &&
@@ -14219,6 +14497,15 @@
                     var pushWouldRegressQuarter =
                         incomingQ != null && incomingQ < Number(engineMatch.engineQuarter);
                     if (userIsOnDefense && !localPlayingPatScene && !pushWouldRegressScore) {
+                        // V345: stamp any mirror write that CHANGES our own score —
+                        // the popup event watcher must never narrate a wire-synced
+                        // point as if this device earned it (room USFR: TOUCHDOWN
+                        // popped on the scorer because the waiting phone's synced
+                        // +6 was evented back at it).
+                        if (typeof opponentLivePayload.oppScore === 'number' &&
+                            Number(opponentLivePayload.oppScore) !== Number(engineMatch.userScore)) {
+                            window._rb2p_lastScoreSyncMs = Date.now();
+                        }
                         engineMatch.setOpponentScore(opponentLivePayload.myScore);
                         engineMatch.setUserScore(opponentLivePayload.oppScore);
                         if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
