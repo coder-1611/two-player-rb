@@ -977,7 +977,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V346<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V347<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1045,7 +1045,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V346</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V347</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3653,6 +3653,12 @@
                             var prevF = Number(window._rb2p_offFumbleTotal);
                             if (isFinite(prevF) && totF > prevF) {
                                 fName = nearestOF(ball.x, ball.y, 60);
+                                // V347 (Opus review #4): stamp OUR OWN fumble here —
+                                // the Vy=8 event sender reads this to relabel the
+                                // takeaway FUMBLE vs INT, but the stamp was only
+                                // ever written on the RECEIVING device, so the team
+                                // that fumbled shipped "INTERCEPTED".
+                                window._rb2p_lastFumbleMs = Date.now();
                                 // V346: the fumble line rides the same law — its
                                 // licence is the roster fumble-total delta.
                                 var v346FumLaw = (typeof window._rb2p_feedLawCheck === 'function')
@@ -5454,6 +5460,13 @@
                             'SCORE-FLOOR ' + u + '-' + o + ' -> ' + ru + '-' + ro);
                         if (u < scoreFloorUser) em.setUserScore(scoreFloorUser);
                         if (o < scoreFloorOpp) em.setOpponentScore(scoreFloorOpp);
+                        // V347 (Opus review #1): a RESTORE is not an earned score.
+                        // Without these two lines the pick-6 score-jump watcher
+                        // read the restored +6 as an engine-earned defensive TD
+                        // (phantom PICK6 cascade!) and the event watcher shipped
+                        // a phantom TOUCHDOWN. Re-baseline both consumers.
+                        if (window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                        window._rb2p_lastScoreSyncMs = Date.now();
                     }
                     scoreFloorUser = Math.max(scoreFloorUser, Number(em.userScore) || 0);
                     scoreFloorOpp = Math.max(scoreFloorOpp, Number(em.opponentScore) || 0);
@@ -6506,7 +6519,14 @@
                     // regresses within a match; reset to 1 at match start). This keeps
                     // it burst-immune (a burst rolls at 0:00, so clockRunning is false)
                     // AND uncorruptable by a regression, so it's a trustworthy floor.
-                    if (clockRunning && qNow >= (Number(window._rb2p_lastStableQuarter) || 1))
+                    // V347 (Opus review #2b): only a quarter this device actually
+                    // DROVE may become the floor. On the WAITING side the V293 pin
+                    // keeps the clock off 0:00 permanently, so clockRunning alone
+                    // let a parked self-roll latch itself as "stable" and ratchet
+                    // gBase — the still-open runaway family. Waiting devices take
+                    // their quarter from the wire, never from their parked engine.
+                    if (clockRunning && window._rb2p_userIsWaitingForOpponent !== true &&
+                        qNow >= (Number(window._rb2p_lastStableQuarter) || 1))
                         window._rb2p_lastStableQuarter = qNow;
 
                     // V345: latch the STABLE drive direction the same way. Every
@@ -6516,6 +6536,11 @@
                     // restores it across halftime (the engine's own rule: case 19
                     // into Q3 skips _Sc1, so Q3's direction === Q2's).
                     var dirNow = Number(em.engineDriveDirection);
+                    // (V347 note: this latch deliberately stays BOTH-sides — a
+                    // driver-only gate starved a device of its own stableDir when
+                    // it had not driven yet, and the Q3-LAW restore then skipped;
+                    // proven by e2e/v345-halfdir. The waiting-side risk is carried
+                    // by the DIR-GUARD's contradiction gate instead.)
                     if (clockRunning && (dirNow === 1 || dirNow === -1))
                         window._rb2p_stableDir = dirNow;
 
@@ -6609,6 +6634,17 @@
                         emIO.enginePossessingTeamIdx !== emIO.engineUserTeamIdx) { insideOutStreak = 0; return; }
                     var dirIO = Number(emIO.engineDriveDirection);
                     if (dirIO !== 1 && dirIO !== -1) { insideOutStreak = 0; return; }
+                    // V347 (Opus review #3): heal a CONTRADICTION, not a snapshot.
+                    // After a sack/TFL the new line moves behind the whole front,
+                    // so the ahead-of-line count alone can look "inside-out" on a
+                    // perfectly normal drive — and a false _Sc1 here would CAUSE
+                    // the backwards-plays bug it exists to cure. The rogue flip we
+                    // hunt always leaves engineDriveDirection disagreeing with the
+                    // driver-latched stable direction; require exactly that.
+                    var stableIO = Number(window._rb2p_stableDir);
+                    if ((stableIO === 1 || stableIO === -1) && dirIO === stableIO) {
+                        insideOutStreak = 0; return;
+                    }
                     var allIO = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var ballIO = null, ofAheadIO = 0, ofTotIO = 0;
                     for (var io = 0; io < allIO.length; io++) {
@@ -8480,13 +8516,20 @@
                     // offense. A's gutted AI-drive path means B MUST
                     // play the PAT — there's no fallback dice roll.
                     if (outcome.type === 'PICK6') {
-                        if (typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
+                        // V347 (Opus review #7): if the FINAL has ALREADY been
+                        // declared here, crediting the +6 now would put a score on
+                        // this board that the published FINAL card doesn't carry —
+                        // the two phones' cards then disagree forever (the score
+                        // floor makes it permanent). A late PICK6 over an ended
+                        // game rides the existing FINAL untouched.
+                        var p6OverPre = window._rb2p_gameOverReported === true;
+                        if (!p6OverPre && typeof outcome.scoreUser === 'number') engineMatch.setOpponentScore(outcome.scoreUser);
                         // V57: the sender defers PICK6 until its engine
                         // credits the +6. If that credit never landed there
                         // (pick6Plus6Missing), the TD's points exist nowhere
                         // yet — add them here so the played-out interception
                         // return is worth its 6 points to us, the scorer.
-                        if (typeof outcome.scoreOpp  === 'number') {
+                        if (!p6OverPre && typeof outcome.scoreOpp === 'number') {
                             engineMatch.setUserScore(outcome.scoreOpp +
                                 (outcome.pick6Plus6Missing === true ? 6 : 0));
                         }
@@ -10024,7 +10067,12 @@
                     //   • regulationOver: Q4 clock at 0:00 with the play
                     //     resolved (controller not in active-play state 2),
                     //     for the moment before the engine's own transition.
-                    var pastRegulation = (q >= 5);
+                    // V347 (Opus review #2c): pastRegulation gets the same maturity
+                    // test regulationOver has — a single parked self-roll into "Q5"
+                    // must not declare a FINAL a quarter early. The real Q4->Q5
+                    // edge is at least a few seconds old before anything ends.
+                    var pastRegulation = (q >= 5) &&
+                        (Date.now() - (Number(window._rb2p_quarterChangedToMs) || 0) > 5000);
                     // CRITICAL: Vy=13 is the BETWEEN-QUARTERS park (every quarter
                     // end momentarily sits at Wy=N, clock 0:00, Vy=13, kp!=2 before
                     // the bridge resumes the next quarter). Without the Vy!=13 guard
@@ -14347,14 +14395,22 @@
                 } catch (e) {}
             };
             // Read the opponent's feed and surface it on the WAIT commentary line.
-            var lastFeedTs = 0;
+            var lastFeedTs = 0, feedFirstReplay = true;
             FB.onValue(
                 FB.ref(db, 'rooms/' + myRoom + '/feed/' + otherRole),
                 function (snap) {
                     try {
                         var evt = snap.val();
+                        // V347 (Opus review #5): same initial-replay skip the evt
+                        // path got in V339 — a mid-match rejoin replays the LAST
+                        // stored play line, which rendered as if it just happened
+                        // (a headline with no delta behind it). Adopt its ts,
+                        // render nothing.
+                        var feedWasFirst = feedFirstReplay;
+                        feedFirstReplay = false;
                         if (!evt || !evt.ts || evt.ts <= lastFeedTs) return;
                         lastFeedTs = evt.ts;
+                        if (feedWasFirst) return;
                         if (window._rb2p_waitFeedResult) window._rb2p_waitFeedResult(evt);
                     } catch (e) {}
                 }
@@ -14581,7 +14637,12 @@
                         // STAGED field (markers, huddle) was still drawn at the old
                         // spot, so the modal sat over a midfield formation. Resync
                         // the drawn scrimmage to the pinned register.
-                        if (typeof window._rb2p_resyncScrimmage === 'function') {
+                        // V347: at most ONCE per 1.5s — resyncing on every pin tick
+                        // re-staged the scene hard enough to trip the PAT guardian
+                        // (v325 T5: patPlayPending died within 400ms of arming).
+                        if (typeof window._rb2p_resyncScrimmage === 'function' &&
+                            Date.now() - (Number(window._rb2p_patPinResyncMs) || 0) > 1500) {
+                            window._rb2p_patPinResyncMs = Date.now();
                             try { window._rb2p_resyncScrimmage(em, 'pat-pin'); } catch (eRS) {}
                         }
                         if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PIN re-pinned to 48');
@@ -14677,6 +14738,21 @@
                             console.log('[2P LIVE] stale quarter push rejected — incoming Q' + incomingQ +
                                         ' < local Q' + engineMatch.engineQuarter +
                                         ' (would re-expire a rolled-over quarter)');
+                            // V347 (Opus review #2a): rejecting the QUARTER must not
+                            // also skip the clock starvation — that skip was the
+                            // engine of the runaway: a parked self-roll made every
+                            // correct lower-quarter push "regress", the else-branch
+                            // (with tickAllowance=0 and the 0:01 floor) never ran,
+                            // the parked clock drained free, re-expired, rolled
+                            // again... Starve it here too.
+                            engineMatch.engineTickAllowance = 0;
+                            if ((Number(engineMatch.engineMinutesLeft) * 60 +
+                                 Number(engineMatch.engineSecondsLeft)) <= 0 &&
+                                !window._rb2p_pickSixPatCascadeActive &&
+                                window._rb2p_patPlayPending !== true &&
+                                window._rb2p_patPlayResolved !== true) {
+                                engineMatch.engineSecondsLeft = 1;
+                            }
                         } else {
                             if (typeof opponentLivePayload.minutesLeft === 'number')
                                 engineMatch.engineMinutesLeft = opponentLivePayload.minutesLeft;
@@ -14729,7 +14805,13 @@
                         // offense, so their down/toGo/yardLine describe the live
                         // situation. yardLine is their signed _6F; the controller
                         // renders the field spot from the defense device's own POV.
-                        if (window._rb2p_waitFeedLive && opponentLivePayload.iHaveBall) {
+                        // V347 (Opus review #8): the action hint is licensed by the
+                        // DOWN, not by ballKp alone — punts/kickoffs/PATs fly the
+                        // same airborne ball state and were narrating "PASS IS
+                        // UP…" on kicks. Downs 1..4 = a scrimmage play; anything
+                        // else shows no action line.
+                        if (window._rb2p_waitFeedLive && opponentLivePayload.iHaveBall &&
+                            Number(opponentLivePayload.down) >= 1 && Number(opponentLivePayload.down) <= 4) {
                             window._rb2p_waitFeedLive(
                                 opponentLivePayload.down, opponentLivePayload.toGo,
                                 opponentLivePayload.yardLine, opponentLivePayload.ballKp);
