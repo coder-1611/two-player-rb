@@ -87,6 +87,21 @@ const blastState = page => page.evaluate(() => ({
     await off.page.evaluate(() => {
         window._rb2p_lastIntEvtMs = 0;
         window._rb2p_lastFumbleMs = 0;
+        // V351: a takeaway popup now requires the ENGINE's own interception
+        // credit — a bare turnover stage is not evidence (that licence is what
+        // stopped a field goal blasting INTERCEPTED in room PILP). So credit the
+        // QB a real stat_int, exactly as the engine does on a genuine pick.
+        try {
+            var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
+            var n = _wi(to._Ln);
+            for (var j = 0; j < n; j++) {
+                var p = _zi(to._Ln, j);
+                if (p && Number(_Ai(p, 'position')) === 1) {
+                    _Yi(p, 'stat_int', (Number(_Ai(p, 'stat_int')) || 0) + 1);
+                    break;
+                }
+            }
+        } catch (e) {}
         window._rb2p_userIsWaitingForOpponent = true;   // the INT handoff already parked us
         RB.engineState().engineDriveFsmStage = 8;       // the engine's turnover stage
     });

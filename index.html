@@ -979,7 +979,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V351<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V352<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1047,7 +1047,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V351</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V352</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1750,6 +1750,20 @@
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
+                    // V352: never start a normal drive over an owed conversion.
+                    // This is the function that turned OKAG's pick-6 conversion
+                    // into a 1st & 10 at midfield (called from the generic
+                    // outcome apply, TURN-RESCUE, the Q3 LAW and the boundary
+                    // resumes). The conversion is played first, always.
+                    if (typeof window._rb2p_patOwed === 'function') {
+                        var fOwed = window._rb2p_patOwed();
+                        if (fOwed) {
+                            console.warn('[2P PAT-INV] refused forceUserOffenseDrive(' + yardLine +
+                                         ') — a conversion is owed (' + fOwed + ')');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV refused force-drive (' + fOwed + ')');
+                            return false;
+                        }
+                    }
                     // V232: resolve the spawner FIRST — a clean bail must happen
                     // before ANY state is touched.
                     var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
@@ -3589,18 +3603,19 @@
                                 var settledNow = window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
                                     ((Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
                                      (Math.abs(Number(fm._6F) - Number(window._rb2p_feedYard0)) >= 0.5));
-                                if (settledNow &&
-                                    Date.now() - (Number(window._rb2p_lastTurnoverVy8Ms) || 0) < 4000) {
-                                    // ===== V339 (owner's rule: box-stat deltas ONLY) =====
-                                    // A possession-flip settle is NOT a play. The INT
-                                    // return moves _6F backwards with ZERO stat deltas,
-                                    // and the QB-keep fallback then invented lines like
-                                    // "PURDY -14 YDS" on the WAIT feed (device report).
-                                    // Inside the turnover window nothing is emitted —
-                                    // the INT/FUMBLE blast covers the moment.
-                                    window._rb2p_feedEmitted = true;
-                                    if (window._rb2p_diagLog) window._rb2p_diagLog('cSKIP turnover-window settle');
-                                } else if (settledNow) {
+                                // ===== V353b: the 4-SECOND TURNOVER MUTE IS GONE =====
+                                // V339 blanket-muted every settle within 4s of the
+                                // engine's turnover stage, to stop the INT return
+                                // (which moves _6F backwards with ZERO stat deltas)
+                                // inventing a "PURDY -14 YDS" line. V345 then added
+                                // the no-stat master gate below, which mutes that
+                                // return on its own merits — making the blanket
+                                // redundant AND harmful: any transient stage-8 read
+                                // silently swallowed up to 4 seconds of REAL plays,
+                                // which is the RB-run-shows-blank bug wearing a new
+                                // hat (v332 dropped a different play on every run
+                                // until this came out). Deltas decide, nothing else.
+                                if (settledNow) {
                                     // V326: CLASSIFY off the box-stat deltas — the engine's own
                                     // record of what it credited. Diff every skill player vs the
                                     // snap baseline: whichever stat MOVED is what happened.
@@ -5081,6 +5096,22 @@
                             return;
                         }
 
+                        // ===== V352: ONE RECORD PER PICK-6 (room OKAG) =====
+                        // The sender half of the OKAG bug. A pick-6 fired BOTH the
+                        // cascade's PICK6 send and this generic drive-end send
+                        // (typed KICKOFF off prevVy===1) — two records for one
+                        // event, racing, and the receiver applied whichever came
+                        // last. The receiver now drops the duplicate, but the
+                        // right fix is to never ship it: once the cascade owns
+                        // this possession, the generic send is suppressed.
+                        if (window._rb2p_pickSixPatCascadeActive === true ||
+                            window._rb2p_pick6SentThisPossession === true) {
+                            console.warn('[2P PAT-INV] suppressed the duplicate generic send (type=' +
+                                         (outcome && outcome.type) + ') — this possession is a pick-6');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'PAT-INV suppressed dup send ' + (outcome && outcome.type));
+                            return;
+                        }
                         // ===== Normal possession-change SEND =====
                         // Diagnostic: log the quarter/clock + yardline at every
                         // handoff so a wrong-quarter possession flip can be traced
@@ -5118,7 +5149,22 @@
                         // enterPickSixCascade (which cancels this timer). The
                         // receiver is parked on the WAIT overlay, so the extra
                         // latency on plain turnovers is invisible.
-                        if (outcome.type === 'INT' || outcome.type === 'OTHER') {
+                        // ===== V352b: THE HOLD IS UNIVERSAL (room OKAG, root cause) =====
+                        // The audit found why OKAG still broke with every V352 guard
+                        // in place: the duplicate drive-end record is shipped BEFORE
+                        // any pick-6 state exists. The interception fires _1c1 while
+                        // the return is still running — no _Ak1, no score jump, no
+                        // cascade — and prevVy comes from the documented-stale _2c1,
+                        // which on a drive that began at a kickoff reads 1 and types
+                        // the outcome 'KICKOFF'. KICKOFF was not in this hold set, so
+                        // it went out instantly and could never be recalled or
+                        // upgraded; the receiver applied it (nothing was "owed" yet,
+                        // so the V352 drop couldn't fire) and the conversion became a
+                        // 1st & 10 at midfield. Holding EVERY type routes all of them
+                        // through the existing cancel-and-upgrade in
+                        // enterPickSixCascade. PAT_RESULT is excluded: it is the
+                        // conversion's own answer and must never wait.
+                        if (outcome.type !== 'PAT_RESULT') {
                             window._rb2p_pendingTurnoverOutcome = outcome;
                             var holdStartMs = Date.now();
                             var fireHeldSend = function () {
@@ -6207,6 +6253,11 @@
                     }
 
                     if (!deadEngineFsmStages[engineMatch.engineDriveFsmStage]) return;
+                    // V352b (audit hole 4): stages 10/11 ARE the conversion stages
+                    // (comm_stage_PAT1 / the fresh-TD park), so this watchdog could
+                    // force a normal TD's conversion into a plain kickoff handoff.
+                    // A conversion outranks the stuck-drive rescue.
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
                     // V59: 800ms (was 1500) — these stages are genuinely dead
                     // (AI offense is gutted), so a shorter dwell just makes
                     // the handoff to the WAIT cover snappier. Still 3+ poll
@@ -6471,6 +6522,13 @@
             // flow (PAT modal -> kickoff -> outcome send) left alone.
             window._rb2p_scoredSinceCapture = function (em, usedQEnd) {
                 try {
+                    // V352b (audit hole 12): neither boundary restore goes through
+                    // forceUserOffenseDrive, so V352's refusal never covered them.
+                    // This is the one gate both call — an owed conversion is
+                    // evidence enough to void any restore over it (covers a MISSED
+                    // conversion still owed, where no score delta exists).
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed())
+                        return 'conversion owed';
                     var cap = usedQEnd ? window._rb2p_qEndLatchScore : window._rb2p_preRolloverScore;
                     var capMs = usedQEnd ? window._rb2p_qEndLatchMs : window._rb2p_preRolloverMs;
                     if (typeof cap === 'number' && (Number(em.userScore) || 0) !== cap) return 'score ' + cap + '->' + em.userScore;
@@ -6868,6 +6926,12 @@
                         window._rb2p_lastOpponentOutcomeApplyMs = Date.now();
                         window._rb2p_userScoreAtDriveStart = engineMatch.userScore;
                         window._rb2p_opponentScoreAtDriveStart = engineMatch.opponentScore;
+                        // V352b (audit hole 13): release the one-PICK6-per-possession
+                        // latch here too. It used to be cleared ONLY inside
+                        // forceUserOffenseDrive — which V352 refuses while a
+                        // conversion is owed — so it could stay latched and
+                        // permanently suppress this device's drive-end sends.
+                        window._rb2p_pick6SentThisPossession = false;
                         console.log('[2P PICK6] cascade complete after ' +
                                     elapsedSinceFlagRaised + 'ms (event-driven) — watchdog re-engaged');
                     }
@@ -6884,6 +6948,26 @@
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return;
+                    // V352b (audit hole 13): the conversion is answered — release
+                    // the send latch on this side too.
+                    window._rb2p_pick6SentThisPossession = false;
+                    // V352b (audit hole 8): if this device ALREADY published its
+                    // FINAL, the conversion's points would land on the scoreboard
+                    // but not on the published card — the two phones then disagree
+                    // forever (the score floor makes it permanent). Re-publish.
+                    if (window._rb2p_gameOverReported === true &&
+                        typeof window._rb2p_reportGameOver === 'function') {
+                        setTimeout(function () {
+                            try {
+                                var rep2 = (typeof window._rb2p_collectBoxScore === 'function')
+                                    ? window._rb2p_collectBoxScore() : null;
+                                if (rep2) {
+                                    window._rb2p_reportGameOver(rep2);
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('FINAL re-published with the late conversion');
+                                }
+                            } catch (eRP) {}
+                        }, 300);
+                    }
                     // If the 75s fallback already force-started our drive,
                     // only sync scores — restarting the drive mid-play would
                     // wipe the user's progress.
@@ -7487,6 +7571,384 @@
                 return out;
             }
             window._rb2p_enumeratePopupInstances = enumeratePopupInstances;
+
+            // ===== V353: THE INFINITE PLAY-CHANGE LOOP — detector + self-heal =====
+            // Reported repeatedly ("the play keeps re-selecting on its own, over
+            // and over, like the audible button"), fixed once at the Q1->Q2
+            // rollover (V330: a stray obj_btn_kickoff the controller kept
+            // consuming), and then reported AGAIN — and every time the on-device
+            // log had scrolled past the moment, so it was never diagnosed. That
+            // stops here: the loop is now DETECTED from its own signature and
+            // healed the way a refresh heals it, and the evidence is written to
+            // room telemetry so the next occurrence is permanently on record.
+            //
+            // Signature: s_set_up_play (_eb1) is what re-spawns the formation and
+            // re-rolls the play art — a "play change" IS a call to it. In normal
+            // play it fires once per down. Firing repeatedly with the ball dead
+            // and no snap in between is the loop, by definition.
+            var setupCalls = [];            // timestamps of recent s_set_up_play calls
+            var hookedSetupPlay = false, loopHealMs = 0, loopHealCount = 0;
+            function rb2pHookSetUpPlay() {
+                if (hookedSetupPlay) return;
+                try {
+                    var idx = RB.findEngineScriptIndex('gml_Script_s_set_up_play');
+                    if (idx < 0) return;
+                    var fn = _Y._PU1[idx];
+                    if (typeof fn !== 'function') return;
+                    if (fn._p2p_loopWatch) { hookedSetupPlay = true; return; }
+                    var origSetup = fn;
+                    var watched = function () {
+                        try { setupCalls.push(Date.now()); if (setupCalls.length > 40) setupCalls.shift(); } catch (e) {}
+                        return origSetup.apply(this, arguments);
+                    };
+                    watched._p2p_loopWatch = true;
+                    _Y._PU1[idx] = watched;
+                    hookedSetupPlay = true;
+                    console.log('[2P LOOP-GUARD] s_set_up_play watcher installed');
+                } catch (e) {}
+            }
+            // Census of the instances that FUEL the loop — a stray kickoff button
+            // (the V330 cause), a duplicated audible/"Change Play" button, or a
+            // duplicated controller all make the staging cycle re-enter.
+            window._rb2p_stagingCensus = function () {
+                var c = { kickoff: 0, audible: 0, controller: 0, ball: 0, of: 0 };
+                try {
+                    var a = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < a.length; i++) {
+                        var x = a[i];
+                        if (!x || x._HL2 || !x._eE2) continue;
+                        var nm = x._eE2._fE2;
+                        if (nm === 'obj_btn_kickoff') c.kickoff++;
+                        else if (nm === 'obj_btn_audible') c.audible++;
+                        else if (nm === 'obj_controller') c.controller++;
+                        else if (nm === 'obj_ball') c.ball++;
+                        else if (nm === 'obj_playerOF') c.of++;
+                    }
+                } catch (e) {}
+                return c;
+            };
+            setInterval(function () {
+                try {
+                    rb2pHookSetUpPlay();
+                    if (!RB.isEngineInMatchRoom()) { setupCalls.length = 0; return; }
+                    var now = Date.now();
+                    while (setupCalls.length && now - setupCalls[0] > 3000) setupCalls.shift();
+                    if (setupCalls.length < 5) return;              // normal play never gets here
+                    // A live ball means real plays are resolving — not the loop.
+                    if (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) return;
+                    if (now - loopHealMs < 4000) return;            // one heal per burst
+                    loopHealMs = now; loopHealCount++;
+                    var census = window._rb2p_stagingCensus();
+                    console.warn('[2P LOOP-GUARD] INFINITE PLAY-CHANGE detected — ' + setupCalls.length +
+                                 ' staging calls in 3s; census ' + JSON.stringify(census));
+                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                        'LOOP-GUARD x' + setupCalls.length + ' kick=' + census.kickoff +
+                        ' aud=' + census.audible + ' ctl=' + census.controller +
+                        ' heal#' + loopHealCount);
+                    // THE HEAL — exactly what a refresh does, minus the refresh:
+                    // destroy the orphaned staging instances the cycle feeds on
+                    // (every stray kickoff button, and any DUPLICATE audible
+                    // button beyond the first), and clear the controller's
+                    // pending-proceed flag so a latched press can't re-fire.
+                    try {
+                        var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                        var killed = 0, seenAudible = 0;
+                        for (var i = 0; i < all.length; i++) {
+                            var x = all[i];
+                            if (!x || x._HL2 || !x._eE2) continue;
+                            var nm = x._eE2._fE2;
+                            if (nm === 'obj_btn_kickoff') {
+                                try { _cr(x); } catch (eK) { x._HL2 = true; }
+                                killed++;
+                            } else if (nm === 'obj_btn_audible') {
+                                if (++seenAudible > 1) {            // keep exactly one
+                                    try { _cr(x); } catch (eA) { x._HL2 = true; }
+                                    killed++;
+                                }
+                            }
+                        }
+                        var ctrls = _si(71);
+                        for (var k in ctrls) {
+                            if (!ctrls.hasOwnProperty(k)) continue;
+                            var ci = ctrls[k];
+                            if (ci && ci._7z) { ci._7z = 0; killed++; }   // latched "proceed" press
+                        }
+                        console.warn('[2P LOOP-GUARD] healed — cleared ' + killed + ' loop sources');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('LOOP-GUARD healed x' + killed);
+                    } catch (eH) {}
+                    setupCalls.length = 0;
+                } catch (e) {}
+            }, 1000);
+
+            // ===== V352: THE CONVERSION INVARIANT (room OKAG) =====
+            // Everything above keyed on the engine's PAT marker (down 6). Room
+            // OKAG proved that is not enough: a pick-6's conversion arrived as a
+            // normal "1st & 10" possession at midfield with no route arrows, so
+            // NO guard fired — the pin didn't pin and the FINAL didn't hold. A
+            // conversion can be OWED without the engine saying so, so ownership
+            // gets its own authority, derived from five INDEPENDENT signals:
+            //   S1  the bridge's sticky pick-6 PAT flag (pending, unresolved)
+            //   S2  the pick-6 cascade with THIS device as the scorer
+            //   S3  the engine's own PAT marker (down === 6)
+            //   S4  a live 1PT/2PT modal on screen (button _0G 100367/100369)
+            //   S5  our own persisted patDuty record ("I owe a conversion")
+            // Any one of them means a conversion is owed, and while one is owed
+            // the ball IS on the 2 and nothing may take the scene away.
+            window._rb2p_patModalUp = function () {
+                try {
+                    var pl = (typeof window._rb2p_enumeratePopupInstances === 'function')
+                        ? window._rb2p_enumeratePopupInstances() : [];
+                    for (var i = 0; i < pl.length; i++) {
+                        var p = pl[i];
+                        if (!p || p._HL2) continue;
+                        if (p._0G === 100367 || p._0G === 100369) return true;
+                    }
+                } catch (e) {}
+                return false;
+            };
+            window._rb2p_patOwed = function () {
+                var why = '';
+                try {
+                    if (window._rb2p_patPlayResolved === true) why = '';
+                    // The THROWER owes nothing — the scorer converts. Without this
+                    // the thrower's transient down-6 (its own suppressed modal)
+                    // would satisfy S3, and C7's marker restore would then keep
+                    // re-satisfying it: the thrower's ball pinned to the 2 and its
+                    // drives blocked for the full 35s wall.
+                    else if (window._rb2p_pickSixThisDeviceIsThrower === true &&
+                             window._rb2p_patPlayPending !== true) why = '';
+                    else if (window._rb2p_patPlayPending === true) why = 'S1 patPlayPending';
+                    else if (window._rb2p_pickSixPatCascadeActive === true &&
+                             window._rb2p_pickSixThisDeviceIsThrower !== true) why = 'S2 cascade-scorer';
+                    else {
+                        var em = RB.engineState();
+                        if (em && Number(em.engineDownNumber) === 6) why = 'S3 down-6 marker';
+                        else if (window._rb2p_patModalUp()) why = 'S4 modal on screen';
+                        else {
+                            // S5 must be able to RETIRE ITSELF. C11 publishes a duty
+                            // record for every conversion, including a normal TD —
+                            // but every clear site is pick-6-only, so on a normal
+                            // touchdown the record would linger, hold patOwed true,
+                            // and refuse the next drive until the 35s wall. The
+                            // record only means anything while a stronger signal
+                            // has been seen recently; 3s after the last one, the
+                            // conversion is over and the duty is dropped.
+                            var duty = window._rb2p_patDutyMine;
+                            if (duty && Date.now() - (Number(duty.ts) || 0) < 120000) {
+                                var strongMs = Number(window._rb2p_patStrongSignalMs) || 0;
+                                if (strongMs && Date.now() - strongMs < 3000) why = 'S5 patDuty record';
+                                else {
+                                    window._rb2p_patDutyMine = null;
+                                    try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eS5) {}
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV duty retired (conversion over)');
+                                }
+                            }
+                        }
+                    }
+                    // Stamp the last time a STRONG signal (S1-S4, i.e. anything
+                    // other than the persisted duty record) said a conversion was
+                    // live — S5 above uses it to know when to retire itself.
+                    if (why && why.charAt(1) !== '5') window._rb2p_patStrongSignalMs = Date.now();
+                    // DEADLOCK WALL. Every block below this predicate (the force-
+                    // drive refusal, the generic-outcome drop, the FINAL deferrals)
+                    // would wedge the match forever if a signal stuck true — and
+                    // the C7 marker restore can self-reinforce S1 into S3. So the
+                    // invariant is time-boxed: 35s is far longer than any real
+                    // conversion, and past it EVERYTHING releases, loudly. A stuck
+                    // flag can cost at most 35 seconds, never a game.
+                    if (why) {
+                        if (!window._rb2p_patOwedSinceMs) window._rb2p_patOwedSinceMs = Date.now();
+                        else if (Date.now() - Number(window._rb2p_patOwedSinceMs) > 35000) {
+                            console.warn('[2P PAT-INV] conversion owed for 35s (' + why +
+                                         ') — force-releasing the invariant');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV force-release after 35s');
+                            window._rb2p_patOwedSinceMs = 0;
+                            window._rb2p_patPlayPending = false;
+                            window._rb2p_patPlayResolved = false;
+                            window._rb2p_pickSixPatCascadeActive = false;
+                            window._rb2p_patDutyMine = null;
+                            try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eD) {}
+                            try {
+                                var emR = RB.engineState();
+                                if (emR && Number(emR.engineDownNumber) === 6) { emR.engineDownNumber = 1; emR.engineYardsToGo = 10; }
+                            } catch (eE) {}
+                            return '';
+                        }
+                    } else window._rb2p_patOwedSinceMs = 0;
+                } catch (e) {}
+                return why;
+            };
+            // The 100ms integrity tick. A live conversion lasts ~10s, so this
+            // re-validates the invariant ~100 times per conversion — the
+            // redundancy is in the RE-CHECK, not in copies of one check.
+            // Enumerated so a future edit can't quietly drop a leg:
+            //   C1 the ball is on the 2 (+48)                    C6 the drawn field agrees
+            //   C2 yards-to-go reads 2                            C7 the marker (down 6) is restored
+            //   C3 the possessing team is US (sign of +48)         C8 no stale capture can restore over it
+            //   C4 the conversion is not silently a normal down    C9 the FINAL is held (see detector)
+            //   C5 a modal on screen is never off the 2           C10 a wrong-position modal is killed, never played
+            // ===== V352c: PIN BEFORE THE MODAL EXISTS (zero exposure) =====
+            // Measured on the shipped build: the engine pops its own conversion
+            // modal and only THEN does the 100ms tick pull the ball to the 2 —
+            // 68ms during which a conversion is on screen at the wrong spot.
+            // Both pop paths (the engine's own _hB case 0 and the bridge's
+            // pick-6 branch) go through ONE function, _wm, and the 1PT/2PT
+            // button script ids are its 7th and 8th arguments. Wrapping it lets
+            // the ball be placed BEFORE the popup instance is constructed, so
+            // there is no frame in which an off-spot conversion can render.
+            var patWmHooked = false;
+            function rb2pHookConversionModal() {
+                if (patWmHooked) return;
+                try {
+                    if (typeof _wm !== 'function') return;
+                    if (_wm.__rb2pPatPin) { patWmHooked = true; return; }
+                    var origWm = _wm;
+                    var wrapped = function (_, t, i, e, a, n, o, s2, r, l) {
+                        try {
+                            if (o === 100367 || s2 === 100369) {   // a conversion modal
+                                var em = RB.engineState();
+                                if (em && em.engineUserTeamIdx != null) {
+                                    var sDir = Number(window._rb2p_stableDir);
+                                    if ((sDir === 1 || sDir === -1) &&
+                                        Number(em.engineDriveDirection) !== sDir) em.engineDriveDirection = sDir;
+                                    if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx)
+                                        em.enginePossessingTeamIdx = em.engineUserTeamIdx;
+                                    em.engineDownNumber = 6;
+                                    em.engineYardsToGo = 2;
+                                    if (Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5) {
+                                        em.engineYardLineSigned = 48;
+                                        if (typeof window._rb2p_resyncScrimmage === 'function' &&
+                                            !(typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress())) {
+                                            try { window._rb2p_resyncScrimmage(em, 'pat-prepin'); } catch (eRS) {}
+                                        }
+                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PREPIN before modal');
+                                    }
+                                }
+                            }
+                        } catch (eW) {}
+                        return origWm.apply(this, arguments);
+                    };
+                    wrapped.__rb2pPatPin = true;
+                    window._wm = wrapped;
+                    patWmHooked = true;
+                    console.log('[2P PAT-INV] conversion-modal pre-pin hook installed');
+                } catch (eH) {}
+            }
+            rb2pHookConversionModal();
+
+            var patFixTicks = 0, patWrongModalTicks = 0;
+            setInterval(function () {
+                try {
+                    rb2pHookConversionModal();   // idempotent; covers a late engine load
+                    if (!RB.isEngineInMatchRoom()) return;
+                    // V352b (audit hole 11): after the FINAL this tick was still
+                    // claiming possession, forcing down 6 and pinning +48 behind the
+                    // final card — and re-arming the _t11>=6 auto-credit landmine on
+                    // a finished game.
+                    if (window._rb2p_gameOverReported === true) { patFixTicks = 0; patWrongModalTicks = 0; return; }
+                    var owedWhy = window._rb2p_patOwed();
+                    if (!owedWhy) { patFixTicks = 0; patWrongModalTicks = 0; return; }
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return;
+                    // A GUARD MAY NOT MANUFACTURE ITS OWN EVIDENCE. S5 is the
+                    // persisted duty record — a memory, not an observation. If it
+                    // is the ONLY signal, writing the down-6 marker below would
+                    // create S3, which refreshes the strong-signal clock, which
+                    // keeps S5 alive... forever (measured: drives blocked, the
+                    // down snapping back to 6 for 35s after every normal
+                    // touchdown). So a memory-only claim keeps the protective
+                    // BLOCKS alive for its 3s grace but never touches the engine.
+                    var owedStrong = owedWhy.charAt(1) !== '5';
+                    if (!owedStrong) { patFixTicks = 0; patWrongModalTicks = 0; return; }
+                    // C0 (audit hole 5 — the wrong-END failure): +48 does not name an
+                    // end of the field; the DIRECTION register does. A rogue _Sc1 from
+                    // a reverted quarter roll flips it while _6F, the down and every
+                    // other guard still read "correct", staging the conversion at the
+                    // opposite 2-yard line. Direction is restored BEFORE the pin.
+                    var sDir = Number(window._rb2p_stableDir);
+                    if ((sDir === 1 || sDir === -1) && Number(em.engineDriveDirection) !== sDir) {
+                        em.engineDriveDirection = sDir;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV direction restored -> ' + sDir);
+                    }
+                    var off = Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5;
+                    // C3: +48 is signed relative to the POSSESSING team — if the
+                    // engine thinks the opponent possesses, "the 2" is at the
+                    // wrong end of the field. Claim possession before pinning.
+                    if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) {
+                        em.enginePossessingTeamIdx = em.engineUserTeamIdx;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV possession claimed');
+                    }
+                    // C7: restore the marker so every OTHER down-6 guard in the
+                    // build (the FINAL hold, the capture voids) works again.
+                    if (Number(em.engineDownNumber) !== 6) {
+                        em.engineDownNumber = 6;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV marker restored (' + owedWhy + ')');
+                    }
+                    // C5/C10: a modal that is up while the ball is off the 2 must
+                    // never be playable. Pin it; if it stays wrong for ~2s, KILL
+                    // the modal — the patDuty re-pop loop re-arms it once the
+                    // ball is legal, so the conversion is delayed, never lost.
+                    if (off && window._rb2p_patModalUp()) {
+                        if (++patWrongModalTicks >= 20) {
+                            patWrongModalTicks = 0;
+                            try {
+                                var pl2 = window._rb2p_enumeratePopupInstances() || [];
+                                var killed = 0;
+                                for (var k = 0; k < pl2.length; k++) {
+                                    var pk = pl2[k];
+                                    // V352b (audit hole 19): conversion buttons ONLY —
+                                    // the old `_0G == null` arm would also destroy the
+                                    // 4th-down go-for-it / FG / punt menu.
+                                    if (pk && !pk._HL2 && (pk._0G === 100367 || pk._0G === 100369)) {
+                                        try { _cr(pk); } catch (eK) { pk._HL2 = true; }
+                                        killed++;
+                                    }
+                                }
+                                console.warn('[2P PAT-INV] modal was up off the 2 — killed ' + killed +
+                                             ' instance(s); it re-pops once the ball is legal');
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV killed off-spot modal x' + killed);
+                            } catch (eKill) {}
+                        }
+                    } else patWrongModalTicks = 0;
+                    // C11 (audit hole 10): a normal TD's conversion never wrote a
+                    // patDuty record, so a reload during one always lost it. Publish
+                    // the duty the first time ANY conversion is owed — that also
+                    // turns S5 into a real signal instead of a pick-6-only one.
+                    if (!window._rb2p_patDutyMine && typeof window._rb2p_setPatDuty === 'function') {
+                        try {
+                            window._rb2p_setPatDuty({ scoreUser: Number(em.userScore) || 0,
+                                                      scoreOpp: Number(em.opponentScore) || 0 });
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV duty published (' + owedWhy + ')');
+                        } catch (eDuty) {}
+                    }
+                    if (!off) { patFixTicks = 0; return; }
+                    patFixTicks++;
+                    if (window._rb2p_diagLog && patFixTicks === 1) window._rb2p_diagLog(
+                        'PAT-INV pin ' + Math.round(Number(em.engineYardLineSigned)) + ' -> 48 (' + owedWhy + ')');
+                    {
+                        em.engineYardLineSigned = 48;
+                        em.engineYardsToGo = 2;
+                        // V346 (room DJPK): moving the register isn't enough — the
+                        // STAGED field (markers, huddle) was still drawn at the old
+                        // spot, so the modal sat over a midfield formation. Resync
+                        // the drawn scrimmage to the pinned register.
+                        // V347: at most ONCE per 1.5s — resyncing on every pin tick
+                        // re-staged the scene hard enough to trip the PAT guardian
+                        // (v325 T5: patPlayPending died within 400ms of arming).
+                        // V352b (audit hole 15): resync RELOCATES the ball and all 22
+                        // sprites — doing that during a live 2-PT snap teleports the
+                        // play mid-flight (the V306 class). Register pin always; move
+                        // the drawn field only between plays.
+                        if (typeof window._rb2p_resyncScrimmage === 'function' &&
+                            !(typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) &&
+                            Date.now() - (Number(window._rb2p_patPinResyncMs) || 0) > 1500) {
+                            window._rb2p_patPinResyncMs = Date.now();
+                            try { window._rb2p_resyncScrimmage(em, 'pat-pin'); } catch (eRS) {}
+                        }
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PIN re-pinned to 48');
+                    }
+                } catch (e) {}
+            }, 50);   // V352c: 20x/second — the backstop for anything not routed through _wm
 
             function destroyInstance(inst) {
                 try {
@@ -8916,6 +9378,29 @@
                             }
                         } catch (eV348) {}
                     }
+                    // ===== V352: A GENERIC OUTCOME MAY NEVER EAT A CONVERSION =====
+                    // THE room-OKAG bug. A pick-6 makes the thrower ship TWO
+                    // records — the normal drive-end outcome (typed KICKOFF) and
+                    // the PICK6 — and they landed in the same second. Whichever
+                    // arrived last won, and when it was the generic one this
+                    // branch force-placed the ball at ITS yard line with down
+                    // 1 & 10 and tore the cascade down: the conversion became a
+                    // midfield possession with no route arrows, and Pittsburgh
+                    // finished the game stuck on 6 points. Both records describe
+                    // ONE event, so while a conversion is owed the generic copy
+                    // is a duplicate: consume it and change nothing.
+                    var v352Owed = (typeof window._rb2p_patOwed === 'function')
+                        ? window._rb2p_patOwed() : '';
+                    if (v352Owed) {
+                        console.warn('[2P PAT-INV] dropped a generic ' + outcome.type +
+                                     ' outcome that would have eaten an owed conversion (' +
+                                     v352Owed + ')');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'PAT-INV dropped generic ' + outcome.type + ' (' + v352Owed + ')');
+                        if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
+                            'dropped duplicate generic ' + outcome.type + ' during a conversion');
+                        return true;   // consumed, nothing applied
+                    }
                     // Bug 2/5: clear wait + send sentinels BEFORE any engineMatch
                     // mutation. If something below throws, we still leave the
                     // flags in a sane state and the next outcome can be drained.
@@ -8940,17 +9425,10 @@
                     // PICK6 → PAT_RESULT, both handled above). Tear the
                     // cascade down so the watchdogs re-engage, and record it
                     // in the monitor so it shows in the diagnostics table.
-                    if (window._rb2p_pickSixPatCascadeActive === true) {
-                        console.warn('[2P PICK6] generic ' + outcome.type +
-                                     ' outcome arrived during cascade — tearing cascade down');
-                        if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
-                            'OFF-SCRIPT: generic ' + outcome.type + ' arrived during cascade');
-                        window._rb2p_pickSixPatCascadeActive    = false;
-                        window._rb2p_pickSixThisDeviceIsThrower = false;
-                        window._rb2p_patPlayPending  = false;
-                        window._rb2p_patPlayResolved = false;
-                        window._rb2p_userPatPopupRefs = null;
-                    }
+                    // (The V57 "tear the cascade down" behaviour lived here and is
+                    // GONE — see the V352 drop above: a generic outcome may no
+                    // longer destroy an owed conversion, so there is nothing left
+                    // to tear down by the time we reach this point.)
 
                     // If the outcome carries absolute scores (the sender's
                     // perspective: their own score, their opponent's score),
@@ -9908,10 +10386,72 @@
                 } catch (e) {}
                 return moved;
             };
+            // ===== V352: CATCHES RECONCILE TO COMPLETIONS =====
+            // Room OKAG's FINAL: Purdy 12/21 while his receivers totalled 8
+            // catches; Rodgers 17/27 against 10. Two independent counters that
+            // never had to agree — the QB's stat_complete is ENGINE truth (plus
+            // the V333 re-attribution), while each receiver's reception count
+            // comes from the bridge's own bkp5 "nearest offensive player" hook,
+            // which both misses catches and fires on runs. V346 forced the
+            // defensive INT column to reconcile to the thrower's engine credit;
+            // this is the same treatment for the receiving column. Trims the
+            // least-corroborated credits first (fewest receiving yards) and
+            // fills a shortfall onto the players who demonstrably have receiving
+            // yardage, highest yards-per-catch first. Idempotent once equal.
+            window._rb2p_reconcileReceptions = function () {
+                var moved = 0;
+                try {
+                    var roster = rb2pOffRoster(); if (!roster) return 0;
+                    var n = _wi(roster), qb = null, recs = [], i, s, pos;
+                    for (i = 0; i < n; i++) {
+                        s = _zi(roster, i); if (!s) continue;
+                        pos = Number(_Ai(s, 'position')) || 0;
+                        if (pos === 1) { if (!qb) qb = s; continue; }
+                        if (pos >= 6 && pos <= 9) continue;          // defense is measured elsewhere
+                        recs.push(s);
+                    }
+                    if (!qb || !recs.length) return 0;
+                    // The QB's own stat_receive is pure bkp5 noise (he is never
+                    // the target of his own pass) — zero it so it can't count.
+                    if ((Number(_Ai(qb, 'stat_receive')) || 0) !== 0) _Yi(qb, 'stat_receive', 0);
+                    var want = Math.round(Number(_Ai(qb, 'stat_complete')) || 0);
+                    var have = 0;
+                    for (i = 0; i < recs.length; i++) have += Math.round(Number(_Ai(recs[i], 'stat_receive')) || 0);
+                    var guard = 0;
+                    while (have > want && guard++ < 80) {            // trim the weakest credits
+                        var worst = -1, worstYds = Infinity;
+                        for (i = 0; i < recs.length; i++) {
+                            if ((Math.round(Number(_Ai(recs[i], 'stat_receive')) || 0)) <= 0) continue;
+                            var wy = Number(_Ai(recs[i], 'stat_yards')) || 0;
+                            if (wy < worstYds) { worstYds = wy; worst = i; }
+                        }
+                        if (worst < 0) break;
+                        _Yi(recs[worst], 'stat_receive', (Number(_Ai(recs[worst], 'stat_receive')) || 0) - 1);
+                        have--; moved++;
+                    }
+                    while (have < want && guard++ < 80) {            // fill onto real receiving production
+                        var best = -1, bestScore = -1;
+                        for (i = 0; i < recs.length; i++) {
+                            var by = Number(_Ai(recs[i], 'stat_yards')) || 0;
+                            if (by <= 0) continue;
+                            var bc = Number(_Ai(recs[i], 'stat_receive')) || 0;
+                            var score = by / (bc + 1);
+                            if (score > bestScore) { bestScore = score; best = i; }
+                        }
+                        if (best < 0) break;                        // nobody has receiving yards — leave it alone
+                        _Yi(recs[best], 'stat_receive', (Number(_Ai(recs[best], 'stat_receive')) || 0) + 1);
+                        have++; moved++;
+                    }
+                    if (moved && window._rb2p_diagLog)
+                        window._rb2p_diagLog('REC-RECON ' + moved + ' adj -> ' + have + '/' + want);
+                } catch (e) {}
+                return moved;
+            };
             window._rb2p_collectBoxScore = function () {
                 var report = { team: '', score: 0, oppScore: 0, players: [] };
                 try {
                     window._rb2p_reattributePassingStats();
+                    window._rb2p_reconcileReceptions();   // V352: catches match completions
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return report;
                     report.score    = Math.round(Number(em.userScore) || 0);
@@ -10071,6 +10611,7 @@
                 var out = [];
                 try {
                     window._rb2p_reattributePassingStats();   // V333: publish clean lines only
+                    window._rb2p_reconcileReceptions();      // V352: catches match completions
                     var roster = rb2pOffRoster(); if (!roster) return out;
                     var n = _wi(roster);
                     for (var i = 0; i < n; i++) {
@@ -10302,7 +10843,10 @@
                     // the FINAL fired before it could be played. A pending PAT
                     // (down 6) holds the FINAL exactly like a live ball — capped
                     // at ~30s so an abandoned modal can't wedge the end forever.
-                    var v346PatHold = Number(em.engineDownNumber) === 6;
+                    // V352: hold for ANY owed conversion, not just the engine's
+                    // marker — OKAG's conversion never carried down 6 at all.
+                    var v346PatHold = Number(em.engineDownNumber) === 6 ||
+                        (typeof window._rb2p_patOwed === 'function' && !!window._rb2p_patOwed());
                     if ((rb2pPlayInProgress() || v346PatHold) &&
                         ++gameOverPlayWaitTicks < (v346PatHold ? 100 : 40)) {
                         if (gameOverPlayWaitTicks === 1)
@@ -10368,6 +10912,7 @@
                     if (window._rb2p_userIsWaitingForOpponent === true &&
                         !window._rb2p_inOvertime &&
                         !window._rb2p_pickSixPatCascadeActive &&
+                        !(typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) &&   // V352b hole 16
                         window._rb2p_patPlayPending !== true &&
                         window._rb2p_patPlayResolved !== true) {
                         if ((Number(em.engineMinutesLeft) * 60 +
@@ -10589,6 +11134,12 @@
                     // correctly receives the 2nd-half kickoff on the next tick.
                     if (window._rb2p_patPlayPending === true ||
                         window._rb2p_patPlayResolved === true) return;
+                    // V352b (audit hole 6): the V294 defer above sees only the two
+                    // sticky pick-6 flags. In the OKAG class a conversion is owed
+                    // with NEITHER set, and this enforcer then clears the cascade
+                    // (standing the guardian down, which wipes the flags) and writes
+                    // down 1 & 10 — erasing the last witness (S3) with no trace.
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
                     // V295: refuse a Q3 the game never earned. A burst roll
                     // (Q1→Q3 inside ~240ms, rooms YNUP/QIAA) can land here in
                     // the ms before the quarter governor drags it back — and
@@ -10700,6 +11251,17 @@
             // 'a'/'b'; map to team index (a=Buffalo=0, b=Kansas City=1).
             window._rb2p_applyOtKickoff = function (receiverRole, myFirebaseRole) {
                 try {
+                    // V352b (audit hole 7): this cleared the cascade unconditionally,
+                    // which stands the PAT guardian down and wipes the flags — the OT
+                    // receiver then deadlocks behind V352's force-drive refusal until
+                    // the 35s wall and the conversion is lost. Defer instead.
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) {
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('OT kickoff deferred — conversion owed');
+                        setTimeout(function () {
+                            try { window._rb2p_applyOtKickoff(receiverRole, myFirebaseRole); } catch (eOt) {}
+                        }, 500);
+                        return;
+                    }
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
                     // V112: decide the receiver by FIREBASE ROLE (what the coin
@@ -11235,6 +11797,36 @@
         function endGameFromOpponentDeclaration(oppRep) {
             if (window._rb2p_gameOverReported) return;
             if (!oppRep) return;
+            // ===== V352 (room OKAG): a conversion I OWE outranks their whistle.
+            // OKAG ended 2 seconds early: the last pick-6 shipped at 0:02 with
+            // needsPAT, my patDuty record was written and never cleared, and the
+            // opponent's clock hit 0:00 first — their FINAL landed here and killed
+            // the conversion before it could be played. The V346 hold only ever
+            // defended this device against its OWN detector. Defer their
+            // declaration while I owe a conversion (re-checked every 400ms, capped
+            // at 30s so an abandoned modal can never wedge the end of the game).
+            if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) {
+                var oppEndWaited = Number(window._rb2p_oppEndDeferMs) || 0;
+                if (oppEndWaited === 0) window._rb2p_oppEndDeferMs = Date.now();
+                else if (Date.now() - oppEndWaited > 30000) {
+                    console.warn('[2P PAT-INV] conversion never resolved in 30s — accepting the opponent FINAL');
+                    window._rb2p_oppEndDeferMs = 0;
+                }
+                if (window._rb2p_oppEndDeferMs) {
+                    console.warn('[2P PAT-INV] deferring the opponent FINAL — I owe a conversion (' +
+                                 window._rb2p_patOwed() + ')');
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV deferred opp FINAL');
+                    // V352b (audit hole 17): ONE retry chain. Every final/{opp}
+                    // onValue fire used to start its own 400ms chain.
+                    if (!window._rb2p_oppEndDeferTimer) {
+                        window._rb2p_oppEndDeferTimer = setTimeout(function () {
+                            window._rb2p_oppEndDeferTimer = null;
+                            try { endGameFromOpponentDeclaration(oppRep); } catch (eR) {}
+                        }, 400);
+                    }
+                    return;
+                }
+            } else window._rb2p_oppEndDeferMs = 0;
             window._rb2p_gameOverReported = true;
             var report = (typeof window._rb2p_collectBoxScore === 'function')
                 ? window._rb2p_collectBoxScore() : { team: 'YOU', score: 0, oppScore: 0, players: [] };
@@ -14202,9 +14794,20 @@
                     if (extra) {
                         var rec = { role: myRole, ts: Date.now() };
                         for (var k in extra) if (Object.prototype.hasOwnProperty.call(extra, k)) rec[k] = extra[k];
+                        // V352: mirror the duty LOCALLY too — signal S5 of the
+                        // conversion invariant. The Firebase record alone is
+                        // useless to a guard that has to decide in 100ms.
+                        window._rb2p_patDutyMine = rec;
                         FB.set(FB.ref(db, 'rooms/' + myRoom + '/patDuty'), rec).catch(function () {});
                     } else {
+                        window._rb2p_patDutyMine = null;   // V352
                         FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});
+            // V352b (audit hole 3): the LOCAL mirror + the invariant's clocks have
+            // to die with it, or a rematch inside 120s of any conversion refuses
+            // its own opening drive (S5 still true) and both phones sit on GET READY.
+            window._rb2p_patDutyMine = null;
+            window._rb2p_patOwedSinceMs = 0;
+            window._rb2p_oppEndDeferMs = 0;
                     }
                 } catch (e) {}
             };
@@ -14628,6 +15231,18 @@
                         if (wasFirstReplay) return;                         // pre-existing record, not a live event
                         if (window._rb2p_gameOverReported === true) return; // the V324 rule holds for events
                         if (!window._rb2p_evtBlastedAt) window._rb2p_evtBlastedAt = {};
+                        // V352: one takeaway, one popup. A pick-6 legitimately
+                        // licenses BOTH an INT (the catch) and a PICK6 (the
+                        // return), and room OKAG showed the receiver painting
+                        // INTERCEPTED and then PICK 6 back to back. PICK 6 is the
+                        // strictly better news, so it supersedes: an INT/FUMBLE
+                        // within 6s of a PICK6 is swallowed, and a PICK6 always
+                        // paints even if the INT just did.
+                        if ((evt.kind === 'INT' || evt.kind === 'FUMBLE') &&
+                            Date.now() - (Number(window._rb2p_evtBlastedAt.PICK6) || 0) < 6000) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('EVT<- ' + evt.kind + ' swallowed (PICK6 owns it)');
+                            return;
+                        }
                         window._rb2p_evtBlastedAt[evt.kind] = Date.now();
                         if (window._rb2p_diagLog) window._rb2p_diagLog('EVT<- ' + evt.kind);
                         if (window._rb2p_waitFeedBig) window._rb2p_waitFeedBig(evt.kind, evt.sub || '');
@@ -14716,6 +15331,11 @@
                     if (window._rb2p_gameOverReported === true) return;
                     if (window._rb2p_pickSixPatCascadeActive === true ||
                         window._rb2p_patPlayPending === true) return;   // the cascade owns possession
+                    // V352b (audit hole 14): those two flags are blind to the OKAG
+                    // state (a conversion owed with neither set). A conversion owns
+                    // possession, full stop — otherwise the rescue converts it into
+                    // a normal drive the moment the 35s wall releases.
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
                     var onOff = window._rb2p_userIsWaitingForOpponent !== true;
                     if (!onOff) {
                         turnPrevOff = false; turnConflictTicks = 0;
@@ -14792,32 +15412,6 @@
             // the scrimmage is +48 (the 2-yard line), whoever is converting,
             // whatever put the ball elsewhere. Released the instant the choice
             // is made (the engine resets the down when the scene starts).
-            setInterval(function () {
-                try {
-                    if (!RB.isEngineInMatchRoom()) return;
-                    if (window._rb2p_gameOverReported === true) return;
-                    var em = RB.engineState();
-                    if (!em || em.engineUserTeamIdx == null) return;
-                    if (Number(em.engineDownNumber) !== 6) return;   // 6 = PAT pending, nothing else
-                    if (Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5) {
-                        em.engineYardLineSigned = 48;
-                        em.engineYardsToGo = 2;
-                        // V346 (room DJPK): moving the register isn't enough — the
-                        // STAGED field (markers, huddle) was still drawn at the old
-                        // spot, so the modal sat over a midfield formation. Resync
-                        // the drawn scrimmage to the pinned register.
-                        // V347: at most ONCE per 1.5s — resyncing on every pin tick
-                        // re-staged the scene hard enough to trip the PAT guardian
-                        // (v325 T5: patPlayPending died within 400ms of arming).
-                        if (typeof window._rb2p_resyncScrimmage === 'function' &&
-                            Date.now() - (Number(window._rb2p_patPinResyncMs) || 0) > 1500) {
-                            window._rb2p_patPinResyncMs = Date.now();
-                            try { window._rb2p_resyncScrimmage(em, 'pat-pin'); } catch (eRS) {}
-                        }
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PIN re-pinned to 48');
-                    }
-                } catch (e) {}
-            }, 100);
 
             // Subscribe to opponent's live state. When it arrives and the
             // user is on defense (or just not yet on offense), mirror it
@@ -14924,6 +15518,7 @@
                             if ((Number(engineMatch.engineMinutesLeft) * 60 +
                                  Number(engineMatch.engineSecondsLeft)) <= 0 &&
                                 !window._rb2p_pickSixPatCascadeActive &&
+                                !(typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) &&   // V352b hole 16
                                 window._rb2p_patPlayPending !== true &&
                                 window._rb2p_patPlayResolved !== true) {
                                 engineMatch.engineSecondsLeft = 1;
@@ -14942,6 +15537,7 @@
                             if ((Number(engineMatch.engineMinutesLeft) * 60 +
                                  Number(engineMatch.engineSecondsLeft)) <= 0 &&
                                 !window._rb2p_pickSixPatCascadeActive &&
+                                !(typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) &&   // V352b hole 16
                                 window._rb2p_patPlayPending !== true &&
                                 window._rb2p_patPlayResolved !== true) {
                                 engineMatch.engineSecondsLeft = 1;

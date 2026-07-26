@@ -110,6 +110,23 @@ async function kickShapedSettle(page, creditAttempt) {
 
     // ---- T5: a made FG at the boundary voids the keep ----
     const t5 = await off.page.evaluate(() => {
+        // V352 added a higher-priority "conversion owed" leg to the same gate;
+        // clear the conversion state so this asserts the made-FG leg itself.
+        window._rb2p_patPlayPending = false;
+        window._rb2p_patPlayResolved = false;
+        window._rb2p_pickSixPatCascadeActive = false;
+        window._rb2p_patDutyMine = null;
+        window._rb2p_patOwedSinceMs = 0;
+        try {
+            var pl = window._rb2p_enumeratePopupInstances() || [];
+            for (var i = 0; i < pl.length; i++) {
+                var p = pl[i];
+                if (p && !p._HL2 && (p._0G === 100367 || p._0G === 100369)) {
+                    try { _cr(p); } catch (e) { p._HL2 = true; }
+                }
+            }
+        } catch (e) {}
+        RB.engineState().engineDownNumber = 1;
         window._rb2p_preRolloverScore = Number(RB.engineState().userScore) || 0;
         window._rb2p_preRolloverMs = Date.now() - 1000;
         RB.engineState().engineDriveFsmStage = 14;      // made FG resolution

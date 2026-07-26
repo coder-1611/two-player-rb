@@ -82,9 +82,14 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     check('T2 the WR retains no raw pass completions/attempts',
           res && res.wrRawC === 0 && res.wrRawA === 0,
           'wr stat_complete=' + (res && res.wrRawC) + ' stat_attempts=' + (res && res.wrRawA));
-    check('T3 the WR receiving line is untouched (4 REC, 45 REC YDS)',
+    // V352: catches now reconcile to completions, so the WR's REC count is
+    // expected to move (here: to 5, matching the QB's re-attributed 5/6 — he is
+    // the only receiver with receiving yardage). What V333 protects is the
+    // receiving PRODUCTION: stat_yards must never be moved by the passing
+    // re-attribution, and the receiving line must still be his.
+    check('T3 the WR keeps his receiving yards, and his catches match the completions',
           res && res.wrRawY === 45 && res.wrLine1 &&
-          res.wrLine1.indexOf('4 REC') >= 0 && res.wrLine1.indexOf('45 REC YDS') >= 0,
+          res.wrLine1.indexOf('5 REC') >= 0 && res.wrLine1.indexOf('45 REC YDS') >= 0,
           'wrLine="' + (res && res.wrLine1) + '" wrRawY=' + (res && res.wrRawY));
     check('T4 a second collect still renders 5/6 (idempotent, not 7/7)',
           res && res.qbLine2 && res.qbLine2.indexOf('5/6') === 0,

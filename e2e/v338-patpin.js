@@ -81,13 +81,30 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     // V344 made the pin universal and keyed purely on the down-6 PAT marker:
     // the engine resets the down the moment the 1PT/2PT choice starts the
     // scene, and from then on the ball is the scene's to move.
+    // V352: the invariant is stricter than the old down-6 pin — a conversion
+    // modal still on screen IS an owed conversion (signal S4), and the ball
+    // stays on the 2 while it is up, which is the whole point. So the release
+    // test now retires the conversion properly: dismiss the modal, clear the
+    // duty, THEN assert the pin lets go.
     const t4 = await drv.page.evaluate(async () => {
-        window._rb2p_patPlayResolved = true;
+        try {
+            var pl = window._rb2p_enumeratePopupInstances() || [];
+            for (var i = 0; i < pl.length; i++) {
+                var p = pl[i];
+                if (p && !p._HL2 && (p._0G === 100367 || p._0G === 100369)) {
+                    try { _cr(p); } catch (e) { p._HL2 = true; }
+                }
+            }
+        } catch (e) {}
         window._rb2p_patPlayPending = false;
+        window._rb2p_patPlayResolved = true;
+        window._rb2p_pickSixPatCascadeActive = false;
+        window._rb2p_patDutyMine = null;
         RB.engineState().engineDownNumber = 1;   // the choice was made — scene owns the ball
         RB.engineState().engineYardLineSigned = -20;
         await new Promise(r => setTimeout(r, 1000));
-        return { yard: Number(RB.engineState().engineYardLineSigned) };
+        return { yard: Number(RB.engineState().engineYardLineSigned),
+                 owed: window._rb2p_patOwed ? window._rb2p_patOwed() : 'n/a' };
     });
     console.log('  after choice + move: ' + JSON.stringify(t4));
     check('T4 the pin releases once the down leaves the PAT marker',

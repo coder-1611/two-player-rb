@@ -48,7 +48,23 @@ const blastState = page => page.evaluate(() => ({
           Math.abs(t1.yard - 48) <= 0.5 && t1.toGo === 2, JSON.stringify(t1));
 
     // ---- T2: the choice is made — the pin lets go ----
+    // V352: an on-screen conversion modal IS an owed conversion (signal S4), so
+    // the ball correctly stays on the 2 while it is up. Retire the conversion
+    // properly, then assert the pin lets go.
     const t2 = await off.page.evaluate(async () => {
+        try {
+            var pl = window._rb2p_enumeratePopupInstances() || [];
+            for (var i = 0; i < pl.length; i++) {
+                var p = pl[i];
+                if (p && !p._HL2 && (p._0G === 100367 || p._0G === 100369)) {
+                    try { _cr(p); } catch (e) { p._HL2 = true; }
+                }
+            }
+        } catch (e) {}
+        window._rb2p_patPlayPending = false;
+        window._rb2p_patPlayResolved = true;
+        window._rb2p_pickSixPatCascadeActive = false;
+        window._rb2p_patDutyMine = null;
         var em = RB.engineState();
         em.engineDownNumber = 1;                      // scene started
         em.engineYardLineSigned = -20;
