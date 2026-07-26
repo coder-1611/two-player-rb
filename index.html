@@ -979,7 +979,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V350<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V351<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1047,7 +1047,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V350</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V351</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3329,9 +3329,67 @@
                 return { k: 'run', rb: qbNm };
             };
 
+            // ===== V350 INT-LICENCE: takeaway claims require engine stat deltas =====
+            // Room PILP proved the law's last hole: device A kicked a FIELD GOAL as
+            // the half expired, but a stale/transient Vy=8 at the boundary typed the
+            // drive-end as INT — the evt wire shipped INTERCEPTED and V348 blasted it
+            // on the receiving phone for a field-goal handoff. NO popup without its
+            // licensing delta: the engine CREDITS stat_int on the thrower's roster
+            // struct at a real pick (retrobowl.js:52847 — _X21(_jj(_,t,p)._7j,
+            // 'stat_int', +1) where p=_M31 resolves the passer; the "Rodgers 3 INT"
+            // box line is this credit), and stat_fumbles on a real fumble (same
+            // roster sum the V326 fumble feed watcher already trusts). So the
+            // licence for any INT/FUMBLE claim is: the OFFENSE roster's stat_int +
+            // stat_fumbles sum moved since THIS drive started. A boundary artifact
+            // moves nothing.
+            function rb2pOffTurnoverStats() {
+                var s = { ints: 0, fums: 0 };
+                try {
+                    var c = _si(64), to = null;
+                    for (var k in c) { if (c.hasOwnProperty(k)) { to = c[k]; break; } }
+                    if (!to || to._Ln == null) return s;
+                    var n = _wi(to._Ln);
+                    for (var i = 0; i < n; i++) {
+                        var p = _zi(to._Ln, i);
+                        if (p == null) continue;
+                        s.ints += Number(_Ai(p, 'stat_int')) || 0;
+                        s.fums += Number(_Ai(p, 'stat_fumbles')) || 0;
+                    }
+                } catch (e) {}
+                return s;
+            }
+            window._rb2p_offTurnoverStats = rb2pOffTurnoverStats;
+            // Deltas since the current drive's start. known:false = the baseline was
+            // never captured (we haven't seen a tick of our own offense yet) — the
+            // callers fall back to the legacy signals then, so an exotic first-tick
+            // turnover can never be silently eaten by an unset baseline.
+            window._rb2p_driveTurnoverDeltas = function () {
+                var iB = Number(window._rb2p_driveIntBase), fB = Number(window._rb2p_driveFumBase);
+                if (!isFinite(iB) || !isFinite(fB)) return { known: false, intDelta: 0, fumDelta: 0 };
+                var cur = rb2pOffTurnoverStats();
+                return { known: true,
+                         intDelta: Math.max(0, cur.ints - iB),
+                         fumDelta: Math.max(0, cur.fums - fB) };
+            };
+
             function rb2pObserveTackles() {
                 try {
                     if (!RB.isEngineInMatchRoom()) { rb2pPrevBallKp = null; return; }
+                    // V350: refresh the per-drive stat baselines the moment we take
+                    // (or are seen holding) the ball. The waiting-flag flip sites are
+                    // many (applyOpponentOutcome, forceUserOffenseDrive, the resume
+                    // paths); this 16ms poll catches the false-transition at ALL of
+                    // them, and stats can't move in the first tick of a fresh drive.
+                    try {
+                        var v350Wait = window._rb2p_userIsWaitingForOpponent === true;
+                        if (!v350Wait && (window._rb2p_driveBasePrevWait !== false ||
+                                          window._rb2p_driveIntBase == null)) {
+                            var v350S = rb2pOffTurnoverStats();
+                            window._rb2p_driveIntBase = v350S.ints;
+                            window._rb2p_driveFumBase = v350S.fums;
+                        }
+                        window._rb2p_driveBasePrevWait = v350Wait;
+                    } catch (eBase) {}
                     // V317: stamp the TURNOVER moment in real time. The FSM sets
                     // _Vy = 8 the instant a defender takes the ball (INT/fumble); by
                     // the time _1c1 fires and we read prevVy it's usually stale (2 =
@@ -3351,7 +3409,17 @@
                             // Vy=8, so the guard ate the very event it existed to
                             // send (room USFR: INTERCEPTED never fired). A parked
                             // engine can't reach Vy=8 anyway (it parks at 4/13).
-                            if (Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
+                            // V350: the evt only ships when the takeaway is
+                            // LICENSED — stat_int/stat_fumbles moved this drive
+                            // (room PILP: a stale boundary Vy=8 on a FIELD GOAL
+                            // shipped INTERCEPTED with zero deltas). Note the
+                            // dedupe stamp stays INSIDE the send: if the engine
+                            // credits the stat a frame after Vy flips to 8, the
+                            // next 16ms tick sends — nothing is lost, only
+                            // deferred until the licence exists.
+                            var v350D = window._rb2p_driveTurnoverDeltas();
+                            if ((!v350D.known || v350D.intDelta + v350D.fumDelta > 0) &&
+                                Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
                                 typeof window._rb2p_sendEventBlast === 'function') {
                                 window._rb2p_lastIntEvtMs = Date.now();
                                 window._rb2p_sendEventBlast(
@@ -4627,7 +4695,18 @@
             // (turnover/punt), 55074 (onside success), 55295 (FG scored), etc.
             function inferUserDriveEndType(prevVy) {
                 if (prevVy === 9 || prevVy === 16) return 'TD';     // TD reached -> kickoff
-                if (prevVy === 8)                  return 'INT';    // turnover (INT/fumble bucketed)
+                if (prevVy === 8) {
+                    // V350 (room PILP): Vy=8 at a boundary can be stale/transient —
+                    // it typed a half-expiring FIELD GOAL as an interception. An INT
+                    // claim needs its licence: the offense roster's stat_int/
+                    // stat_fumbles sum moved this drive (the engine credits the
+                    // thrower at a real pick — retrobowl.js:52847). No delta = a
+                    // kick/boundary artifact, not a turnover.
+                    var dLic = window._rb2p_driveTurnoverDeltas
+                        ? window._rb2p_driveTurnoverDeltas() : { known: false };
+                    if (dLic.known && dLic.intDelta + dLic.fumDelta === 0) return 'OTHER';
+                    return 'INT';    // turnover (INT/fumble bucketed)
+                }
                 if (prevVy === 12 || prevVy === 23) return 'PUNT';
                 if (prevVy === 14)                 return 'FG';     // FG made -> kickoff
                 if (prevVy === 24)                 return 'HALF_END';
@@ -4917,7 +4996,14 @@
                         // V339: the Vy=8 stamp (observer) is the PRIMARY sender
                         // now; this send is the backstop, behind the same 5s
                         // dedupe so a drive never ships two takeaway events.
+                        // V350: the backstop obeys the same licence as the primary
+                        // sender — a takeaway evt needs an engine-credited stat
+                        // delta this drive. (buildUserDriveEndOutcome already
+                        // demoted an unlicensed type/turnover, so the outcome
+                        // fields agree; this is belt-and-braces on the evt wire.)
                         if ((outcome.turnover === true || outcome.type === 'INT') &&
+                            (outcome.intDelta == null ||
+                             (Number(outcome.intDelta) || 0) + (Number(outcome.fumDelta) || 0) > 0) &&
                             Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
                             typeof window._rb2p_sendEventBlast === 'function') {
                             window._rb2p_lastIntEvtMs = Date.now();
@@ -6308,7 +6394,20 @@
                     var endVy;
                     if      (scoreDelta >= 6) endVy = 9;
                     else if (scoreDelta >= 3) endVy = 14;
-                    else                       endVy = 8;
+                    else {
+                        // V351 (audit finding): NEVER synthesize the turnover stage
+                        // without the engine's turnover credit — this `else 8` was
+                        // manufacturing 'INT'-typed outcomes (and INTERCEPTED
+                        // popups) for every scoreless stuck drive: a dead-parked
+                        // missed FG at the horn (room PILP), a turnover on downs.
+                        // With no stat_int/fumble delta this drive, end it as a
+                        // PUNT-stage possession change: same spot semantics, no
+                        // takeaway claim, no popup.
+                        var v351Td = (typeof window._rb2p_driveTurnoverDeltas === 'function')
+                            ? window._rb2p_driveTurnoverDeltas() : null;
+                        endVy = (v351Td && v351Td.known &&
+                                 (v351Td.intDelta + v351Td.fumDelta) > 0) ? 8 : 23;
+                    }
                     console.log('[2P] drive stuck at vyStage=' + engineMatch.engineDriveFsmStage + ' for ' +
                                 (Date.now() - engineFsmStageStuckSinceMs) + 'ms — forcing end as Vy=' + endVy +
                                 ' (myScore ' + lastUserScoreObserved + '→' + myScore + ', delta ' + scoreDelta + ')');
@@ -8378,6 +8477,14 @@
                 // INTERCEPTED / FUMBLE instead of showing nothing.
                 var isTurnover = isFinite(Number(window._rb2p_lastTurnoverVy8Ms)) &&
                                  (Date.now() - Number(window._rb2p_lastTurnoverVy8Ms)) < 6000;
+                // V350: stamp the engine-credited stat deltas for this drive on the
+                // outcome — the receiver's takeaway blast (V348 gate) requires them.
+                // When the baselines are known, the turnover flag is DEMOTED to
+                // false if nothing was credited: a fresh-but-artifact Vy=8 stamp
+                // (room PILP's FG-at-the-gun) is not a turnover.
+                var d350 = window._rb2p_driveTurnoverDeltas
+                    ? window._rb2p_driveTurnoverDeltas() : { known: false };
+                if (d350.known && d350.intDelta + d350.fumDelta === 0) isTurnover = false;
                 // yardLine after _1c1 is already mirrored: the engine does
                 // `yardLine = -yardLine` inside _1c1 (verified by reading
                 // the script body in retrobowl.js). That mirror flips A's
@@ -8400,7 +8507,7 @@
                 var live = RB.engineState();
                 var minLeft = (live && typeof live.engineMinutesLeft === 'number') ? live.engineMinutesLeft : 0;
                 var secLeft = (live && typeof live.engineSecondsLeft === 'number') ? live.engineSecondsLeft : 0;
-                return {
+                var built = {
                     type: type,
                     turnover: isTurnover,   // V317: cosmetic blast hint (see above)
                     yardLine: yard,
@@ -8421,7 +8528,22 @@
                     message: userFacingMessageForType(type, yard, ownSide),
                     ts: Date.now()
                 };
+                // V350: the deltas ride the outcome ONLY when the baseline was
+                // captured — an absent field tells the receiver "older sender /
+                // unknown", and its turnover fallback stays meaningful.
+                if (d350.known) {
+                    built.intDelta = d350.intDelta;
+                    built.fumDelta = d350.fumDelta;
+                }
+                return built;
             }
+            // V350 test hooks: the licence logic is closure-local; e2e drives it
+            // through these (read-only wrappers, no game-flow side effects).
+            window._rb2p_inferUserDriveEndType = inferUserDriveEndType;
+            window._rb2p_buildUserDriveEndOutcome = function (prevVy) {
+                var s = snapshotEngineMatch();
+                return s ? buildUserDriveEndOutcome(s, s, prevVy) : null;
+            };
 
             // ===== Apply received outcome =====
             // Skip the in-engine ceremony (kickoff animation, ETC.) and jump
@@ -8762,7 +8884,23 @@
                     // still NEVER on the device that threw it (fresh Vy=8 stamp
                     // = our own drive just ended in the turnover). waitFeedBig
                     // itself re-labels INT->FUMBLE off the fumble feed stamp.
-                    if ((outcome.turnover === true || outcome.type === 'INT') && !rb2pGameOver) {
+                    // V350: the blast's licence is the SENDER's engine-credited stat
+                    // delta. When the outcome carries intDelta/fumDelta (a V350+
+                    // sender), require one of them > 0; the turnover-flag fallback
+                    // exists ONLY for outcomes from older opponents that never
+                    // stamped the fields. Room PILP: a half-expiring field goal
+                    // shipped turnover:true off a stale Vy=8 and this gate blasted
+                    // INTERCEPTED for a kick — never again without the delta.
+                    var v350HasDeltas = (outcome.intDelta != null || outcome.fumDelta != null);
+                    var v350Takeaway = v350HasDeltas
+                        ? ((Number(outcome.intDelta) || 0) > 0 || (Number(outcome.fumDelta) || 0) > 0)
+                        // V351 (measured by the empirical audit): the delta-less
+                        // fallback trusts ONLY the stamped turnover flag — never
+                        // the type string. A bare type:'INT' with turnover:false
+                        // is exactly the synthesized-label class (PILP) and still
+                        // blasted through this fallback.
+                        : (outcome.turnover === true);
+                    if (v350Takeaway && !rb2pGameOver) {
                         try {
                             var v348Eb = window._rb2p_evtBlastedAt || {};
                             var v348Recent = Math.max(Number(v348Eb.INT) || 0, Number(v348Eb.FUMBLE) || 0);
@@ -14527,7 +14665,7 @@
                     var evtWireSync = Date.now() - (Number(window._rb2p_lastScoreSyncMs) || 0) < 2500;
                     if (d >= 6 && !evtWireSync)       { evtLastTdMs = Date.now(); window._rb2p_sendEventBlast('TD'); }
                     else if (d === 3 && !evtWireSync) { window._rb2p_sendEventBlast('FG'); }
-                    if (dOpp === 2 && window._rb2p_userIsWaitingForOpponent !== true &&
+                    if (dOpp === 2 && !evtWireSync && window._rb2p_userIsWaitingForOpponent !== true &&
                         window._rb2p_patPlayPending !== true &&
                         window._rb2p_pickSixPatCascadeActive !== true &&
                         Date.now() - evtLastTdMs > 25000) {
@@ -14760,6 +14898,12 @@
                         // +6 was evented back at it).
                         if (typeof opponentLivePayload.oppScore === 'number' &&
                             Number(opponentLivePayload.oppScore) !== Number(engineMatch.userScore)) {
+                            window._rb2p_lastScoreSyncMs = Date.now();
+                        }
+                        // V351 (audit): stamp OPPONENT-score mirror changes too —
+                        // an unstamped synced +2 could forge a SAFETY event.
+                        if (typeof opponentLivePayload.myScore === 'number' &&
+                            Number(opponentLivePayload.myScore) !== Number(engineMatch.opponentScore)) {
                             window._rb2p_lastScoreSyncMs = Date.now();
                         }
                         engineMatch.setOpponentScore(opponentLivePayload.myScore);
