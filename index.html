@@ -979,7 +979,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V353<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V354<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1047,7 +1047,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V353</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V354</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2048,6 +2048,37 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
+
+            // ===== V354: A HELD RECORD SHIPS LIVE TIME, NOT STALE TIME =====
+            // A drive-end outcome is BUILT when the drive ends and shipped up to 4s
+            // later (V352b made the hold universal so a pick-6 can cancel-and-upgrade
+            // it). Its quarter/clock/score froze at build time, and the receiver
+            // writes those ABSOLUTELY — so a punt held across a quarter boundary
+            // handed the other phone a quarter and a clock that no longer existed.
+            // With 1-minute quarters a 4s hold is 7% of a quarter, which is how this
+            // surfaces as "I punted in the 3rd and it took me to the start of the
+            // 4th". Re-stamp the perishable fields at the moment of sending. The
+            // yard line is a PHYSICAL spot and is deliberately left alone.
+            window._rb2p_restampOutcome = function (o) {
+                try {
+                    if (!o) return o;
+                    var em = RB.engineState();
+                    if (!em || em.engineUserTeamIdx == null) return o;
+                    var wasQ = o.quarter, wasM = o.minutesLeft, wasS = o.secondsLeft;
+                    o.quarter     = Number(em.engineQuarter);
+                    o.minutesLeft = Number(em.engineMinutesLeft);
+                    o.secondsLeft = Number(em.engineSecondsLeft);
+                    if (em.engineScoreboard) {
+                        o.scoreUser = em.engineScoreboard[em.engineUserTeamIdx];
+                        o.scoreOpp  = em.engineScoreboard[em.engineUserTeamIdx ? 0 : 1];
+                    }
+                    if (wasQ !== o.quarter && window._rb2p_diagLog)
+                        window._rb2p_diagLog('SEND-RESTAMP ' + o.type + ' Q' + wasQ + ' ' + wasM + ':' +
+                            ('0' + wasS).slice(-2) + ' -> Q' + o.quarter + ' ' + o.minutesLeft + ':' +
+                            ('0' + o.secondsLeft).slice(-2));
+                } catch (e) {}
+                return o;
+            };
 
             // V283: resolve obj_btn_kickoff's numeric OBJECT INDEX at runtime
             // (the engine strips object-name strings, so we scan _si(N) for the
@@ -3587,7 +3618,18 @@
                                     });
                                 }
                                 if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball airborne + uncaught (an incompletion)
-                                if (bkp === 11) window._rb2p_feedSawSack = true;
+                                if (bkp === 11 && window._rb2p_feedSawSack !== true) {
+                                    window._rb2p_feedSawSack = true;
+                                    // V355: the engine counts a SACK as a rush ATTEMPT. Every
+                                    // play starts flagged "running" and that flag is only
+                                    // cleared when the QB throws (retrobowl.js:57444) — so a
+                                    // QB who is tackled without throwing is credited a carry,
+                                    // while the lost yardage is discarded (55857 only credits
+                                    // rush yards on a positive gain, or a non-QB carrier).
+                                    // The box score therefore inflates QB carries. Count the
+                                    // sacks so the FINAL can take them back out.
+                                    window._rb2p_qbSacksTaken = (Number(window._rb2p_qbSacksTaken) || 0) + 1;
+                                }
                                 // ANY live ball state (not the dead 0) means the play went
                                 // live — so it must settle + emit. Keying only on 2/5/4 could
                                 // miss a run whose ball passes through another live kp (e.g. 6),
@@ -5162,6 +5204,16 @@
                         // handoff so a wrong-quarter possession flip can be traced
                         // to its exact trigger and the yardline sign verified.
                         try {
+                            // V355: this was console-only, so a drive-end that moved the
+                            // quarter (report: "I punted in Q3 and it took me to the start
+                            // of Q4") left no evidence I could read from a room code. Put
+                            // the type + quarter + clock in the diag, where it survives.
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                'SEND ' + (outcome && outcome.type) + ' Q' + post.engineQuarter +
+                                ' ' + post.engineMinutesLeft + ':' +
+                                ('0' + post.engineSecondsLeft).slice(-2) +
+                                ' (pre Q' + pre.engineQuarter + ' ' + pre.engineMinutesLeft + ':' +
+                                ('0' + pre.engineSecondsLeft).slice(-2) + ') prevVy=' + prevVy);
                             console.log('[2P HANDOFF] _1c1 send — type=' + (outcome && outcome.type) +
                                         ' Q' + post.engineQuarter +
                                         ' ' + post.engineMinutesLeft + ':' +
@@ -5231,6 +5283,7 @@
                                     return;
                                 }
                                 window._rb2p_pendingTurnoverOutcome = null; window._rb2p_pendingTurnoverHeldMs = 0;
+                                window._rb2p_restampOutcome(pending);   // V354: live time, not stale
                                 try { window._twoPlayer.send(pending); }
                                 catch (e) { console.log('[2P] send err', e); }
                                 // V187: the live INT outcome shipped — mark the
@@ -6805,7 +6858,22 @@
 
                         // Only Q2 and Q4 keep possession (Q1→Q2, Q3→Q4). Halftime
                         // (→Q3) and OT (→Q5) legitimately change possession.
-                        window._rb2p_quarterResumePending = (qNow === 2 || qNow === 4) && userHasBall;
+                        // ===== V354: POSSESSION IS THE BRIDGE'S FLAG, NOT THE ENGINE'S =====
+                        // `userHasBall` here reads the ENGINE's possessing-team register.
+                        // After a punt the bridge parks this device immediately, but the
+                        // engine's own register can still say we have the ball for a beat —
+                        // and V352b's universal hold widens that window to ~4s, which with
+                        // 1-minute quarters is huge. If the Q3->Q4 roll lands inside it, the
+                        // keep decides "same team keeps the ball" and RESTORES the punting
+                        // team's drive: the reported "I punted on 4th and 23 and got the ball
+                        // back at my own 10, in the 4th quarter". A drive we have already
+                        // handed away is never ours to keep.
+                        window._rb2p_quarterResumePending = (qNow === 2 || qNow === 4) && userHasBall &&
+                            window._rb2p_userIsWaitingForOpponent !== true &&
+                            window._rb2p_userOutcomeSendInProgress !== true;
+                        if ((qNow === 2 || qNow === 4) && userHasBall &&
+                            !window._rb2p_quarterResumePending && window._rb2p_diagLog)
+                            window._rb2p_diagLog('QTR-KEEP refused — drive already handed away');
                     }
                     qkPrevQuarterSeen = qNow;
 
@@ -10622,8 +10690,11 @@
                             if (passTd) parts.push(passTd + ' PASS TD');
                             if (intc)   parts.push(intc + ' INT');
                             if (recLng) parts.push(recLng + ' LG');
-                            if (carries) parts.push(carries + ' CAR');
-                            if (rushYds || carries) parts.push(rushYds + ' RUSH YDS' + (rushTd ? ' ' + rushTd + ' RUSH TD' : ''));
+                            var sacksTaken = Math.max(0, Math.round(Number(window._rb2p_qbSacksTaken) || 0));
+                            var qbCarries = Math.max(0, carries - sacksTaken);   // V355: a sack is not a carry
+                            if (qbCarries) parts.push(qbCarries + ' CAR');
+                            if (rushYds || qbCarries) parts.push(rushYds + ' RUSH YDS' + (rushTd ? ' ' + rushTd + ' RUSH TD' : ''));
+                            if (sacksTaken) parts.push(sacksTaken + ' SACKED');
                             sortAct = passYds + passTd * 100;
                         } else if (pos === 2) {                  // RB — RUSHING and RECEIVING shown as SEPARATE stats
                             posRank = 1;
