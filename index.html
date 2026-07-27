@@ -979,7 +979,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V352<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V353<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1047,7 +1047,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V352</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V353</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3312,6 +3312,15 @@
                         return 'L7 unknown kind "' + evt.k + '"';
                 }
             };
+            // ===== V353e: THE BRIDGE MAY NOT NARRATE ITS OWN BALL MOVES =====
+            // Device report: "RODGERS -24 YDS" as the ball went back to the 2 for
+            // the conversion. Yardage comes from the scrimmage delta, and the PAT
+            // pin TELEPORTS the ball to the 2 — so the pin's own reposition was
+            // measured as a 24-yard loss, and because the touchdown's stat credit
+            // landed in the same observation window, it got a name attached. The
+            // no-stat gate can't catch this: the stats are real, only the yardage
+            // is fiction. So any time the bridge itself places the ball, the
+            // observer's reference moves with it and the in-flight window closes.
             window._rb2p_classifyPlay = function (sig) {
                 sig = sig || {};
                 var qbNm = sig.qbName || 'QB';
@@ -3615,6 +3624,15 @@
                                 // which is the RB-run-shows-blank bug wearing a new
                                 // hat (v332 dropped a different play on every run
                                 // until this came out). Deltas decide, nothing else.
+                                // V353e: a CONVERSION is not a scrimmage play — but this
+                                // must key on PRESENT-TENSE evidence only. Using the full
+                                // ownership predicate meant a lingering down-6 marker or a
+                                // persisted duty record silenced EVERY subsequent play
+                                // (v307 T9/T9b and v332 T6 all went dark). A conversion is
+                                // "happening now" only while its modal is on screen or the
+                                // pick-6 cascade owns the scene.
+                                // Defensive: this runs INSIDE the settle's silent catch, so
+                                // anything that throws here would drop the play outright.
                                 if (settledNow) {
                                     // V326: CLASSIFY off the box-stat deltas — the engine's own
                                     // record of what it credited. Diff every skill player vs the
@@ -3631,6 +3649,7 @@
                                     var qbAttDelta = 0;                 // V346: pass-attempt delta — the ONLY licence for an incompletion line
                                     var rcvName = '', rcvBest = 0.01;   // largest non-QB receiving-yds move
                                     var runName = '', runBest = 0;      // strongest non-QB rush signal
+                                    var rcvYdDelta = null, runYdDelta = null;   // V353f: the yardage itself
                                     rosterEach(function (p, i2) {
                                         var b = s0[i2]; if (!b) return;
                                         var pos = Number(_Ai(p, 'position')) || 0;
@@ -3645,6 +3664,7 @@
                                         } else {
                                             if (Math.abs(dPy) > rcvBest) {   // this non-QB gained receiving yards = the target
                                                 rcvBest = Math.abs(dPy);
+                                                rcvYdDelta = dPy;               // V353f: SIGNED, for the yardage
                                                 try { rcvName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                             }
                                             // A carry: rush ATTEMPT or rush YARDS moved. Checking both
@@ -3654,6 +3674,7 @@
                                             var runSig = dRa + (Math.abs(dRy) > 0.01 ? 0.5 : 0);
                                             if ((dRa > 0 || Math.abs(dRy) > 0.01) && runSig > runBest) {
                                                 runBest = runSig;
+                                                runYdDelta = dRy;               // V353f: SIGNED, for the yardage
                                                 try { runName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                             }
                                         }
@@ -3693,12 +3714,36 @@
                                         runName:        runName,
                                         catchName:      window._rb2p_feedCatchName || ''
                                     });
-                                    // Gain = the engine's own _6F delta (== s in `_6F += s`),
-                                    // the true forward gain in BOTH drive directions. Incomplete
-                                    // carries no yardage.
-                                    var y0 = Number(window._rb2p_feedYard0);
-                                    if (isFinite(y0) && evt.k !== 'incomplete') {
-                                        var g = Math.round(Number(fm._6F) - y0);
+                                    // ===== V353f: THE YARDAGE IS A DELTA TOO =====
+                                    // It used to be the _6F (scrimmage-position) delta. That is a
+                                    // POSITION MEASUREMENT, not a box-score fact — which is exactly
+                                    // how the conversion pin's teleport got printed as "RODGERS
+                                    // -24 YDS": the type and the name were delta-licensed, the
+                                    // NUMBER was not. Now every number on that line is the engine's
+                                    // own credited yardage: the carrier's rushing delta for a run,
+                                    // the receiver's receiving delta (or the passer's passing
+                                    // delta) for a completion. No ball movement can invent a number,
+                                    // because ball movement is no longer consulted.
+                                    var dy = null;
+                                    if (evt.k === 'run') {
+                                        dy = (runYdDelta != null && evt.rb && evt.rb !== qbNm)
+                                            ? runYdDelta : qbRushYdDelta;
+                                    } else if (evt.k === 'pass') {
+                                        dy = (rcvYdDelta != null && Math.abs(rcvYdDelta) > 0.01)
+                                            ? rcvYdDelta : qbPassDelta;
+                                    } else if (evt.k === 'sack') {
+                                        dy = (Math.abs(qbRushYdDelta) > 0.01) ? qbRushYdDelta : null;
+                                    }
+                                    // A ZERO is not a measurement. The engine credits a QB
+                                    // no negative rushing yards at all (retrobowl.js:55857:
+                                    // only a positive gain, or a non-QB carrier), and a
+                                    // carrier's yards can be credited a frame after his
+                                    // attempt — both showed up as a flat "0 YDS", which is
+                                    // a number the box score never said. If nothing was
+                                    // credited, the line carries the name and the type and
+                                    // no yardage (e.g. "PURDY SACKED").
+                                    if (dy != null && isFinite(dy) && Math.abs(Number(dy)) >= 0.5) {
+                                        var g = Math.round(Number(dy));
                                         if (Math.abs(g) <= 99) evt.yds = g;
                                     }
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V326 DEBUG — stat deltas per play
@@ -5166,6 +5211,7 @@
                         // conversion's own answer and must never wait.
                         if (outcome.type !== 'PAT_RESULT') {
                             window._rb2p_pendingTurnoverOutcome = outcome;
+                            window._rb2p_pendingTurnoverHeldMs = Date.now();   // V354: delivery watchdog
                             var holdStartMs = Date.now();
                             var fireHeldSend = function () {
                                 window._rb2p_pendingTurnoverSendTimer = null;
@@ -5184,7 +5230,7 @@
                                     console.log('[2P] turnover hold extended — opponent TD replay in flight');
                                     return;
                                 }
-                                window._rb2p_pendingTurnoverOutcome = null;
+                                window._rb2p_pendingTurnoverOutcome = null; window._rb2p_pendingTurnoverHeldMs = 0;
                                 try { window._twoPlayer.send(pending); }
                                 catch (e) { console.log('[2P] send err', e); }
                                 // V187: the live INT outcome shipped — mark the
@@ -5277,7 +5323,7 @@
                     if (window._rb2p_pendingTurnoverSendTimer) {
                         clearTimeout(window._rb2p_pendingTurnoverSendTimer);
                         window._rb2p_pendingTurnoverSendTimer = null;
-                        window._rb2p_pendingTurnoverOutcome = null;
+                        window._rb2p_pendingTurnoverOutcome = null; window._rb2p_pendingTurnoverHeldMs = 0;
                         console.log('[2P PICK6] cancelled held turnover send — upgraded to PICK6');
                     }
                     // Consume the _Ak1 latch so the same TD replay cannot
@@ -5542,9 +5588,18 @@
                             gq = gBase + 1;
                             em.engineQuarter = gq;
                         }
-                        if (gq <= 4 && gq !== window._rb2p_qGovPrevQ &&
+                        // V354: the top-up may ONLY fire on a quarter this device has
+                        // never played before. `gq !== qGovPrevQ` was enough to re-award
+                        // Q3 a FULL FRESH CLOCK at the END of Q3 (device report: the
+                        // clock jumped from the end of the 3rd quarter back to its
+                        // start) — any oscillation of the quarter register satisfied
+                        // it. A quarter gets exactly one fresh clock, ever.
+                        if (!window._rb2p_qToppedEver) window._rb2p_qToppedEver = {};
+                        if (gq <= 4 && !window._rb2p_qToppedEver[gq] &&
+                            gq !== window._rb2p_qGovPrevQ &&
                             (Number(em.engineMinutesLeft) * 60 +
                              Number(em.engineSecondsLeft)) <= 0) {
+                            window._rb2p_qToppedEver[gq] = true;
                             var gSec = window._rb2p_agreedQuarterSec();
                             em.engineMinutesLeft   = Math.floor(gSec / 60);
                             em.engineSecondsLeft   = gSec % 60;
@@ -6482,6 +6537,7 @@
             // force-ending the drive — flipping possession + mirroring the yard
             // line — at Q1→Q2 and Q3→Q4. (See qtr_test3 repro.)
             window._rb2p_lastStableQuarter = 1;
+            window._rb2p_qToppedEver = {};   // V354: a rematch's quarters get their fresh clocks back
             window._rb2p_quarterChangedToMs = 0;
             window._rb2p_quarterChangedTo   = 0;
             window._rb2p_quarterResumePending = false;  // set on non-halftime rollover, cleared when user plays a down
@@ -6715,8 +6771,11 @@
                         Number(em.engineDriveFsmStage) === 14)
                         window._rb2p_vyTdSeenMs = Date.now();
 
-                    if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen) {
-                        // Quarter just incremented.
+                    if (qkPrevQuarterSeen != null && qNow > qkPrevQuarterSeen && qNow <= 5) {
+                        // Quarter just incremented. (V353c: only to a LEGAL quarter —
+                        // a roll to 6+ is an engine glitch the ceiling reverts, and
+                        // treating it as a quarter change kept refreshing the
+                        // end-of-game maturity clock; see room USFR.)
                         window._rb2p_quarterChangedToMs = Date.now();
                         window._rb2p_quarterChangedTo   = qNow;
                         qkQuarterStartSec = null;
@@ -9071,7 +9130,7 @@
                     if (window._rb2p_pendingTurnoverSendTimer) {
                         clearTimeout(window._rb2p_pendingTurnoverSendTimer);
                         window._rb2p_pendingTurnoverSendTimer = null;
-                        window._rb2p_pendingTurnoverOutcome = null;
+                        window._rb2p_pendingTurnoverOutcome = null; window._rb2p_pendingTurnoverHeldMs = 0;
                         console.log('[2P] dropped held turnover send — inbound ' +
                                     outcome.type + ' outcome supersedes it');
                     }
@@ -9923,8 +9982,10 @@
                         var toGoR = Math.max(1, Math.round(Number(toGo) || 0));
                         var dist = (Number(yard) > 0 && (50 - Math.abs(Number(yard))) <= Number(toGo)) ? 'GOAL' : toGoR;
                         wf.base = wf.ord(down) + ' & ' + dist + (spot ? '  ·  ' + spot : '');
+                        window._rb2p_cmtRecord('situation', wf.base, 'live/down:' + down + ' toGo:' + toGoR);
                     } else if (spot) {
                         wf.base = spot;
+                        window._rb2p_cmtRecord('situation', wf.base, 'live/spot-only');
                     }
                     // Coarse "something is happening" hint. A live-data trace showed
                     // the ball reaches kp5 on EVERY play (runs AND passes go 0→1→2→5→4),
@@ -9933,10 +9994,18 @@
                     // the real pass/run + names land in the result line a moment later
                     // (feed()). kp7 only appears on an incompletion (ball in the air).
                     var k = Number(ballKp);
-                    var act = (k === 7) ? 'PASS IS UP…'
-                            : (k === 5) ? 'PLAY IS LIVE…'
+                    // V353d: "PASS IS UP…" is GONE. It was the last text in the
+                    // commentary box that made a CLAIM about the play without a
+                    // delta behind it — and it was wrong on any 4th-down punt or
+                    // field goal, which reach the airborne ball state too (down
+                    // 1..4 gating can't tell them apart). A live indicator may say
+                    // that something is happening; it may not say WHAT.
+                    var act = (k === 7 || k === 5) ? 'PLAY IS LIVE…'
                             : (k === 2 || k === 3 || k === 1) ? 'AT THE SNAP…' : '';
-                    if (act) { wf.action = act; wf.actionUntil = Date.now() + 900; }
+                    if (act) {
+                        wf.action = act; wf.actionUntil = Date.now() + 900;
+                        window._rb2p_cmtRecord('action', act, 'live/ballstate:' + k + ' down:' + down);
+                    }
                     // V314: drive the arena field bar from the same wire. The opponent
                     // is on offense; their _6F (yard) is the ball spot, signed from
                     // midfield: -50 = their own goal, +50 = MY (the viewer's) goal.
@@ -9960,6 +10029,35 @@
                 } catch (e) {}
             };
             // RESULT: a completed play with real names. evt = {k,qb,rcv,rb,yds}.
+            // ===== V353d: THE COMMENTARY LEDGER =====
+            // Every string that actually reaches the wait-screen commentary box is
+            // recorded WITH THE THING THAT LICENSED IT, kept rolling, and mirrored
+            // to rooms/{code}/cmt/{role} beside the diag log. If a line ever shows
+            // up that shouldn't, the room code alone proves what produced it —
+            // instead of the evidence scrolling away, which is how the ghost lines
+            // and the play-change loop stayed undiagnosed for days.
+            window._rb2p_cmtLog = [];
+            window._rb2p_cmtRecord = function (slot, text, licence) {
+                try {
+                    if (!text) return;
+                    var L = window._rb2p_cmtLog;
+                    var last = L.length ? L[L.length - 1] : null;
+                    if (last && last.s === slot && last.t === text) return;   // unchanged, not a new appearance
+                    L.push({ s: slot, t: String(text).slice(0, 80),
+                             lic: String(licence || 'UNLICENSED').slice(0, 40),
+                             ms: Date.now() });
+                    if (L.length > 60) L.shift();
+                } catch (e) {}
+            };
+            window._rb2p_readCmtLog = function () {
+                try {
+                    return (window._rb2p_cmtLog || []).map(function (r) {
+                        var d = new Date(r.ms);
+                        return ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) +
+                               ' [' + r.s + '] ' + r.t + '   <= ' + r.lic;
+                    });
+                } catch (e) { return []; }
+            };
             window._rb2p_waitFeedResult = function (evt) {
                 try {
                     if (!evt || !evt.k) return;
@@ -9998,6 +10096,11 @@
                     } else { return; }
                     wf.result = txt; wf.resultUntil = Date.now() + 2600;
                     wf.action = ''; wf.actionUntil = 0;
+                    // The headline is the delta-licensed one: the feed record it
+                    // came from only exists if the V345 master gate and the V346
+                    // seven-check law both passed on real box-stat movement.
+                    window._rb2p_cmtRecord('result', txt,
+                        'delta/feed:' + evt.k + (evt.seq != null ? '#' + evt.seq : ''));
                 } catch (e) {}
             };
             // BIG: a scoring / turnover blast. Called from applyOpponentOutcome
@@ -10030,6 +10133,7 @@
                     };
                     var m = map[type];
                     if (!m) return;   // PUNT/DOWNS/OTHER are not blast-worthy
+                    window._rb2p_cmtRecord('blast', m.t, 'event:' + type);
                     wf.bigText = m.t; wf.bigColor = m.acc; wf.bigEyebrow = m.eye;
                     wf.bigSub = m.sub || (message || ''); wf.bigConfetti = !!m.conf;
                     wf.bigConfettiFired = false;
@@ -10781,8 +10885,16 @@
                     // test regulationOver has — a single parked self-roll into "Q5"
                     // must not declare a FINAL a quarter early. The real Q4->Q5
                     // edge is at least a few seconds old before anything ends.
+                    // V353c: measure maturity from the FIRST moment regulation was
+                    // seen to be over, latched once — not from the shared
+                    // quarter-change clock, which an oscillating illegal roll can
+                    // refresh indefinitely (room USFR: 40-8 stuck in "quarter 5",
+                    // QTR-CEIL clamping 6->5 over and over, FINAL never firing).
+                    if (q >= 5) {
+                        if (!window._rb2p_pastRegSeenMs) window._rb2p_pastRegSeenMs = Date.now();
+                    } else window._rb2p_pastRegSeenMs = 0;
                     var pastRegulation = (q >= 5) &&
-                        (Date.now() - (Number(window._rb2p_quarterChangedToMs) || 0) > 5000);
+                        (Date.now() - Number(window._rb2p_pastRegSeenMs) > 5000);
                     // CRITICAL: Vy=13 is the BETWEEN-QUARTERS park (every quarter
                     // end momentarily sits at Wy=N, clock 0:00, Vy=13, kp!=2 before
                     // the bridge resumes the next quarter). Without the Vy!=13 guard
@@ -10929,6 +11041,7 @@
                         window._rb2p_qGovPrevQ    = 1;
                         window._rb2p_qGovToppedQ  = null;
                         window._rb2p_lastStableQuarter = 1;
+                        window._rb2p_qToppedEver = {};   // V354: a rematch's quarters get their fresh clocks back
                         // V109: clear all OT state so a rematch re-arms the
                         // equal-possession engine from scratch.
                         window._rb2p_inOvertime = false;
@@ -12610,6 +12723,17 @@
                                 .then(function (u) {
                                     return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: dbgLines }) });
                                 }).catch(function () {});
+                            // V353d: the commentary ledger rides along — every line
+                            // that appeared, and what licensed it.
+                            try {
+                                var cmtLines = window._rb2p_readCmtLog().join('\n');
+                                if (cmtLines) {
+                                    fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/cmt/' + role + '.json')
+                                        .then(function (u2) {
+                                            return fetch(u2, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: cmtLines }) });
+                                        }).catch(function () {});
+                                }
+                            } catch (eCmt) {}
                         }
                     } catch (eDbg) {}
                     // V265: opponent-visible liveness. Every prior death was
@@ -15612,6 +15736,7 @@
             // would clamp this fresh Q1 straight up to Q4 (and the q<=1 reset would
             // then never fire). These are also reset reactively when q<=1.
             window._rb2p_lastStableQuarter = 1;
+            window._rb2p_qToppedEver = {};   // V354: a rematch's quarters get their fresh clocks back
             window._rb2p_wireQuarter       = 0;
             window._rb2p_qBackLogMs        = 0;
             window._rb2p_inOvertime = false;   // V109: re-arm equal-possession OT

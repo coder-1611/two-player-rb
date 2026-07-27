@@ -267,8 +267,14 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     } else {
         const feed = await TP.fbGet('rooms/' + g.code + '/feed/' + off.role);
         console.log('  RB=' + t7.name + ' QB=' + t7.qb + '  feed=' + JSON.stringify(feed));
-        check('T7 a carry is emitted as a run for the RB (not the QB)',
-              feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb && Number(feed.yds) === 4,
+        // V353f: the yardage is a BOX-STAT delta now, not the ball's movement.
+        // This case credits only the rush ATTEMPT (no rush yards), so there is no
+        // yardage the box score ever stated — the line correctly names the carrier
+        // and the play type and shows NO number. (T7d covers the yards-credited
+        // case and still asserts the number.)
+        check('T7 a carry is emitted as a run for the RB (not the QB), with no invented yardage',
+              feed && feed.k === 'run' && feed.rb === t7.name && feed.rb !== t7.qb &&
+              feed.yds === undefined,
               'feed=' + JSON.stringify(feed) + ' (RB should be ' + t7.name + ', not QB ' + t7.qb + ')');
     }
 
