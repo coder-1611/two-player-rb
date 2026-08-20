@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /e2e/
+Disallow: /tools/
+Disallow: /docs/
+
+Sitemap: https://two-player-rb.vercel.app/sitemap.xml
