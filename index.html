@@ -985,7 +985,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V354<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V358<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1053,7 +1053,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V354</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V358</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1521,7 +1521,11 @@
                     get enginePossessingTeamIdx()  { return m._UD; },  set enginePossessingTeamIdx(v)  { m._UD  = v; },
                     get engineUserTeamIdx()        { return m._0z; },  set engineUserTeamIdx(v)        { m._0z  = v; },
                     get engineOpponentTeamIdx()    { return m._0z ? 0 : 1; },
-                    get engineYardLineSigned()     { return m._6F; },  set engineYardLineSigned(v)     { m._6F  = v; },
+                    get engineYardLineSigned()     { return m._6F; },
+                    // V358: EVERY bridge ball placement passes through here, so the
+                    // ball gate lives here and cannot be bypassed. It never throws
+                    // (internally guarded) and returns the value to actually write.
+                    set engineYardLineSigned(v)     { m._6F = (typeof window._rb2p_ballGate === 'function') ? window._rb2p_ballGate(v) : v; },
                     get engineDriveFsmStage()      { return m._Vy; },  set engineDriveFsmStage(v)      { m._Vy  = v; },
                     // V298: the engine's PIXEL-space scrimmage + first-down marker.
                     // Every play resolves as s = (ballX - _B01)/20, then _l61 -= s,
@@ -2054,6 +2058,112 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
+
+            // ===================================================================
+            // V358: THE BALL GATE — one check, every placement, no exceptions
+            // ===================================================================
+            // The rule the owner wants: at the START of a quarter the ball must be
+            // on the EXACT spot the last play of the previous quarter left it. Not
+            // "usually", and not enforced by whichever guard happens to be nearby.
+            //
+            // This is enforced at the single CHOKE POINT: every ball placement the
+            // bridge makes goes through `set engineYardLineSigned` (verified — there
+            // is not one raw `m._6F =` write anywhere else in the bridge). So this
+            // gate cannot be bypassed by any current or future placement site:
+            // rollback, force-drive, the yard-guard, both quarter-keep restores, the
+            // pick-6 pin, the PAT pin and pre-pin, the outcome apply, OT, resume.
+            //
+            // It runs on EVERY placement and ALWAYS accounts for itself. Mid-quarter
+            // it reports "checked, not enforcing" rather than staying silent, so
+            // there is never a placement with no gate record.
+            //
+            // The engine's OWN writes (a play advancing _6F, the possession mirror)
+            // do not pass through here — correctly: a play is allowed to move the
+            // ball. This gates decisions the BRIDGE makes.
+            //
+            // WHERE IT DELIBERATELY STANDS DOWN (the edge cases, each a real rule of
+            // football rather than a convenience):
+            //   E1 halftime (entering Q3) and OT (Q5) — possession flips and the
+            //      ball goes to a kickoff spot; it is SUPPOSED to move.
+            //   E2 a conversion is owed — the ball belongs on the 2, and the
+            //      conversion invariant owns it.
+            //   E3 the drive was handed away (punt/turnover/score): parked, a send
+            //      in flight, or the engine no longer says we possess.
+            //   E4 the score changed at the horn (a TD or FG as time expired) — the
+            //      next placement is a kickoff, not a continuation.
+            //   E5 an opponent outcome landed after the boundary — that is a new
+            //      drive, placed by the wire.
+            //   E6 no trustworthy anchor exists, or the window has expired.
+            // Everything else at a Q1->Q2 / Q3->Q4 boundary is HELD to the anchor.
+            var ballGatePassN = 0, ballGateLastPassLogMs = 0, ballGateHoldN = 0;
+            window._rb2p_ballGateStats = function () {
+                return { passes: ballGatePassN, holds: ballGateHoldN,
+                         anchor: window._rb2p_qAnchor || null };
+            };
+            // Armed as a quarter increments; see the quarter tracker.
+            window._rb2p_armBallAnchor = function (toQ, yard, keep) {
+                try {
+                    var em = RB.engineState();
+                    window._rb2p_qAnchor = {
+                        toQ: Number(toQ),
+                        yard: Number(yard),
+                        keep: !!keep,
+                        score: em ? (Number(em.userScore) || 0) : 0,
+                        oppScore: em ? (Number(em.opponentScore) || 0) : 0,
+                        ms: Date.now()
+                    };
+                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                        'BALLGATE armed Q' + toQ + ' anchor=' + Math.round(Number(yard)) +
+                        (keep ? ' (keep)' : ' (no-keep)'));
+                } catch (e) {}
+            };
+            // why the gate is NOT enforcing right now — '' means it IS.
+            window._rb2p_ballGateStandDown = function () {
+                var a = window._rb2p_qAnchor;
+                if (!a || !isFinite(a.yard) || Math.abs(a.yard) > 50) return 'E6 no anchor';
+                if (Date.now() - a.ms > 15000)                        return 'E6 window closed';
+                if (!a.keep)                                          return 'E1 not a keep boundary';
+                try {
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed())
+                        return 'E2 conversion owed';
+                    if (window._rb2p_userIsWaitingForOpponent === true) return 'E3 parked (drive handed away)';
+                    if (window._rb2p_userOutcomeSendInProgress === true) return 'E3 send in flight';
+                    var em = RB.engineState();
+                    if (em && em.enginePossessingTeamIdx !== em.engineUserTeamIdx)
+                        return 'E3 engine says we do not possess';
+                    if (em && ((Number(em.userScore) || 0) !== a.score ||
+                               (Number(em.opponentScore) || 0) !== a.oppScore))
+                        return 'E4 score changed at the horn';
+                    if (Number(window._rb2p_lastOpponentOutcomeApplyMs) > a.ms)
+                        return 'E5 opponent outcome placed this drive';
+                } catch (e) { return 'E6 state unreadable'; }
+                return '';
+            };
+            // THE GATE. Returns the yard line that will actually be written.
+            window._rb2p_ballGate = function (proposed) {
+                try {
+                    var p = Number(proposed);
+                    var stand = window._rb2p_ballGateStandDown();
+                    if (stand) {
+                        // ALWAYS accounted for — a rate-limited running tally, so a
+                        // mid-quarter placement is never silent, just not noisy.
+                        ballGatePassN++;
+                        if (window._rb2p_diagLog && Date.now() - ballGateLastPassLogMs > 3000) {
+                            ballGateLastPassLogMs = Date.now();
+                            window._rb2p_diagLog('BALLGATE pass x' + ballGatePassN + ' (' + stand + ')');
+                        }
+                        return proposed;
+                    }
+                    var a = window._rb2p_qAnchor;
+                    if (isFinite(p) && Math.abs(p - a.yard) <= 0.5) { ballGatePassN++; return proposed; }
+                    ballGateHoldN++;
+                    console.warn('[2P BALLGATE] quarter-start placement ' + (isFinite(p) ? Math.round(p) : p) +
+                                 ' HELD to the end-of-quarter spot ' + Math.round(a.yard));
+                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                        'BALLGATE HOLD ' + (isFinite(p) ? Math.round(p) : '?') + ' -> ' + Math.round(a.yard));
+                    return a.yard;
+                } catch (e) { return proposed; }
+            };
 
             // ===== V354: A HELD RECORD SHIPS LIVE TIME, NOT STALE TIME =====
             // A drive-end outcome is BUILT when the drive ends and shipped up to 4s
@@ -3626,7 +3736,7 @@
                                 if (bkp === 7)  window._rb2p_feedThrew   = true;   // ball airborne + uncaught (an incompletion)
                                 if (bkp === 11 && window._rb2p_feedSawSack !== true) {
                                     window._rb2p_feedSawSack = true;
-                                    // V355: the engine counts a SACK as a rush ATTEMPT. Every
+                                    // V358: the engine counts a SACK as a rush ATTEMPT. Every
                                     // play starts flagged "running" and that flag is only
                                     // cleared when the QB throws (retrobowl.js:57444) — so a
                                     // QB who is tackled without throwing is credited a carry,
@@ -5210,7 +5320,7 @@
                         // handoff so a wrong-quarter possession flip can be traced
                         // to its exact trigger and the yardline sign verified.
                         try {
-                            // V355: this was console-only, so a drive-end that moved the
+                            // V358: this was console-only, so a drive-end that moved the
                             // quarter (report: "I punted in Q3 and it took me to the start
                             // of Q4") left no evidence I could read from a room code. Put
                             // the type + quarter + clock in the diag, where it survives.
@@ -6837,6 +6947,23 @@
                         // end-of-game maturity clock; see room USFR.)
                         window._rb2p_quarterChangedToMs = Date.now();
                         window._rb2p_quarterChangedTo   = qNow;
+                        // V358: capture where the LAST PLAY of the quarter left the
+                        // ball. Preference order: the settled spot latched at the
+                        // quarter park (V302), then the live pre-rollover capture,
+                        // then wherever the ball is right now. Only Q2 and Q4 are
+                        // "keep" boundaries — halftime and OT legitimately move it.
+                        try {
+                            var anchorYard = (window._rb2p_qEndLatchQ === qkPrevQuarterSeen &&
+                                              isFinite(Number(window._rb2p_qEndLatchYard)))
+                                ? Number(window._rb2p_qEndLatchYard)
+                                : (isFinite(Number(window._rb2p_preRolloverYard))
+                                    ? Number(window._rb2p_preRolloverYard)
+                                    : Number(em.engineYardLineSigned));
+                            var anchorKeep = (qNow === 2 || qNow === 4) && userHasBall &&
+                                             window._rb2p_userIsWaitingForOpponent !== true &&
+                                             window._rb2p_userOutcomeSendInProgress !== true;
+                            window._rb2p_armBallAnchor(qNow, anchorYard, anchorKeep);
+                        } catch (eAnchor) {}
                         qkQuarterStartSec = null;
 
                         // Record the COMPLETED quarter's score into the line-
@@ -10697,7 +10824,7 @@
                             if (intc)   parts.push(intc + ' INT');
                             if (recLng) parts.push(recLng + ' LG');
                             var sacksTaken = Math.max(0, Math.round(Number(window._rb2p_qbSacksTaken) || 0));
-                            var qbCarries = Math.max(0, carries - sacksTaken);   // V355: a sack is not a carry
+                            var qbCarries = Math.max(0, carries - sacksTaken);   // V358: a sack is not a carry
                             if (qbCarries) parts.push(qbCarries + ' CAR');
                             if (rushYds || qbCarries) parts.push(rushYds + ' RUSH YDS' + (rushTd ? ' ' + rushTd + ' RUSH TD' : ''));
                             if (sacksTaken) parts.push(sacksTaken + ' SACKED');
