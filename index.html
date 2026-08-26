@@ -985,7 +985,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V360<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V361<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1053,7 +1053,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V360</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V361</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1457,12 +1457,21 @@
         //   _Vy   engineDriveFsmStage      — 1=kickoff, 8=turnover, 9=TD,
         //                                    11=PAT-pick, 12/23=punt,
         //                                    14=FG made, 24=half end
+        //   _B01  engineScrimmagePx        — the engine's PIXEL-space line of
+        //                                    scrimmage (see resyncScrimmage)
+        //   _vb1  engineFirstDownPx        — the first-down marker, same space
+        //   __b1  engineMainCommentaryText  — the main commentary banner
         //   _2c1  enginePriorFsmStage      — the stage that triggered the
         //                                    latest _1c1 call (used by the
         //                                    bridge to classify drive end)
         //   _kp   engineControllerState    — obj_controller step state
         //                                    (2 = "active play" — required
         //                                    for the ball to respond)
+        //         CAREFUL: _kp is one obfuscated SLOT, reused per object. On an
+        //         obj_ball instance the same name is the BALL state (0 dead,
+        //         4 tackled, 5 received, 7 airborne, 11 sacked) — a different
+        //         thing entirely. Ball reads stay raw on purpose: naming them
+        //         after this row would be a lie.
         //   _t11  engineDownNumber         — 1..4; 6 = PAT-pending marker
         //   _l61  engineYardsToGo          — yards needed for first down
         //   _Sb1  engineScoreboard         — [team0Score, team1Score]
@@ -1563,15 +1572,23 @@
                     get engineActivePlayerInst()   { return m._X_; },
                     get engineTeamDisplayNames()   { return m._bL; },
                     get engineTeamDataPair()       { return m._Fj; },
+                    get engineTimeouts()           { return m._l51; },
                     get engineDefenseAggression()  { return m._001; }, set engineDefenseAggression(v)  { m._001 = v; },
                     get engineSkipCommentaryFlag() { return m._8c1; }, set engineSkipCommentaryFlag(v) { m._8c1 = v; },
                     get engineSubCommentaryText()  { return m._831; }, set engineSubCommentaryText(v)  { m._831 = v; },
                     get engineMainCommentaryText() { return m.__b1; }, set engineMainCommentaryText(v) { m.__b1 = v; },
                     // ---- user-perspective helpers (derived from engine state) ----
-                    get userScore()     { return m._Sb1 ? (m._Sb1[m._0z] || 0) : 0; },
-                    get opponentScore() { return m._Sb1 ? (m._Sb1[m._0z ? 0 : 1] || 0) : 0; },
-                    setUserScore:     function (v) { if (m._Sb1) m._Sb1[m._0z] = v; },
-                    setOpponentScore: function (v) { if (m._Sb1) m._Sb1[m._0z ? 0 : 1] = v; }
+                    // Named through the cheat-sheet fields rather than the raw
+                    // slots: the scoreboard is indexed BY TEAM, and which index
+                    // is "us" is the user-team register, not a constant.
+                    get userScore()     { var board = m._Sb1, userIdx = m._0z;
+                                          return board ? (board[userIdx] || 0) : 0; },
+                    get opponentScore() { var board = m._Sb1, oppIdx = m._0z ? 0 : 1;
+                                          return board ? (board[oppIdx] || 0) : 0; },
+                    setUserScore:     function (v) { var board = m._Sb1, userIdx = m._0z;
+                                                     if (board) board[userIdx] = v; },
+                    setOpponentScore: function (v) { var board = m._Sb1, oppIdx = m._0z ? 0 : 1;
+                                                     if (board) board[oppIdx] = v; }
                 };
             }
 
@@ -2057,7 +2074,7 @@
                     // which the bridge bypasses — on-device it stayed painted over
                     // a LIVE drive, making the game look stuck. Staging is over
                     // once the drive spawned: clear it.
-                    try { engineMatch.rawEngineMatch.__b1 = ''; } catch (eB) {}
+                    try { engineMatch.engineMainCommentaryText = ''; } catch (eB) {}
 
                     // Stay in "active play" state so the ball's step event
                     // (_I7 / _y11) actually executes and processes user taps.
@@ -3320,7 +3337,13 @@
             // Colors come from the team the engine actually loaded (_Fj, same
             // data as the scoreboard), so the jersey always matches the team.
             function teamUidFromFj(o64, idx) {
-                try { return Number(_Ai(o64._Fj[idx], 'uid')); } catch (e) { return -1; }
+                // _Fj is the cheat-sheet's engineTeamDataPair — the same slot and
+                // the same [team0Data, team1Data] pair the scoreboard is built
+                // from, here on object 64 rather than on the match.
+                try {
+                    var engineTeamDataPair = o64._Fj;
+                    return Number(_Ai(engineTeamDataPair[idx], 'uid'));
+                } catch (e) { return -1; }
             }
             function paintPlayer(inst, hHex, sHex, pHex) {
                 // V79 slot map (decoded from on-screen pixels): _nQ drives
@@ -6420,7 +6443,7 @@
                                 engineMatch.engineMinutesLeft   = qmin;
                                 engineMatch.engineSecondsLeft   = qrem;
                                 engineMatch.engineTickAllowance = 0;
-                                try { raw._831 = ''; raw.__b1 = ''; } catch (eC) {}
+                                try { engineMatch.engineSubCommentaryText = ''; engineMatch.engineMainCommentaryText = ''; } catch (eC) {}
                                 engineMatch.engineMainCommentaryText = '';
                                 engineMatch.engineSubCommentaryText  = '';
                                 try { if (Number(raw._Nb1) < 1) raw._Nb1 = 1; } catch (eN) {}
@@ -6609,7 +6632,7 @@
                                         'force-spawning a playable drive (yard ' + keepYard + ', down ' + keepDown + '&' + keepToGo + ')');
                             try {
                                 var raw = engineMatch.rawEngineMatch;
-                                try { raw._831 = ''; raw.__b1 = ''; } catch (eC) {}
+                                try { engineMatch.engineSubCommentaryText = ''; engineMatch.engineMainCommentaryText = ''; } catch (eC) {}
                                 engineMatch.engineMainCommentaryText = '';
                                 engineMatch.engineSubCommentaryText  = '';
                                 try { if (Number(raw._Nb1) < 1) raw._Nb1 = 1; } catch (eN) {}  // drives=0 -> 1 (intro loops on 0)
@@ -7327,7 +7350,7 @@
                         // engine's re-park (the exact cure the OT kickoff already uses).
                         try {
                             var rawA = engineMatch.rawEngineMatch;
-                            try { rawA._831 = ''; rawA.__b1 = ''; } catch (eC) {}
+                            try { engineMatch.engineSubCommentaryText = ''; engineMatch.engineMainCommentaryText = ''; } catch (eC) {}
                             engineMatch.engineMainCommentaryText = '';
                             engineMatch.engineSubCommentaryText  = '';
                             try { if (Number(rawA._Nb1) < 1) rawA._Nb1 = 1; } catch (eN) {}
@@ -7365,7 +7388,7 @@
                                     // V169 pre-clear + re-force
                                     try {
                                         var rawK = emK.rawEngineMatch;
-                                        try { rawK._831 = ''; rawK.__b1 = ''; } catch (eC2) {}
+                                        try { emK.engineSubCommentaryText = ''; emK.engineMainCommentaryText = ''; } catch (eC2) {}
                                         emK.engineMainCommentaryText = '';
                                         emK.engineSubCommentaryText  = '';
                                         try { if (Number(rawK._Nb1) < 1) rawK._Nb1 = 1; } catch (eN2) {}
@@ -10117,7 +10140,7 @@
                                             }
                                             try {
                                                 var rawR = emR.rawEngineMatch;
-                                                try { rawR._831 = ''; rawR.__b1 = ''; } catch (eCR) {}
+                                                try { emR.engineSubCommentaryText = ''; emR.engineMainCommentaryText = ''; } catch (eCR) {}
                                                 emR.engineMainCommentaryText = '';
                                                 emR.engineSubCommentaryText  = '';
                                                 try { if (Number(rawR._Nb1) < 1) rawR._Nb1 = 1; } catch (eNR) {}
@@ -11750,7 +11773,7 @@
                         window._rb2p_userOutcomeSendInProgress   = false;
                         window._rb2p_lastOpponentOutcomeApplyMs  = Date.now();
                         var rawQ3 = em.rawEngineMatch;
-                        try { rawQ3._831 = ''; rawQ3.__b1 = ''; } catch (eC) {}
+                        try { em.engineSubCommentaryText = ''; em.engineMainCommentaryText = ''; } catch (eC) {}
                         em.engineMainCommentaryText = '';
                         em.engineSubCommentaryText  = '';
                         try { if (Number(rawQ3._Nb1) < 1) rawQ3._Nb1 = 1; } catch (eN) {}
@@ -11838,7 +11861,7 @@
                         // resume — otherwise the play opens under a stale banner
                         // or the engine refuses to advance.
                         var rawOt = em.rawEngineMatch;
-                        try { rawOt._831 = ''; rawOt.__b1 = ''; } catch (eC) {}
+                        try { em.engineSubCommentaryText = ''; em.engineMainCommentaryText = ''; } catch (eC) {}
                         em.engineMainCommentaryText = '';
                         em.engineSubCommentaryText  = '';
                         try { if (Number(rawOt._Nb1) < 1) rawOt._Nb1 = 1; } catch (eN) {}
@@ -13015,10 +13038,13 @@
                                 try { ghosts[gi]._g2 = 0; ghosts[gi].x = -2000; ghosts[gi].y = -2000; } catch (eG) {}
                             }
                             try {
+                                // _si(71) hands back RAW match instances, so there is
+                                // no façade to read through here — __b1 is the cheat
+                                // sheet's engineMainCommentaryText either way.
                                 var csT = (typeof _si === 'function') ? _si(71) : null;
                                 for (var ckT in csT) { if (csT.hasOwnProperty(ckT) && csT[ckT]) try { csT[ckT].__b1 = ''; } catch (eBk) {} }
                                 var emT = window.RB && RB.engineState && RB.engineState();
-                                if (emT && emT.rawEngineMatch.__b1) emT.rawEngineMatch.__b1 = '';
+                                if (emT && emT.engineMainCommentaryText) emT.engineMainCommentaryText = '';
                             } catch (eB2) {}
                             var ofNow = 0;
                             try {
@@ -13293,16 +13319,18 @@
                             if (!cs.hasOwnProperty(ck)) continue;
                             ctl++;
                             var cInst = cs[ck];
-                            var cb1 = String(cInst.__b1 || '');
-                            if (!cb1) continue;
-                            if (!b1out) b1out = cb1.slice(0, 12);
-                            var isGetReady = (window.__rbGetReadyStr && cb1 === window.__rbGetReadyStr) ||
-                                             /get\s*ready/i.test(cb1);
+                            // cInst is a RAW match instance (_si(71)), so this reads
+                            // the slot directly — __b1 is engineMainCommentaryText.
+                            var mainCommentary = String(cInst.__b1 || '');
+                            if (!mainCommentary) continue;
+                            if (!b1out) b1out = mainCommentary.slice(0, 12);
+                            var isGetReady = (window.__rbGetReadyStr && mainCommentary === window.__rbGetReadyStr) ||
+                                             /get\s*ready/i.test(mainCommentary);
                             if (!patPlay &&
                                 ((isGetReady && (waiting || (ball > 0 && kp === 2))) ||
                                  (healedNow && ball > 0))) {
                                 cInst.__b1 = '';
-                                if (b1out === cb1.slice(0, 12)) b1out = '';
+                                if (b1out === mainCommentary.slice(0, 12)) b1out = '';
                                 diagLog('cleared GET READY banner');
                             }
                         }
