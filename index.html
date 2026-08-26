@@ -985,7 +985,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V359<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V360<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1053,7 +1053,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V359</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V360</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1478,7 +1478,18 @@
         //   _bL   engineTeamDisplayNames   — [team0Name, team1Name]
         //   _Fj   engineTeamDataPair       — [team0Data, team1Data]
         //   _l51  engineTimeouts           — [team0Timeouts, team1Timeouts]
-        //   _Z21  enginePatModeFlag        — 1 during PAT/2-pt scene
+        //   _Z21  enginePatModeFlag        — 1 during PAT/2-pt scene. The engine's
+        //                                    own s_set_up_fieldgoal sets it on the
+        //                                    1PT click, and that is what moves the
+        //                                    ball to the kick spot (see below).
+        //
+        //   THE TWO LEGAL CONVERSION SPOTS (both read off the engine, not guessed):
+        //   _6F +48  the 2-yard line  — where the 1PT/2PT modal appears and where a
+        //                               2-point attempt is snapped.
+        //   _6F +35  the 15-yard line — where the 1-POINT KICK is snapped.
+        //                               s_set_up_fieldgoal (_lB) does exactly
+        //                               `_Z21 = 1, _6F = 35` on the 1PT click.
+        //   A conversion may never be anywhere else. See the conversion gate.
         //   _001  engineDefenseAggression  — per-engineMatch defense AI modifier;
         //                                    lower = harder, but only DOWN TO -5
         //                                    (the engine's hardest tier); below
@@ -1537,6 +1548,11 @@
                     get engineControllerState()    { return m._kp; },  set engineControllerState(v)    { m._kp  = v; },
                     get engineDownNumber()         { return m._t11; }, set engineDownNumber(v)         { m._t11 = v; },
                     get engineYardsToGo()          { return m._l61; }, set engineYardsToGo(v)          { m._l61 = v; },
+                    // V360: the engine's PAT-mode flag. s_set_up_fieldgoal sets it
+                    // on the 1PT click and only then moves the ball to the kick
+                    // spot (+35), so it is the signal that tells a guard the ball
+                    // is legally OFF the 2 during a conversion.
+                    get enginePatModeFlag()        { return m._Z21; }, set enginePatModeFlag(v)        { m._Z21 = v; },
                     get engineScoreboard()         { return m._Sb1; },
                     get engineMinutesLeft()        { return m._r11; }, set engineMinutesLeft(v)        { m._r11 = v; },
                     get engineSecondsLeft()        { return m._s11; }, set engineSecondsLeft(v)        { m._s11 = v; },
@@ -2124,6 +2140,12 @@
                 if (Date.now() - a.ms > 15000)                        return 'E6 window closed';
                 if (!a.keep)                                          return 'E1 not a keep boundary';
                 try {
+                    // V360: the conversion gate's own placement. It stamps this
+                    // immediately before putting the ball on the 2, so a
+                    // touchdown scored ON a quarter boundary cannot have its
+                    // conversion held back to the boundary anchor.
+                    if (Date.now() - (Number(window._rb2p_convPlacementMs) || 0) < 1500)
+                        return 'E2 conversion placing the ball';
                     if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed())
                         return 'E2 conversion owed';
                     if (window._rb2p_userIsWaitingForOpponent === true) return 'E3 parked (drive handed away)';
@@ -3634,6 +3656,9 @@
                     if (window._rb2p_userIsWaitingForOpponent !== true &&
                         typeof window._rb2p_pushFeed === 'function') {
                         try {
+                            // fem is the FAÇADE (named fields); fm is the raw engine
+                            // match, kept only as the liveness guard below. Everything
+                            // this observer reads goes through the names.
                             var fem = RB.engineState(), fm = fem && fem.rawEngineMatch;
                             var qbNm = window._rb2p_offQbName ? window._rb2p_offQbName() : 'QB';
                             // Roster iterator (obj 64's player list).
@@ -3675,8 +3700,8 @@
                                         window._rb2p_diagLog) window._rb2p_diagLog(
                                             'cDROP y=' + Math.round(Number(window._rb2p_feedYard0)) +
                                             ' d=' + Number(window._rb2p_feedDown0) + ' prevbkp=' + prev);
-                                    window._rb2p_feedYard0     = Number(fm._6F);    // signed yard line at snap
-                                    window._rb2p_feedDown0     = Number(fm._t11);   // down at snap
+                                    window._rb2p_feedYard0     = Number(fem.engineYardLineSigned);    // signed yard line at snap
+                                    window._rb2p_feedDown0     = Number(fem.engineDownNumber);   // down at snap
                                     window._rb2p_feedThrew     = false;
                                     window._rb2p_feedSawSack   = false;
                                     window._rb2p_feedWasLive   = false;
@@ -3698,7 +3723,7 @@
                                         };
                                     });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
-                                        'cSNAP y=' + Math.round(Number(fm._6F)) + ' d=' + Number(fm._t11));
+                                        'cSNAP y=' + Math.round(Number(fem.engineYardLineSigned)) + ' d=' + Number(fem.engineDownNumber));
                                 }
                                 // V332: DEAD-BALL re-arm. The snap latch above only fires when
                                 // the observer actually SAMPLES bkp 1/2. A fast handoff can go
@@ -3720,8 +3745,8 @@
                                     window._rb2p_feedThrew     = false;
                                     window._rb2p_feedSawSack   = false;
                                     window._rb2p_feedCatchName = '';
-                                    window._rb2p_feedYard0     = Number(fm._6F);
-                                    window._rb2p_feedDown0     = Number(fm._t11);
+                                    window._rb2p_feedYard0     = Number(fem.engineYardLineSigned);
+                                    window._rb2p_feedDown0     = Number(fem.engineDownNumber);
                                     var s0d = window._rb2p_feedStat0 = {};
                                     rosterEach(function (p, i2) {
                                         s0d[i2] = {
@@ -3768,8 +3793,8 @@
                                 // 0.) The _6F term also catches a 1st-down conversion on 1st
                                 // down, where the down number stays 1.
                                 var settledNow = window._rb2p_feedWasLive && !window._rb2p_feedEmitted &&
-                                    ((Number(fm._t11) !== Number(window._rb2p_feedDown0)) ||
-                                     (Math.abs(Number(fm._6F) - Number(window._rb2p_feedYard0)) >= 0.5));
+                                    ((Number(fem.engineDownNumber) !== Number(window._rb2p_feedDown0)) ||
+                                     (Math.abs(Number(fem.engineYardLineSigned) - Number(window._rb2p_feedYard0)) >= 0.5));
                                 // ===== V353b: the 4-SECOND TURNOVER MUTE IS GONE =====
                                 // V339 blanket-muted every settle within 4s of the
                                 // engine's turnover stage, to stop the INT return
@@ -3859,7 +3884,7 @@
                                         window._rb2p_feedEmitted = true;
                                         if (window._rb2p_diagLog) window._rb2p_diagLog(
                                             'cSKIP no-stat settle dY=' +
-                                            Math.round(Number(fm._6F) - Number(window._rb2p_feedYard0)));
+                                            Math.round(Number(fem.engineYardLineSigned) - Number(window._rb2p_feedYard0)));
                                     } else {
                                     var evt = window._rb2p_classifyPlay({
                                         sawSack:        window._rb2p_feedSawSack,
@@ -8056,6 +8081,172 @@
             // button script ids are its 7th and 8th arguments. Wrapping it lets
             // the ball be placed BEFORE the popup instance is constructed, so
             // there is no frame in which an off-spot conversion can render.
+            // ===== V360: THE CONVERSION GATE — one choke point, three licences =====
+            // Every guard before this one asked "is this conversion in the right
+            // PLACE?" and then corrected it. None asked the prior question: is
+            // there any reason for a conversion to exist AT ALL? So a conversion
+            // could be born out of nothing — most visibly after a refresh, where
+            // a duty record left over from a conversion that had already been
+            // played would re-pop the modal minutes later.
+            //
+            // The fix is the same shape as the ball gate: find the one place the
+            // thing is created and put the law there. Verified against the engine
+            // before writing any of this — of 137 _wm() call sites in
+            // retrobowl.js exactly ONE builds a conversion modal (matchmsg_PATor2
+            // with _ne1/_oe1 = 100367/100369, at s_action_result's touchdown
+            // branch), plus the bridge's own pick-6 pop. _wm IS the choke point;
+            // there is no second constructor, so nothing can route around this.
+            //
+            // A conversion may be constructed for exactly three reasons — the
+            // three the game actually has — and for nothing else:
+            //   L1 A TOUCHDOWN. The engine credits +6 and constructs the modal in
+            //      ONE expression, so at construction our score is exactly 6 above
+            //      the last sample. The licence is that DELTA, not a stage read.
+            //      This covers a normal touchdown and a pick-6 the same way,
+            //      because both credit 6.
+            //   L2 A PICK-SIX the bridge is popping itself (the cascade, and a
+            //      resume re-pop that survived the duty check) — stamped
+            //      explicitly by that code immediately before it calls _wm.
+            //   L3 A CONVERSION ALREADY IN PROGRESS. The invariant KILLS a modal
+            //      that is up off the 2 and depends on it re-popping once the
+            //      ball is legal; refusing that re-pop would lose the conversion
+            //      outright. A strong, observed signal (S1-S4) licences it — the
+            //      persisted duty record (S5) alone never does, because a memory
+            //      is exactly what a stale reload has.
+            //
+            // AND the position law: the modal is only ever built on the 2. It is
+            // pinned there BEFORE construction (so no frame can draw it anywhere
+            // else), and if it cannot be placed there it is not built at all.
+            //
+            // Like the ball gate, it always runs and always accounts for itself:
+            // every _wm call is counted, conversions and ordinary popups alike.
+            window._rb2p_CONV_SPOT_2PT  = 48;   // the 2-yard line   — modal + 2-pt snap
+            window._rb2p_CONV_SPOT_KICK = 35;   // the 15-yard line  — the 1-pt kick
+            var convPopupsSeen = 0, convBuilt = 0, convRefused = 0, convStoodDown = 0;
+            window._rb2p_convGateStats = function () {
+                return { popups: convPopupsSeen, conversions: convBuilt + convRefused,
+                         allows: convBuilt, refusals: convRefused, other: convStoodDown,
+                         lastLicence: window._rb2p_conversionLastLicence || '',
+                         lastRefusal: window._rb2p_convGateLastRefusal || '' };
+            };
+            // The touchdown sampler. Cheap, and the ONLY thing it does is
+            // remember what the score was a moment ago so a +6 can be recognised
+            // as it happens rather than inferred afterwards.
+            window._rb2p_convScorePrev = null;
+            window._rb2p_lastTd6Ms = 0;
+            setInterval(function () {
+                try {
+                    if (!RB.isEngineInMatchRoom()) { window._rb2p_convScorePrev = null; return; }
+                    var em = RB.engineState(); if (!em) return;
+                    var u = Number(em.userScore) || 0, o = Number(em.opponentScore) || 0;
+                    var pv = window._rb2p_convScorePrev;
+                    if (pv && u - pv.u >= 6) window._rb2p_lastTd6Ms = Date.now();
+                    window._rb2p_convScorePrev = { u: u, o: o, ms: Date.now() };
+                } catch (e) {}
+            }, 40);
+            window._rb2p_conversionLicence = function () {
+                var now = Date.now();
+                // L2 — the bridge is popping this itself and said so.
+                if (now - (Number(window._rb2p_convAuthMs) || 0) < 3000)
+                    return 'L2 pick-6 (bridge-authorized)';
+                try {
+                    var em = RB.engineState();
+                    if (em) {
+                        var u = Number(em.userScore) || 0;
+                        var pv = window._rb2p_convScorePrev;
+                        // L1 — the touchdown that is building this very modal.
+                        // `>= 6`, not `=== 6`: the floor or a live-sync landing in
+                        // the same 40ms window as the credit would shift an exact
+                        // comparison, and the failure mode of missing a real
+                        // touchdown here is a conversion that never gets offered.
+                        if (pv && u - pv.u >= 6) return 'L1 touchdown (+6 this instant)';
+                        if (now - (Number(window._rb2p_lastTd6Ms) || 0) < 3000)
+                            return 'L1 touchdown (+6 within 3s)';
+                        // L1b — the engine's own touchdown stage, an INDEPENDENT
+                        // witness to the same event. A normal touchdown has no
+                        // other signal at this instant: the down-6 marker is
+                        // stamped AFTER this call returns and no modal is up yet,
+                        // so L1 would otherwise be carrying a real conversion
+                        // alone. This is the second rope, not the first.
+                        if (Number(em.engineDriveFsmStage) === 9)
+                            return 'L1b engine touchdown stage';
+                    }
+                } catch (e) {}
+                // L3 — a live conversion re-popping. S5 (the persisted duty
+                // record) is deliberately excluded: it is a memory, and a stale
+                // memory is the whole failure this gate exists to stop.
+                try {
+                    var why = window._rb2p_patOwed();
+                    if (why && why.charAt(1) !== '5') return 'L3 conversion in progress (' + why + ')';
+                } catch (e) {}
+                return '';
+            };
+            // ===== V360: A DUTY RECORD IS A CLAIM, AND THE SCORE IS THE PROOF =====
+            // The record only ever had to be young and mine to re-pop a
+            // conversion on resume — up to TEN MINUTES young with a live
+            // heartbeat. So a record that outlived its conversion (the clear
+            // raced the refresh, or never landed) would build a conversion modal
+            // out of nothing minutes later: the "it spawns after a refresh" bug.
+            // The record carries the score it was written at, and a conversion is
+            // worth exactly 1 or 2 points, so the scoreboard settles it. The test
+            // is deliberately one-sided — only the score having moved PAST the
+            // record is evidence. A score BEHIND it is just a lagging heartbeat
+            // (the live record is written every 500ms and can predate the +6),
+            // and treating that as staleness would break the genuine mid-PAT
+            // reload this record exists for.
+            window._rb2p_patDutyStillOwed = function (duty, liveMyScore, liveOppScore) {
+                try {
+                    if (!duty) return 'no record';
+                    var mine = Number(duty.scoreUser), opp = Number(duty.scoreOpp);
+                    var my = Number(liveMyScore), th = Number(liveOppScore);
+                    if (isFinite(mine) && isFinite(my) && my > mine)
+                        return 'my score moved past it (' + mine + ' -> ' + my + ') — the conversion was played';
+                    if (isFinite(opp) && isFinite(th) && th > opp)
+                        return 'the opponent has scored since (' + opp + ' -> ' + th + ') — the game moved on';
+                } catch (e) {}
+                return '';
+            };
+            window._rb2p_conversionGate = function () {
+                // '' allows the conversion to be built; anything else refuses it.
+                try {
+                    if (window._rb2p_gameOverReported === true)
+                        return 'R1 the game is over';
+                    var lic = window._rb2p_conversionLicence();
+                    if (!lic)
+                        return 'R2 no touchdown licence — no TD, no pick-6, no live conversion';
+                    window._rb2p_conversionLastLicence = lic;
+                    var em = RB.engineState();
+                    if (em && em.engineUserTeamIdx != null) {
+                        // Direction first: +48 names a distance from midfield, not
+                        // an END of the field — the direction register is what
+                        // decides which 2-yard line that is.
+                        var sDir = Number(window._rb2p_stableDir);
+                        if ((sDir === 1 || sDir === -1) &&
+                            Number(em.engineDriveDirection) !== sDir) em.engineDriveDirection = sDir;
+                        if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx)
+                            em.enginePossessingTeamIdx = em.engineUserTeamIdx;
+                        em.engineDownNumber = 6;
+                        em.engineYardsToGo = 2;
+                        if (Math.abs(Number(em.engineYardLineSigned) - window._rb2p_CONV_SPOT_2PT) > 0.5) {
+                            // Tell the ball gate this placement is the conversion's
+                            // own, so a conversion landing on a quarter boundary is
+                            // not held back to the boundary anchor.
+                            window._rb2p_convPlacementMs = Date.now();
+                            em.engineYardLineSigned = window._rb2p_CONV_SPOT_2PT;
+                            if (typeof window._rb2p_resyncScrimmage === 'function' &&
+                                !(typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress())) {
+                                try { window._rb2p_resyncScrimmage(em, 'pat-prepin'); } catch (eRS) {}
+                            }
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PREPIN before modal');
+                        }
+                        if (Math.abs(Number(em.engineYardLineSigned) - window._rb2p_CONV_SPOT_2PT) > 0.5)
+                            return 'R3 the ball could not be placed on the 2 (at ' +
+                                   Math.round(Number(em.engineYardLineSigned)) + ')';
+                    }
+                } catch (e) {}
+                return '';
+            };
+
             var patWmHooked = false;
             function rb2pHookConversionModal() {
                 if (patWmHooked) return;
@@ -8064,34 +8255,41 @@
                     if (_wm.__rb2pPatPin) { patWmHooked = true; return; }
                     var origWm = _wm;
                     var wrapped = function (_, t, i, e, a, n, o, s2, r, l) {
+                        var isConversion = false;
                         try {
-                            if (o === 100367 || s2 === 100369) {   // a conversion modal
-                                var em = RB.engineState();
-                                if (em && em.engineUserTeamIdx != null) {
-                                    var sDir = Number(window._rb2p_stableDir);
-                                    if ((sDir === 1 || sDir === -1) &&
-                                        Number(em.engineDriveDirection) !== sDir) em.engineDriveDirection = sDir;
-                                    if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx)
-                                        em.enginePossessingTeamIdx = em.engineUserTeamIdx;
-                                    em.engineDownNumber = 6;
-                                    em.engineYardsToGo = 2;
-                                    if (Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5) {
-                                        em.engineYardLineSigned = 48;
-                                        if (typeof window._rb2p_resyncScrimmage === 'function' &&
-                                            !(typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress())) {
-                                            try { window._rb2p_resyncScrimmage(em, 'pat-prepin'); } catch (eRS) {}
-                                        }
-                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-PREPIN before modal');
-                                    }
-                                }
+                            convPopupsSeen++;
+                            isConversion = (o === 100367 || s2 === 100369);
+                        } catch (eC) {}
+                        if (isConversion) {
+                            var refusal = '';
+                            try { refusal = window._rb2p_conversionGate(); } catch (eG) { refusal = ''; }
+                            if (refusal) {
+                                convRefused++;
+                                window._rb2p_convGateLastRefusal = refusal;
+                                console.warn('[2P CONV-GATE] REFUSED a conversion modal — ' + refusal);
+                                if (window._rb2p_diagLog)
+                                    window._rb2p_diagLog('CONVGATE REFUSED ' + refusal);
+                                return;                     // never constructed
                             }
-                        } catch (eW) {}
+                            convBuilt++;
+                            if (window._rb2p_diagLog)
+                                window._rb2p_diagLog('CONVGATE allow ' + (window._rb2p_conversionLastLicence || ''));
+                        } else {
+                            // Not a conversion — the gate still ran and still says
+                            // so, rate-limited so an ordinary menu cannot spam.
+                            convStoodDown++;
+                            if (Date.now() - (Number(window._rb2p_convOtherLogMs) || 0) > 10000) {
+                                window._rb2p_convOtherLogMs = Date.now();
+                                if (window._rb2p_diagLog)
+                                    window._rb2p_diagLog('CONVGATE pass x' + convStoodDown + ' (not a conversion)');
+                            }
+                        }
                         return origWm.apply(this, arguments);
                     };
                     wrapped.__rb2pPatPin = true;
                     window._wm = wrapped;
                     patWmHooked = true;
-                    console.log('[2P PAT-INV] conversion-modal pre-pin hook installed');
+                    console.log('[2P CONV-GATE] conversion gate installed at the _wm choke point');
                 } catch (eH) {}
             }
             rb2pHookConversionModal();
@@ -8130,7 +8328,30 @@
                         em.engineDriveDirection = sDir;
                         if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV direction restored -> ' + sDir);
                     }
-                    var off = Math.abs(Number(em.engineYardLineSigned) - 48) > 0.5;
+                    // ===== V360 LAW D: THERE ARE TWO LEGAL CONVERSION SPOTS =====
+                    // This tick knew only one (+48, the 2) and pinned everything
+                    // else back to it. But the 1-POINT KICK is not snapped from
+                    // the 2 — s_set_up_fieldgoal (_lB) does `_Z21 = 1, _6F = 35`
+                    // on the 1PT click, putting the extra point on the 15, the
+                    // same place real football snaps it. So every extra point in
+                    // the build was being dragged back to the 2 within 50ms and
+                    // kicked from the wrong yard line (measured: 35 -> 48 in
+                    // under 400ms, e2e/v360-convgate.js T7 red).
+                    // The kick spot is legal ONLY with the engine's own PAT flag
+                    // set, which _lB sets in the same expression as the move, so
+                    // a guard can never observe +35 without it.
+                    var yardNow = Number(em.engineYardLineSigned);
+                    if (Number(em.enginePatModeFlag) &&
+                        Math.abs(yardNow - window._rb2p_CONV_SPOT_KICK) <= 0.5) {
+                        if (Date.now() - (Number(window._rb2p_convKickLogMs) || 0) > 4000) {
+                            window._rb2p_convKickLogMs = Date.now();
+                            if (window._rb2p_diagLog)
+                                window._rb2p_diagLog('PAT-INV kick spot 35 is legal — standing down');
+                        }
+                        patFixTicks = 0; patWrongModalTicks = 0;
+                        return;
+                    }
+                    var off = Math.abs(yardNow - window._rb2p_CONV_SPOT_2PT) > 0.5;
                     // C3: +48 is signed relative to the POSSESSING team — if the
                     // engine thinks the opponent possesses, "the 2" is at the
                     // wrong end of the field. Claim possession before pinning.
@@ -8186,7 +8407,8 @@
                     if (window._rb2p_diagLog && patFixTicks === 1) window._rb2p_diagLog(
                         'PAT-INV pin ' + Math.round(Number(em.engineYardLineSigned)) + ' -> 48 (' + owedWhy + ')');
                     {
-                        em.engineYardLineSigned = 48;
+                        window._rb2p_convPlacementMs = Date.now();
+                        em.engineYardLineSigned = window._rb2p_CONV_SPOT_2PT;
                         em.engineYardsToGo = 2;
                         // V346 (room DJPK): moving the register isn't enough — the
                         // STAGED field (markers, huddle) was still drawn at the old
@@ -9035,7 +9257,7 @@
                             // s_set_up_fieldgoal on the 1PT click) is truthy;
                             // otherwise it takes the FG branch (+3). Set it
                             // the way the real click path would.
-                            try { raw._Z21 = 1; } catch (eZ) {}
+                            try { em.enginePatModeFlag = 1; } catch (eZ) {}
                             hBfn(raw, _Sc2, 6);   // s_action_result: made kick (+1 via _0z)
                             expUser = u0 + 7;
                             await sleep(150);
@@ -9141,7 +9363,7 @@
                     fromTeam: '', toTeam: '', message: 'quarter-burst repro', ts: Date.now()
                 });
                 await sleep(300);
-                try { raw._Z21 = 1; } catch (e) {}     // PAT-kick flag the 1-pt click would set
+                try { em.enginePatModeFlag = 1; } catch (e) {}   // PAT-kick flag the 1-pt click would set
                 hBfn(raw, _Sc2, 6);                     // s_action_result: made kick (+1)
                 em.engineMinutesLeft = 0; em.engineSecondsLeft = 0;   // re-assert the boundary
                 clearPopups();
@@ -9551,6 +9773,12 @@
                                     var msg  = _Xi(engineMatch.rawEngineMatch, _Sc2, "matchmsg_PATor2");
                                     var lbl1 = _Xi(engineMatch.rawEngineMatch, _Sc2, "match_1pt");
                                     var lbl2 = _Xi(engineMatch.rawEngineMatch, _Sc2, "match_2pt");
+                                    // V360 licence L2: this is the bridge popping a
+                                    // pick-6 conversion itself. The +6 was credited by
+                                    // the wire rather than by our own engine, so the
+                                    // touchdown delta licence (L1) may not see it —
+                                    // say so explicitly at the choke point instead.
+                                    window._rb2p_convAuthMs = Date.now();
                                     _wm(engineMatch.rawEngineMatch, _Sc2, "", msg, lbl1, lbl2,
                                         100367,  // _ne1 = btn_response_1pt
                                         100369,  // _oe1 = btn_response_2pt
@@ -14318,6 +14546,26 @@
                 var patDutyActive = patDuty && ((myLive || oppLive) ? patDutyAge < 600000
                                                                     : patDutyAge < 180000);
                 var patDutyMine = !!(patDutyActive && patDuty.role === savedRole);
+                // V360: young and mine is not enough — the conversion must still
+                // be UNPLAYED. The live heartbeats carry the current score the
+                // same way resumeMatch reads it; if it has moved past what the
+                // record was written at, the conversion is over and re-popping it
+                // would conjure a modal out of a memory.
+                if (patDutyMine) {
+                    var dutyMyScore  = Math.max(Number(myLive && myLive.myScore)  || 0,
+                                                Number(oppLive && oppLive.oppScore) || 0);
+                    var dutyOppScore = Math.max(Number(myLive && myLive.oppScore) || 0,
+                                                Number(oppLive && oppLive.myScore)  || 0);
+                    var dutyDead = (typeof window._rb2p_patDutyStillOwed === 'function')
+                        ? window._rb2p_patDutyStillOwed(patDuty, dutyMyScore, dutyOppScore) : '';
+                    if (dutyDead) {
+                        console.warn('[2P RESUME] PAT duty record is STALE — ' + dutyDead +
+                                     '; dropping it instead of re-popping a conversion');
+                        patDutyMine = false;
+                        patDutyActive = false;
+                        FB.remove(FB.ref(db, 'rooms/' + savedRoom + '/patDuty')).catch(function () {});
+                    }
+                }
                 if (patDutyMine) {
                     window._rb2p_resumePatDuty = patDuty;
                     console.log('[2P RESUME] pending pick-6 PAT duty found (mine) — will re-pop PAT modal');

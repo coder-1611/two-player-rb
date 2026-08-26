@@ -48,6 +48,10 @@ const clearPat = page => page.evaluate(() => {
             var em = RB.engineState();
             em.engineDownNumber = 1; em.engineYardsToGo = 10;   // the OKAG shape: no marker
             var before = window._rb2p_patOwed();
+            // V360: the conversion gate refuses a modal with no touchdown behind
+            // it. These tests STAGE a conversion, so they must grant the same
+            // licence the real pick-6 branch stamps before its own _wm call.
+            window._rb2p_convAuthMs = Date.now();
             var msg = _Xi(em.rawEngineMatch, _Sc2, 'matchmsg_PATor2');
             var l1 = _Xi(em.rawEngineMatch, _Sc2, 'match_1pt');
             var l2 = _Xi(em.rawEngineMatch, _Sc2, 'match_2pt');
@@ -122,6 +126,10 @@ const clearPat = page => page.evaluate(() => {
             window._rb2p_patPlayPending = true; window._rb2p_patPlayResolved = false;
             // Pop the real engine conversion modal, then shove the ball away and
             // FREEZE it there by re-writing every tick, so the pin can't win.
+            // V360: the conversion gate refuses a modal with no touchdown behind
+            // it. These tests STAGE a conversion, so they must grant the same
+            // licence the real pick-6 branch stamps before its own _wm call.
+            window._rb2p_convAuthMs = Date.now();
             var msg = _Xi(em.rawEngineMatch, _Sc2, 'matchmsg_PATor2');
             var l1 = _Xi(em.rawEngineMatch, _Sc2, 'match_1pt');
             var l2 = _Xi(em.rawEngineMatch, _Sc2, 'match_2pt');

@@ -74,6 +74,7 @@ H.launchBrowser = async function () {
         var msg = _Xi(em.rawEngineMatch, _Sc2, 'matchmsg_PATor2');
         var l1 = _Xi(em.rawEngineMatch, _Sc2, 'match_1pt');
         var l2 = _Xi(em.rawEngineMatch, _Sc2, 'match_2pt');
+        window._rb2p_convAuthMs = Date.now();   // V360: licence this staged pop
         var before = Number(RB.engineState().engineYardLineSigned);
         _wm(em.rawEngineMatch, _Sc2, '', msg, l1, l2, 100367, 100369, 16777215, 0.7);
         var atPop = Number(RB.engineState().engineYardLineSigned);
