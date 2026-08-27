@@ -64,9 +64,15 @@ function extractRowBuilder() {
                 'margin:0;background:#0a1018;color:#fff;font-family:monospace;';
             const col = document.createElement('div');
             col.style.cssText = 'flex:1;min-width:240px;max-width:440px;';
-            // Run the shipped builder verbatim, with only its free variables supplied.
-            const build = new Function('players', 'esc', 'pad', rowSrc + '\nreturn rows;');
-            col.innerHTML = build(players, esc, pad);
+            // Run the shipped builder verbatim, with its free variables supplied.
+            // `accent` is the team colour teamColumnHtml(rep, accent) is called
+            // with (index.html — teamColumnHtml(me, youC) / (opp, oppC)); the
+            // builder grew that dependency and this test was still passing only
+            // players/esc/pad, so every run died on `accent is not defined`
+            // before a single assertion ran.
+            const accent = '#c8f560';
+            const build = new Function('players', 'esc', 'pad', 'accent', rowSrc + '\nreturn rows;');
+            col.innerHTML = build(players, esc, pad, accent);
             document.body.appendChild(col);
 
             const out = [];

@@ -985,7 +985,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V361<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V362<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1053,7 +1053,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V361</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V362</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2157,6 +2157,32 @@
                 if (Date.now() - a.ms > 15000)                        return 'E6 window closed';
                 if (!a.keep)                                          return 'E1 not a keep boundary';
                 try {
+                    // ===== E7: THE SETTLED SPOT CAN ARRIVE AFTER THE HORN =====
+                    // The anchor is armed AS the quarter increments, preferring the
+                    // V302 latch — but that latch only fires once the ball is DEAD.
+                    // If the quarter's last play is still in flight at 0:00 (a throw
+                    // in the air as the horn sounds), there is no latch yet, so the
+                    // anchor falls back to the PRE-SNAP capture. When the play then
+                    // settles, the keep-restore places the true settled spot and
+                    // this gate would hold it back to that pre-snap value — erasing
+                    // the last play of the quarter. That is precisely the V302 bug
+                    // ("on the quarter switch I got bumped back 10 yards"), and
+                    // holding the ball is exactly how V358 could have re-created it.
+                    // The latch is the authoritative record of where the quarter's
+                    // last play ended, so when one lands AFTER we armed, the anchor
+                    // was provisional: adopt it, once, and let this placement through.
+                    var latchMs   = Number(window._rb2p_qEndLatchMs) || 0;
+                    var latchYard = Number(window._rb2p_qEndLatchYard);
+                    if (!a.upgraded && latchMs > a.ms &&
+                        isFinite(latchYard) && Math.abs(latchYard) <= 50) {
+                        a.upgraded = true;
+                        var wasYard = a.yard;
+                        a.yard = latchYard;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'BALLGATE anchor upgraded ' + Math.round(wasYard) + ' -> ' +
+                            Math.round(latchYard) + ' (settled after the horn)');
+                        return 'E7 settled spot latched after the horn — anchor upgraded';
+                    }
                     // V360: the conversion gate's own placement. It stamps this
                     // immediately before putting the ball on the 2, so a
                     // touchdown scored ON a quarter boundary cannot have its

@@ -13,7 +13,8 @@
 // T6  E3 a drive handed away (parked) stands down
 // T7  E4 a score at the horn stands down — the next placement is a kickoff
 // T8  mid-quarter placements are never silent: the gate accounts for them
-// T9  the window expires — the gate never holds a quarter hostage
+// T9  the window expires
+// T10 a spot that settles AFTER the horn is placed, and upgrades the anchor — the gate never holds a quarter hostage
 const H = require('./harness');
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
@@ -127,6 +128,26 @@ const place = (page, v) => page.evaluate((val) => {
         console.log('  T9: after the window expired -> ' + expired);
         check('T9 the gate releases after its window (never holds a quarter hostage)',
               Math.abs(expired - (-44)) <= 0.5, 'got ' + expired);
+
+        // ---- T10: a settled spot that lands AFTER the horn upgrades the anchor ----
+        // The anchor is armed as the quarter increments, but the V302 latch only
+        // fires once the ball is DEAD. A throw still in the air at 0:00 leaves the
+        // anchor holding the PRE-SNAP spot; when the play settles, the keep-restore
+        // has to be able to place the real one. Holding it would erase the
+        // quarter's last play — the exact bug V302 was written to fix.
+        const t10 = await page.evaluate(async () => {
+            window._rb2p_armBallAnchor(2, -20, true);          // provisional: pre-snap
+            await new Promise(r => setTimeout(r, 30));
+            window._rb2p_qEndLatchYard = -10;                  // the play settled 10 further
+            window._rb2p_qEndLatchMs   = Date.now();           // ...after we armed
+            var em = RB.engineState();
+            em.engineYardLineSigned = -10;                     // the keep-restore
+            return { after: Number(RB.engineState().engineYardLineSigned),
+                     anchor: window._rb2p_qAnchor ? Math.round(Number(window._rb2p_qAnchor.yard)) : null };
+        });
+        console.log('  T10: ' + JSON.stringify(t10));
+        check('T10 a spot settled after the horn is placed, and upgrades the anchor',
+              Math.abs(t10.after + 10) <= 0.5 && t10.anchor === -10, JSON.stringify(t10));
     } catch (e) {
         console.error('ERROR mid-test:', e && e.message); fail++;
     } finally {

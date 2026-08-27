@@ -248,7 +248,12 @@ const SET_Q = `(function (q) {
         window._rb2p_preRolloverDown = 1;
         window._rb2p_preRolloverToGo = 10;
         // The engine's own settled post-play values at the quarter park.
-        s.engineYardLineSigned = settled;
+        // Written RAW, the way the engine writes it when a play resolves. The
+        // façade setter is the bridge's ball gate (V358) — staging a scenario
+        // through it makes the setup look like a bridge PLACEMENT at a quarter
+        // boundary, which the gate then holds to the anchor A3's real boundary
+        // just armed, and the assertion measures the gate instead of the latch.
+        s.rawEngineMatch._6F = settled;
         s.engineDownNumber     = 1;
         s.engineYardsToGo      = 10;
         s.engineMinutesLeft    = 0;
@@ -295,6 +300,12 @@ const SET_Q = `(function (q) {
         await drv.page.evaluate((setQ) => {
             eval(setQ)(1);
             const s = RB.engineState();
+            // NOTE: this 0-0 does NOT stick, and must not be relied on. The score
+            // floor ratchets each side upward and only re-arms out of match — its
+            // own comment says a wipe to 0-0 is precisely the attack it exists to
+            // stop. So scores across these legs are MONOTONIC by construction (see
+            // toPeriod5 callers below); this write just clears anything below the
+            // running high-water mark.
             s.setUserScore(0); s.setOpponentScore(0);
             s.engineMinutesLeft = 1; s.engineSecondsLeft = 0; s.engineTickAllowance = 0;
             window._rb2p_gameOverReported = false;
@@ -353,8 +364,14 @@ const SET_Q = `(function (q) {
     check('B2 q=5 unlevel WITH persisted OT counters still arms (mid-OT reload)',
           b.inOt === true, 'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);
 
+    // The tie must sit AT OR ABOVE the running high-water mark (27-21 from B2).
+    // This leg used to ask for 21-21; the score floor refused to lower 27 to 21,
+    // so the board read 27-21, the game was never tied, and overtime correctly
+    // did not arm — the assertion was failing on a precondition that never
+    // existed rather than on the behaviour it names. 27-27 is the same tie, and
+    // one the ratchet allows.
     await resetMatch();
-    await toPeriod5(21, 21, 'none');
+    await toPeriod5(27, 27, 'none');
     b = await st(drv.page);
     check('B3 q=5 while TIED arms overtime', b.inOt === true,
           'inOvertime=' + b.inOt + ' score ' + b.us + '-' + b.them);

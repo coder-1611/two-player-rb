@@ -97,13 +97,22 @@ const fbDelete = TP.fbDelete;
     // written while the other device is still in Q1 gets wiped before its
     // quarter catches up — which is a test artifact, not a real reload (a real
     // one resumes with the engine already restored to the OT period).
-    for (const side of [g.a, g.b]) {
-        await side.page.evaluate(() => {
-            const s = RB.engineState();
-            s.engineQuarter = 5;
-            s.engineMinutesLeft = 9; s.engineSecondsLeft = 0;
-        });
-    }
+    // The quarter governor clamps a "burst quarter roll" — a jump of more than
+    // one past max(lastStableQuarter, wireQuarter). Teleporting a booted engine
+    // from Q1 straight to Q5 is exactly that shape, so the governor pulled it
+    // back to Q2 and this test failed on its own setup rather than on the
+    // behaviour it names. EVERY real path that raises the quarter also raises
+    // the wire baseline in the same breath — the resume does it in one
+    // statement (index.html: `em.engineQuarter = rs.quarter; wireQuarter =
+    // max(wireQuarter, rs.quarter)`), and so does every applied outcome. A
+    // mid-OT reload is what this test models, so it now models that faithfully.
+    const enterOvertimePeriod = async (page) => page.evaluate(() => {
+        const s = RB.engineState();
+        s.engineQuarter = 5;
+        window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, 5);
+        s.engineMinutesLeft = 9; s.engineSecondsLeft = 0;
+    });
+    for (const side of [g.a, g.b]) await enterOvertimePeriod(side.page);
     for (const side of [g.a, g.b]) {
         await side.page.evaluate(() => {
             try { sessionStorage.setItem('rb2p_otPoss', JSON.stringify({ q: 5, my: 1, opp: 0 })); }
@@ -115,6 +124,7 @@ const fbDelete = TP.fbDelete;
         window._rb2p_inOvertime = false;          // what a reload leaves behind
         window._rb2p_gameOverReported = false;
         s.engineQuarter = 5;                       // overtime
+        window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, 5);
         s.setUserScore(14); s.setOpponentScore(21); // NOT tied: answer still owed
         s.engineMinutesLeft = 9; s.engineSecondsLeft = 0;
         // A real resume RESTORES the score, it does not "score" it. Re-baseline the
