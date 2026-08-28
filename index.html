@@ -985,7 +985,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V362<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V363<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1053,7 +1053,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V362</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V363</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1427,6 +1427,30 @@
         // change anywhere from one letter to all of them.
         //
         // window.RB centralises both concerns. wrap(m) returns an object whose
+        // ===== V363: THE DIFFICULTY SETTING CAN ONLY EVER BE A REAL TIER =====
+        // localStorage.setItem(key, undefined) stores the STRING "undefined" —
+        // which is truthy, so it sails straight past every `|| 'max'` default in
+        // the build and poisons the setting permanently. Device report: both
+        // players picked MAX and B still read "DIF:UNDEFINED". It was not just a
+        // label: the MAX-only defender speed bump tests `pref === 'max'`, so B
+        // was quietly playing a softer defense than it had chosen.
+        // Anything that is not a known tier reads as max (the default) AND the
+        // stored value is healed, so a device already carrying a bad one repairs
+        // itself on the next read instead of needing its site data cleared.
+        window._rb2p_DIFFICULTY_TIERS = ['easy', 'medium', 'hard', 'max', 'ultramax'];
+        window._rb2p_difficultyPref = function () {
+            var v = null;
+            try { v = localStorage.getItem('rb2p_difficulty'); } catch (e) { return 'max'; }
+            if (window._rb2p_DIFFICULTY_TIERS.indexOf(v) >= 0) return v;
+            if (v != null) {
+                try { localStorage.setItem('rb2p_difficulty', 'max'); } catch (e2) {}
+                console.warn('[2P DIFFICULTY] stored value ' + JSON.stringify(v) +
+                             ' is not a tier — healed to max');
+                try { if (window._rb2p_diagLog) window._rb2p_diagLog('DIFF healed ' + v + ' -> max'); } catch (e3) {}
+            }
+            return 'max';
+        };
+
         // getters/setters delegate to the obfuscated keys on the engineMatch
         // singleton. Bridge code uses state.possession / state.yardLine etc.
         // If a future re-export rotates the property names, only RB.wrap has
@@ -1941,7 +1965,7 @@
                         // the opponent's defensive rating (see computeDefenseAggression).
                         var dif = (typeof window._rb2p_computeDefenseAggression === 'function')
                             ? window._rb2p_computeDefenseAggression()
-                            : ({ max: -5, hard: -5, medium: 2, easy: 7 }[localStorage.getItem('rb2p_difficulty') || 'max']);
+                            : ({ max: -5, hard: -5, medium: 2, easy: 7 }[window._rb2p_difficultyPref()]);
                         if (typeof dif === 'number') engineMatch.engineDefenseAggression = dif;
                         // V137: sync the engine's extra-hard tier (_2t=4) with the
                         // difficulty toggle so max/ULTRA get the harder defender AI.
@@ -2150,12 +2174,31 @@
                         (keep ? ' (keep)' : ' (no-keep)'));
                 } catch (e) {}
             };
+            // ===== V363: THE ANCHOR DIES WHEN THE QUARTER STARTS BEING PLAYED =====
+            // The anchor exists to carry the ball ACROSS a boundary. Once the user
+            // has snapped in the new quarter there is nothing left to carry, and a
+            // gate still holding placements to it will UNDO the play they just ran
+            // — reported from a live game: "3rd and 16 at the start of a quarter, I
+            // threw 15, and it went back to 3rd and 16". The 15s window was only
+            // ever a backstop against a wedged boundary; the real end of the window
+            // is the first snap. The keep-restore already bounds itself exactly this
+            // way, so the gate now retires on the same authority.
+            window._rb2p_retireBallAnchor = function (why) {
+                try {
+                    var a = window._rb2p_qAnchor;
+                    if (!a || a.retired) return;
+                    a.retired = why || 'the quarter is being played';
+                    if (window._rb2p_diagLog)
+                        window._rb2p_diagLog('BALLGATE anchor retired — ' + a.retired);
+                } catch (e) {}
+            };
             // why the gate is NOT enforcing right now — '' means it IS.
             window._rb2p_ballGateStandDown = function () {
                 var a = window._rb2p_qAnchor;
                 if (!a || !isFinite(a.yard) || Math.abs(a.yard) > 50) return 'E6 no anchor';
                 if (Date.now() - a.ms > 15000)                        return 'E6 window closed';
                 if (!a.keep)                                          return 'E1 not a keep boundary';
+                if (a.retired)                                        return 'E8 ' + a.retired;
                 try {
                     // ===== E7: THE SETTLED SPOT CAN ARRIVE AFTER THE HORN =====
                     // The anchor is armed AS the quarter increments, preferring the
@@ -4256,7 +4299,7 @@
             function rb2pBumpDefenderSpeed() {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
-                    var pref = localStorage.getItem('rb2p_difficulty') || 'max';
+                    var pref = window._rb2p_difficultyPref();
                     var isMax = (pref === 'max');
                     if (!isMax && pref === 'ultramax') {
                         var uv = parseFloat(localStorage.getItem('rb2p_ultramax_value'));
@@ -7096,8 +7139,22 @@
                             qkQuarterStartSec = sec;
                         } else if (qkQuarterStartSec !== null && sec < qkQuarterStartSec) {
                             window._rb2p_quarterResumePending = false;  // user has played a down
+                            // V363: and with it, the ball anchor — see retireBallAnchor.
+                            if (typeof window._rb2p_retireBallAnchor === 'function')
+                                window._rb2p_retireBallAnchor('a down has been played this quarter');
                         }
                     }
+                    // V363: the clock test above needs time to actually ELAPSE. A
+                    // snap is the earlier and more direct signal that the boundary
+                    // is over, so retire on the live ball too — a play is already
+                    // under way and its result must not be rolled back to the
+                    // start-of-quarter spot.
+                    try {
+                        var qkAnchor = window._rb2p_qAnchor;
+                        if (qkAnchor && !qkAnchor.retired && Date.now() - qkAnchor.ms > 300 &&
+                            typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress())
+                            window._rb2p_retireBallAnchor('the ball has been snapped this quarter');
+                    } catch (eRet) {}
                 } catch (e) {}
             }, 100);
 
@@ -12442,7 +12499,11 @@
         var $status    = document.getElementById('rb-status');
         var $ready     = document.getElementById('rb-ready');
         var $leave     = document.getElementById('rb-leave');
-        var $diffBtns  = lobby.querySelectorAll('.diff-btn:not(.len-btn):not(.mode-btn)');
+        // V363: [data-dif] ONLY. `.diff-btn` is a shared visual class — the team
+        // <select> and the VIEW ROSTER button wear it too, and the old
+        // :not(.len-btn):not(.mode-btn) form matched them, so clicking either
+        // called setUserDifficultyPref(undefined).
+        var $diffBtns  = lobby.querySelectorAll('.diff-btn[data-dif]');
         var $lenBtns   = lobby.querySelectorAll('.len-btn');
 
         // ---- User-difficulty toggle (LOCAL ONLY — affects this device's offense)
@@ -12452,8 +12513,7 @@
         // from the next drive.
         var USER_DIFFICULTY_TO_ENGINE_AGGRESSION = { max: -5, hard: -5, medium: 2, easy: 7 };
         function getUserDifficultyPref() {
-            try { return localStorage.getItem('rb2p_difficulty') || 'max'; }
-            catch (e) { return 'max'; }
+            return window._rb2p_difficultyPref();
         }
         // V126/V137: ULTRAMAX — the user types a RAW engineDefenseAggression
         // number. The engine's hardest is -5; values BELOW -5 only WEAKEN defense
@@ -12538,6 +12598,14 @@
         };
         window._rb2p_readOpDifficulty = function () { var o = getCtrl64(); return o ? o._2t : null; };
         function setUserDifficultyPref(v) {
+            // V363: never write a value that is not a tier. This is where the
+            // "undefined" came from — the click handler below was bound to every
+            // .diff-btn, including the TEAM SELECT and VIEW ROSTER controls, which
+            // carry no data-dif at all.
+            if (window._rb2p_DIFFICULTY_TIERS.indexOf(v) < 0) {
+                console.warn('[2P DIFFICULTY] refused a non-tier value ' + JSON.stringify(v));
+                return;
+            }
             try { localStorage.setItem('rb2p_difficulty', v); } catch (e) {}
             renderUserDifficultyButtons();
             // If already in a match, apply immediately for the current play.
@@ -13709,7 +13777,13 @@
             var rafCount = 0, diagFps = -1;
             (function rafTick() { rafCount++; window.__rbRafMono = (window.__rbRafMono || 0) + 1;
                 requestAnimationFrame(rafTick); })();
-            setInterval(function () { diagFps = rafCount; rafCount = 0; }, 1000);
+            setInterval(function () {
+                diagFps = rafCount; rafCount = 0;
+                // V363: published so the outcome gate can ask whether this device
+                // is actually drawing frames before it consumes a drive record.
+                window._rb2p_diagFps = diagFps;
+                window._rb2p_diagFpsSeen = true;
+            }, 1000);
             // V257: measure rAF DURING each touch-hold — the one number that
             // separates "iOS froze the page under the finger" (frames ~0 for
             // the hold) from "engine/scene ignored the input" (frames ~60/s).
@@ -15468,6 +15542,32 @@
                 ).catch(function (e) { console.log('[fb send err]', e); });
             };
 
+            // ===== V363: AN OUTCOME IS NEVER CONSUMED BY A DEVICE THAT CANNOT APPLY IT
+            // Room RDOG: a punt was sent, written to Firebase and ACKED — and never
+            // reached the other player. Telemetry named the state exactly:
+            //   hb/a  { fps: 0, vis: "H" }
+            //   dbg/a "ENGINE LOOP DEAD — kicking _fi5", "rAF silent"
+            // A hidden tab still runs Firebase callbacks, but the browser throttles
+            // rAF to ZERO — so the receive handler ran, marked the record consumed
+            // (lastTs advanced), wrote the ack, and then could not stage the drive
+            // because staging needs frames. The record was gone and the ball never
+            // arrived. The ack said "delivered" when only delivery had happened.
+            // Now: if this device cannot apply, the record is HELD verbatim and
+            // neither consumed nor acked, so the sender's lost-outcome insurance
+            // still sees it outstanding. It is applied the moment frames return.
+            window._rb2p_outcomeApplyBlocked = function () {
+                try {
+                    if (typeof document !== 'undefined' && document.hidden)
+                        return 'the page is hidden (rAF throttled to zero — a drive cannot be staged)';
+                    if (typeof RB !== 'undefined' && typeof RB.isEngineInMatchRoom === 'function' &&
+                        !RB.isEngineInMatchRoom())
+                        return 'not in the match room';
+                    if (window._rb2p_diagFpsSeen === true && Number(window._rb2p_diagFps) === 0)
+                        return 'the engine is not drawing frames (fps 0)';
+                } catch (e) {}
+                return '';
+            };
+
             // Subscribe to opponent outcomes. Skip the first snapshot
             // (it's a stale read from any prior session).
             var otherRole = myRole === 'a' ? 'b' : 'a';
@@ -15483,6 +15583,20 @@
                         return;
                     }
                     if (!val || !val.ts || val.ts <= lastTs) return;
+                    var applyBlocked = window._rb2p_outcomeApplyBlocked();
+                    if (applyBlocked) {
+                        // Held, NOT consumed: lastTs stays put and no ack is written.
+                        window._rb2p_deferredOutcome = val;
+                        if (!window._rb2p_deferredOutcomeSinceMs)
+                            window._rb2p_deferredOutcomeSinceMs = Date.now();
+                        console.warn('[2P OUTCOME] holding a ' + val.type +
+                                     ' — ' + applyBlocked);
+                        if (window._rb2p_diagLog) window._rb2p_diagLog(
+                            'OUTCOME held (' + val.type + ') — ' + applyBlocked);
+                        return;
+                    }
+                    window._rb2p_deferredOutcome = null;
+                    window._rb2p_deferredOutcomeSinceMs = 0;
                     lastTs = val.ts;
                     // V208: phantom-score guard. If WE just handed the ball to
                     // the opponent via a turnover (missed FG / INT / fumble /
@@ -15520,6 +15634,41 @@
                 }
             );
 
+            // Apply anything held the moment this device can actually stage it.
+            // The 25s wall is a backstop only: holding forever would stall the
+            // match, and a late apply beats a lost drive.
+            window._rb2p_drainDeferredOutcome = function (why) {
+                try {
+                    var val = window._rb2p_deferredOutcome;
+                    if (!val || !val.ts) return '';
+                    var blocked = window._rb2p_outcomeApplyBlocked();
+                    var heldMs = Date.now() - (Number(window._rb2p_deferredOutcomeSinceMs) || Date.now());
+                    if (blocked && heldMs < 25000) return blocked;
+                    window._rb2p_deferredOutcome = null;
+                    window._rb2p_deferredOutcomeSinceMs = 0;
+                    if (val.ts <= lastTs) return 'already applied';
+                    lastTs = val.ts;
+                    console.log('[2P OUTCOME] applying held ' + val.type + ' after ' +
+                                heldMs + 'ms (' + (why || 'drain') + ')' +
+                                (blocked ? ' — PAST THE WALL, still ' + blocked : ''));
+                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                        'OUTCOME drained (' + val.type + ') after ' + heldMs + 'ms');
+                    window._twoPlayer.receive(val);
+                    FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
+                              { ack: myRole, ackTs: Date.now() }).catch(function () {});
+                    return '';
+                } catch (e) { return String(e && e.message); }
+            };
+            try {
+                document.addEventListener('visibilitychange', function () {
+                    if (!document.hidden) {
+                        // Frames need a moment to restart after a wake.
+                        setTimeout(function () { window._rb2p_drainDeferredOutcome('page visible'); }, 400);
+                    }
+                });
+            } catch (eVis) {}
+            setInterval(function () { window._rb2p_drainDeferredOutcome('poll'); }, 500);
+
             // In-game badge so the player remembers which side they're on
             var badge = document.createElement('div');
             badge.id = 'rb-fb-badge';
@@ -15546,7 +15695,7 @@
                 // V209: show the active DEFENSE difficulty (and SAME/DIFF mode) so
                 // the player can confirm what they're facing without leaving the game.
                 try {
-                    var dif = (localStorage.getItem('rb2p_difficulty') || 'max').toUpperCase();
+                    var dif = window._rb2p_difficultyPref().toUpperCase();
                     var mode = (window._rb2p_diffMode === 'same') ? 'SAME' : 'DIFF';
                     label += ' • DIF:' + dif + '(' + mode + ')';
                 } catch (eD) {}

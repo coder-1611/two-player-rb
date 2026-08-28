@@ -14,7 +14,8 @@
 // T7  E4 a score at the horn stands down — the next placement is a kickoff
 // T8  mid-quarter placements are never silent: the gate accounts for them
 // T9  the window expires
-// T10 a spot that settles AFTER the horn is placed, and upgrades the anchor — the gate never holds a quarter hostage
+// T10 a spot that settles AFTER the horn is placed, and upgrades the anchor
+// T11 the anchor retires on the first snap — a play's result is never rolled back — the gate never holds a quarter hostage
 const H = require('./harness');
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
@@ -148,6 +149,42 @@ const place = (page, v) => page.evaluate((val) => {
         console.log('  T10: ' + JSON.stringify(t10));
         check('T10 a spot settled after the horn is placed, and upgrades the anchor',
               Math.abs(t10.after + 10) <= 0.5 && t10.anchor === -10, JSON.stringify(t10));
+
+        // ---- T11: the anchor dies once the quarter is being PLAYED ----
+        // Live report: "3rd and 16 at the start of a quarter, I threw 15, and it
+        // went back to 3rd and 16." The anchor carries the ball ACROSS a
+        // boundary; once the user has snapped there is nothing left to carry,
+        // and holding placements to it undoes the play they just ran.
+        const t11 = await page.evaluate(async () => {
+            window._rb2p_armBallAnchor(2, -20, true);
+            await new Promise(r => setTimeout(r, 60));
+            // Assert on the ANCHOR, not on the stand-down string: earlier tests
+            // leave unrelated conditions (a changed score, say) that legitimately
+            // stand the gate down for their own reasons.
+            const retiredBefore = !!(window._rb2p_qAnchor && window._rb2p_qAnchor.retired);
+            // the user snaps: the ball goes live
+            var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+            var ball = null;
+            for (var i = 0; i < all.length; i++) {
+                var x = all[i];
+                if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { ball = x; break; }
+            }
+            if (!ball) return { noBall: true };
+            var kp0 = ball._kp;
+            ball._kp = 2;                                          // active play
+            await new Promise(r => setTimeout(r, 450));            // tracker runs at 100ms
+            const whyAfter = window._rb2p_ballGateStandDown();
+            var em = RB.engineState();
+            em.engineYardLineSigned = -5;                          // the play's result
+            const landed = Number(RB.engineState().engineYardLineSigned);
+            ball._kp = kp0;
+            return { retiredBefore: retiredBefore, whyAfter: whyAfter, landed: landed,
+                     retiredAfter: !!(window._rb2p_qAnchor && window._rb2p_qAnchor.retired) };
+        });
+        console.log('  T11: ' + JSON.stringify(t11));
+        check('T11 once the ball is snapped, the anchor retires and a play result stands',
+              !t11.noBall && t11.retiredBefore === false && t11.retiredAfter === true &&
+              /^E8/.test(t11.whyAfter) && Math.abs(t11.landed + 5) <= 0.5, JSON.stringify(t11));
     } catch (e) {
         console.error('ERROR mid-test:', e && e.message); fail++;
     } finally {
