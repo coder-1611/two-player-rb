@@ -74,6 +74,34 @@
             if (!t) return url;
             return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'auth=' + t;
         }
+        // V364: the REST transport, as a first-class path. Room MSZT: the
+        // Firebase SDK's websocket went half-open on one phone at the exact
+        // instant of a touchdown and every SDK write after it — the live
+        // pushes carrying the new score, the drive-end handoff, the turn record
+        // — sat in the SDK's queue and died with the tab 47s later. The REST
+        // heartbeat and diag mirror on the SAME phone kept landing the whole
+        // time. So the two transports fail independently, and anything the
+        // match cannot afford to lose now travels on both.
+        var FB_REST_BASE = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
+        async function fbRestPut(path, obj) {
+            var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+            var r = await fetch(u, { method: 'PUT', body: JSON.stringify(obj) });
+            return r.ok;
+        }
+        async function fbRestPatch(path, obj) {
+            var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+            var r = await fetch(u, { method: 'PATCH', body: JSON.stringify(obj) });
+            return r.ok;
+        }
+        async function fbRestGet(path) {
+            var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+            var r = await fetch(u, { cache: 'no-store' });
+            if (!r.ok) return null;
+            return r.json();
+        }
+        window._rb2p_fbRestPut = fbRestPut;
+        window._rb2p_fbRestPatch = fbRestPatch;
+        window._rb2p_fbRestGet = fbRestGet;
     </script>
     <script>
         (function () {
@@ -985,7 +1013,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V363<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V364<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1053,7 +1081,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V363</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V364</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -12113,7 +12141,12 @@
         });
 
         var { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js");
-        var FB = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js");
+        // V364: a plain COPY of the module namespace, not the namespace itself —
+        // namespace objects are immutable, and the transport tests need to be
+        // able to stand in for a half-open socket by replacing FB.set with a
+        // promise that never settles (exactly what MSZT looked like from here).
+        var FB = Object.assign({}, await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"));
+        window._rb2p_FB = FB;
         var FBA = await import("https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js");
 
         var app = initializeApp({
@@ -12127,6 +12160,7 @@
         // until the rules flip).
         try { await FBA.signInAnonymously(FBA.getAuth(app)); } catch (eAuth) {}
         var db = FB.getDatabase(app);
+        window._rb2p_db = db;   // V364: test seam — goOffline/goOnline stand in for a dead socket
 
         // ===== V61: end-of-game FINAL stats screen =====
         // The bridge (other script) detects game over and calls
@@ -15536,10 +15570,33 @@
                     }
                 } catch (eTH) {}
                 origSend(outcome);
+                // V364: the handoff is the one record the match cannot lose. The
+                // SDK write goes first; if it has not been CONFIRMED by the server
+                // within 1.5s the socket is presumed half-open (MSZT: the SDK
+                // never errored, it just never delivered) and the same record is
+                // PUT over REST. A healthy SDK confirms in ~100ms and the REST
+                // path never fires. Identical content, so whichever lands second
+                // is a no-op for the receiver's ts dedupe.
+                var sdkConfirmed = false;
                 FB.set(
                     FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + myRole),
                     outcome
-                ).catch(function (e) { console.log('[fb send err]', e); });
+                ).then(function () { sdkConfirmed = true; })
+                 .catch(function (e) { console.log('[fb send err]', e); });
+                setTimeout(function () {
+                    if (sdkConfirmed) return;
+                    window._rb2p_fbStallN = (Number(window._rb2p_fbStallN) || 0) + 1;
+                    console.warn('[2P FB-STALL] outcome ' + outcome.type +
+                                 ' not confirmed by the SDK in 1.5s — sending over REST');
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('FB-STALL send ' + outcome.type + ' -> REST');
+                    fbRestPut('rooms/' + myRoom + '/outcomes/' + myRole, outcome)
+                        .then(function (ok) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('REST send ' + outcome.type + (ok ? ' ok' : ' FAILED'));
+                        }).catch(function () {});
+                }, 1500);
+                // Keep the last handoff so the delivery watchdog can re-send it.
+                window._rb2p_lastSentOutcome = outcome;
+                window._rb2p_lastSentOutcomeMs = Date.now();
             };
 
             // ===== V363: AN OUTCOME IS NEVER CONSUMED BY A DEVICE THAT CANNOT APPLY IT
@@ -15573,16 +15630,15 @@
             var otherRole = myRole === 'a' ? 'b' : 'a';
             var firstSnap = true;
             var lastTs = 0;
-            unsubscribeOutcomes = FB.onValue(
-                FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
-                function (snap) {
-                    var val = snap.val();
-                    if (firstSnap) {
-                        firstSnap = false;
-                        lastTs = (val && val.ts) || 0;
-                        return;
-                    }
+            // V364: ONE apply path, fed by two transports. The SDK subscription
+            // below is the normal route; a REST poll (further down) covers the
+            // case where it is THIS phone's socket that has gone half-open — the
+            // opponent's record is sitting on the server and onValue will never
+            // fire for it.
+            function applyIncomingOutcome(val, via) {
                     if (!val || !val.ts || val.ts <= lastTs) return;
+                    if (via && via !== 'sdk' && window._rb2p_diagLog)
+                        window._rb2p_diagLog('OUTCOME ' + val.type + ' via ' + via);
                     var applyBlocked = window._rb2p_outcomeApplyBlocked();
                     if (applyBlocked) {
                         // Held, NOT consumed: lastTs stays put and no ack is written.
@@ -15629,10 +15685,84 @@
                     // "already applied" from "lost in my reload" (the lost-
                     // outcome insurance in tryRestore). Same-ts update; the
                     // ts<=lastTs dedupe above ignores the refire.
+                    // V364: the ack rides both transports too — the sender's
+                    // delivery watchdog reads it over REST.
                     FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
                               { ack: myRole, ackTs: Date.now() }).catch(function () {});
+                    fbRestPatch('rooms/' + myRoom + '/outcomes/' + otherRole,
+                                { ack: myRole, ackTs: Date.now() }).catch(function () {});
+            }
+            unsubscribeOutcomes = FB.onValue(
+                FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
+                function (snap) {
+                    var val = snap.val();
+                    if (firstSnap) {
+                        firstSnap = false;
+                        lastTs = (val && val.ts) || 0;
+                        return;
+                    }
+                    applyIncomingOutcome(val, 'sdk');
                 }
             );
+            // V364: THE REST POLL. While this phone is parked in WAIT, the only
+            // thing that can un-park it is the opponent's handoff — and if this
+            // phone's socket is the half-open one, the SDK will never deliver
+            // it. Ask the server directly, every 3s, over the transport that
+            // kept working in MSZT. Guarded by the match start so a prior
+            // game's record in a reused room can never be applied.
+            if (window._rb2p_outcomePollIv) { try { clearInterval(window._rb2p_outcomePollIv); } catch (eCI) {} }
+            var outcomePollBusy = false;
+            window._rb2p_outcomePollIv = setInterval(function () {
+                if (window._rb2p_userIsWaitingForOpponent !== true) return;
+                if (outcomePollBusy) return;
+                outcomePollBusy = true;
+                fbRestGet('rooms/' + myRoom + '/outcomes/' + otherRole).then(function (val) {
+                    outcomePollBusy = false;
+                    if (!val || !val.ts) return;
+                    if (val.ts <= lastTs) return;
+                    if (val.ack === myRole) { lastTs = Math.max(lastTs, val.ts); return; }   // I already applied it before a reload
+                    if (val.ts < (Number(window._rb2p_matchStartMs) || 0)) return;
+                    // firstSnap semantics: if the SDK never delivered its first
+                    // snapshot this session, a record older than 2 minutes is a
+                    // leftover, not a handoff.
+                    if (Date.now() - Number(val.ts) > 120000) return;
+                    console.warn('[2P OUTCOME] the SDK never delivered a ' + val.type +
+                                 ' addressed to me — applying it from the REST poll');
+                    applyIncomingOutcome(val, 'rest-poll');
+                }).catch(function () { outcomePollBusy = false; });
+            }, 3000);
+            // V364: the sender's DELIVERY WATCHDOG. After a handoff, if the
+            // opponent has not acked within 8s, ask the server (REST) whether
+            // the record is even there; if it is not, the SDK ate it — PUT it.
+            if (window._rb2p_deliveryIv) { try { clearInterval(window._rb2p_deliveryIv); } catch (eCD) {} }
+            window._rb2p_deliveryIv = setInterval(function () {
+                var o = window._rb2p_lastSentOutcome;
+                if (!o || !o.ts) return;
+                var age = Date.now() - (Number(window._rb2p_lastSentOutcomeMs) || 0);
+                if (age < 8000 || age > 90000) return;
+                if (window._rb2p_userIsWaitingForOpponent !== true) return;
+                fbRestGet('rooms/' + myRoom + '/outcomes/' + myRole).then(function (srv) {
+                    if (srv && Number(srv.ts) === Number(o.ts)) {
+                        if (srv.ack) { window._rb2p_lastSentOutcome = null; }   // delivered
+                        return;
+                    }
+                    if (srv && Number(srv.ts) > Number(o.ts)) { window._rb2p_lastSentOutcome = null; return; }
+                    console.warn('[2P FB-STALL] my ' + o.type + ' handoff is NOT on the server ' +
+                                 Math.round(age / 1000) + 's after sending — re-sending over REST');
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('DELIVERY re-send ' + o.type + ' via REST');
+                    fbRestPut('rooms/' + myRoom + '/outcomes/' + myRole, o).catch(function () {});
+                }).catch(function () {});
+            }, 4000);
+            // V364: name the connection state in the log, so the next MSZT is
+            // diagnosable in one line instead of a forensic reconstruction.
+            try {
+                FB.onValue(FB.ref(db, '.info/connected'), function (snap) {
+                    var on = snap.val() === true;
+                    if (window._rb2p_fbConnected === on) return;
+                    window._rb2p_fbConnected = on;
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('FB-CONN ' + (on ? 'online' : 'OFFLINE'));
+                });
+            } catch (eConn) {}
 
             // Apply anything held the moment this device can actually stage it.
             // The 25s wall is a backstop only: holding forever would stall the
@@ -15927,8 +16057,26 @@
                         seq: ++userLivePushSeq,
                         ts: Date.now()
                     };
+                    // V364: same law as the outcome send. The score on the other
+                    // phone comes from THIS push; when the SDK stalls (MSZT) the
+                    // score simply never changes over there. Unconfirmed in 1.5s
+                    // -> REST, rate-limited to one REST push per 2s.
+                    var liveSdkConfirmed = false;
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/live/' + myRole), userLivePayload)
+                        .then(function () { liveSdkConfirmed = true; })
                         .catch(function () {});
+                    setTimeout(function () {
+                        if (liveSdkConfirmed) return;
+                        var now = Date.now();
+                        if (now - (Number(window._rb2p_liveRestMs) || 0) < 2000) return;
+                        window._rb2p_liveRestMs = now;
+                        if (now - (Number(window._rb2p_fbStallLogMs) || 0) > 10000) {
+                            window._rb2p_fbStallLogMs = now;
+                            console.warn('[2P FB-STALL] live push unconfirmed by the SDK — mirroring over REST');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('FB-STALL live -> REST');
+                        }
+                        fbRestPut('rooms/' + myRoom + '/live/' + myRole, userLivePayload).catch(function () {});
+                    }, 1500);
                 } catch (e) {}
             }, 500);
 
