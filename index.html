@@ -1232,7 +1232,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V368<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V369<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1300,7 +1300,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V368</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V369</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4063,6 +4063,21 @@
                                     });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fem.engineYardLineSigned)) + ' d=' + Number(fem.engineDownNumber));
+                                    // V368: a REAL snap (the dead->live edge of the ball) is
+                                    // the authority that ends every quarter-start restore. Not
+                                    // the ball's play-state at a park, which can read "live"
+                                    // before the keep-drive has even re-spawned the drive.
+                                    // V369: unless a quarter keep is still PENDING — then this
+                                    // snap is on the engine's own transient 1st & 10 respawn
+                                    // (measured: ~280ms after the park), and the keep-drive
+                                    // must still be allowed to restore the real down & distance.
+                                    // The pending flag is trustworthy again since V368 stopped
+                                    // the mirror from pinning a live device's clock.
+                                    if (window._rb2p_qSnappedThisQuarter !== true &&
+                                        window._rb2p_quarterResumePending !== true) {
+                                        window._rb2p_qSnappedThisQuarter = true;
+                                        if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-PLAYED — quarter-start restores retired');
+                                    }
                                     if (window._rb2p_audit) window._rb2p_audit('snap', {   // V365
                                         q: Number(fem.engineQuarter), clk: Number(fem.engineMinutesLeft) * 60 + Number(fem.engineSecondsLeft),
                                         y: Number(fem.engineYardLineSigned), d: Number(fem.engineDownNumber), tg: Number(fem.engineYardsToGo),
@@ -7471,11 +7486,6 @@
                         if (qkAnchor && !qkAnchor.retired && Date.now() - qkAnchor.ms > 300 &&
                             typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress())
                             window._rb2p_retireBallAnchor('the ball has been snapped this quarter');
-                        // V368: the same authority ends every quarter-start restore.
-                        if (window._rb2p_qSnappedThisQuarter !== true) {
-                            window._rb2p_qSnappedThisQuarter = true;
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-PLAYED — quarter-start restores retired');
-                        }
                     } catch (eRet) {}
                 } catch (e) {}
             }, 100);

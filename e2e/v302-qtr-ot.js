@@ -241,6 +241,17 @@ const SET_Q = `(function (q) {
         // so a leftover would silently block this one from arming and we would
         // assert against A3's spot instead of this scenario's.
         window._rb2p_qEndLatchQ = null;
+        // V369: A3's real Q2 plays also leave "this quarter has been played"
+        // (which correctly retires every quarter-start restore) and a live
+        // ball (which correctly blocks the latch until it dies). This leg
+        // simulates a FRESH boundary, so both are reset the same way the
+        // latch is.
+        window._rb2p_qSnappedThisQuarter = false;
+        window._rb2p_quarterResumePending = false;
+        try {
+            var allB = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+            for (var bi = 0; bi < allB.length; bi++) { var xb = allB[bi]; if (xb && !xb._HL2 && xb._eE2 && xb._eE2._fE2 === 'obj_ball') xb._kp = 0; }
+        } catch (eB) {}
         window._rb2p_userIsWaitingForOpponent = false;
         s.enginePossessingTeamIdx = s.engineUserTeamIdx;
         // What the clock-gated capture would have (wrongly) held.
