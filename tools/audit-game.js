@@ -76,13 +76,15 @@ function audit(tl, extra) {
                 if (!scored && Math.abs(e.y - expect) > 1.6)
                     flag('R-YARD', `${e.type} for ${e.gain}: line was ${e.y0.toFixed(1)}, should be ${expect.toFixed(1)}, is ${e.y.toFixed(1)}`, [lastSnap, e]);
             }
-            if (scrim && lastSettle && lastSettle.d && e.d0 && typeof lastSettle.gain === 'number') {
-                // Down & distance: the previous settle predicts this snap's down.
-                const g = lastSettle.gain;
-                const first = g >= lastSettle.tg - 0.6;
-                const expD = first ? 1 : lastSettle.d + 1;
-                if (lastSettle.d <= 3 && e.d0 !== expD && e.d0 !== 1)
-                    flag('R-DOWN', `after ${lastSettle.type} for ${g} on ${lastSettle.d}&${lastSettle.tg}, next snap was down ${e.d0}, expected ${expD}`, [lastSettle, e]);
+            if (scrim && lastSettle && lastSettle.d && typeof e.gain === 'number' && typeof e.d === 'number') {
+                // Down & distance: this play FACED the previous settle's resulting
+                // down and to-go; its gain decides the down it leaves behind.
+                const facedD = lastSettle.d, facedTg = lastSettle.tg, g = e.gain;
+                const first = g >= facedTg - 0.6;
+                const expD = first ? 1 : facedD + 1;
+                const scored = Math.abs(e.y) >= 49.5 || e.su !== lastSettle.su;
+                if (!scored && facedD <= 3 && e.d0 === facedD && e.d !== expD)
+                    flag('R-DOWN', `${e.type} for ${g} facing ${facedD}&${facedTg.toFixed(1)} left it ${e.d}&${e.tg}, expected down ${expD}`, [lastSettle, e]);
             }
             lastSettle = e;
         }
@@ -134,6 +136,7 @@ function audit(tl, extra) {
             if (e.k === 'p6' && e.step === 'detected') cascade = true;
             if (e.k === 'p6' && (e.step === 'resultApplied' || e.step === 'driveStarted')) cascade = false;
             if (e.k === 'recv') lastRecv[e.role] = e.t;
+            if (e.k === 'diag' && /^OUTCOME (drained|held)/.test(e.m)) lastRecv[e.role] = e.t;
             if (e.k === 'q') lastQ[e.role] = e.t;
             if (e.k === 'wait') {
                 wait[e.role] = e.on; waitSince[e.role] = e.t;
@@ -159,7 +162,16 @@ function audit(tl, extra) {
         }
     }
 
-    // ---- R-OVL: flicker and hidden formations ----
+    // ---- R-OVL: flicker and exposed formations ----
+    // The scorer of a pick-6 plays its conversion flagged waiting with the cover
+    // deliberately off (V280); from `applied` to `resultSent` on that device the
+    // exposed formation is the conversion itself.
+    const patWindows = {};
+    { let open = null; for (const e of tl.filter(x => x.k === 'p6')) {
+        if (e.step === 'applied') open = { role: e.role, from: e.t, to: Infinity };
+        if (open && e.role === open.role && (e.step === 'resultSent' || e.step === 'resultApplied')) { open.to = e.t + 3000; (patWindows[open.role] = patWindows[open.role] || []).push(open); open = null; }
+    } if (open) (patWindows[open.role] = patWindows[open.role] || []).push(open); }
+    const inPat = (r, t) => (patWindows[r] || []).some(w => t >= w.from && t <= w.to);
     for (const r of roles) {
         const ov = byRole[r].filter(x => x.k === 'ovl');
         for (let i = 0; i < ov.length; i++) {
@@ -170,7 +182,7 @@ function audit(tl, extra) {
         for (const e of byRole[r].filter(x => x.k === 'stage')) {
             // A staged scene under a SOLID cover is harmless; the defect is a
             // parked device whose cover is OFF while a formation is on screen.
-            if (e.wait === true && e.of >= 6 && e.ovl === false) { if (!hiddenSince) hiddenSince = e; else if (e.t - hiddenSince.t > 5000) { flag('R-OVL', `EXPOSED FORMATION on ${r}: ${e.of} offensive players on screen while parked in WAIT with the cover OFF for ${((e.t - hiddenSince.t) / 1000).toFixed(0)}s`, [hiddenSince, e]); hiddenSince = null; } }
+            if (e.wait === true && e.of >= 6 && e.ovl === false && !inPat(r, e.t)) { if (!hiddenSince) hiddenSince = e; else if (e.t - hiddenSince.t > 5000) { flag('R-OVL', `EXPOSED FORMATION on ${r}: ${e.of} offensive players on screen while parked in WAIT with the cover OFF for ${((e.t - hiddenSince.t) / 1000).toFixed(0)}s`, [hiddenSince, e]); hiddenSince = null; } }
             else hiddenSince = null;
         }
     }
@@ -225,11 +237,12 @@ function audit(tl, extra) {
         for (const s of sends) {
             const other = s.role === 'a' ? 'b' : 'a';
             const ack = acks.find(a => a.role === other && a.ts === s.ts);
-            const recv = tl.find(x => x.k === 'recv' && x.role === other && x.ts === s.ts);
+            const recv = tl.find(x => x.k === 'recv' && x.role === other && x.ts === s.ts) ||
+                         tl.find(x => x.k === 'diag' && x.role === other && x.t >= s.t && x.t < s.t + 20000 && new RegExp('^OUTCOME (held|drained) \\(' + s.type + '\\)').test(x.m));
             const otherAlive = byRole[other].some(x => x.k === 'stage' && x.t > s.t && x.t < s.t + 20000 && x.fps > 0);
             if (!ack && !recv && otherAlive) flag('R-XPORT', `${s.role}'s ${s.type} was never received by ${other} although ${other} was drawing frames`, [s]);
         }
-        for (const e of tl.filter(x => x.k === 'diag' && /FB-STALL|FB-CONN OFFLINE|DELIVERY re-send|via rest-poll/.test(x.m))) flag('R-XPORT', e.m, [e]);
+        for (const e of tl.filter(x => x.k === 'diag' && /FB-STALL|FB-CONN OFFLINE|DELIVERY re-send/.test(x.m))) flag('R-XPORT', e.m, [e]);
         for (const e of tl.filter(x => x.k === 'dropped')) flag('R-XPORT', `telemetry dropped ${e.n} entries on ${e.role}`, [e]);
     }
 

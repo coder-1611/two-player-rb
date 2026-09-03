@@ -161,8 +161,9 @@
             var waitVal = undefined, waitN = 0;
             function callerTag() {
                 try {
+                    // [0] "Error", [1] callerTag, [2] the setter, [3] the WRITER.
                     var st = (new Error().stack || '').split('\n');
-                    var ln = (st[2] || st[1] || '').trim();
+                    var ln = (st[3] || st[2] || '').trim();
                     var m = ln.match(/:(\d+):\d+\)?$/);
                     return m ? 'L' + m[1] : ln.slice(0, 40);
                 } catch (e) { return '?'; }
@@ -1225,7 +1226,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V366<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V367<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1293,7 +1294,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V366</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V367</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16101,9 +16102,15 @@
                                 (blocked ? ' — PAST THE WALL, still ' + blocked : ''));
                     if (window._rb2p_diagLog) window._rb2p_diagLog(
                         'OUTCOME drained (' + val.type + ') after ' + heldMs + 'ms');
+                    if (window._rb2p_audit) window._rb2p_audit('recv', { type: val.type, ts: val.ts, via: 'drain',   // V367
+                        su: val.scoreUser, so: val.scoreOpp, y: val.yardLine, q: val.quarter,
+                        clk: Number(val.minutesLeft) * 60 + Number(val.secondsLeft), heldMs: heldMs });
                     window._twoPlayer.receive(val);
                     FB.update(FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
                               { ack: myRole, ackTs: Date.now() }).catch(function () {});
+                    fbRestPatch('rooms/' + myRoom + '/outcomes/' + otherRole,
+                                { ack: myRole, ackTs: Date.now() }).catch(function () {});   // V367: both transports
+                    if (window._rb2p_audit) window._rb2p_audit('ack', { type: val.type, ts: val.ts, via: 'drain' });   // V367
                     return '';
                 } catch (e) { return String(e && e.message); }
             };
