@@ -215,6 +215,12 @@
                 // fresh, says they have the ball. An outcome addressed to me in
                 // the last 3s overrides (the ledger echo can lag the handoff).
                 var tr = window._rb2p_turnRec, ol = window._rb2p_oppLiveRx, me = auditRole;
+                // V368 (room MHUY): at the halftime boundary no outcome is sent —
+                // the Q3 law simply flips B live — so the ledger still named A
+                // and A's last push (half a second old) still claimed the ball.
+                // Rule 2 refused B's legitimate LIVE and both phones sat in WAIT.
+                // A quarter change is its own authority for 8s.
+                if (Date.now() - (Number(window._rb2p_quarterChangedToMs) || 0) < 8000) return '';
                 if (me && tr && tr.owner && tr.owner !== me &&
                     ol && Date.now() - (Number(ol.at) || 0) < 4000 && ol.iHaveBall === true &&
                     Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) > 3000 &&
@@ -1226,7 +1232,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V367<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V368<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1294,7 +1300,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V367</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V368</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4770,8 +4776,16 @@
                                 // producing the "score wrong / quarter oscillates Q1↔Q4"
                                 // mess. Floors only ever RAISE, so a legit quarter
                                 // advance during the window still goes through.
-                                if (typeof rs.myScore  === 'number' && em.userScore     < rs.myScore)  em.setUserScore(rs.myScore);
-                                if (typeof rs.oppScore === 'number' && em.opponentScore < rs.oppScore) em.setOpponentScore(rs.oppScore);
+                                var restoredScore = false;
+                                if (typeof rs.myScore  === 'number' && em.userScore     < rs.myScore)  { em.setUserScore(rs.myScore); restoredScore = true; }
+                                if (typeof rs.oppScore === 'number' && em.opponentScore < rs.oppScore) { em.setOpponentScore(rs.oppScore); restoredScore = true; }
+                                // V368 (room MHUY): this write was never re-baselined, so the
+                                // pick-6 score-jump watcher read the opponent's restored
+                                // total (0 -> 9, later 0 -> 17) as an engine-earned defensive
+                                // touchdown, entered the cascade as the "thrower", and shipped
+                                // a PICK6 the other phone credited +6 for — then a +2. Eight
+                                // phantom points and two conversion modals from one refresh.
+                                if (restoredScore && window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
                                 if (typeof rs.quarter  === 'number' && Number(em.engineQuarter) < rs.quarter) { em.engineQuarter = rs.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(rs.quarter) || 0); }
                                 // V198: re-assert saved offensive stats every tick of
                                 // the hold window. The restore is guarded (only raises
@@ -6034,6 +6048,19 @@
                     if (jump === 0) return;
                     pick6WatchBaselineOppScore = cur;
                     if (jump < 6) return;   // safety (+2) / PAT-sized credits are not a defensive TD
+                    // V368: the engine credits a defensive touchdown as exactly +6, in
+                    // one write. A larger jump is a RESTORE or a mirror, never a TD.
+                    if (jump !== 6) {
+                        console.log('[2P PICK6 WATCH] opp +' + jump + ' is not a touchdown-sized credit — ignoring');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH ignored +' + jump + ' (not exactly 6)');
+                        return;
+                    }
+                    // V368: nothing engine-earned can happen in the first 15s after a
+                    // boot/resume — every score movement then is a restore.
+                    if (Date.now() - (Number(window.__rbBootMs) || 0) < 15000) {
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH ignored +' + jump + ' (boot grace)');
+                        return;
+                    }
                     // Only treat as pick-6 in OUR drive context: we're on
                     // offense, or we JUST handed off this drive's outcome
                     // (the held INT-flip send). When the opponent scores
@@ -6775,6 +6802,16 @@
                             // (clear commentary, drives>=1, spawn the play, hold kp=2
                             // to overpower the engine's per-frame reset).
                             var doKeepDrive = function (yard, down, toGo) {
+                                // V368 (room MHUY, 413s): this fired 7 SECONDS into Q2, after
+                                // two plays had been run — the engine had re-parked at the
+                                // between-quarters stage — and put the ball back on the
+                                // quarter-end spot with the quarter-start clock: the
+                                // reported "my pass got reverted". A quarter that has been
+                                // snapped is being PLAYED; there is nothing left to keep.
+                                if (window._rb2p_qSnappedThisQuarter === true) {
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP refused — the quarter has already been played');
+                                    return;
+                                }
                                 engineMatch.engineMinutesLeft   = qmin;
                                 engineMatch.engineSecondsLeft   = qrem;
                                 engineMatch.engineTickAllowance = 0;
@@ -6906,6 +6943,10 @@
                     // resume never involves an opponent apply, so its timestamp is
                     // always old here.
                     var recentApply = (Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0)) < 5000;
+                    if (window._rb2p_qSnappedThisQuarter === true && window._rb2p_quarterResumePending === true) {
+                        window._rb2p_quarterResumePending = false;   // V368: played = nothing to resume
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP resume dropped — the quarter has already been played');
+                    }
                     if (window._rb2p_quarterResumePending === true && userHasBall &&
                         window._rb2p_userIsWaitingForOpponent !== true && !recentApply) {
                         var qTo = window._rb2p_quarterChangedTo;
@@ -7351,6 +7392,7 @@
                             window._rb2p_armBallAnchor(qNow, anchorYard, anchorKeep);
                         } catch (eAnchor) {}
                         qkQuarterStartSec = null;
+                        window._rb2p_qSnappedThisQuarter = false;   // V368: a new quarter, not yet played
 
                         // Record the COMPLETED quarter's score into the line-
                         // score arrays the way the engine's case-19 switch would
@@ -7403,6 +7445,12 @@
                     // happened and time elapsed). This bounds the keep-ball window to
                     // "before the user's first play of the quarter" — robust to how
                     // long the engine's rollover cascade takes.
+                    // V368: a quarter that has been snapped has nothing to resume —
+                    // the same authority that retires the ball anchor.
+                    if (window._rb2p_quarterResumePending === true && window._rb2p_qSnappedThisQuarter === true) {
+                        window._rb2p_quarterResumePending = false;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP resume dropped — the quarter has already been played');
+                    }
                     if (window._rb2p_quarterResumePending === true) {
                         if (qkQuarterStartSec === null && sec > 0) {
                             qkQuarterStartSec = sec;
@@ -7423,6 +7471,11 @@
                         if (qkAnchor && !qkAnchor.retired && Date.now() - qkAnchor.ms > 300 &&
                             typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress())
                             window._rb2p_retireBallAnchor('the ball has been snapped this quarter');
+                        // V368: the same authority ends every quarter-start restore.
+                        if (window._rb2p_qSnappedThisQuarter !== true) {
+                            window._rb2p_qSnappedThisQuarter = true;
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-PLAYED — quarter-start restores retired');
+                        }
                     } catch (eRet) {}
                 } catch (e) {}
             }, 100);
@@ -12152,6 +12205,10 @@
                     }
                     if (role === 'b') {
                         // B receives the 2nd-half kickoff → on offense, fresh 1st & 10.
+                        // V368: declare the turn FIRST, so the possession gate sees the
+                        // ledger name us before the flip (it used to be declared last).
+                        if (typeof window._rb2p_declareTurnOwner === 'function')
+                            window._rb2p_declareTurnOwner('ME', 'q3-law');
                         window._rb2p_userIsWaitingForOpponent    = false;
                         window._rb2p_userOutcomeSendInProgress   = false;
                         window._rb2p_lastOpponentOutcomeApplyMs  = Date.now();
@@ -16625,9 +16682,11 @@
                                     var yR = null;
                                     try { yR = Number(RB.engineState().engineYardLineSigned); } catch (eY) {}
                                     if (!isFinite(yR) || Math.abs(yR) > 49 || yR === 0) yR = -25;
+                                    var okR = null;
                                     if (typeof window._rb2p_forceUserOffenseDrive === 'function')
-                                        window._rb2p_forceUserOffenseDrive(yR);
+                                        okR = window._rb2p_forceUserOffenseDrive(yR);
                                     else window._rb2p_userIsWaitingForOpponent = false;
+                                    if (okR === false && window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE force-drive FAILED');
                                 } catch (eR2) {}
                             }
                         } else turnRescueTicks = 0;
@@ -16708,6 +16767,12 @@
                     // to drain the clock on the user's side while parked.
                     var userIsOnDefense = engineMatch.enginePossessingTeamIdx !==
                                           engineMatch.engineUserTeamIdx;
+                    // V368 (room MHUY): this gate read the ENGINE's possession register,
+                    // which flips for a beat at every play end — and in that beat the
+                    // opponent's stale clock was mirrored onto a device that was LIVE,
+                    // pinning its clock and re-arming the quarter keep. The bridge's
+                    // own flag is the authority on who is on defense.
+                    userIsOnDefense = userIsOnDefense && window._rb2p_userIsWaitingForOpponent === true;
                     // V50 Checkpoint 3 fix: while we're actively playing the
                     // pick-6 PAT scene (cascade flag is true AND engineDownNumber
                     // is the PAT-pending marker 6), OUR local engine is the

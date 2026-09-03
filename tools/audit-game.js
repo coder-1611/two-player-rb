@@ -90,16 +90,44 @@ function audit(tl, extra) {
         }
     }
 
+    // ---- R-CONT: between two plays of one possession the ball does not move ----
+    // MHUY 413s: an 8-yard completion settled at +10.7, 2nd & 2.5; half a second
+    // later the next snap was at +3.2, 1st & 10, with the quarter-start clock —
+    // a quarter-start restore had re-fired mid-quarter. The previous settle
+    // predicts the next snap exactly; a handoff, quarter change or kick resets.
+    for (const r of roles) {
+        let last = null;
+        for (const e of byRole[r]) {
+            if (e.k === 'q' || e.k === 'recv' || e.k === 'wait' || e.k === 'p6' || (e.k === 'diag' && /QTR-KEEP resume|kickoff|RESCUE|forcing/i.test(e.m))) { last = null; continue; }
+            if (e.k === 'settle') { last = ['run', 'pass', 'sack', 'incomplete'].includes(e.type) && Math.abs(e.y) < 49.5 ? e : null; continue; }
+            if (e.k === 'snap' && last) {
+                if (Math.abs(e.y - last.y) > 1.6 || e.d !== last.d)
+                    flag('R-CONT', `LINE MOVED BETWEEN PLAYS on ${r}: play settled at ${last.y.toFixed(1)} (${last.d}&${last.tg}), next snap at ${e.y.toFixed(1)} (${e.d}&${e.tg})`, [last, e]);
+                if (typeof e.clk === 'number' && typeof last.clk === 'number' && e.q === last.q && e.clk > last.clk + 0.5)
+                    flag('R-CLOCK', `clock went UP between plays inside Q${e.q} on ${r}: ${last.clk}s -> ${e.clk}s`, [last, e]);
+                last = null;
+            }
+        }
+    }
+
     // ---- R-SCORE: legal deltas, monotonic, both boards converge ----
     for (const r of roles) {
-        let prev = null;
+        const other = r === 'a' ? 'b' : 'a';
+        const binds = byRole[r].filter(x => x.k === 'bind').map(x => x.t);
         for (const e of byRole[r].filter(x => x.k === 'score')) {
+            const isRestore = binds.some(t => e.t >= t - 500 && e.t < t + 3000);
+            if (isRestore) {
+                // a restore must reproduce what the OTHER phone currently believes
+                const view = byRole[other].filter(x => x.k === 'score' && x.t < e.t).pop();
+                if (view && (view.so !== e.su || view.su !== e.so))
+                    flag('R-SCORE', `RESTORE on ${r} came back ${e.su}-${e.so}, but ${other} had it ${view.so}-${view.su}`, [view, e]);
+                continue;
+            }
             const d = [e.dsu, e.dso];
             for (const dd of d) {
                 if (dd < 0) flag('R-SCORE', `a score went DOWN by ${-dd} on ${r}`, [e]);
                 else if (dd > 0 && ![1, 2, 3, 6, 7, 8].includes(dd)) flag('R-SCORE', `illegal score delta +${dd} on ${r}`, [e]);
             }
-            prev = e;
         }
     }
     {
@@ -138,6 +166,7 @@ function audit(tl, extra) {
             if (e.k === 'recv') lastRecv[e.role] = e.t;
             if (e.k === 'diag' && /^OUTCOME (drained|held)/.test(e.m)) lastRecv[e.role] = e.t;
             if (e.k === 'q') lastQ[e.role] = e.t;
+            if (e.k === 'wait' && e.refused) { flag('R-POSS', `${e.role} was REFUSED going LIVE: ${e.refused}`, [e]); continue; }
             if (e.k === 'wait') {
                 wait[e.role] = e.on; waitSince[e.role] = e.t;
                 if (e.on === false && !cascade) {
@@ -215,6 +244,17 @@ function audit(tl, extra) {
                 if (dup.length > 1) flag('R-P6', `${dup.length} conversion modals built for one pick-6 on ${chain.applied.role}`, dup);
             }
         }
+        // PHANTOM pick-6s (MHUY): the score-jump watcher read a resume's score
+        // RESTORE (+9, then +17) as a defensive touchdown, and the record it
+        // shipped said the +6 had never landed — so the other phone invented it.
+        for (const d of steps.filter(x => x.step === 'detected')) {
+            const boot = tl.find(x => x.role === d.role && x.k === 'diag' && x.m === 'boot' && x.t <= d.t && d.t - x.t < 20000);
+            if (boot) flag('R-P6', `PHANTOM PICK-6: detected on ${d.role} ${((d.t - boot.t) / 1000).toFixed(1)}s after a boot (a restore, not a play)`, [boot, d]);
+            const m = /score-watcher\(\+(\d+)\)/.exec(String(d.src || ''));
+            if (m && Number(m[1]) !== 6) flag('R-P6', `PHANTOM PICK-6: the opponent's score jumped +${m[1]} on ${d.role} — a defensive touchdown is exactly +6`, [d]);
+        }
+        for (const s of steps.filter(x => x.step === 'sent' && x.plus6 === false))
+            flag('R-P6', `PICK6 shipped from ${s.role} WITHOUT the +6 having landed there — the other phone will invent the points`, [s]);
         // the thrower's engine must never build a conversion modal
         const thrower = steps.find(x => x.step === 'detected');
         if (thrower) {

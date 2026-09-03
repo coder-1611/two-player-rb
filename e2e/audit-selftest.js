@@ -14,6 +14,8 @@
 // T6  a formation on screen while parked with the cover off is flagged (R-OVL)
 // T7  a pick-6 chain that stops after `applied` is flagged (R-P6)
 // T8  a clean stretch of play produces no flags at all
+// T9  a phantom pick-6 (after a boot / not +6 / no +6 landed) is flagged (R-P6)
+// T10 the line moving between two plays is flagged (R-CONT + R-CLOCK)
 const H = require('./harness');
 const TP = require('./two-player');
 const { audit, toTimeline } = require('../tools/audit-game.js');
@@ -76,6 +78,13 @@ async function pull(g) {
     await off.page.evaluate(() => { window._rb2p_audit('p6', { step: 'detected', src: 'test' }); window._rb2p_audit('p6', { step: 'sent', plus6: true }); });
     await def.page.evaluate(() => { window._rb2p_audit('p6', { step: 'applied', su: 6, so: 0 }); });
 
+    // ---- T9: a phantom pick-6 right after a boot, shipped without its +6 ----
+    await def.page.evaluate(() => { window._rb2p_audit('diag', { m: 'boot' }); window._rb2p_audit('p6', { step: 'detected', src: 'score-watcher(+9)' }); window._rb2p_audit('p6', { step: 'sent', plus6: false }); });
+    // ---- T10: the line moved between two plays ----
+    await off.page.evaluate(() => {
+        window._rb2p_audit('settle', { type: 'pass', name: 'KITTLE', gain: 8, y: 10.7, d: 2, tg: 2.5, q: 2, clk: 173, su: 0, so: 16, y0: 3.2, d0: 1 });
+        window._rb2p_audit('snap', { q: 2, clk: 180, y: 3.2, d: 1, tg: 10, poss: 1, dir: 1 });
+    });
     tl = await pull(g);
     // Re-stamp the tagged deadlock scenario onto a window that ENDS before the
     // pick-6 chain begins: the wait entries at T, the samples at T+1s..T+15s.
@@ -91,6 +100,10 @@ async function pull(g) {
     check('T5 an overlay flicker is flagged (R-OVL)', has(res, 'R-OVL', /FLICKER/), '');
     check('T6 a formation on screen while parked with the cover off is flagged (R-OVL)', has(res, 'R-OVL', /EXPOSED FORMATION/), '');
     check('T7 a pick-6 chain that stops after applied is flagged (R-P6)', has(res, 'R-P6', /no (modal|resultSent)/), '');
+    check('T9 a pick-6 detected right after a boot, or shipped without its +6, is a PHANTOM (R-P6)',
+          has(res, 'R-P6', /PHANTOM PICK-6: detected .* after a boot/) && has(res, 'R-P6', /jumped \+9/) && has(res, 'R-P6', /WITHOUT the \+6/), '');
+    check('T10 a line that moved between two plays is flagged (R-CONT) and the clock going up with it (R-CLOCK)',
+          has(res, 'R-CONT', /LINE MOVED BETWEEN PLAYS/) && has(res, 'R-CLOCK', /between plays/), '');
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
