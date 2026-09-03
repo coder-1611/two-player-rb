@@ -173,6 +173,19 @@
                 set: function (v) {
                     waitN++;
                     var was = waitVal === true, now = v === true;
+                    if (was && !now) {
+                        // V366: going LIVE is the only dangerous direction (two
+                        // offenses). Parking is always safe — the invariant can
+                        // un-park. So refusals exist for LIVE only, each named.
+                        var refuse = '';
+                        try { refuse = (typeof window._rb2p_possRefuseLive === 'function') ? window._rb2p_possRefuseLive() : ''; } catch (eR) {}
+                        if (refuse) {
+                            var whoR = callerTag();
+                            window._rb2p_audit('wait', { on: true, refused: refuse, why: whoR });
+                            try { if (window._rb2p_diagLog) window._rb2p_diagLog('POSS-REFUSED LIVE (' + whoR + ') — ' + refuse); } catch (eD) {}
+                            return;
+                        }
+                    }
                     waitVal = v;
                     if (was === now) return;
                     var who = callerTag();
@@ -183,6 +196,124 @@
             });
             window._rb2p_possWriteCount = function () { return waitN; };
         })();
+
+        // ===== V366: THE POSSESSION LEDGER =====
+        // Why a LIVE transition may be refused. Both rules are the two ways this
+        // fork has ever produced a second offense; everything else stays legal.
+        window._rb2p_possRefuseLive = function () {
+            try {
+                if (window._rb2p_gameOverReported === true) return '';
+                // Rule 1 — the device that THREW a pick-6 owns nothing until the
+                // scorer's conversion answer has been applied here. Every path
+                // that legitimately re-arms the thrower (the PAT_RESULT applier,
+                // the 300s fallback) clears the cascade flag first, so it passes.
+                if (window._rb2p_pickSixThisDeviceIsThrower === true &&
+                    window._rb2p_pickSixPatCascadeActive === true)
+                    return 'the pick-6 cascade owns possession (this device threw it)';
+                // Rule 2 — the turn ledger names the opponent AND their live push,
+                // fresh, says they have the ball. An outcome addressed to me in
+                // the last 3s overrides (the ledger echo can lag the handoff).
+                var tr = window._rb2p_turnRec, ol = window._rb2p_oppLiveRx, me = auditRole;
+                if (me && tr && tr.owner && tr.owner !== me &&
+                    ol && Date.now() - (Number(ol.at) || 0) < 4000 && ol.iHaveBall === true &&
+                    Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) > 3000 &&
+                    Date.now() - (Number(window._rb2p_matchStartMs) || 0) > 15000)
+                    return 'the turn is the opponent\'s and they are live';
+            } catch (e) {}
+            return '';
+        };
+        // The per-cascade ledger: one record per pick-6, one field per step, on
+        // both transports, readable by either device and by the auditor.
+        window._rb2p_p6Step = function (step, fields) {
+            try {
+                var f = fields || {};
+                window._rb2p_audit('p6', Object.assign({ step: step }, f));
+                var id = window._rb2p_p6Id || ('x' + Date.now());
+                if (!auditRoom || !auditRole) return;
+                var rec = {}; rec[step] = Object.assign({ role: auditRole, ts: Date.now() }, f);
+                fbRestPatch('rooms/' + auditRoom + '/p6/' + id, rec).catch(function () {});
+                var lo = window._rb2p_p6Local || (window._rb2p_p6Local = {});
+                lo[step] = Date.now();
+            } catch (e) {}
+        };
+        // The wedge: a thrower left at down 6 by a conversion pre-pin looks like a
+        // conversion is owed (S3), so the invariant pins it to the 2 and every
+        // force-drive is refused — the reported "possession never changed". Before
+        // any drive is forced on a device that has just applied PAT_RESULT, the
+        // conversion state is put away by name.
+        window._rb2p_unwedgeConversion = function (why) {
+            try {
+                var em = (typeof RB !== 'undefined' && RB.engineState) ? RB.engineState() : null;
+                var did = [];
+                if (em && Number(em.engineDownNumber) === 6) { em.engineDownNumber = 1; em.engineYardsToGo = 10; did.push('down 6 -> 1'); }
+                if (window._rb2p_patPlayPending === true || window._rb2p_patPlayResolved === true) { window._rb2p_patPlayPending = false; window._rb2p_patPlayResolved = false; did.push('pat flags'); }
+                if (window._rb2p_patDutyMine) { window._rb2p_patDutyMine = null; did.push('duty'); }
+                window._rb2p_patOwedSinceMs = 0;
+                try {
+                    var pl = (window._rb2p_enumeratePopupInstances && window._rb2p_enumeratePopupInstances()) || [];
+                    var k = 0;
+                    for (var i = 0; i < pl.length; i++) { var q = pl[i]; if (q && !q._HL2 && (q._0G === 100367 || q._0G === 100369)) { try { _cr(q); } catch (e) { q._HL2 = true; } k++; } }
+                    if (k) did.push('modal x' + k);
+                } catch (e) {}
+                if (did.length && window._rb2p_diagLog) window._rb2p_diagLog('UNWEDGE (' + why + '): ' + did.join(', '));
+                return did.length;
+            } catch (e) { return 0; }
+        };
+        function realDriveRunning() {
+            try {
+                var em = (typeof RB !== 'undefined' && RB.engineState) ? RB.engineState() : null;
+                if (!em || em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return false;
+                if (Number(em.engineControllerState) !== 2) return false;
+                if (Number(em.engineDownNumber) === 6) return false;
+                if (window._rb2p_patModalUp && window._rb2p_patModalUp()) return false;
+                var fld = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                for (var i = 0; i < fld.length; i++) { var x = fld[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') return true; }
+            } catch (e) {}
+            return false;
+        }
+        window._rb2p_realDriveRunning = realDriveRunning;
+        // The watchdog: every 2s, each step of a pick-6 that is past its budget
+        // gets its named repair. Nothing here decides possession on its own —
+        // it only completes what the ledger says has already been decided.
+        var p6LedgerPollMs = 0;
+        setInterval(function () {
+            try {
+                if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) return;
+                var now = Date.now();
+                // thrower: PAT_RESULT applied here -> a real drive must be running
+                if (window._rb2p_p6AwaitDriveMs) {
+                    if (realDriveRunning()) {
+                        window._rb2p_p6Step('driveStarted', { ms: now - window._rb2p_p6AwaitDriveMs });
+                        window._rb2p_p6AwaitDriveMs = 0;
+                    } else if (now - window._rb2p_p6AwaitDriveMs > 4000) {
+                        window._rb2p_p6AwaitDriveMs = now;   // one force per 4s, never a storm
+                        try { if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH no drive 4s after PAT_RESULT — forcing it'); } catch (e) {}
+                        try {
+                            window._rb2p_pickSixPatCascadeActive = false;
+                            window._rb2p_pickSixThisDeviceIsThrower = false;
+                            window._rb2p_unwedgeConversion('watchdog force');
+                            window._rb2p_userIsWaitingForOpponent = false;
+                            var y = (typeof window._rb2p_kickoffReturnYard === 'function') ? window._rb2p_kickoffReturnYard() : -25;
+                            if (typeof window._rb2p_forceUserOffenseDrive === 'function') window._rb2p_forceUserOffenseDrive(y);
+                        } catch (eF) {}
+                    }
+                }
+                // thrower: the ledger says the answer was SENT, but nothing applied here
+                if (window._rb2p_pickSixThisDeviceIsThrower === true && window._rb2p_pickSixPatCascadeActive === true &&
+                    auditRoom && now - p6LedgerPollMs > 2000 && window._rb2p_p6Id) {
+                    p6LedgerPollMs = now;
+                    fbRestGet('rooms/' + auditRoom + '/p6/' + window._rb2p_p6Id).then(function (l) {
+                        try {
+                            if (!l || !l.resultSent) return;
+                            if (window._rb2p_p6ResultAppliedMs) return;
+                            if (Date.now() - (Number(l.resultSent.ts) || 0) < 8000) return;
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH PAT_RESULT is on the ledger but not applied here — polling the record');
+                            if (typeof window._rb2p_pollOutcomeNow === 'function') window._rb2p_pollOutcomeNow(true);
+                        } catch (e) {}
+                    }).catch(function () {});
+                }
+            } catch (e) {}
+        }, 2000);
     </script>
     <script>
         (function () {
@@ -1094,7 +1225,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V365<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V366<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1162,7 +1293,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V365</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V366</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5520,7 +5651,8 @@
                             try { window._twoPlayer.send(outcome); }
                             catch (e) { console.log('[2P] send err', e); }
                             window._rb2p_patResultSentMs = Date.now();
-                            if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'resultSent', su: outcome.scoreUser, so: outcome.scoreOpp });   // V365
+                            window._rb2p_p6ScorerSentMs = Date.now();   // V366: the watchdog clears anything left under WAIT
+                            if (window._rb2p_p6Step) window._rb2p_p6Step('resultSent', { su: outcome.scoreUser, so: outcome.scoreOpp });
                             // V217: PAT resolved — clear the reload-safety duty record.
                             if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
                             // B's side of the cascade is finished the moment
@@ -5754,7 +5886,9 @@
                     if (typeof window._rb2p_declareTurnOwner === 'function')
                         window._rb2p_declareTurnOwner('OPP', 'pick6');
                     console.log('[2P PICK6] cascade entered via ' + source);
-                    if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'detected', src: String(source) });   // V365
+                    window._rb2p_p6Id = String(Date.now());   // V366: the cascade id, carried in the PICK6 record
+                    window._rb2p_p6Local = {}; window._rb2p_p6ResultAppliedMs = 0; window._rb2p_p6AwaitDriveMs = 0;
+                    if (window._rb2p_p6Step) window._rb2p_p6Step('detected', { src: String(source) });
                     if (typeof window._rb2p_sendEventBlast === 'function')
                         window._rb2p_sendEventBlast('PICK6');   // V335: the scorer's popup fires NOW
                     if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('THROWER', source);
@@ -5791,6 +5925,10 @@
                                 em2.engineDownNumber = 1;
                                 em2.engineYardsToGo = 10;
                                 em2.enginePossessingTeamIdx = em2.engineOpponentTeamIdx;
+                                // V366: the park used to leave the ball on the 2 and the
+                                // PAT scene staged; the thrower then looked like it was
+                                // "already driving" to the PAT_RESULT applier.
+                                em2.engineYardLineSigned = -25;
                             } catch (ePark) {}
                             var names = em2.engineTeamDisplayNames || ['', ''];
                             var userIdx = em2.engineUserTeamIdx;
@@ -5800,6 +5938,7 @@
                                 ownSide: true,
                                 needsPAT: true,
                                 pick6Plus6Missing: !plus6Landed,
+                                p6id: window._rb2p_p6Id || null,   // V366: the ledger id
                                 scoreUser: em2.userScore,
                                 scoreOpp:  em2.opponentScore,
                                 quarter:   em2.engineQuarter,
@@ -5811,7 +5950,7 @@
                                 ts: Date.now()
                             });
                             window._rb2p_pick6SentThisPossession = true;   // V150: one PICK6 per possession
-                            if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'sent', plus6: plus6Landed, su: em2.userScore, so: em2.opponentScore });   // V365
+                            if (window._rb2p_p6Step) window._rb2p_p6Step('sent', { plus6: plus6Landed, su: em2.userScore, so: em2.opponentScore });
                             // V187: upgrade the refresh-safety record to pick-6 +
                             // mark it resolved (the live PICK6 has shipped).
                             if (typeof window._rb2p_resolveTurnover === 'function')
@@ -7526,7 +7665,8 @@
                     if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
                         ' scoreOpp=' + outcome.scoreOpp + ')');
-                    if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'resultApplied', su: outcome.scoreOpp, so: outcome.scoreUser });   // V365
+                    window._rb2p_p6ResultAppliedMs = Date.now();   // V366
+                    if (window._rb2p_p6Step) window._rb2p_p6Step('resultApplied', { su: outcome.scoreOpp, so: outcome.scoreUser });
                     // V254: the old gate was `wasInCascade` — but the cascade
                     // has a 60s hard timeout, and a B who refreshed + re-popped
                     // + played the PAT easily takes longer than that. A then
@@ -7537,9 +7677,14 @@
                     // The gate's real intent is "don't restart a drive that's
                     // already running" — so test exactly that.
                     var alreadyDriving = false;
+                    // V366: the watchdog confirms a real drive within 4s or forces one.
+                    window._rb2p_p6AwaitDriveMs = Date.now();
+                    if (window._rb2p_unwedgeConversion) window._rb2p_unwedgeConversion('PAT_RESULT applied');
                     try {
                         if (engineMatch.enginePossessingTeamIdx === engineMatch.engineUserTeamIdx &&
-                            engineMatch.engineControllerState === 2) {
+                            engineMatch.engineControllerState === 2 &&
+                            Number(engineMatch.engineDownNumber) !== 6 &&                       // V366: a parked PAT is not a drive
+                            !(window._rb2p_patModalUp && window._rb2p_patModalUp())) {
                             var allAD = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                             for (var iAD = 0; iAD < allAD.length; iAD++) {
                                 var xAD = allAD[iAD];
@@ -7729,6 +7874,7 @@
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = userDelta;
                             if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'made', pts: userDelta });   // V365
+                            if (window._rb2p_p6Step && window._rb2p_pickSixPatCascadeActive === true) window._rb2p_p6Step('resolved', { pts: userDelta });
                             console.log('[2P PAT GUARD] PAT resolved: +' + userDelta + ' (made)');
                             if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved +' + userDelta);
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('PAT made: +' + userDelta);
@@ -7824,6 +7970,8 @@
                     if (Date.now() - (window._rb2p_patResolvedMs || 0) > 5000) {
                         console.warn('[2P PAT GUARD] kickoff _1c1 never fired — sending synthetic PAT_RESULT');
                         if (window._rb2p_diagLog) window._rb2p_diagLog('synthetic PAT_RESULT sent');
+                        window._rb2p_p6ScorerSentMs = Date.now();   // V366
+                        if (window._rb2p_p6Step) window._rb2p_p6Step('resultSent', { synthetic: true, su: em.userScore, so: em.opponentScore });
                         var names = em.engineTeamDisplayNames || ['', ''];
                         try {
                             window._twoPlayer.send({
@@ -8451,11 +8599,19 @@
                 try {
                     if (window._rb2p_gameOverReported === true)
                         return 'R1 the game is over';
+                    // V366: the device that threw a pick-6 never converts. Its
+                    // engine still builds the modal at replay end (L1b sees the
+                    // TD stage), and the pre-pin would claim possession, set
+                    // down 6 and put the ball on the 2 — on the wrong device.
+                    if (window._rb2p_pickSixThisDeviceIsThrower === true &&
+                        window._rb2p_patPlayPending !== true)
+                        return 'R4 this device threw the pick-6 — the conversion is the scorer\'s';
                     var lic = window._rb2p_conversionLicence();
                     if (!lic)
                         return 'R2 no touchdown licence — no TD, no pick-6, no live conversion';
                     window._rb2p_conversionLastLicence = lic;
                     if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'modal', lic: lic });   // V365
+                    if (window._rb2p_p6Step && window._rb2p_pickSixPatCascadeActive === true) window._rb2p_p6Step('modal', { lic: lic });
                     var em = RB.engineState();
                     if (em && em.engineUserTeamIdx != null) {
                         // Direction first: +48 names a distance from midfield, not
@@ -9870,7 +10026,9 @@
                         if (typeof window._rb2p_ackTurnoverApplied === 'function')
                             window._rb2p_ackTurnoverApplied();
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
-                        if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'applied', su: Number(engineMatch.userScore), so: Number(engineMatch.opponentScore) });   // V365
+                        window._rb2p_p6Id = outcome.p6id || window._rb2p_p6Id || ('x' + Date.now());   // V366
+                        window._rb2p_p6Local = {}; window._rb2p_p6ScorerSentMs = 0;
+                        if (window._rb2p_p6Step) window._rb2p_p6Step('applied', { su: Number(engineMatch.userScore), so: Number(engineMatch.opponentScore) });
 
                         // ===== V325: END-OF-GAME PICK-6 WALK-OFF (regulation) =====
                         // A pick-6 as regulation expires is a walk-off exactly like
@@ -13828,7 +13986,13 @@
                             var woH = document.getElementById('rb-waiting');
                             if (woH && woH.style.display !== 'none') {
                                 var scorerPatH = !!(window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat());
-                                if (scorerPatH || plOF >= 6) {
+                                // V366: a formation the turn ledger says is not mine
+                                // never lifts the overlay — that formation is the
+                                // reported "hidden formation" and the lift/re-show
+                                // fight was the flicker.
+                                var liftRole = (typeof role !== 'undefined') ? role : null;
+                                var liftOwner = !!(window._rb2p_turnRec && liftRole && window._rb2p_turnRec.owner === liftRole);
+                                if (scorerPatH || (plOF >= 6 && liftOwner)) {
                                     woH.style.display = 'none';
                                     if (window._rb2p_audit) window._rb2p_audit('ovl', { shown: false, why: 'lift:' + (scorerPatH ? 'scorerPAT' : 'OF=' + plOF) });
                                     diagLog('WAIT overlay lifted (interactive: ' +
@@ -15864,8 +16028,8 @@
             // game's record in a reused room can never be applied.
             if (window._rb2p_outcomePollIv) { try { clearInterval(window._rb2p_outcomePollIv); } catch (eCI) {} }
             var outcomePollBusy = false;
-            window._rb2p_outcomePollIv = setInterval(function () {
-                if (window._rb2p_userIsWaitingForOpponent !== true) return;
+            function pollOutcomeOnce(force) {
+                if (!force && window._rb2p_userIsWaitingForOpponent !== true) return;
                 if (outcomePollBusy) return;
                 outcomePollBusy = true;
                 fbRestGet('rooms/' + myRoom + '/outcomes/' + otherRole).then(function (val) {
@@ -15882,7 +16046,9 @@
                                  ' addressed to me — applying it from the REST poll');
                     applyIncomingOutcome(val, 'rest-poll');
                 }).catch(function () { outcomePollBusy = false; });
-            }, 3000);
+            }
+            window._rb2p_pollOutcomeNow = pollOutcomeOnce;   // V366: the pick-6 watchdog's hand
+            window._rb2p_outcomePollIv = setInterval(function () { pollOutcomeOnce(false); }, 3000);
             // V364: the sender's DELIVERY WATCHDOG. After a handoff, if the
             // opponent has not acked within 8s, ask the server (REST) whether
             // the record is even there; if it is not, the SDK ate it — PUT it.
@@ -16381,6 +16547,17 @@
             // push visibly also claims the ball). It never PROMOTES a waiting
             // device, so PAT cascades and staging flows are untouched.
             var turnConflictTicks = 0, turnPrevOff = false, tookOffenseMs = 0, turnRescueTicks = 0;
+            // V366: the possession invariant accounts for itself — one line per
+            // reason per 10s, so a quiet stand-down is visible in the audit stream.
+            var possInvNoteMs = {};
+            function possInvNote(why) {
+                try {
+                    var n = Date.now();
+                    if (n - (possInvNoteMs[why] || 0) < 10000) return;
+                    possInvNoteMs[why] = n;
+                    if (window._rb2p_audit) window._rb2p_audit('possinv', { why: why });
+                } catch (e) {}
+            }
             window._rb2p_declareTurnOwner = function (owner, why) {
                 try {
                     if (!myRoom || !myRole) return;
@@ -16407,14 +16584,14 @@
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) { turnPrevOff = false; turnConflictTicks = 0; return; }
-                    if (window._rb2p_gameOverReported === true) return;
+                    if (window._rb2p_gameOverReported === true) { possInvNote('P3 game over'); return; }
                     if (window._rb2p_pickSixPatCascadeActive === true ||
-                        window._rb2p_patPlayPending === true) return;   // the cascade owns possession
+                        window._rb2p_patPlayPending === true) { possInvNote('P1 the cascade owns possession'); return; }
                     // V352b (audit hole 14): those two flags are blind to the OKAG
                     // state (a conversion owed with neither set). A conversion owns
                     // possession, full stop — otherwise the rescue converts it into
                     // a normal drive the moment the 35s wall releases.
-                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) { possInvNote('P2 a conversion is owed'); return; }
                     var onOff = window._rb2p_userIsWaitingForOpponent !== true;
                     if (!onOff) {
                         turnPrevOff = false; turnConflictTicks = 0;
