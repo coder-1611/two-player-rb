@@ -21,16 +21,15 @@ const FB_API_KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
 // bogus test FAILURES rather than an obvious infrastructure error. Sign in
 // anonymously once (same thing the page does) and hang ?auth=<idToken> on every
 // REST call. Cached for the process lifetime.
+// V366: ONE identity for every run on this Mac, refreshed, not re-minted.
+// A fresh anonymous sign-up per suite (x40 suites per gate, plus the audit
+// watcher) tripped Firebase's per-IP limit — TOO_MANY_ATTEMPTS_TRY_LATER — and
+// the last four two-player suites of a gate "crashed" at host time. See
+// tools/fb-auth.js (cache in ~/rb2p/.fbtok.json).
 let _fbToken = null;
 async function fbToken() {
     if (_fbToken) return _fbToken;
-    const r = await fetch(
-        'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ returnSecureToken: true }) });
-    const j = await r.json();
-    if (!j.idToken) throw new Error('anon auth failed: ' + JSON.stringify(j).slice(0, 200));
-    _fbToken = j.idToken;
+    _fbToken = await require('../tools/fb-auth.js').token();
     return _fbToken;
 }
 // Authenticated REST helpers — use these instead of raw fetch on the DB.

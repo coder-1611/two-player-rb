@@ -102,6 +102,87 @@
         window._rb2p_fbRestPut = fbRestPut;
         window._rb2p_fbRestPatch = fbRestPatch;
         window._rb2p_fbRestGet = fbRestGet;
+
+        // ===== V365: TELEMETRY v2 — an append-only stream per device =====
+        // The diag ring is 11 lines; a game cannot be reconstructed from it, and
+        // the game that motivated this (a pick-6 whose PAT played but whose
+        // possession never changed) had already been swept when it was reported.
+        // Every device now appends {t,k,...} entries to rooms/{code}/audit/{role}
+        // over REST (the transport that survived MSZT), batched every 1.5s.
+        // Keys are "<epoch>_<seq>" so they order lexically and survive reloads.
+        // tools/audit-game.js replays the stream against the rules of football
+        // and flags the room so the sweep never deletes it. See
+        // PLAN-PICK6-AUDITOR.md.
+        var auditBuf = [], auditSeq = 0, auditRoom = null, auditRole = null, auditDropped = 0;
+        window._rb2p_audit = function (k, fields) {
+            try {
+                if (auditBuf.length > 400) { auditDropped++; return; }
+                var e = { t: Date.now(), k: String(k) };
+                if (fields) for (var f in fields) if (Object.prototype.hasOwnProperty.call(fields, f)) {
+                    var v = fields[f];
+                    if (v === undefined) continue;
+                    if (typeof v === 'number' && isFinite(v)) e[f] = Math.round(v * 100) / 100;
+                    else if (typeof v === 'string') e[f] = v.slice(0, 160);
+                    else if (typeof v === 'boolean' || v === null) e[f] = v;
+                    else e[f] = String(v).slice(0, 160);
+                }
+                e.s = auditSeq++;
+                auditBuf.push(e);
+            } catch (err) {}
+        };
+        window._rb2p_auditBind = function (room, role) { auditRoom = room; auditRole = role; };
+        window._rb2p_auditFlushNow = function () { auditFlush(false); };
+        function auditFlush(keepalive) {
+            if (!auditRoom || !auditRole || !auditBuf.length) return;
+            var batch = {}; var taken = auditBuf; auditBuf = [];
+            if (auditDropped) { taken.push({ t: Date.now(), k: 'dropped', n: auditDropped, s: auditSeq++ }); auditDropped = 0; }
+            for (var i = 0; i < taken.length; i++) {
+                var e = taken[i];
+                batch[String(e.t) + '_' + ('00000' + e.s).slice(-6)] = e;
+            }
+            fbAuthUrl(FB_REST_BASE + 'rooms/' + auditRoom + '/audit/' + auditRole + '.json')
+                .then(function (u) {
+                    return fetch(u, { method: 'PATCH', body: JSON.stringify(batch), keepalive: !!keepalive });
+                }).catch(function () { /* telemetry is best-effort */ });
+        }
+        setInterval(function () { auditFlush(false); }, 1500);
+        try {
+            window.addEventListener('pagehide', function () { window._rb2p_audit('vis', { h: true, why: 'pagehide' }); auditFlush(true); });
+            document.addEventListener('visibilitychange', function () { window._rb2p_audit('vis', { h: !!document.hidden }); });
+        } catch (eAV) {}
+
+        // ===== V365: THE POSSESSION CHOKE POINT (passive) =====
+        // _rb2p_userIsWaitingForOpponent is written from 24 places and nothing ever
+        // saw a transition. It is now an accessor: every write passes through here
+        // and every CHANGE is recorded with its caller, in diag and in the audit
+        // stream. This build observes only — V366 adds the refusals — so behaviour
+        // is byte-identical while the next real game gets a full possession log.
+        (function () {
+            var waitVal = undefined, waitN = 0;
+            function callerTag() {
+                try {
+                    var st = (new Error().stack || '').split('\n');
+                    var ln = (st[2] || st[1] || '').trim();
+                    var m = ln.match(/:(\d+):\d+\)?$/);
+                    return m ? 'L' + m[1] : ln.slice(0, 40);
+                } catch (e) { return '?'; }
+            }
+            Object.defineProperty(window, '_rb2p_userIsWaitingForOpponent', {
+                configurable: true, enumerable: true,
+                get: function () { return waitVal; },
+                set: function (v) {
+                    waitN++;
+                    var was = waitVal === true, now = v === true;
+                    waitVal = v;
+                    if (was === now) return;
+                    var who = callerTag();
+                    window._rb2p_possLastChangeMs = Date.now();
+                    window._rb2p_audit('wait', { on: now, why: who });
+                    try { if (window._rb2p_diagLog) window._rb2p_diagLog('POSS -> ' + (now ? 'WAIT' : 'LIVE') + ' (' + who + ')'); } catch (e) {}
+                }
+            });
+            window._rb2p_possWriteCount = function () { return waitN; };
+        })();
     </script>
     <script>
         (function () {
@@ -1013,7 +1094,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V364<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V365<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1081,7 +1162,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V364</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V365</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3844,6 +3925,10 @@
                                     });
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fem.engineYardLineSigned)) + ' d=' + Number(fem.engineDownNumber));
+                                    if (window._rb2p_audit) window._rb2p_audit('snap', {   // V365
+                                        q: Number(fem.engineQuarter), clk: Number(fem.engineMinutesLeft) * 60 + Number(fem.engineSecondsLeft),
+                                        y: Number(fem.engineYardLineSigned), d: Number(fem.engineDownNumber), tg: Number(fem.engineYardsToGo),
+                                        poss: fem.enginePossessingTeamIdx === fem.engineUserTeamIdx ? 1 : 0, dir: Number(fem.engineDriveDirection) });
                                 }
                                 // V332: DEAD-BALL re-arm. The snap latch above only fires when
                                 // the observer actually SAMPLES bkp 1/2. A fast handoff can go
@@ -4049,6 +4134,16 @@
                                         var g = Math.round(Number(dy));
                                         if (Math.abs(g) <= 99) evt.yds = g;
                                     }
+                                    try {   // V365: the settle, as the auditor's ground truth
+                                        var emA = RB.engineState();
+                                        if (emA && window._rb2p_audit) window._rb2p_audit('settle', {
+                                            type: evt.k, name: evt.rcv || evt.rb || evt.qb || '',
+                                            gain: (evt.yds != null ? Number(evt.yds) : null),
+                                            y: Number(emA.engineYardLineSigned), d: Number(emA.engineDownNumber), tg: Number(emA.engineYardsToGo),
+                                            q: Number(emA.engineQuarter), clk: Number(emA.engineMinutesLeft) * 60 + Number(emA.engineSecondsLeft),
+                                            su: Number(emA.userScore) || 0, so: Number(emA.opponentScore) || 0,
+                                            y0: Number(window._rb2p_feedYard0), d0: Number(window._rb2p_feedDown0) });
+                                    } catch (eSA) {}
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V326 DEBUG — stat deltas per play
                                         'cFEED ' + evt.k + ' rcv=' + (evt.rcv || '-') + ' rb=' + (evt.rb || '-') +
                                         ' qbPass=' + qbPassDelta.toFixed(1) + ' qbRush=' + qbRushAttDelta +
@@ -5425,6 +5520,7 @@
                             try { window._twoPlayer.send(outcome); }
                             catch (e) { console.log('[2P] send err', e); }
                             window._rb2p_patResultSentMs = Date.now();
+                            if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'resultSent', su: outcome.scoreUser, so: outcome.scoreOpp });   // V365
                             // V217: PAT resolved — clear the reload-safety duty record.
                             if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null);
                             // B's side of the cascade is finished the moment
@@ -5658,6 +5754,7 @@
                     if (typeof window._rb2p_declareTurnOwner === 'function')
                         window._rb2p_declareTurnOwner('OPP', 'pick6');
                     console.log('[2P PICK6] cascade entered via ' + source);
+                    if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'detected', src: String(source) });   // V365
                     if (typeof window._rb2p_sendEventBlast === 'function')
                         window._rb2p_sendEventBlast('PICK6');   // V335: the scorer's popup fires NOW
                     if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('THROWER', source);
@@ -5714,6 +5811,7 @@
                                 ts: Date.now()
                             });
                             window._rb2p_pick6SentThisPossession = true;   // V150: one PICK6 per possession
+                            if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'sent', plus6: plus6Landed, su: em2.userScore, so: em2.opponentScore });   // V365
                             // V187: upgrade the refresh-safety record to pick-6 +
                             // mark it resolved (the live PICK6 has shipped).
                             if (typeof window._rb2p_resolveTurnover === 'function')
@@ -7091,6 +7189,9 @@
                         // treating it as a quarter change kept refreshing the
                         // end-of-game maturity clock; see room USFR.)
                         window._rb2p_quarterChangedToMs = Date.now();
+                        if (window._rb2p_audit) window._rb2p_audit('q', { from: qkPrevQuarterSeen, to: qNow,   // V365
+                            clk: Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft),
+                            y: Number(em.engineYardLineSigned), d: Number(em.engineDownNumber), tg: Number(em.engineYardsToGo) });
                         window._rb2p_quarterChangedTo   = qNow;
                         // V358: capture where the LAST PLAY of the quarter left the
                         // ball. Preference order: the settled spot latched at the
@@ -7425,6 +7526,7 @@
                     if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                         'PAT_RESULT received & applied (scoreUser=' + outcome.scoreUser +
                         ' scoreOpp=' + outcome.scoreOpp + ')');
+                    if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'resultApplied', su: outcome.scoreOpp, so: outcome.scoreUser });   // V365
                     // V254: the old gate was `wasInCascade` — but the cascade
                     // has a 60s hard timeout, and a B who refreshed + re-popped
                     // + played the PAT easily takes longer than that. A then
@@ -7626,6 +7728,7 @@
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = userDelta;
+                            if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'made', pts: userDelta });   // V365
                             console.log('[2P PAT GUARD] PAT resolved: +' + userDelta + ' (made)');
                             if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved +' + userDelta);
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote('PAT made: +' + userDelta);
@@ -8275,6 +8378,9 @@
                     var u = Number(em.userScore) || 0, o = Number(em.opponentScore) || 0;
                     var pv = window._rb2p_convScorePrev;
                     if (pv && u - pv.u >= 6) window._rb2p_lastTd6Ms = Date.now();
+                    if (pv && (u !== pv.u || o !== pv.o) && window._rb2p_audit)   // V365
+                        window._rb2p_audit('score', { su: u, so: o, dsu: u - pv.u, dso: o - pv.o,
+                                                      q: Number(em.engineQuarter), clk: Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft) });
                     window._rb2p_convScorePrev = { u: u, o: o, ms: Date.now() };
                 } catch (e) {}
             }, 40);
@@ -8349,6 +8455,7 @@
                     if (!lic)
                         return 'R2 no touchdown licence — no TD, no pick-6, no live conversion';
                     window._rb2p_conversionLastLicence = lic;
+                    if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'modal', lic: lic });   // V365
                     var em = RB.engineState();
                     if (em && em.engineUserTeamIdx != null) {
                         // Direction first: +48 names a distance from midfield, not
@@ -9763,6 +9870,7 @@
                         if (typeof window._rb2p_ackTurnoverApplied === 'function')
                             window._rb2p_ackTurnoverApplied();
                         console.log('[2P apply v7] PICK6 — +6, popping user PAT modal on B');
+                        if (window._rb2p_audit) window._rb2p_audit('p6', { step: 'applied', su: Number(engineMatch.userScore), so: Number(engineMatch.opponentScore) });   // V365
 
                         // ===== V325: END-OF-GAME PICK-6 WALK-OFF (regulation) =====
                         // A pick-6 as regulation expires is a walk-off exactly like
@@ -10427,13 +10535,18 @@
                 // scene playable). If this device is the scorer playing the PAT,
                 // do not show the cover.
                 if (window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat()) {
+                    if (wait.style.display !== 'none' && window._rb2p_audit) window._rb2p_audit('ovl', { shown: false, why: 'scorerPAT' });
                     wait.style.display = 'none';
                     return;
                 }
                 if (window._rb2p_arenaApply) window._rb2p_arenaApply();   // V313: theme
+                if (wait.style.display !== 'flex' && window._rb2p_audit) window._rb2p_audit('ovl', { shown: true, why: String(msg || '').slice(0, 40) });
                 wait.style.display = 'flex';
             }
-            function hideWait() { wait.style.display = 'none'; }
+            function hideWait() {
+                if (wait.style.display !== 'none' && window._rb2p_audit) window._rb2p_audit('ovl', { shown: false, why: 'hideWait' });
+                wait.style.display = 'none';
+            }
 
             // Public helpers so the Firebase module can refresh the live
             // score + clock without poking DOM ids itself.
@@ -12389,6 +12502,7 @@
         // Called by the bridge when this device detects game over.
         window._rb2p_reportGameOver = function (report) {
             localFinalReport = report || {};
+            try { if (window._rb2p_audit) window._rb2p_audit('final', { su: Number(localFinalReport.score), so: Number(localFinalReport.oppScore) }); } catch (eAF) {}   // V365
             // V198: NEVER publish a degenerate report. If the engine roster wasn't
             // resolvable at the game-over instant, collectBoxScore returns an empty
             // {team:'', players:[]} — which is exactly what made the opponent column
@@ -12900,6 +13014,7 @@
             // boot — without this the first reports would say "V?" instead of the
             // real build (they used to say a hardcoded "V294" forever).
             var rb2pBuildLabelCache = null;
+            window.rb2pVersionLabel = function () { try { return 'V' + rb2pBuildLabel(); } catch (e) { return '?'; } };
             function rb2pBuildLabel() {
                 if (rb2pBuildLabelCache) return rb2pBuildLabelCache;
                 try {
@@ -12926,6 +13041,7 @@
                     while (arr.length > 11) arr.shift();
                     sessionStorage.setItem(DIAG_KEY, JSON.stringify(arr));
                     console.log('[2P DIAG] ' + msg);
+                    if (window._rb2p_audit) window._rb2p_audit('diag', { m: text });   // V365
                 } catch (e) {}
             }
             window._rb2p_diagLog = diagLog;
@@ -13331,6 +13447,25 @@
                     try {
                         if (!room || !role) throw 0;
                         var hbBase = 'https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room;
+                        // V365: the field census — what is actually staged under
+                        // whatever the overlay says. On change only.
+                        try {
+                            var cOF = 0, cDF = 0, cBall = 0, cKp = null;
+                            var cAll = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                            for (var ci = 0; ci < cAll.length; ci++) {
+                                var cx = cAll[ci]; if (!cx || cx._HL2 || !cx._eE2) continue;
+                                var cn = cx._eE2._fE2;
+                                if (cn === 'obj_playerOF') cOF++; else if (cn === 'obj_playerDF') cDF++;
+                                else if (cn === 'obj_ball') { cBall++; cKp = Number(cx._kp); }
+                            }
+                            var cWait = window._rb2p_userIsWaitingForOpponent === true;
+                            var cOvl = (function () { try { var w = document.getElementById('rb-waiting'); return !!(w && w.style.display !== 'none'); } catch (e) { return null; } })();
+                            var cSig = cOF + '/' + cDF + '/' + cBall + '/' + cKp + '/' + cWait + '/' + cOvl + '/' + diagFps;
+                            if (cSig !== window.__rbCensusSig) {
+                                window.__rbCensusSig = cSig;
+                                if (window._rb2p_audit) window._rb2p_audit('stage', { of: cOF, df: cDF, ball: cBall, kp: cKp, wait: cWait, ovl: cOvl, fps: diagFps });
+                            }
+                        } catch (eCen) {}
                         // V268: hb carries liveness, not just a timestamp. A
                         // LOCKED phone's timers are throttled to ~1Hz but its
                         // 5s interval still ticks — hb stayed fresh and the
@@ -13695,6 +13830,7 @@
                                 var scorerPatH = !!(window._rb2p_scorerPlayingPat && window._rb2p_scorerPlayingPat());
                                 if (scorerPatH || plOF >= 6) {
                                     woH.style.display = 'none';
+                                    if (window._rb2p_audit) window._rb2p_audit('ovl', { shown: false, why: 'lift:' + (scorerPatH ? 'scorerPAT' : 'OF=' + plOF) });
                                     diagLog('WAIT overlay lifted (interactive: ' +
                                             (scorerPatH ? 'scorerPAT' : 'OF=' + plOF) + ')');
                                 }
@@ -14431,6 +14567,13 @@
                 var now = Date.now();
                 Object.keys(all).forEach(function (code) {
                     if (code === myRoom) return;             // never nuke the room we're in
+                    // V365: a game the auditor flagged is evidence — it is deleted by
+                    // hand only. A game with an audit stream the auditor has not
+                    // visited yet is kept until it has (tools/audit-watch.js writes
+                    // `audited`), so the evidence exists when the report comes in.
+                    var rm = all[code] || {};
+                    if (rm.flag) return;
+                    if (rm.audit && !rm.audited) return;
                     // newest === 0 for a legacy room with no ts anywhere → treated
                     // as stale and removed.
                     if (now - newestTsIn(all[code]) > ROOM_TTL_MS) {
@@ -15553,6 +15696,8 @@
             // bridge already mutates _twoPlayer.send once installed; we
             // chain on top of whatever's there so simulate()/sentLog still
             // work for debugging.
+            if (window._rb2p_auditBind) window._rb2p_auditBind(myRoom, myRole);   // V365
+            if (window._rb2p_audit) window._rb2p_audit('bind', { ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole });
             var origSend = window._twoPlayer.send.bind(window._twoPlayer);
             window._twoPlayer.send = function (outcome) {
                 // V208: stamp the moment we hand the ball to the opponent via a
@@ -15570,6 +15715,9 @@
                     }
                 } catch (eTH) {}
                 origSend(outcome);
+                if (window._rb2p_audit) window._rb2p_audit('send', { type: outcome && outcome.type, ts: outcome && outcome.ts,   // V365
+                    su: outcome && outcome.scoreUser, so: outcome && outcome.scoreOpp, y: outcome && outcome.yardLine,
+                    q: outcome && outcome.quarter, clk: outcome ? Number(outcome.minutesLeft) * 60 + Number(outcome.secondsLeft) : null });
                 // V364: the handoff is the one record the match cannot lose. The
                 // SDK write goes first; if it has not been CONFIRMED by the server
                 // within 1.5s the socket is presumed half-open (MSZT: the SDK
@@ -15654,6 +15802,9 @@
                     window._rb2p_deferredOutcome = null;
                     window._rb2p_deferredOutcomeSinceMs = 0;
                     lastTs = val.ts;
+                    if (window._rb2p_audit) window._rb2p_audit('recv', { type: val.type, ts: val.ts, via: via || 'sdk',   // V365
+                        su: val.scoreUser, so: val.scoreOpp, y: val.yardLine, q: val.quarter,
+                        clk: Number(val.minutesLeft) * 60 + Number(val.secondsLeft) });
                     // V208: phantom-score guard. If WE just handed the ball to
                     // the opponent via a turnover (missed FG / INT / fumble /
                     // downs / punt), the opponent has not yet played a single
@@ -15691,6 +15842,7 @@
                               { ack: myRole, ackTs: Date.now() }).catch(function () {});
                     fbRestPatch('rooms/' + myRoom + '/outcomes/' + otherRole,
                                 { ack: myRole, ackTs: Date.now() }).catch(function () {});
+                    if (window._rb2p_audit) window._rb2p_audit('ack', { type: val.type, ts: val.ts });   // V365
             }
             unsubscribeOutcomes = FB.onValue(
                 FB.ref(db, 'rooms/' + myRoom + '/outcomes/' + otherRole),
