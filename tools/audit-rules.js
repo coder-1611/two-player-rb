@@ -312,7 +312,9 @@ function narrate(tl, meta) {
     const other = r => (r === 'a' ? 'b' : 'a');
     const out = [];
     const t0 = tl.length ? tl[0].t : 0;
-    const push = (e, text, kind) => out.push({ t: e.t, rel: (e.t - t0) / 1000, role: e.role, text: text, kind: kind || 'play', q: e.q });
+    const push = (e, text, kind) => out.push({ t: e.t, rel: (e.t - t0) / 1000, role: e.role, text: text, kind: kind || 'play',
+                                               q: (typeof e.q === 'number') ? e.q : (typeof e.to === 'number' ? e.to : undefined),
+                                               clk: (typeof e.clk === 'number') ? e.clk : undefined });
     let lastQ = {};
     for (const e of tl) {
         const who = nm(e.role);

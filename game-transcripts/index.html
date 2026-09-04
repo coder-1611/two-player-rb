@@ -46,7 +46,7 @@
   .filters label { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:4px 10px; font-size:12px; color:var(--dim); cursor:pointer; user-select:none; }
   .filters input { accent-color:var(--green); }
   .qhead { color:var(--green); font-weight:700; letter-spacing:1px; margin:18px 0 6px; font-size:13px; text-transform:uppercase; }
-  .ln { display:grid; grid-template-columns:56px 14px 1fr; gap:10px; padding:5px 0; border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent); align-items:start; }
+  .ln { display:grid; grid-template-columns:66px 14px 1fr; gap:10px; padding:5px 0; border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent); align-items:start; }
   .ln .t { color:var(--mute); font-size:12px; font-variant-numeric:tabular-nums; padding-top:1px; }
   .ln .r { width:10px; height:10px; border-radius:2px; margin-top:6px; }
   .ln .r.a { background:var(--green); } .ln .r.b { background:var(--blue); }
@@ -150,7 +150,8 @@
       ? 'The checker found ' + res.flags.length + ' thing' + (res.flags.length === 1 ? '' : 's') + ' that football cannot explain. Each one is listed below with the moment it happened.'
       : 'Every play, score, clock tick and handoff in this game checks out.';
 
-    const mmss = sec => (sec / 60).toFixed(0) + ':' + ('0' + Math.round(sec % 60)).slice(-2);
+    const mmss = sec => Math.floor(sec / 60) + ':' + ('0' + Math.floor(sec % 60)).slice(-2);
+    const gameClock = (q, clk) => (typeof q === 'number' && typeof clk === 'number') ? 'Q' + q + ' ' + mmss(clk) : '';
     const human = msg => String(msg)
       .replace(/\bon ([ab])\b/g, (m, r) => 'on ' + nm[r] + '\'s phone')
       .replace(/\bfrom ([ab])\b/g, (m, r) => 'from ' + nm[r] + '\'s phone')
@@ -172,25 +173,30 @@
         html += '<div class="card" style="padding:12px 14px"><div class="flag" style="margin:0"><div class="rule">' + esc(rule) + '</div><div class="why">' + esc(R.explain(rule)) + '</div></div>';
         for (const f of byRule[rule]) {
           const secs = f.cites && f.cites.length ? Number(f.cites[0].trim().split('s ')[0]) : NaN;
-          const at = isFinite(secs) ? mmss(secs) : '';
-          html += '<div style="padding:8px 4px 2px"><div class="what">' + (at ? '<span class="when">' + esc(at) + ' into the game</span> · ' : '') + esc(human(f.msg)) + '</div><details><summary>the raw lines the checker looked at</summary><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
+          let at = '';
+          try { const raw = JSON.parse(f.cites[0].slice(f.cites[0].indexOf('{'))); at = gameClock(raw.q, raw.clk); } catch (e) {}
+          const when = at ? at + ' on the game clock' : (isFinite(secs) ? mmss(secs) + ' of real time into the game' : '');
+          html += '<div style="padding:8px 4px 2px"><div class="what">' + (when ? '<span class="when">' + esc(when) + '</span> · ' : '') + esc(human(f.msg)) + '</div><details><summary>the raw lines the checker looked at</summary><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
         }
         html += '</div>';
       }
     }
 
-    html += '<h2>The game, play by play</h2><div class="legend"><span><i style="background:var(--green)"></i>' + esc(nm.a) + '\'s phone</span><span><i style="background:var(--blue)"></i>' + esc(nm.b) + '\'s phone</span></div>' +
+    html += '<h2>The game, play by play</h2><div class="legend"><span><i style="background:var(--green)"></i>' + esc(nm.a) + '\'s phone</span><span><i style="background:var(--blue)"></i>' + esc(nm.b) + '\'s phone</span><span>times are the game clock · hover a line for real time</span></div>' +
       '<div class="filters">' + [['play','Plays',true],['score','Scores',true],['handoff','Handoffs',true],['p6','Pick-six & conversions',true],['poss','Who has the ball',false],['system','Screens off, refreshes, holds',false],['flagline','Refusals',true]].map(f => '<label><input type="checkbox" data-kind="' + f[0] + '"' + (f[2] ? ' checked' : '') + '> ' + f[1] + '</label>').join('') + '</div><div id="story"></div>';
     app.innerHTML = html;
 
     const storyEl = document.getElementById('story');
     const draw = () => {
       const on = {}; app.querySelectorAll('.filters input').forEach(i => { on[i.dataset.kind] = i.checked; });
-      let q = null, out = '';
+      let out = '', lastQ = null, lastClk = null;
       for (const s of story) {
+        if (typeof s.q === 'number') lastQ = s.q;
+        if (typeof s.clk === 'number') lastClk = s.clk;
         if (s.kind === 'quarter') { out += '<div class="qhead">' + esc(s.text) + '</div>'; continue; }
         if (!on[s.kind]) continue;
-        out += '<div class="ln ' + esc(s.kind) + '"><div class="t">' + (s.rel / 60).toFixed(0) + ':' + ('0' + Math.round(s.rel % 60)).slice(-2) + '</div><div class="r ' + esc(s.role) + '"></div><div class="x">' + esc(s.text) + '</div></div>';
+        const gc = gameClock(lastQ, lastClk) || '—';
+        out += '<div class="ln ' + esc(s.kind) + '" title="' + esc(mmss(s.rel)) + ' of real time into the game"><div class="t">' + esc(gc) + '</div><div class="r ' + esc(s.role) + '"></div><div class="x">' + esc(s.text) + '</div></div>';
       }
       storyEl.innerHTML = out || '<div class="empty">Nothing to show with these filters.</div>';
     };
