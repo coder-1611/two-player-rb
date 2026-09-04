@@ -441,11 +441,13 @@ function narrate(tl, meta) {
     tl.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
     // score lines that a phantom pick-six produced are said so
     const phantomT = new Set();
+    const bindsOf = r => tl.filter(x => x.role === r && x.k === 'bind').map(x => x.t);
+    const isRestore = e => bindsOf(e.role).some(bt => e.t >= bt - 500 && e.t < bt + 3000);
     for (const ch of phantomPick6(tl)) {
         const rcv = ch.role === 'a' ? 'b' : 'a';
         const from = ch.applied ? ch.applied.t : (ch.sent ? ch.sent.t : ch.detected.t);
         const until = (ch.resultApplied ? ch.resultApplied.t : from + 120000) + 2000;
-        for (const sc of tl.filter(x => x.k === 'score' && x.t >= from - 500 && x.t <= until && ((x.role === rcv && x.dsu > 0) || (x.role === ch.role && x.dso > 0)))) phantomT.add(sc.t + ':' + sc.role);
+        for (const sc of tl.filter(x => x.k === 'score' && x.t >= from - 500 && x.t <= until && !isRestore(x) && ((x.role === rcv && x.dsu > 0) || (x.role === ch.role && x.dso > 0)))) phantomT.add(sc.t + ':' + sc.role);
     }
     const push = (e, text, kind) => out.push({ t: e.t, rel: (e.t - t0) / 1000, role: e.role, text: text, kind: kind || 'play',
                                                q: (typeof e.q === 'number') ? e.q : (typeof e.to === 'number' ? e.to : undefined),
@@ -473,6 +475,7 @@ function narrate(tl, meta) {
                 push(e, s, 'play'); break;
             }
             case 'score': {
+                if (isRestore(e)) { push(e, who + ' came back from the refresh with the score ' + e.su + '-' + e.so + '.', 'system'); break; }
                 const parts = [];
                 if (e.dsu > 0) parts.push(who + ' +' + e.dsu);
                 if (e.dso > 0) parts.push(nm(other(e.role)) + ' +' + e.dso);
