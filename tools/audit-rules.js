@@ -349,6 +349,22 @@ function narrate(tl, meta) {
     const other = r => (r === 'a' ? 'b' : 'a');
     const out = [];
     const t0 = tl.length ? tl[0].t : 0;
+    // The engine credits the +6 and builds the conversion modal in ONE
+    // expression; the bridge notices the play's settle on its next tick
+    // (~10ms later) and the score on its next sample (~40ms later). Read by
+    // the millisecond, the offer comes first. It belongs after the score.
+    tl = tl.slice();
+    for (let i = 0; i < tl.length; i++) {
+        const e = tl[i];
+        if (!((e.k === 'conv' && e.ev === 'modal') || (e.k === 'p6' && e.step === 'modal'))) continue;
+        const after = tl.find(x => x.role === e.role && x.t >= e.t && x.t - e.t < 1500 &&
+                                   ((x.k === 'score' && x.dsu === 6) || (x.k === 'settle' && x.d === 6)));
+        if (!after) continue;
+        const scoreLine = tl.find(x => x.role === e.role && x.k === 'score' && x.dsu === 6 && x.t >= e.t && x.t - e.t < 1500) || after;
+        const moved = Object.assign({}, e, { t: scoreLine.t + 1, q: scoreLine.q, clk: scoreLine.clk });
+        tl[i] = moved;
+    }
+    tl.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
     const push = (e, text, kind) => out.push({ t: e.t, rel: (e.t - t0) / 1000, role: e.role, text: text, kind: kind || 'play',
                                                q: (typeof e.q === 'number') ? e.q : (typeof e.to === 'number' ? e.to : undefined),
                                                clk: (typeof e.clk === 'number') ? e.clk : undefined });
@@ -370,7 +386,8 @@ function narrate(tl, meta) {
                 else if (e.type === 'sack') s = p + ' is sacked' + (g != null ? ' for a loss of ' + Math.abs(g) : '');
                 else if (e.type === 'incomplete') s = 'Pass incomplete' + (p ? ' (' + p + ')' : '');
                 else s = cap(e.type) + (p ? ' — ' + p : '');
-                s += ' — ball on ' + spot(e.y) + ', ' + dd(e.d, e.tg) + (typeof e.clk === 'number' ? ', ' + clockStr(e.clk) + ' left' : '') + '.';
+                if (e.d === 6) s += ' — TOUCHDOWN' + (typeof e.clk === 'number' ? ', ' + clockStr(e.clk) + ' left' : '') + '.';
+                else s += ' — ball on ' + spot(e.y) + ', ' + dd(e.d, e.tg) + (typeof e.clk === 'number' ? ', ' + clockStr(e.clk) + ' left' : '') + '.';
                 push(e, s, 'play'); break;
             }
             case 'score': {
