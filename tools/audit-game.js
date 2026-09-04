@@ -44,7 +44,7 @@ function render(code, res, tl) {
     for (const rule of Object.keys(byRule)) {
         lines.push('## ' + rule + ' (' + byRule[rule].length + ')');
         for (const f of byRule[rule]) {
-            lines.push('- ' + f.msg);
+            lines.push('- ' + f.plain + '  _(' + f.msg + ')_');
             for (const c of f.cites) lines.push('    ' + c);
         }
         lines.push('');
@@ -67,7 +67,9 @@ async function main() {
         get(tok, 'rooms/' + code + '/turn'), get(tok, 'rooms/' + code + '/p6'), get(tok, 'rooms/' + code + '/final')]);
     if (!aud || (!aud.a && !aud.b)) { console.error('no audit stream for ' + code + ' (pre-V365 game, or swept)'); process.exit(2); }
     const tl = toTimeline({ a: aud.a || {}, b: aud.b || {} });
-    const res = audit(tl, { outcomes, turn, p6, fin });
+    const nmA = (outcomes && outcomes.a && outcomes.a.fromTeam) || (outcomes && outcomes.b && outcomes.b.toTeam) || 'Phone A';
+    const nmB = (outcomes && outcomes.b && outcomes.b.fromTeam) || (outcomes && outcomes.a && outcomes.a.toTeam) || 'Phone B';
+    const res = audit(tl, { outcomes, turn, p6, fin, names: { a: nmA, b: nmB } });
     const dir = path.resolve(__dirname, '..', 'audits');
     try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
     const report = { code, at: Date.now(), verdict: res.flags.length ? 'FLAGGED' : 'CLEAN', flags: res.flags, entries: res.entries };
@@ -80,7 +82,7 @@ async function main() {
     if (asJson) console.log(JSON.stringify(report, null, 1));
     else {
         console.log('=== AUDIT ' + code + ': ' + report.verdict + ' (' + res.entries + ' entries, ' + res.flags.length + ' flags' + (tl.clockSkewMs ? ', b\'s clock shifted ' + (tl.clockSkewMs > 0 ? '+' : '') + (tl.clockSkewMs / 1000).toFixed(1) + 's onto a\'s from ' + tl.clockSkewPairs + ' handoffs' : '') + ') ===');
-        for (const f of res.flags) { console.log('  [' + f.rule + '] ' + f.msg); for (const c of f.cites) console.log('      ' + c); }
+        for (const f of res.flags) { console.log('  [' + f.rule + '] ' + (f.q != null ? 'Q' + f.q + ' ' + Math.floor(f.clk / 60) + ':' + ('0' + Math.floor(f.clk % 60)).slice(-2) + ' — ' : '') + f.plain); console.log('      (' + f.msg + ')'); for (const c of f.cites) console.log('      ' + c); }
         console.log('report: audits/' + code + '.md');
     }
     process.exit(res.flags.length ? 1 : 0);

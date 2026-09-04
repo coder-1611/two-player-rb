@@ -64,11 +64,61 @@ function line(t0, e) {
     return fmtT(t0, e.t) + ' [' + e.role + '] ' + e.k + ' ' + JSON.stringify(f);
 }
 
+// ---------------------------------------------------------------- english helpers
+function clockStr(clk) {
+    if (typeof clk !== 'number' || !isFinite(clk)) return '';
+    const m = Math.floor(clk / 60), s = Math.floor(clk % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+}
+function spot(y) {
+    if (typeof y !== 'number' || !isFinite(y)) return '';
+    const mark = Math.round(50 - Math.abs(y));
+    if (Math.abs(y) < 0.5) return 'the 50';
+    return (y > 0 ? "the opponent's " : 'their own ') + mark;
+}
+function ordinal(d) { return ({ 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' })[d] || (d + 'th'); }
+function dd(d, tg) { return (d ? ordinal(d) : '?') + ' & ' + (typeof tg === 'number' ? Math.round(tg) : '?'); }
+function cap(s) { s = String(s || ''); return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s; }
+function gameClock(e) { return (e && typeof e.q === 'number' && typeof e.clk === 'number') ? 'Q' + e.q + ' ' + clockStr(e.clk) : ''; }
+
+// The pick-six chains that never happened: detected right after a refresh, a
+// jump that is not a single +6, or shipped without the +6 on the sender's
+// board. Shared by the rules and the narrator so both tell the same story.
+function phantomPick6(tl) {
+    const out = [];
+    const steps = tl.filter(x => x.k === 'p6');
+    for (let i = 0; i < steps.length; i++) {
+        const d = steps[i]; if (d.step !== 'detected') continue;
+        const chain = { detected: d, role: d.role, reasons: [] };
+        for (const x of steps.slice(i + 1)) { if (x.step === 'detected') break; if (!chain[x.step]) chain[x.step] = x; }
+        const boot = tl.find(x => x.role === d.role && x.k === 'diag' && x.m === 'boot' && x.t <= d.t && d.t - x.t < 20000);
+        if (boot) chain.reasons.push('refresh');
+        const m = /score-watcher\(\+(\d+)\)/.exec(String(d.src || ''));
+        if (m && Number(m[1]) !== 6) chain.reasons.push('jump+' + m[1]);
+        if (chain.sent && chain.sent.plus6 === false) chain.reasons.push('no+6');
+        if (chain.reasons.length) out.push(chain);
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------- rules
 function audit(tl, extra) {
     const flags = [];
     const t0 = tl.length ? tl[0].t : Date.now();
-    const flag = (rule, msg, cites) => flags.push({ rule, msg, cites: (cites || []).map(e => line(t0, e)) });
+    const names = (extra && extra.names) || {};
+    const T = r => names[r] || ('Phone ' + String(r || '').toUpperCase());
+    const other = r => (r === 'a' ? 'b' : 'a');
+    // every flag carries: the technical sentence (msg), the plain one (plain),
+    // the raw lines it judged (cites) and, when known, the game clock (q, clk)
+    const clocked = tl.filter(e => typeof e.q === 'number' && typeof e.clk === 'number');
+    const clockAt = t => { let best = null; for (const e of clocked) { if (e.t <= t) best = e; else break; } return best; };
+    const flag = (rule, msg, cites, plain) => {
+        const at = (cites && cites[0] && cites[0].t) || t0;
+        const own = (cites || []).find(e => e && typeof e.q === 'number' && typeof e.clk === 'number');
+        const near = own || clockAt(at);
+        flags.push({ rule, msg, plain: plain || msg, cites: (cites || []).map(e => line(t0, e)),
+                     q: near ? near.q : undefined, clk: near ? near.clk : undefined, t: at });
+    };
     const byRole = { a: tl.filter(e => e.role === 'a'), b: tl.filter(e => e.role === 'b') };
     const roles = Object.keys(byRole).filter(r => byRole[r].length);
 
@@ -91,7 +141,8 @@ function audit(tl, extra) {
                 // line is not "where the gain says" — it is where a touchdown says.
                 const scored = Math.abs(e.y) >= 49.5 || expect >= 49.5 || e.d === 6 || (lastSettle && e.su !== lastSettle.su);
                 if (!scored && Math.abs(e.y - expect) > 1.6)
-                    flag('R-YARD', `${e.type} for ${e.gain}: line was ${e.y0.toFixed(1)}, should be ${expect.toFixed(1)}, is ${e.y.toFixed(1)}`, [lastSnap, e]);
+                    flag('R-YARD', `${e.type} for ${e.gain}: line was ${e.y0.toFixed(1)}, should be ${expect.toFixed(1)}, is ${e.y.toFixed(1)}`, [lastSnap, e],
+                         `${T(r)}: after a ${e.type} for ${e.gain} yards the ball should have been on ${spot(expect)}, but it was on ${spot(e.y)}.`);
             }
             if (scrim && lastSettle && lastSettle.d && typeof e.gain === 'number' && typeof e.d === 'number') {
                 // Down & distance: this play FACED the previous settle's resulting
@@ -101,7 +152,8 @@ function audit(tl, extra) {
                 const expD = first ? 1 : facedD + 1;
                 const scored = Math.abs(e.y) >= 49.5 || e.su !== lastSettle.su;
                 if (!scored && facedD <= 3 && e.d0 === facedD && e.d !== expD)
-                    flag('R-DOWN', `${e.type} for ${g} facing ${facedD}&${facedTg.toFixed(1)} left it ${e.d}&${e.tg}, expected down ${expD}`, [lastSettle, e]);
+                    flag('R-DOWN', `${e.type} for ${g} facing ${facedD}&${facedTg.toFixed(1)} left it ${e.d}&${e.tg}, expected down ${expD}`, [lastSettle, e],
+                         `${T(r)}: a ${e.type} for ${g} yards on ${dd(facedD, facedTg)} should have left it ${expD === 1 ? '1st & 10' : ordinal(expD) + ' down'}, but the next down was ${ordinal(e.d)}.`);
             }
             lastSettle = e;
         }
@@ -119,9 +171,11 @@ function audit(tl, extra) {
             if (e.k === 'settle') { last = ['run', 'pass', 'sack', 'incomplete'].includes(e.type) && Math.abs(e.y) < 49.5 ? e : null; continue; }
             if (e.k === 'snap' && last) {
                 if (Math.abs(e.y - last.y) > 1.6 || e.d !== last.d)
-                    flag('R-CONT', `LINE MOVED BETWEEN PLAYS on ${r}: play settled at ${last.y.toFixed(1)} (${last.d}&${last.tg}), next snap at ${e.y.toFixed(1)} (${e.d}&${e.tg})`, [last, e]);
+                    flag('R-CONT', `LINE MOVED BETWEEN PLAYS on ${r}: play settled at ${last.y.toFixed(1)} (${last.d}&${last.tg}), next snap at ${e.y.toFixed(1)} (${e.d}&${e.tg})`, [last, e],
+                         `${T(r)}: a play was undone. The last play ended on ${spot(last.y)} at ${dd(last.d, last.tg)}, but the next snap was from ${spot(e.y)} at ${dd(e.d, e.tg)}.`);
                 if (typeof e.clk === 'number' && typeof last.clk === 'number' && e.q === last.q && e.clk > last.clk + 0.5)
-                    flag('R-CLOCK', `clock went UP between plays inside Q${e.q} on ${r}: ${last.clk}s -> ${e.clk}s`, [last, e]);
+                    flag('R-CLOCK', `clock went UP between plays inside Q${e.q} on ${r}: ${last.clk}s -> ${e.clk}s`, [last, e],
+                         `${T(r)}: the clock went back up from ${clockStr(last.clk)} to ${clockStr(e.clk)} in the middle of quarter ${e.q}.`);
                 last = null;
             }
         }
@@ -137,13 +191,14 @@ function audit(tl, extra) {
                 // a restore must reproduce what the OTHER phone currently believes
                 const view = byRole[other].filter(x => x.k === 'score' && x.t < e.t).pop();
                 if (view && (view.so !== e.su || view.su !== e.so))
-                    flag('R-SCORE', `RESTORE on ${r} came back ${e.su}-${e.so}, but ${other} had it ${view.so}-${view.su}`, [view, e]);
+                    flag('R-SCORE', `RESTORE on ${r} came back ${e.su}-${e.so}, but ${other} had it ${view.so}-${view.su}`, [view, e],
+                         `${T(r)} came back from a refresh with the score ${e.su}-${e.so}, but ${T(other)} had it ${view.so}-${view.su}.`);
                 continue;
             }
-            const d = [e.dsu, e.dso];
-            for (const dd of d) {
-                if (dd < 0) flag('R-SCORE', `a score went DOWN by ${-dd} on ${r}`, [e]);
-                else if (dd > 0 && ![1, 2, 3, 6, 7, 8].includes(dd)) flag('R-SCORE', `illegal score delta +${dd} on ${r}`, [e]);
+            const deltas = [e.dsu, e.dso];
+            for (const dv of deltas) {
+                if (dv < 0) flag('R-SCORE', `a score went DOWN by ${-dv} on ${r}`, [e], `A score went DOWN by ${-dv} on ${T(r)}'s phone.`);
+                else if (dv > 0 && ![1, 2, 3, 6, 7, 8].includes(dv)) flag('R-SCORE', `illegal score delta +${dv} on ${r}`, [e], `${T(r)}'s board jumped by ${dv} points at once — no single play is worth that.`);
             }
         }
     }
@@ -151,7 +206,8 @@ function audit(tl, extra) {
         // both devices' final view of the score should agree
         const fin = { a: byRole.a.filter(x => x.k === 'final').pop(), b: byRole.b.filter(x => x.k === 'final').pop() };
         if (fin.a && fin.b && (fin.a.su !== fin.b.so || fin.a.so !== fin.b.su))
-            flag('R-FINAL', `final boards disagree: a says ${fin.a.su}-${fin.a.so}, b says ${fin.b.su}-${fin.b.so}`, [fin.a, fin.b]);
+            flag('R-FINAL', `final boards disagree: a says ${fin.a.su}-${fin.a.so}, b says ${fin.b.su}-${fin.b.so}`, [fin.a, fin.b],
+                 `The two phones ended with different final scores: ${T('a')} says ${fin.a.su}-${fin.a.so}, ${T('b')} says ${fin.b.so}-${fin.b.su}.`);
     }
 
     // ---- R-CLOCK: quarter monotonic, clock never runs backwards inside a quarter ----
@@ -159,13 +215,13 @@ function audit(tl, extra) {
         let q = 0, clk = null, last = null;
         for (const e of byRole[r]) {
             if (e.k === 'q') {
-                if (e.to < e.from) flag('R-CLOCK', `quarter went backwards ${e.from} -> ${e.to} on ${r}`, [e]);
-                if (e.to > 5) flag('R-CLOCK', `quarter ${e.to} does not exist`, [e]);
+                if (e.to < e.from) flag('R-CLOCK', `quarter went backwards ${e.from} -> ${e.to} on ${r}`, [e], `${T(r)}: the game went back from quarter ${e.from} to quarter ${e.to}.`);
+                if (e.to > 5) flag('R-CLOCK', `quarter ${e.to} does not exist`, [e], `${T(r)}: the game moved to a quarter ${e.to} — there is no such quarter.`);
                 q = e.to; clk = null; continue;
             }
             if ((e.k === 'snap' || e.k === 'settle') && typeof e.clk === 'number') {
                 if (e.q === q && clk != null && e.clk > clk + 0.5 && e.k === 'snap' && last && last.k === 'snap')
-                    flag('R-CLOCK', `clock went UP inside Q${q}: ${clk}s -> ${e.clk}s on ${r}`, [last, e]);
+                    flag('R-CLOCK', `clock went UP inside Q${q}: ${clk}s -> ${e.clk}s on ${r}`, [last, e], `${T(r)}: the clock went back up from ${clockStr(clk)} to ${clockStr(e.clk)} in quarter ${q}.`);
                 clk = e.clk; last = e;
             }
         }
@@ -183,12 +239,15 @@ function audit(tl, extra) {
             if (e.k === 'recv') lastRecv[e.role] = e.t;
             if (e.k === 'diag' && /^OUTCOME (drained|held)/.test(e.m)) lastRecv[e.role] = e.t;
             if (e.k === 'q') lastQ[e.role] = e.t;
-            if (e.k === 'wait' && e.refused) { flag('R-POSS', `${e.role} was REFUSED going LIVE: ${e.refused}`, [e]); continue; }
+            if (e.k === 'wait' && e.refused) {
+                const why = /turn is the opponent/.test(e.refused) ? 'the game still thought the other team had it' : /threw it/.test(e.refused) ? 'it had just thrown a pick-six' : e.refused;
+                flag('R-POSS', `${e.role} was REFUSED going LIVE: ${e.refused}`, [e], `${T(e.role)} was blocked from taking the ball because ${why}.`); continue;
+            }
             if (e.k === 'wait') {
                 wait[e.role] = e.on; waitSince[e.role] = e.t;
                 if (e.on === false && !cascade) {
                     const justified = (e.t - lastRecv[e.role] < 8000) || (e.t - lastQ[e.role] < 8000) || (e.t - t0 < 15000) || /L\d+/.test(e.why) === false;
-                    if (!justified) flag('R-POSS', `${e.role} went LIVE with no handoff in the last 8s (caller ${e.why})`, [e]);
+                    if (!justified) flag('R-POSS', `${e.role} went LIVE with no handoff in the last 8s (caller ${e.why})`, [e], `${T(e.role)} took the ball with nothing handing it over.`);
                 }
             }
             if (e.k === 'stage') {
@@ -197,12 +256,13 @@ function audit(tl, extra) {
                 if (bothWait) {
                     if (!bothWaitSince) bothWaitSince = e.t;
                     else if (e.t - bothWaitSince > (cascade ? 120000 : 12000)) {
-                        flag('R-POSS', `DEADLOCK: both devices waiting for ${((e.t - bothWaitSince) / 1000).toFixed(0)}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e]);
+                        flag('R-POSS', `DEADLOCK: both devices waiting for ${((e.t - bothWaitSince) / 1000).toFixed(0)}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e],
+                             `Both phones sat on "waiting for opponent" for ${((e.t - bothWaitSince) / 1000).toFixed(0)} seconds — the game was stuck.`);
                         bothWaitSince = null;
                     }
                 }
                 else bothWaitSince = null;
-                if (bothLive) { if (!bothLiveSince) bothLiveSince = e.t; else if (e.t - bothLiveSince > 3000 && !cascade) { flag('R-POSS', `DOUBLE OFFENSE: both devices live for ${((e.t - bothLiveSince) / 1000).toFixed(0)}s`, [e]); bothLiveSince = null; } }
+                if (bothLive) { if (!bothLiveSince) bothLiveSince = e.t; else if (e.t - bothLiveSince > 3000 && !cascade) { flag('R-POSS', `DOUBLE OFFENSE: both devices live for ${((e.t - bothLiveSince) / 1000).toFixed(0)}s`, [e], `Both phones were on offense at the same time for ${((e.t - bothLiveSince) / 1000).toFixed(0)} seconds.`); bothLiveSince = null; } }
                 else bothLiveSince = null;
             }
         }
@@ -222,13 +282,13 @@ function audit(tl, extra) {
         const ov = byRole[r].filter(x => x.k === 'ovl');
         for (let i = 0; i < ov.length; i++) {
             const win = ov.filter(x => x.t >= ov[i].t && x.t < ov[i].t + 5000);
-            if (win.length > 3) { flag('R-OVL', `FLICKER on ${r}: ${win.length} overlay toggles in 5s`, win.slice(0, 6)); i += win.length; }
+            if (win.length > 3) { flag('R-OVL', `FLICKER on ${r}: ${win.length} overlay toggles in 5s`, win.slice(0, 6), `${T(r)}'s "waiting for opponent" screen blinked on and off ${win.length} times in 5 seconds.`); i += win.length; }
         }
         let hiddenSince = null;
         for (const e of byRole[r].filter(x => x.k === 'stage')) {
             // A staged scene under a SOLID cover is harmless; the defect is a
             // parked device whose cover is OFF while a formation is on screen.
-            if (e.wait === true && e.of >= 6 && e.ovl === false && !inPat(r, e.t)) { if (!hiddenSince) hiddenSince = e; else if (e.t - hiddenSince.t > 5000) { flag('R-OVL', `EXPOSED FORMATION on ${r}: ${e.of} offensive players on screen while parked in WAIT with the cover OFF for ${((e.t - hiddenSince.t) / 1000).toFixed(0)}s`, [hiddenSince, e]); hiddenSince = null; } }
+            if (e.wait === true && e.of >= 6 && e.ovl === false && !inPat(r, e.t)) { if (!hiddenSince) hiddenSince = e; else if (e.t - hiddenSince.t > 5000) { flag('R-OVL', `EXPOSED FORMATION on ${r}: ${e.of} offensive players on screen while parked in WAIT with the cover OFF for ${((e.t - hiddenSince.t) / 1000).toFixed(0)}s`, [hiddenSince, e], `${T(r)} was supposed to be waiting, but its screen showed a full formation for ${((e.t - hiddenSince.t) / 1000).toFixed(0)} seconds.`); hiddenSince = null; } }
             else hiddenSince = null;
         }
     }
@@ -247,45 +307,73 @@ function audit(tl, extra) {
             const m = convModals.find(x => chain.applied && x.t >= chain.applied.t && x.t < chain.applied.t + 3000 && x.role === chain.applied.role);
             if (m) chain.modal = m;
             for (const [from, to, ms] of budgets) {
-                if (chain[from] && !chain[to]) flag('R-P6', `pick-6 chain broke: ${from} at +${((chain[from].t - t0) / 1000).toFixed(1)}s but no ${to}`, [chain[from]]);
-                else if (chain[from] && chain[to] && chain[to].t - chain[from].t > ms) flag('R-P6', `pick-6 step ${from} -> ${to} took ${((chain[to].t - chain[from].t) / 1000).toFixed(1)}s (budget ${ms / 1000}s)`, [chain[from], chain[to]]);
+                const stepName = { detected: 'the pick-six was seen', sent: 'it was reported to the other phone', applied: 'the other phone credited it', modal: 'the conversion choice appeared', resultSent: 'the conversion result was sent back', resultApplied: 'the conversion result was received' };
+                if (chain[from] && !chain[to]) flag('R-P6', `pick-6 chain broke: ${from} at +${((chain[from].t - t0) / 1000).toFixed(1)}s but no ${to}`, [chain[from]], `A pick-six got stuck: ${stepName[from]}, but the next step — ${stepName[to]} — never happened.`);
+                else if (chain[from] && chain[to] && chain[to].t - chain[from].t > ms) flag('R-P6', `pick-6 step ${from} -> ${to} took ${((chain[to].t - chain[from].t) / 1000).toFixed(1)}s (budget ${ms / 1000}s)`, [chain[from], chain[to]], `A pick-six step was slow: ${stepName[to]} took ${((chain[to].t - chain[from].t) / 1000).toFixed(0)} seconds.`);
             }
             // the thrower must go LIVE within 6s of resultApplied
             if (chain.resultApplied) {
                 const live = tl.find(x => x.k === 'wait' && x.on === false && x.role === chain.resultApplied.role && x.t >= chain.resultApplied.t - 500 && x.t < chain.resultApplied.t + 6000);
-                if (!live) flag('R-P6', `thrower (${chain.resultApplied.role}) never went LIVE within 6s of PAT_RESULT`, [chain.resultApplied]);
+                if (!live) flag('R-P6', `thrower (${chain.resultApplied.role}) never went LIVE within 6s of PAT_RESULT`, [chain.resultApplied], `${T(chain.resultApplied.role)} never got the ball back after the conversion.`);
             }
             // duplicate modals on the scorer
             if (chain.applied) {
                 const dup = convModals.filter(x => x.role === chain.applied.role && x.t >= chain.applied.t && x.t < chain.applied.t + 60000);
-                if (dup.length > 1) flag('R-P6', `${dup.length} conversion modals built for one pick-6 on ${chain.applied.role}`, dup);
+                if (dup.length > 1) flag('R-P6', `${dup.length} conversion modals built for one pick-6 on ${chain.applied.role}`, dup, `${T(chain.applied.role)} was asked to choose a conversion ${dup.length} times for one score.`);
             }
         }
         // PHANTOM pick-6s (MHUY): the score-jump watcher read a resume's score
         // RESTORE (+9, then +17) as a defensive touchdown, and the record it
         // shipped said the +6 had never landed — so the other phone invented it.
-        for (const d of steps.filter(x => x.step === 'detected')) {
-            const boot = tl.find(x => x.role === d.role && x.k === 'diag' && x.m === 'boot' && x.t <= d.t && d.t - x.t < 20000);
-            if (boot) flag('R-P6', `PHANTOM PICK-6: detected on ${d.role} ${((d.t - boot.t) / 1000).toFixed(1)}s after a boot (a restore, not a play)`, [boot, d]);
+        for (const ch of phantomPick6(tl)) {
+            const d = ch.detected, r = d.role;
+            const boot = tl.find(x => x.role === r && x.k === 'diag' && x.m === 'boot' && x.t <= d.t && d.t - x.t < 20000);
             const m = /score-watcher\(\+(\d+)\)/.exec(String(d.src || ''));
-            if (m && Number(m[1]) !== 6) flag('R-P6', `PHANTOM PICK-6: the opponent's score jumped +${m[1]} on ${d.role} — a defensive touchdown is exactly +6`, [d]);
+            const tech = [], why = [];
+            if (boot) { const secs = Math.max(1, Math.round((d.t - boot.t) / 1000)); tech.push(`PHANTOM PICK-6: detected on ${r} ${((d.t - boot.t) / 1000).toFixed(1)}s after a boot (a restore, not a play)`); why.push(`${secs} second${secs === 1 ? '' : 's'} after ${T(r)}'s phone was refreshed`); }
+            if (m && Number(m[1]) !== 6) { tech.push(`PHANTOM PICK-6: the opponent's score jumped +${m[1]} on ${r} — a defensive touchdown is exactly +6`); why.push(`${T(other(r))}'s score had just jumped by ${m[1]} at once (a real touchdown is exactly 6)`); }
+            if (ch.sent && ch.sent.plus6 === false) tech.push(`PICK6 shipped from ${r} WITHOUT the +6 having landed there — the other phone will invent the points`);
+            const tail = (ch.sent && ch.sent.plus6 === false) ? ` It reported it to ${T(other(r))} without the 6 points ever showing on its own board, so ${T(other(r))}'s phone added them itself.` : ' It never reached the other phone.';
+            flag('R-P6', tech.join('; '), [boot, d, ch.sent].filter(Boolean),
+                 `${T(r)}'s phone reported a pick-six that never happened — ${why.join(', and ')}.` + tail);
         }
-        for (const s of steps.filter(x => x.step === 'sent' && x.plus6 === false))
-            flag('R-P6', `PICK6 shipped from ${s.role} WITHOUT the +6 having landed there — the other phone will invent the points`, [s]);
+        // THE POINTS THEMSELVES: every score credited on the receiver of a phantom
+        // pick-six chain (the +6, and any conversion it then played).
+        for (const ch of phantomPick6(tl)) {
+            const rcv = other(ch.role);
+            const from = ch.applied ? ch.applied.t : (ch.sent ? ch.sent.t : ch.detected.t);
+            const until = (ch.resultApplied ? ch.resultApplied.t : from + 120000) + 2000;
+            const rcvBinds = tl.filter(x => x.role === rcv && x.k === 'bind').map(x => x.t);
+            for (const sc of tl.filter(x => x.k === 'score' && x.role === rcv && x.t >= from - 500 && x.t <= until && x.dsu > 0 &&
+                                             !rcvBinds.some(bt => x.t >= bt - 500 && x.t < bt + 3000)))
+                flag('R-SCORE', `PHANTOM POINTS: ${rcv} +${sc.dsu} (${sc.su - sc.dsu} -> ${sc.su}) from a pick-6 that never happened`, [sc],
+                     `${T(rcv)} was given ${sc.dsu} point${sc.dsu === 1 ? '' : 's'} it did not earn (${sc.su - sc.dsu} → ${sc.su}).`);
+        }
+        // THE SECOND HALF: this game's rule is that Phone B receives the second-
+        // half kickoff. Anything A does with the ball between the Q3 change and
+        // B's first Q3 snap is A holding a ball that was never its to hold.
+        const q3 = tl.find(x => x.k === 'q' && x.to === 3);
+        const bFirst = q3 && tl.find(x => x.role === 'b' && x.k === 'snap' && x.q === 3 && x.t > q3.t);
+        if (q3 && bFirst) {
+            const held = tl.filter(x => x.role === 'a' && x.t > q3.t && x.t < bFirst.t &&
+                ((x.k === 'conv' && x.ev === 'modal') || (x.k === 'score' && x.dsu > 0) || x.k === 'snap' || x.k === 'settle'));
+            if (held.length) flag('R-HALF', `A had the ball after the Q3 change before B's first Q3 snap (${held.length} events)`, held.slice(0, 4),
+                                  `${T('a')} had the ball to start the second half — it should have been ${T('b')} (they get the ball after halftime). ${T('a')} was on the field ${held.length} time${held.length === 1 ? '' : 's'} before ${T('b')}'s first snap.`);
+        }
         // the thrower's engine must never build a conversion modal
         const thrower = steps.find(x => x.step === 'detected');
         if (thrower) {
             const tm = convModals.filter(x => x.role === thrower.role && x.t >= thrower.t && x.t < thrower.t + 30000);
-            if (tm.length) flag('R-P6', `the THROWER (${thrower.role}) built ${tm.length} conversion modal(s)`, tm);
+            if (tm.length) flag('R-P6', `the THROWER (${thrower.role}) built ${tm.length} conversion modal(s)`, tm, `${T(thrower.role)} threw the pick-six, yet was shown the conversion choice — that belongs to ${T(other(thrower.role))}.`);
         }
     }
 
     // ---- R-CONV: conversions only at +48 (the 2) or +35 (the 15) ----
     for (const e of tl.filter(x => x.k === 'diag' && /PAT-PIN re-pinned|PAT-PREPIN|BALLGATE HOLD/.test(x.m))) {
-        if (/BALLGATE HOLD/.test(e.m)) flag('R-GATE', `ball gate had to HOLD a placement: ${e.m}`, [e]);
+        if (/BALLGATE HOLD/.test(e.m)) flag('R-GATE', `ball gate had to HOLD a placement: ${e.m}`, [e], `A safety check stopped the ball from being moved at the start of a quarter on ${T(e.role)}.`);
     }
-    for (const e of tl.filter(x => x.k === 'diag' && /CONVGATE REFUSED/.test(x.m))) flag('R-GATE', e.m, [e]);
-    for (const e of tl.filter(x => x.k === 'diag' && /^SCORE-FLOOR/.test(x.m))) flag('R-SCORE', 'a score regressed and was restored: ' + e.m, [e]);
+    for (const e of tl.filter(x => x.k === 'diag' && /CONVGATE REFUSED/.test(x.m))) flag('R-GATE', e.m, [e], `A safety check refused a conversion that had no touchdown behind it on ${T(e.role)}.`);
+    for (const e of tl.filter(x => x.k === 'diag' && /^SCORE-FLOOR/.test(x.m))) flag('R-SCORE', 'a score regressed and was restored: ' + e.m, [e], `Something lowered a score on ${T(e.role)} and it had to be pulled back up.`);
 
     // ---- R-XPORT: sends that never got acked while the other side was alive ----
     {
@@ -297,12 +385,13 @@ function audit(tl, extra) {
             const recv = tl.find(x => x.k === 'recv' && x.role === other && x.ts === s.ts) ||
                          tl.find(x => x.k === 'diag' && x.role === other && x.t >= s.t && x.t < s.t + 20000 && new RegExp('^OUTCOME (held|drained) \\(' + s.type + '\\)').test(x.m));
             const otherAlive = byRole[other].some(x => x.k === 'stage' && x.t > s.t && x.t < s.t + 20000 && x.fps > 0);
-            if (!ack && !recv && otherAlive) flag('R-XPORT', `${s.role}'s ${s.type} was never received by ${other} although ${other} was drawing frames`, [s]);
+            if (!ack && !recv && otherAlive) flag('R-XPORT', `${s.role}'s ${s.type} was never received by ${other} although ${other} was drawing frames`, [s], `${T(s.role)} handed the ball over, but ${T(other)} never received it even though its screen was on.`);
         }
-        for (const e of tl.filter(x => x.k === 'diag' && /FB-STALL|FB-CONN OFFLINE|DELIVERY re-send/.test(x.m))) flag('R-XPORT', e.m, [e]);
-        for (const e of tl.filter(x => x.k === 'dropped')) flag('R-XPORT', `telemetry dropped ${e.n} entries on ${e.role}`, [e]);
+        for (const e of tl.filter(x => x.k === 'diag' && /FB-STALL|FB-CONN OFFLINE|DELIVERY re-send/.test(x.m))) flag('R-XPORT', e.m, [e], `${T(e.role)}'s connection to the server stalled for a moment; the backup path was used.`);
+        for (const e of tl.filter(x => x.k === 'dropped')) flag('R-XPORT', `telemetry dropped ${e.n} entries on ${e.role}`, [e], `${T(e.role)}'s phone could not record ${e.n} moments of the game.`);
     }
 
+    flags.sort((x, y) => x.t - y.t);
     return { flags, t0, entries: tl.length };
 }
 
@@ -320,25 +409,10 @@ const RULE_TEXT = {
     'R-OVL':   'The WAITING FOR OPPONENT cover misbehaved: it blinked, or it was off while the phone was supposed to be waiting, showing a formation that was not that phone\'s to play.',
     'R-P6':    'A pick-six did not go the way it must: a step was late or missing, the wrong phone built a conversion, two conversions appeared for one score, or a pick-six was "detected" that never happened (usually right after a refresh).',
     'R-GATE':  'One of the safety gates had to intervene (it held the ball in place, or refused a conversion). Not wrong by itself — it is the gate doing its job — but worth knowing.',
-    'R-XPORT': 'Something between the two phones was lost or delayed: a handoff never arrived while the other phone was awake, or the connection stalled.'
+    'R-XPORT': 'Something between the two phones was lost or delayed: a handoff never arrived while the other phone was awake, or the connection stalled.',
+    'R-HALF':  'The wrong team had the ball to start the second half. In this game the second phone always receives the second-half kickoff.'
 };
 function explain(rule) { return RULE_TEXT[rule] || ''; }
-
-function clockStr(clk) {
-    if (typeof clk !== 'number' || !isFinite(clk)) return '';
-    const m = Math.floor(clk / 60), s = Math.round(clk % 60);
-    return m + ':' + (s < 10 ? '0' : '') + s;
-}
-function spot(y) {
-    // y is signed from midfield toward the opponent, for the device that has the ball
-    if (typeof y !== 'number' || !isFinite(y)) return '';
-    const mark = Math.round(50 - Math.abs(y));
-    if (Math.abs(y) < 0.5) return 'the 50';
-    return (y > 0 ? "the opponent's " : 'their own ') + mark;
-}
-function ordinal(d) { return ({ 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' })[d] || (d + 'th'); }
-function dd(d, tg) { return (d ? ordinal(d) : '?') + ' & ' + (typeof tg === 'number' ? Math.round(tg) : '?'); }
-function cap(s) { s = String(s || ''); return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s; }
 
 // Turn the merged timeline into sentences a person can read. `meta.names`
 // maps role -> team name. Every sentence keeps its timestamp and role so the
@@ -365,6 +439,14 @@ function narrate(tl, meta) {
         tl[i] = moved;
     }
     tl.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
+    // score lines that a phantom pick-six produced are said so
+    const phantomT = new Set();
+    for (const ch of phantomPick6(tl)) {
+        const rcv = ch.role === 'a' ? 'b' : 'a';
+        const from = ch.applied ? ch.applied.t : (ch.sent ? ch.sent.t : ch.detected.t);
+        const until = (ch.resultApplied ? ch.resultApplied.t : from + 120000) + 2000;
+        for (const sc of tl.filter(x => x.k === 'score' && x.t >= from - 500 && x.t <= until && ((x.role === rcv && x.dsu > 0) || (x.role === ch.role && x.dso > 0)))) phantomT.add(sc.t + ':' + sc.role);
+    }
     const push = (e, text, kind) => out.push({ t: e.t, rel: (e.t - t0) / 1000, role: e.role, text: text, kind: kind || 'play',
                                                q: (typeof e.q === 'number') ? e.q : (typeof e.to === 'number' ? e.to : undefined),
                                                clk: (typeof e.clk === 'number') ? e.clk : undefined });
@@ -396,7 +478,8 @@ function narrate(tl, meta) {
                 if (e.dso > 0) parts.push(nm(other(e.role)) + ' +' + e.dso);
                 if (e.dsu < 0 || e.dso < 0) parts.push('a score went DOWN');
                 const label = (e.dsu === 6 || e.dso === 6) ? 'TOUCHDOWN' : (e.dsu === 3 || e.dso === 3) ? 'FIELD GOAL' : (e.dsu === 2 || e.dso === 2) ? '2-point conversion' : (e.dsu === 1 || e.dso === 1) ? 'extra point' : 'score change';
-                push(e, label + ': ' + parts.join(', ') + ' — now ' + e.su + '-' + e.so + ' as ' + who + ' sees it.', 'score'); break;
+                const ghost = phantomT.has(e.t + ':' + e.role) ? ' ⚠ NOT EARNED — from a pick-six that never happened (see problems).' : '';
+                push(e, label + ': ' + parts.join(', ') + ' — now ' + e.su + '-' + e.so + ' as ' + who + ' sees it.' + ghost, ghost ? 'flagline' : 'score'); break;
             }
             case 'send': push(e, who + ' hands the ball over (' + String(e.type).replace('OTHER', 'possession change').replace('KICKOFF', 'kickoff') + ')' + (typeof e.y === 'number' && e.type !== 'PAT_RESULT' && e.type !== 'PICK6' ? ', ' + nm(other(e.role)) + ' to start on ' + spot(-e.y) : '') + '.', 'handoff'); break;
             case 'recv': push(e, who + ' receives the ' + String(e.type).replace('OTHER', 'possession change').replace('PICK6', 'pick-six').replace('PAT_RESULT', 'conversion result').toLowerCase() + (e.via && e.via !== 'sdk' ? ' (via ' + (e.via === 'drain' ? 'the hold — its screen had been off' : e.via) + ')' : '') + '.', 'handoff'); break;
@@ -428,5 +511,5 @@ function narrate(tl, meta) {
     return out;
 }
 
-return { toTimeline, audit, narrate, explain, line, fmtT };
+return { toTimeline, audit, narrate, explain, line, fmtT, phantomPick6 };
 });

@@ -134,7 +134,7 @@
     const R = window.RB2P_AUDIT;
     const tl = R.toTimeline({ a: aud.a || {}, b: aud.b || {} });
     const nm = names(outcomes);
-    const res = R.audit(tl, {});
+    const res = R.audit(tl, { names: nm });
     const story = R.narrate(tl, { names: nm });
     // final score as A sees it (a's last score entry, else b's mirrored)
     const lastA = tl.filter(e => e.role === 'a' && e.k === 'score').pop(), lastB = tl.filter(e => e.role === 'b' && e.k === 'score').pop();
@@ -172,18 +172,13 @@
       '<p style="margin:12px 0 0">' + esc(summary) + (tl.clockSkewMs ? ' The two phones\' clocks differed by about ' + Math.abs(tl.clockSkewMs / 1000).toFixed(0) + ' seconds; ' + esc(nm.b) + '\'s lines were shifted to match.' : '') + '</p><div style="margin-top:12px"><a class="btn" href="./" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
 
     if (res.flags.length) {
-      html += '<h2>What went wrong</h2>';
-      for (const rule of Object.keys(byRule)) {
-        html += '<div class="card" style="padding:12px 14px"><div class="flag" style="margin:0"><div class="rule">' + esc(rule) + '</div><div class="why">' + esc(R.explain(rule)) + '</div></div>';
-        for (const f of byRule[rule]) {
-          const secs = f.cites && f.cites.length ? Number(f.cites[0].trim().split('s ')[0]) : NaN;
-          let at = '';
-          try { const raw = JSON.parse(f.cites[0].slice(f.cites[0].indexOf('{'))); at = gameClock(raw.q, raw.clk); } catch (e) {}
-          const when = at ? at + ' on the game clock' : (isFinite(secs) ? mmss(secs) + ' of real time into the game' : '');
-          html += '<div style="padding:8px 4px 2px"><div class="what">' + (when ? '<span class="when">' + esc(when) + '</span> · ' : '') + esc(human(f.msg)) + '</div><details><summary>the raw lines the checker looked at</summary><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
-        }
-        html += '</div>';
+      html += '<h2>What went wrong</h2><div class="card" style="padding:6px 14px">';
+      for (const f of res.flags) {
+        const when = (typeof f.q === 'number' && typeof f.clk === 'number') ? 'Q' + f.q + ' ' + mmss(f.clk) : mmss((f.t - tl[0].t) / 1000) + ' of real time in';
+        html += '<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="when">' + esc(when) + '</div><div class="what" style="margin:2px 0 4px">' + esc(f.plain) + '</div>' +
+                '<details><summary>' + esc(f.rule) + ' · what the checker looked at</summary><div class="why" style="margin:6px 0">' + esc(R.explain(f.rule)) + '</div><div class="why">' + esc(f.msg) + '</div><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
       }
+      html += '</div>';
     }
 
     html += '<h2>The game, play by play</h2><div class="legend"><span><i style="background:var(--green)"></i>' + esc(nm.a) + '\'s phone</span><span><i style="background:var(--blue)"></i>' + esc(nm.b) + '\'s phone</span><span>times are the game clock · hover a line for real time</span></div>' +
