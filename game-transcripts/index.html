@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Game Transcripts — Retro Bowl 2P</title>
+<link rel="icon" type="image/jpeg" href="/favicon.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* The arena's own look — dark scoreboard, chalk text, one green — so the
+     transcript reads as part of the game, not a tool bolted onto it. */
+  :root { --bg:#0b120d; --panel:#111a14; --line:rgba(243,239,226,.12); --ink:#f3efe2; --dim:#b6b2a4; --mute:#7f7c72;
+          --green:#3cff7a; --red:#ff5c5c; --amber:#ffc65c; --blue:#7fb4ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--ink); font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:14px; line-height:1.5; }
+  a { color:var(--green); }
+  .wrap { max-width:900px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-family:'Anton',sans-serif; font-weight:400; font-size:clamp(28px,6vw,44px); letter-spacing:1px; margin:0 0 4px; text-transform:uppercase; }
+  .sub { color:var(--dim); margin:0 0 22px; font-size:13px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; min-width:0; }
+  .code { font-family:'Anton',sans-serif; font-size:26px; letter-spacing:2px; }
+  .teams { color:var(--dim); }
+  .when { color:var(--mute); font-size:12px; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:.5px; border:1px solid var(--line); }
+  .pill.clean { color:var(--green); border-color:color-mix(in srgb,var(--green) 40%,transparent); }
+  .pill.flag  { color:var(--red);   border-color:color-mix(in srgb,var(--red) 45%,transparent); }
+  .pill.wait  { color:var(--amber); border-color:color-mix(in srgb,var(--amber) 45%,transparent); }
+  .pill.live  { color:var(--blue);  border-color:color-mix(in srgb,var(--blue) 45%,transparent); }
+  button, .btn { font:inherit; font-weight:600; color:var(--bg); background:var(--green); border:0; border-radius:8px; padding:9px 14px; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button:focus-visible,.btn:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+  .score { font-family:'Anton',sans-serif; font-size:clamp(34px,9vw,56px); letter-spacing:2px; line-height:1; }
+  .score .you { color:var(--green); } .score .opp { color:var(--ink); }
+  h2 { font-family:'Anton',sans-serif; font-weight:400; font-size:22px; letter-spacing:1px; margin:26px 0 10px; text-transform:uppercase; }
+  .flag { border-left:3px solid var(--red); padding:10px 12px; background:color-mix(in srgb,var(--red) 8%,var(--panel)); border-radius:0 8px 8px 0; margin:0 0 10px; }
+  .flag .rule { font-weight:700; color:var(--red); letter-spacing:.5px; font-size:12px; }
+  .flag .what { margin:4px 0 6px; }
+  .flag .why  { color:var(--dim); font-size:13px; }
+  details summary { cursor:pointer; color:var(--mute); font-size:12px; margin-top:6px; }
+  pre { background:#070c09; border:1px solid var(--line); border-radius:6px; padding:8px 10px; overflow-x:auto; font-size:11.5px; color:var(--dim); margin:6px 0 0; }
+  .filters { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 14px; }
+  .filters label { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:4px 10px; font-size:12px; color:var(--dim); cursor:pointer; user-select:none; }
+  .filters input { accent-color:var(--green); }
+  .qhead { color:var(--green); font-weight:700; letter-spacing:1px; margin:18px 0 6px; font-size:13px; text-transform:uppercase; }
+  .ln { display:grid; grid-template-columns:56px 14px 1fr; gap:10px; padding:5px 0; border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent); align-items:start; }
+  .ln .t { color:var(--mute); font-size:12px; font-variant-numeric:tabular-nums; padding-top:1px; }
+  .ln .r { width:10px; height:10px; border-radius:2px; margin-top:6px; }
+  .ln .r.a { background:var(--green); } .ln .r.b { background:var(--blue); }
+  .ln.score .x { font-weight:700; }
+  .ln.quarter .x { font-weight:700; color:var(--green); }
+  .ln.flagline .x { color:var(--red); font-weight:600; }
+  .ln.system .x { color:var(--mute); }
+  .ln.p6 .x { color:var(--amber); }
+  .legend { display:flex; gap:14px; color:var(--dim); font-size:12px; margin:0 0 6px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+  .empty { color:var(--dim); padding:30px 0; text-align:center; }
+  .err { color:var(--red); }
+  @media (prefers-reduced-motion:no-preference) { .card { transition:border-color .15s; } .card:hover { border-color:color-mix(in srgb,var(--green) 35%,var(--line)); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Game Transcripts</h1>
+  <p class="sub">Every game since V365 records itself. This page tells it back in plain English and runs the same checks the detector runs — <a href="/">back to the game</a>.</p>
+  <div id="app"><div class="empty">Loading…</div></div>
+</div>
+<script src="/tools/audit-rules.js"></script>
+<script>
+(function () {
+  'use strict';
+  const KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
+  const DB  = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
+  const app = document.getElementById('app');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+  // ---- one anonymous identity, cached and refreshed (never re-minted per load) ----
+  async function token() {
+    let t = null; try { t = JSON.parse(localStorage.getItem('rb2p_tx_tok') || 'null'); } catch (e) {}
+    const now = Date.now();
+    if (t && t.id && t.exp && now < t.exp - 300000) return t.id;
+    if (t && t.refresh) {
+      const r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + KEY, { method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body:'grant_type=refresh_token&refresh_token=' + encodeURIComponent(t.refresh) });
+      if (r.ok) { const d = await r.json(); t = { id:d.id_token, refresh:d.refresh_token, exp: now + (parseInt(d.expires_in,10)||3600)*1000 }; localStorage.setItem('rb2p_tx_tok', JSON.stringify(t)); return t.id; }
+    }
+    const r2 = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + KEY, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:'{"returnSecureToken":true}' });
+    if (!r2.ok) throw new Error('Could not sign in to read the games (' + r2.status + '). Try again in a minute.');
+    const d2 = await r2.json(); t = { id:d2.idToken, refresh:d2.refreshToken, exp: now + (parseInt(d2.expiresIn,10)||3600)*1000 };
+    localStorage.setItem('rb2p_tx_tok', JSON.stringify(t)); return t.id;
+  }
+  async function get(path, q) { const tok = await token(); const r = await fetch(DB + path + '.json?auth=' + tok + (q ? '&' + q : ''), { cache:'no-store' }); if (!r.ok) return null; return r.json(); }
+
+  const fmtWhen = ts => { if (!ts) return ''; const d = new Date(ts); return d.toLocaleDateString(undefined, { month:'short', day:'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }); };
+  const names = (outcomes) => {
+    const n = { a:'', b:'' };
+    try { if (outcomes && outcomes.a && outcomes.a.fromTeam) n.a = outcomes.a.fromTeam; if (outcomes && outcomes.b && outcomes.b.fromTeam) n.b = outcomes.b.fromTeam;
+          if (!n.a && outcomes && outcomes.b && outcomes.b.toTeam) n.a = outcomes.b.toTeam; if (!n.b && outcomes && outcomes.a && outcomes.a.toTeam) n.b = outcomes.a.toTeam; } catch (e) {}
+    return { a: n.a || 'Phone A', b: n.b || 'Phone B' };
+  };
+
+  // ---- the list ----
+  async function renderList() {
+    app.innerHTML = '<div class="empty">Reading games…</div>';
+    let codes; try { codes = Object.keys(await get('rooms', 'shallow=true') || {}); } catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
+    const rows = [];
+    for (const code of codes) {
+      const [auditedRec, flag, outcomes, audA] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true')]);
+      if (!audA) continue;                                   // no transcript = nothing to tell
+      const keys = Object.keys(audA); const lastKey = keys.sort().pop(); const lastT = lastKey ? Number(lastKey.split('_')[0]) : 0;
+      rows.push({ code, names: names(outcomes), lastT, audited: auditedRec, flag, live: Date.now() - lastT < 3 * 60 * 1000 });
+    }
+    rows.sort((x, y) => y.lastT - x.lastT);
+    const showTests = new URLSearchParams(location.search).get('tests') === '1';
+    const real = rows.filter(r => r.names.a !== 'Phone A' || r.names.b !== 'Phone B');
+    const shown = showTests ? rows : real;
+    if (!shown.length) { app.innerHTML = '<div class="empty">No recorded games yet. Play one on V365 or later and it will appear here.' + (rows.length ? ' <a href="?tests=1">Show ' + rows.length + ' test-harness games</a>' : '') + '</div>'; return; }
+    const foot = (!showTests && rows.length > real.length) ? '<p class="when" style="text-align:center;margin-top:18px">' + (rows.length - real.length) + ' test-harness game' + (rows.length - real.length === 1 ? '' : 's') + ' hidden · <a href="?tests=1">show them</a></p>' : (showTests ? '<p class="when" style="text-align:center;margin-top:18px"><a href="./">hide test-harness games</a></p>' : '');
+    app.innerHTML = shown.map(r => {
+      const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.flag ? '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
+      return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
+    }).join('') + foot;
+  }
+
+  // ---- one game ----
+  async function renderGame(code) {
+    app.innerHTML = '<div class="empty">Reading ' + esc(code) + '…</div>';
+    let aud, outcomes, fin;
+    try { [aud, outcomes, fin] = await Promise.all([get('rooms/' + code + '/audit'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/final')]); }
+    catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
+    if (!aud || (!aud.a && !aud.b)) { app.innerHTML = '<div class="empty">No transcript for ' + esc(code) + ' (played before V365, or already cleaned up). <a href="./">All games</a></div>'; return; }
+    const R = window.RB2P_AUDIT;
+    const tl = R.toTimeline({ a: aud.a || {}, b: aud.b || {} });
+    const nm = names(outcomes);
+    const res = R.audit(tl, {});
+    const story = R.narrate(tl, { names: nm });
+    // final score as A sees it (a's last score entry, else b's mirrored)
+    const lastA = tl.filter(e => e.role === 'a' && e.k === 'score').pop(), lastB = tl.filter(e => e.role === 'b' && e.k === 'score').pop();
+    const sa = lastA ? [lastA.su, lastA.so] : lastB ? [lastB.so, lastB.su] : [0, 0];
+    const ended = tl.some(e => e.k === 'final');
+    const live = Date.now() - tl[tl.length - 1].t < 3 * 60 * 1000;
+    const verdict = res.flags.length ? '<span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
+    const dur = ((tl[tl.length - 1].t - tl[0].t) / 60000).toFixed(0);
+
+    // plain-English summary
+    const byRule = {}; res.flags.forEach(f => { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
+    const summary = res.flags.length
+      ? 'The checker found ' + res.flags.length + ' thing' + (res.flags.length === 1 ? '' : 's') + ' that football cannot explain. Each one is listed below with the moment it happened.'
+      : 'Every play, score, clock tick and handoff in this game checks out.';
+
+    const mmss = sec => (sec / 60).toFixed(0) + ':' + ('0' + Math.round(sec % 60)).slice(-2);
+    const human = msg => String(msg)
+      .replace(/\bon ([ab])\b/g, (m, r) => 'on ' + nm[r] + '\'s phone')
+      .replace(/\bfrom ([ab])\b/g, (m, r) => 'from ' + nm[r] + '\'s phone')
+      .replace(/\b([ab])'s ([A-Z_]+) was never received by ([ab])\b/g, (m, r1, t, r2) => nm[r1] + '\'s ' + t + ' was never received by ' + nm[r2])
+      .replace(/\bthrower \(([ab])\)/g, (m, r) => 'thrower (' + nm[r] + ')')
+      .replace(/\b([ab]) (went|was|had|says|tried)\b/g, (m, r, v) => nm[r] + ' ' + v)
+      .replace(/\balthough ([ab]) was\b/g, (m, r) => 'although ' + nm[r] + ' was')
+      .replace(/\bbut ([ab]) had\b/g, (m, r) => 'but ' + nm[r] + ' had')
+      .replace(/\b(?:a|b) says (\d+)-(\d+)/g, (m) => m)
+      .replace(/(\d+(?:\.\d+)?)s after a boot/g, (m, n) => Math.round(Number(n)) + ' seconds after a refresh')
+      .replace(/\bboot\b/g, 'refresh');
+    let html = '<div class="card"><div class="row"><div class="grow"><div class="code">' + esc(code) + '</div><div class="teams">' + esc(nm.a) + ' vs ' + esc(nm.b) + ' · ' + esc(fmtWhen(tl[0].t)) + ' · ' + dur + ' min' + (live ? ' · still going' : ended ? '' : ' · abandoned') + '</div></div>' + verdict + '</div>' +
+      '<div class="score" style="margin-top:10px"><span class="you">' + sa[0] + '</span> <span style="color:var(--mute)">–</span> <span class="opp">' + sa[1] + '</span></div><div class="teams">' + esc(nm.a) + ' – ' + esc(nm.b) + '</div>' +
+      '<p style="margin:12px 0 0">' + esc(summary) + '</p><div style="margin-top:12px"><a class="btn" href="./" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
+
+    if (res.flags.length) {
+      html += '<h2>What went wrong</h2>';
+      for (const rule of Object.keys(byRule)) {
+        html += '<div class="card" style="padding:12px 14px"><div class="flag" style="margin:0"><div class="rule">' + esc(rule) + '</div><div class="why">' + esc(R.explain(rule)) + '</div></div>';
+        for (const f of byRule[rule]) {
+          const secs = f.cites && f.cites.length ? Number(f.cites[0].trim().split('s ')[0]) : NaN;
+          const at = isFinite(secs) ? mmss(secs) : '';
+          html += '<div style="padding:8px 4px 2px"><div class="what">' + (at ? '<span class="when">' + esc(at) + ' into the game</span> · ' : '') + esc(human(f.msg)) + '</div><details><summary>the raw lines the checker looked at</summary><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    html += '<h2>The game, play by play</h2><div class="legend"><span><i style="background:var(--green)"></i>' + esc(nm.a) + '\'s phone</span><span><i style="background:var(--blue)"></i>' + esc(nm.b) + '\'s phone</span></div>' +
+      '<div class="filters">' + [['play','Plays',true],['score','Scores',true],['handoff','Handoffs',true],['p6','Pick-six & conversions',true],['poss','Who has the ball',false],['system','Screens off, refreshes, holds',false],['flagline','Refusals',true]].map(f => '<label><input type="checkbox" data-kind="' + f[0] + '"' + (f[2] ? ' checked' : '') + '> ' + f[1] + '</label>').join('') + '</div><div id="story"></div>';
+    app.innerHTML = html;
+
+    const storyEl = document.getElementById('story');
+    const draw = () => {
+      const on = {}; app.querySelectorAll('.filters input').forEach(i => { on[i.dataset.kind] = i.checked; });
+      let q = null, out = '';
+      for (const s of story) {
+        if (s.kind === 'quarter') { out += '<div class="qhead">' + esc(s.text) + '</div>'; continue; }
+        if (!on[s.kind]) continue;
+        out += '<div class="ln ' + esc(s.kind) + '"><div class="t">' + (s.rel / 60).toFixed(0) + ':' + ('0' + Math.round(s.rel % 60)).slice(-2) + '</div><div class="r ' + esc(s.role) + '"></div><div class="x">' + esc(s.text) + '</div></div>';
+      }
+      storyEl.innerHTML = out || '<div class="empty">Nothing to show with these filters.</div>';
+    };
+    app.querySelectorAll('.filters input').forEach(i => i.addEventListener('change', draw));
+    draw();
+  }
+
+  const room = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
+  if (room) renderGame(room); else renderList();
+})();
+</script>
+</body>
+</html>
