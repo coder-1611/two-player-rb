@@ -139,13 +139,13 @@
     // final score as A sees it (a's last score entry, else b's mirrored)
     const lastA = tl.filter(e => e.role === 'a' && e.k === 'score').pop(), lastB = tl.filter(e => e.role === 'b' && e.k === 'score').pop();
     const sa = lastA ? [lastA.su, lastA.so] : lastB ? [lastB.so, lastB.su] : [0, 0];
-    const ended = tl.some(e => e.k === 'final');
-    const live = Date.now() - lastGame.t < 3 * 60 * 1000;
-    const verdict = res.flags.length ? '<span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
     // Duration ends at the last GAME event — a phone reopening the tab hours
     // later writes into the same room and must not stretch it.
     const gameKinds = { snap:1, settle:1, score:1, q:1, send:1, recv:1, conv:1, p6:1, final:1 };
     const lastGame = tl.filter(e => gameKinds[e.k]).pop() || tl[tl.length - 1];
+    const ended = tl.some(e => e.k === 'final');
+    const live = Date.now() - lastGame.t < 3 * 60 * 1000;
+    const verdict = res.flags.length ? '<span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
     const dur = ((lastGame.t - tl[0].t) / 60000).toFixed(0);
 
     // plain-English summary
