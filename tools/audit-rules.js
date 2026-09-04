@@ -21,7 +21,41 @@ function toTimeline(streams) {
             out.push(Object.assign({ role: role, key: key }, e));
         }
     }
+    // ---- the two phones stamp with their OWN clocks (OVUI: b ran ~6s behind a),
+    // which turns a clean handoff into a phantom "both live for 3s". Estimate
+    // the skew from matched send->recv pairs in BOTH directions: latency adds
+    // to one direction and subtracts from the other, so half the difference
+    // is the skew, independent of the latency itself. Shift b onto a's clock.
+    let skew = 0, pairs = 0;
+    try {
+        const sends = out.filter(e => e.k === 'send' && typeof e.ts === 'number');
+        const recvs = out.filter(e => e.k === 'recv' && typeof e.ts === 'number');
+        const ab = [], ba = [];
+        // Pair by record ts when it survived (the record can be re-stamped on
+        // the way out), else by type and nearness within a minute.
+        for (const s of sends) {
+            let r = recvs.find(x => x.ts === s.ts && x.role !== s.role);
+            if (!r) {
+                const cands = recvs.filter(x => x.role !== s.role && x.type === s.type && Math.abs(x.t - s.t) < 60000);
+                cands.sort((x, y) => Math.abs(x.t - s.t) - Math.abs(y.t - s.t));
+                r = cands[0];
+            }
+            if (!r) continue;
+            (s.role === 'a' ? ab : ba).push(r.t - s.t);
+        }
+        const med = arr => { if (!arr.length) return null; const a = arr.slice().sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+        const mAB = med(ab), mBA = med(ba);
+        // delta = how far b's clock is BEHIND a's. a->b pairs measure latency - delta,
+        // b->a pairs measure latency + delta.
+        if (mAB != null && mBA != null) { skew = Math.round((mBA - mAB) / 2); pairs = ab.length + ba.length; }
+        else if (mAB != null) { skew = Math.round(300 - mAB); pairs = ab.length; }     // one direction: assume ~300ms latency
+        else if (mBA != null) { skew = Math.round(mBA - 300); pairs = ba.length; }
+        // (braces matter: a bare `for ... if ... else` binds the else to the inner if)
+        if (Math.abs(skew) > 500) { for (const e of out) { if (e.role === 'b') e.t += skew; } }
+        else { skew = 0; }
+    } catch (e) { skew = 0; }
     out.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
+    out.clockSkewMs = skew; out.clockSkewPairs = pairs;
     return out;
 }
 const fmtT = (t0, t) => ((t - t0) / 1000).toFixed(1).padStart(7) + 's';
@@ -52,7 +86,10 @@ function audit(tl, extra) {
                 // offense's direction: y is signed from midfield toward the
                 // opponent, so a +15 gain from the 50 (y0=0) lands at +15 (the 35).
                 const expect = e.y0 + e.gain;
-                const scored = Math.abs(e.y) >= 49.5 || (lastSettle && e.su !== lastSettle.su);
+                // A play that reaches the goal line scored: the engine then puts the
+                // ball on the 2 (+48) for the conversion and marks down 6, so the
+                // line is not "where the gain says" — it is where a touchdown says.
+                const scored = Math.abs(e.y) >= 49.5 || expect >= 49.5 || e.d === 6 || (lastSettle && e.su !== lastSettle.su);
                 if (!scored && Math.abs(e.y - expect) > 1.6)
                     flag('R-YARD', `${e.type} for ${e.gain}: line was ${e.y0.toFixed(1)}, should be ${expect.toFixed(1)}, is ${e.y.toFixed(1)}`, [lastSnap, e]);
             }

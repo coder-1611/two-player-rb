@@ -79,7 +79,7 @@ async function main() {
     }
     if (asJson) console.log(JSON.stringify(report, null, 1));
     else {
-        console.log('=== AUDIT ' + code + ': ' + report.verdict + ' (' + res.entries + ' entries, ' + res.flags.length + ' flags) ===');
+        console.log('=== AUDIT ' + code + ': ' + report.verdict + ' (' + res.entries + ' entries, ' + res.flags.length + ' flags' + (tl.clockSkewMs ? ', b\'s clock shifted ' + (tl.clockSkewMs > 0 ? '+' : '') + (tl.clockSkewMs / 1000).toFixed(1) + 's onto a\'s from ' + tl.clockSkewPairs + ' handoffs' : '') + ') ===');
         for (const f of res.flags) { console.log('  [' + f.rule + '] ' + f.msg); for (const c of f.cites) console.log('      ' + c); }
         console.log('report: audits/' + code + '.md');
     }

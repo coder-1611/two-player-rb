@@ -165,7 +165,7 @@
       .replace(/\bboot\b/g, 'refresh');
     let html = '<div class="card"><div class="row"><div class="grow"><div class="code">' + esc(code) + '</div><div class="teams">' + esc(nm.a) + ' vs ' + esc(nm.b) + ' · ' + esc(fmtWhen(tl[0].t)) + ' · ' + dur + ' min' + (live ? ' · still going' : ended ? '' : ' · abandoned') + '</div></div>' + verdict + '</div>' +
       '<div class="score" style="margin-top:10px"><span class="you">' + sa[0] + '</span> <span style="color:var(--mute)">–</span> <span class="opp">' + sa[1] + '</span></div><div class="teams">' + esc(nm.a) + ' – ' + esc(nm.b) + '</div>' +
-      '<p style="margin:12px 0 0">' + esc(summary) + '</p><div style="margin-top:12px"><a class="btn" href="./" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
+      '<p style="margin:12px 0 0">' + esc(summary) + (tl.clockSkewMs ? ' The two phones\' clocks differed by about ' + Math.abs(tl.clockSkewMs / 1000).toFixed(0) + ' seconds; ' + esc(nm.b) + '\'s lines were shifted to match.' : '') + '</p><div style="margin-top:12px"><a class="btn" href="./" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
 
     if (res.flags.length) {
       html += '<h2>What went wrong</h2>';
