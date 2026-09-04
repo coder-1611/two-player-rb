@@ -236,6 +236,7 @@ function audit(tl, extra) {
         for (const e of tl) {
             if (e.k === 'p6' && e.step === 'detected') cascade = true;
             if (e.k === 'p6' && (e.step === 'resultApplied' || e.step === 'driveStarted')) cascade = false;
+            if (e.k === 'diag' && /PAT-INV force-release/.test(e.m)) cascade = false;   // the 35s wall ended it
             if (e.k === 'recv') lastRecv[e.role] = e.t;
             if (e.k === 'diag' && /^OUTCOME (drained|held)/.test(e.m)) lastRecv[e.role] = e.t;
             if (e.k === 'q') lastQ[e.role] = e.t;
@@ -265,6 +266,32 @@ function audit(tl, extra) {
                 if (bothLive) { if (!bothLiveSince) bothLiveSince = e.t; else if (e.t - bothLiveSince > 3000 && !cascade) { flag('R-POSS', `DOUBLE OFFENSE: both devices live for ${((e.t - bothLiveSince) / 1000).toFixed(0)}s`, [e], `Both phones were on offense at the same time for ${((e.t - bothLiveSince) / 1000).toFixed(0)} seconds.`); bothLiveSince = null; } }
                 else bothLiveSince = null;
             }
+        }
+    }
+
+    // ---- R-POSS: a rescue that staged a drive but left the phone on "waiting" ----
+    // GVCG: TURN-RESCUE fired five times, each time a full formation appeared
+    // under the cover, and the phone never came off "waiting for opponent".
+    for (const r of roles) {
+        const resc = byRole[r].filter(x => x.k === 'diag' && /^TURN-RESCUE -> offense/.test(x.m));
+        for (const e of resc) {
+            const later = byRole[r].find(x => x.k === 'stage' && x.t > e.t + 2000 && x.t < e.t + 8000);
+            const wentLive = byRole[r].some(x => x.k === 'wait' && x.on === false && x.t > e.t && x.t < e.t + 8000);
+            if (later && later.of >= 6 && later.wait === true && !wentLive) {
+                flag('R-POSS', `TURN-RESCUE on ${r} staged a drive but the device stayed WAIT`, [e, later],
+                     `${T(r)} tried to take the ball back (a rescue), a formation appeared, but the phone stayed on "waiting for opponent".`);
+                break;
+            }
+        }
+    }
+    // ---- R-P6: a conversion that was played but never resolved ----
+    for (const r of roles) {
+        const modals = byRole[r].filter(x => x.k === 'conv' && x.ev === 'modal');
+        for (const m of modals) {
+            const played = byRole[r].find(x => x.k === 'stage' && x.t > m.t && x.t < m.t + 60000 && (x.kp === 7 || x.kp === 5 || x.kp === 11));
+            const resolved = byRole[r].some(x => ((x.k === 'conv' && x.ev === 'made') || (x.k === 'p6' && (x.step === 'resolved' || x.step === 'resultSent'))) && x.t > m.t && x.t < m.t + 120000);
+            if (played && !resolved) flag('R-P6', `conversion on ${r} was PLAYED (ball live) but never resolved`, [m, played],
+                                          `${T(r)} played the conversion — the ball went live — but the game never decided whether it was good or missed, and nothing moved on.`);
         }
     }
 
@@ -412,6 +439,8 @@ const RULE_TEXT = {
     'R-XPORT': 'Something between the two phones was lost or delayed: a handoff never arrived while the other phone was awake, or the connection stalled.',
     'R-HALF':  'The wrong team had the ball to start the second half. In this game the second phone always receives the second-half kickoff.'
 };
+// (R-P6 also covers a conversion that was played but never decided; R-POSS a
+// rescue that staged a drive while the phone stayed on waiting.)
 function explain(rule) { return RULE_TEXT[rule] || ''; }
 
 // Turn the merged timeline into sentences a person can read. `meta.names`

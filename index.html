@@ -1232,7 +1232,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V377<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V378<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1300,7 +1300,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V377</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V378</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3967,6 +3967,21 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
+                    // V378 (room GVCG): the conversion play's own life, recorded. Once
+                    // it is SNAPPED the play owns the ball (the invariant stands down);
+                    // once it has DIED scoreless the guardian may call it a miss.
+                    try {
+                        if (window._rb2p_patPlayPending === true) {
+                            if (!window._rb2p_patPlaySnappedMs && (bkp === 2 || bkp === 3 || bkp === 5 || bkp === 7 || bkp === 11) && (prev === 0 || prev == null || prev === 1)) {
+                                window._rb2p_patPlaySnappedMs = Date.now();
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT play snapped (bkp ' + bkp + ')');
+                            }
+                            if (window._rb2p_patPlaySnappedMs && !window._rb2p_patPlayDiedMs && bkp === 0 && prev !== 0 && prev != null) {
+                                window._rb2p_patPlayDiedMs = Date.now();
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT play over (ball dead)');
+                            }
+                        }
+                    } catch (ePS) {}
                     // V320: a play has DEVELOPED on this device (ball received/tackled)
                     // — so the game is past the opening-kickoff staging. The STUCK@
                     // staging self-healer must stand down after this (see its gate), or
@@ -7937,6 +7952,7 @@
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = userDelta;
+                            window._rb2p_patPlaySnappedMs = 0; window._rb2p_patPlayDiedMs = 0;   // V378
                             if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'made', pts: userDelta });   // V365
                             if (window._rb2p_p6Step && window._rb2p_pickSixPatCascadeActive === true) window._rb2p_p6Step('resolved', { pts: userDelta });
                             console.log('[2P PAT GUARD] PAT resolved: +' + userDelta + ' (made)');
@@ -7962,18 +7978,37 @@
                         // and possession already gone means a genuine miss.
                         var patKickoffFlippedAway =
                             em.enginePossessingTeamIdx !== em.engineUserTeamIdx;
+                        // V378 (room GVCG): the conversion play was snapped, the ball is
+                        // dead, and no points landed for 1.5s — that is a miss, whatever
+                        // stage the FSM parked on. The old signals never came: the
+                        // invariant had re-claimed possession (erasing "flipped away")
+                        // and the engine never reached Vy 1/22. The scene sat for 35s.
+                        var patPlayedAndDied = !!(window._rb2p_patPlayDiedMs &&
+                            Date.now() - Number(window._rb2p_patPlayDiedMs) > 1500);
+                        // the field emptying after the snap is the same thing
+                        if (!patPlayedAndDied && window._rb2p_patPlaySnappedMs &&
+                            Date.now() - Number(window._rb2p_patPlaySnappedMs) > 3000) {
+                            try {
+                                var fldG = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [], ballG = false;
+                                for (var gi = 0; gi < fldG.length; gi++) { var gx = fldG[gi]; if (gx && !gx._HL2 && gx._eE2 && gx._eE2._fE2 === 'obj_ball') { ballG = true; break; } }
+                                if (!ballG) patPlayedAndDied = true;
+                            } catch (eFG) {}
+                        }
                         if (userDelta === 0 &&
                             (em.engineDriveFsmStage === 1 ||
                              em.engineDriveFsmStage === 22 ||
-                             patKickoffFlippedAway)) {
+                             patKickoffFlippedAway || patPlayedAndDied)) {
                             window._rb2p_patPlayPending  = false;
                             window._rb2p_patPlayResolved = true;
                             window._rb2p_patResolvedMs   = Date.now();
                             window._rb2p_patResultPoints = 0;
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved: missed');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT resolved: missed' + (patPlayedAndDied ? ' (played, ball dead, no points)' : ''));
+                            if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'missed', pts: 0 });
+                            if (window._rb2p_p6Step && window._rb2p_pickSixPatCascadeActive === true) window._rb2p_p6Step('resolved', { pts: 0 });
+                            window._rb2p_patPlaySnappedMs = 0; window._rb2p_patPlayDiedMs = 0;
                             console.log('[2P PAT GUARD] PAT resolved: missed (Vy=' +
                                         em.engineDriveFsmStage + ', possessionFlipped=' +
-                                        patKickoffFlippedAway + ')');
+                                        patKickoffFlippedAway + ', playedAndDied=' + patPlayedAndDied + ')');
                             if (window._rb2p_pick6MonitorNote) window._rb2p_pick6MonitorNote(
                                 'PAT missed (Vy=' + em.engineDriveFsmStage + ')');
                             return;
@@ -8779,6 +8814,18 @@
                     // BLOCKS alive for its 3s grace but never touches the engine.
                     var owedStrong = owedWhy.charAt(1) !== '5';
                     if (!owedStrong) { patFixTicks = 0; patWrongModalTicks = 0; return; }
+                    // V378 (room GVCG): once the conversion play has been SNAPPED, the
+                    // play owns the ball. This tick used to keep claiming possession,
+                    // restoring down 6 and pinning the ball to the 2 while the play ran
+                    // and after it died — which erased the "possession moved away"
+                    // signal the guardian needs to call a miss. Two guards, one scene.
+                    if (window._rb2p_patPlayPending === true && window._rb2p_patPlaySnappedMs) {
+                        if (Date.now() - (Number(window._rb2p_patInvSnappedLogMs) || 0) > 5000) {
+                            window._rb2p_patInvSnappedLogMs = Date.now();
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV standing down — the conversion play has been snapped');
+                        }
+                        patFixTicks = 0; patWrongModalTicks = 0; return;
+                    }
                     // C0 (audit hole 5 — the wrong-END failure): +48 does not name an
                     // end of the field; the DIRECTION register does. A rogue _Sc1 from
                     // a reverted quarter roll flips it while _6F, the down and every
@@ -10208,6 +10255,8 @@
                                 window._rb2p_patPlayPending      = true;
                                 window._rb2p_patPlayResolved     = false;
                                 window._rb2p_patPlayStartMs      = Date.now();
+                                window._rb2p_patPlaySnappedMs    = 0;   // V378
+                                window._rb2p_patPlayDiedMs       = 0;
                                 window._rb2p_patClobberCount     = 0;   // V218: loop-breaker counter
                                 window._rb2p_patUserScoreAtStart = engineMatch.userScore;
                                 window._rb2p_patOppScoreAtStart  = engineMatch.opponentScore;
@@ -16695,8 +16744,12 @@
                                     var okR = null;
                                     if (typeof window._rb2p_forceUserOffenseDrive === 'function')
                                         okR = window._rb2p_forceUserOffenseDrive(yR);
-                                    else window._rb2p_userIsWaitingForOpponent = false;
                                     if (okR === false && window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE force-drive FAILED');
+                                    // V378 (room GVCG): the force staged the drive but the
+                                    // flag stayed WAIT — five rescues, five formations under
+                                    // the cover, the phone never came off "waiting". Taking
+                                    // the ball means saying so (through the gate).
+                                    if (okR !== false) window._rb2p_userIsWaitingForOpponent = false;
                                 } catch (eR2) {}
                             }
                         } else turnRescueTicks = 0;
