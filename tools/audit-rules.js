@@ -149,7 +149,10 @@ function audit(tl, extra) {
                 // Down & distance: this play FACED the previous settle's resulting
                 // down and to-go; its gain decides the down it leaves behind.
                 const facedD = lastSettle.d, facedTg = lastSettle.tg, g = e.gain;
-                const first = g >= facedTg - 0.6;
+                // V380: the settle's gain is rounded; the engine measures the exact
+                // one (8.0 vs 8.6 to go is NOT a first down). Judge with the line.
+                const gExact = (typeof e.y === 'number' && typeof e.y0 === 'number') ? (e.y - e.y0) : g;
+                const first = gExact >= facedTg - 0.05;
                 const expD = first ? 1 : facedD + 1;
                 const scored = Math.abs(e.y) >= 49.5 || e.su !== lastSettle.su;
                 if (!scored && facedD <= 3 && e.d0 === facedD && e.d !== expD)
@@ -230,14 +233,15 @@ function audit(tl, extra) {
 
     // ---- R-POSS: exactly one live device; transitions justified; deadlocks ----
     {
-        const wait = { a: null, b: null }, waitSince = { a: 0, b: 0 };
+        const wait = { a: null, b: null }, waitSince = { a: 0, b: 0 }, hidden = { a: false, b: false };
         let bothWaitSince = null, bothLiveSince = null;
         let lastRecv = { a: 0, b: 0 }, lastQ = { a: 0, b: 0 };
         let cascade = false;
         for (const e of tl) {
             if (e.k === 'p6' && e.step === 'detected') cascade = true;
             if (e.k === 'p6' && (e.step === 'resultApplied' || e.step === 'driveStarted')) cascade = false;
-            if (e.k === 'diag' && /PAT-INV force-release/.test(e.m)) cascade = false;   // the 35s wall ended it
+            if (e.k === 'diag' && /PAT-INV force-release|PAT-INV 35s wall/.test(e.m)) cascade = false;   // the 35s wall ended it
+            if (e.k === 'vis') hidden[e.role] = e.h === true;
             if (e.k === 'recv') lastRecv[e.role] = e.t;
             if (e.k === 'diag' && /^OUTCOME (drained|held)/.test(e.m)) lastRecv[e.role] = e.t;
             if (e.k === 'q') lastQ[e.role] = e.t;
@@ -258,8 +262,12 @@ function audit(tl, extra) {
                 if (bothWait) {
                     if (!bothWaitSince) bothWaitSince = e.t;
                     else if (e.t - bothWaitSince > (cascade ? 120000 : 12000)) {
-                        flag('R-POSS', `DEADLOCK: both devices waiting for ${((e.t - bothWaitSince) / 1000).toFixed(0)}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e],
-                             `Both phones sat on "waiting for opponent" for ${((e.t - bothWaitSince) / 1000).toFixed(0)} seconds — the game was stuck.`);
+                        const secs = ((e.t - bothWaitSince) / 1000).toFixed(0);
+                        const hid = roles.find(r => hidden[r]);
+                        if (hid) flag('R-POSS', `IDLE: both devices waiting for ${secs}s while ${hid}'s screen was hidden`, [e],
+                                      `${T(hid)}'s screen was off (or the app was in the background) for ${secs} seconds while ${T(other(hid))} waited for it.`);
+                        else flag('R-POSS', `DEADLOCK: both devices waiting for ${secs}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e],
+                                  `Both phones sat on "waiting for opponent" for ${secs} seconds — the game was stuck.`);
                         bothWaitSince = null;
                     }
                 }
@@ -403,6 +411,67 @@ function audit(tl, extra) {
     for (const e of tl.filter(x => x.k === 'diag' && /CONVGATE REFUSED/.test(x.m))) flag('R-GATE', e.m, [e], `A safety check refused a conversion that had no touchdown behind it on ${T(e.role)}.`);
     for (const e of tl.filter(x => x.k === 'diag' && /^SCORE-FLOOR/.test(x.m))) flag('R-SCORE', 'a score regressed and was restored: ' + e.m, [e], `Something lowered a score on ${T(e.role)} and it had to be pulled back up.`);
 
+    // ---- R-GIFT (room XEDG, Q2 0:56): the scorer never gets the next drive ----
+    // After a conversion offer the scorer's next act is a PAT_RESULT or a
+    // kickoff. A normal down snapped before that — with nothing received in
+    // between — is a possession it was never owed.
+    for (const r of roles) {
+        const ev = byRole[r];
+        for (const m of ev.filter(x => x.k === 'conv' && x.ev === 'modal')) {
+            const result = ev.find(x => x.k === 'send' && (x.type === 'PAT_RESULT' || x.type === 'KICKOFF') && x.t > m.t && x.t < m.t + 180000);
+            const recvAfter = ev.find(x => x.k === 'recv' && x.t > m.t);
+            const limit = Math.min(result ? result.t : Infinity, recvAfter ? recvAfter.t : Infinity, m.t + 180000);
+            const snap = ev.find(x => x.k === 'snap' && x.t > m.t + 1500 && x.t < limit && x.d != null && x.d !== 6);
+            if (snap) flag('R-GIFT', `${r} snapped a normal down (${snap.d}&${Math.round(snap.tg)} at ${snap.y}) ${((snap.t - m.t) / 1000).toFixed(0)}s after its conversion offer, before any PAT_RESULT/KICKOFF was sent`, [m, snap],
+                           `${T(r)} was handed a fresh drive on ${spot(snap.y)} while it still owed the conversion — a possession it never earned.`);
+        }
+        for (const w of ev.filter(x => x.k === 'conv' && x.ev === 'missed' && x.wall))
+            flag('R-P6', `the 35s wall resolved ${r}'s conversion as missed`, [w], `${T(r)} let the conversion sit for 35 seconds; it was counted as missed and the game moved on.`);
+        for (const gd of ev.filter(x => x.k === 'guard' && (x.what === 'force-drive' || x.what === 'rescue')))
+            flag('R-P6', `${r} asked for a drive while owing its conversion result (${gd.what}) — refused`, [gd], `${T(r)} asked for a drive while it still owed the conversion result; the game refused.`);
+        for (const fb of ev.filter(x => x.k === 'guard' && x.what === 'fallback300'))
+            flag('R-FALLBACK', `300s fallback on ${r}: ${fb.why}`, [fb], fb.why === 'fired'
+                 ? `The five-minute emergency timer on ${T(r)} force-started its drive — a conversion result never arrived.`
+                 : `A five-minute emergency timer left over from an earlier pick-six went off on ${T(r)} and stood down, as it should.`);
+    }
+    // ---- R-STALE (room XEDG, Q3 1:05 / Q4 1:12): a handoff that arrived while playing ----
+    {
+        const live = { a: null, b: null };
+        for (const e of tl) {
+            if (e.k === 'wait') { live[e.role] = e.on === false; continue; }
+            if (e.k !== 'recv' || e.type === 'PICK6' || live[e.role] !== true) continue;
+            const r = e.role, o = other(r);
+            const purged = tl.find(x => x.k === 'purge' && x.role === r && x.ts === e.ts);
+            const applied = tl.find(x => x.k === 'apply' && x.role === r && x.ts === e.ts);
+            const qRecent = tl.some(x => x.k === 'q' && x.role === r && e.t - x.t >= 0 && e.t - x.t < 10000);
+            const hasApplyKind = tl.some(x => x.k === 'apply' || x.k === 'purge');
+            if (purged) { if (!qRecent) flag('R-STALE', `${r} received ${e.type} while LIVE; purged ${Math.round(purged.ageMs / 1000)}s later at its own handoff`, [e, purged],
+                                          `${T(o)}'s handoff arrived while ${T(r)} was already playing; it was thrown away at ${T(r)}'s next handoff, as it should be.`); }
+            else if (applied) { if (applied.lagMs > 5000) flag('R-STALE', `${r} applied ${o}'s ${e.type} ${Math.round(applied.lagMs / 1000)}s after it arrived`, [e, applied],
+                                          `${T(r)} applied ${T(o)}'s handoff ${Math.round(applied.lagMs / 1000)} seconds after it arrived — its clock and score were dragged back to that moment.`); }
+            else if (!hasApplyKind) flag('R-STALE', `${r} received ${e.type} while LIVE (this build queued it for the next park)`, [e],
+                                         `${T(o)}'s handoff arrived while ${T(r)} was already playing and sat in the queue until ${T(r)} next parked — dragging the clock back to that moment.`);
+        }
+    }
+    // ---- R-KEEP (room XEDG, 288-304s): the between-quarters keep fired again and again ----
+    for (const r of roles) {
+        const ev = byRole[r];
+        const keeps = ev.filter(x => x.k === 'keep');
+        if (keeps.length) {
+            const byQ = {};
+            for (const k of keeps) if (!byQ[k.q] || k.n > byQ[k.q].n) byQ[k.q] = k;
+            for (const q of Object.keys(byQ)) if (byQ[q].n >= 3)
+                flag('R-KEEP', `keep-drive fired ${byQ[q].n} times in Q${q} on ${r}`, [byQ[q]], `${T(r)}'s drive was re-staged ${byQ[q].n} times at the start of quarter ${q} — the play kept changing on its own.`);
+        } else {
+            let q = null, n = 0, firstK = null;
+            for (const e of ev) {
+                if (e.k === 'q') { if (n >= 3) flag('R-KEEP', `QTR-KEEP resume x${n} in Q${q} on ${r}`, [firstK], `${T(r)}'s drive was re-staged ${n} times at the start of quarter ${q} — the play kept changing on its own (the "infinite audible").`); q = e.to; n = 0; firstK = null; continue; }
+                if (e.k === 'diag' && /^QTR-KEEP resume Q/.test(e.m)) { if (!n) firstK = e; n++; }
+            }
+            if (n >= 3) flag('R-KEEP', `QTR-KEEP resume x${n} in Q${q} on ${r}`, [firstK], `${T(r)}'s drive was re-staged ${n} times at the start of quarter ${q} — the play kept changing on its own (the "infinite audible").`);
+        }
+    }
+
     // ---- R-XPORT: sends that never got acked while the other side was alive ----
     {
         const sends = tl.filter(x => x.k === 'send' && x.type !== 'PAT_RESULT' || (x.k === 'send' && x.type === 'PAT_RESULT'));
@@ -438,7 +507,11 @@ const RULE_TEXT = {
     'R-P6':    'A pick-six did not go the way it must: a step was late or missing, the wrong phone built a conversion, two conversions appeared for one score, or a pick-six was "detected" that never happened (usually right after a refresh).',
     'R-GATE':  'One of the safety gates had to intervene (it held the ball in place, or refused a conversion). Not wrong by itself — it is the gate doing its job — but worth knowing.',
     'R-XPORT': 'Something between the two phones was lost or delayed: a handoff never arrived while the other phone was awake, or the connection stalled.',
-    'R-HALF':  'The wrong team had the ball to start the second half. In this game the second phone always receives the second-half kickoff.'
+    'R-HALF':  'The wrong team had the ball to start the second half. In this game the second phone always receives the second-half kickoff.',
+    'R-GIFT':  'A phone that had just scored a pick-six (or any touchdown) was given a fresh drive instead of kicking off. After a conversion the scorer\'s only next act is to send the result and kick off.',
+    'R-STALE': 'A handoff from the other phone arrived while this phone was already playing. It must be thrown away at the next handoff; if it is applied later it drags the clock and score back to that moment.',
+    'R-KEEP':  'The between-quarters keep — the thing that continues a drive from Q1 into Q2 (or Q3 into Q4) — fired three or more times for one quarter, re-staging the play each time.',
+    'R-FALLBACK': 'The five-minute emergency timer that force-starts a drive when a conversion result never comes back. It must only ever fire for the pick-six that armed it.'
 };
 // (R-P6 also covers a conversion that was played but never decided; R-POSS a
 // rescue that staged a drive while the phone stayed on waiting.)
@@ -521,17 +594,23 @@ function narrate(tl, meta) {
                 const m = { detected: who + '\'s phone saw a defensive touchdown against it (pick-six).', sent: who + ' reports the pick-six' + (e.plus6 === false ? ' — but its own score never showed the 6 points' : '') + '.', applied: who + ' is credited the pick-six and gets the conversion choice.', modal: who + ' sees the 1-point / 2-point choice.', resolved: 'Conversion ' + (e.pts ? 'GOOD (+' + e.pts + ')' : 'missed') + ' on ' + who + '.', resultSent: who + ' sends the conversion result' + (e.synthetic ? ' (the fallback did it — the engine did not)' : '') + '.', resultApplied: who + ' receives the conversion result.', driveStarted: who + ' starts the next drive.' };
                 push(e, m[e.step] || (who + ': pick-six ' + e.step), 'p6'); break;
             }
-            case 'conv': if (e.ev === 'modal') push(e, who + ' is offered the conversion (1 or 2 points).', 'p6'); else if (e.ev === 'made') push(e, 'Conversion good on ' + who + ' (+' + e.pts + ').', 'score'); break;
+            case 'conv': if (e.ev === 'modal') push(e, who + ' is offered the conversion (1 or 2 points).', 'p6'); else if (e.ev === 'missed' && e.wall) push(e, 'Conversion abandoned on ' + who + ' — counted as missed (0).', 'flagline'); else if (e.ev === 'made') push(e, 'Conversion good on ' + who + ' (+' + e.pts + ').', 'score'); break;
             case 'vis': if (e.h === true) push(e, who + '\'s screen went off (app in the background).', 'system'); else if (e.h === false) push(e, who + '\'s screen is back.', 'system'); break;
             case 'diag': {
                 const mm = String(e.m || '');
                 if (/^boot$/.test(mm)) push(e, who + ' refreshed the page.', 'system');
                 else if (/^OUTCOME held/.test(mm)) push(e, who + ' received a handoff while its screen was off — holding it until the screen is back.', 'system');
                 else if (/^OUTCOME drained/.test(mm)) push(e, who + ' applies the held handoff now that its screen is back.', 'system');
-                else if (/^QTR-KEEP refused|^QTR-KEEP resume dropped/.test(mm)) push(e, 'A quarter-start reset was stopped on ' + who + ' (the quarter was already being played).', 'system');
+                else if (/^QTR-KEEP refused — the quarter|^QTR-KEEP resume dropped/.test(mm)) push(e, 'A quarter-start reset was stopped on ' + who + ' (the quarter was already being played).', 'system');
+                else if (/^QTR-KEEP resume Q/.test(mm) && !tl.some(x => x.k === 'keep')) push(e, 'Quarter continues for ' + who + ' (re-staged).', 'system');
                 else if (/^UNWEDGE/.test(mm)) push(e, who + ' cleared a stuck conversion state before starting its drive.', 'system');
                 else if (/^P6-WATCH/.test(mm)) push(e, 'Pick-six watchdog on ' + who + ': ' + mm.replace(/^P6-WATCH /, '') + '.', 'system');
+                else if (/^TURN-RESCUE -> shipping/.test(mm)) push(e, who + ' sends the conversion result it owed instead of taking a drive.', 'system');
                 else if (/^TURN-RESCUE/.test(mm)) push(e, who + ' took the ball back after both phones sat waiting.', 'system');
+                else if (/^PAT-INV 35s wall/.test(mm)) push(e, 'The conversion on ' + who + ' sat for 35 seconds — counted as missed, result sent.', 'flagline');
+                else if (/^QTR-KEEP LOOP/.test(mm)) push(e, 'The quarter-start reset on ' + who + ' tried to fire again and was stopped.', 'system');
+                else if (/^OUTCOME purged/.test(mm)) break;
+                else if (/^P6 drive: replacing/.test(mm)) push(e, who + ' stages its drive fresh (new play).', 'system');
                 else if (/^TURN-HEAL/.test(mm)) push(e, who + ' stepped back — the other phone had the ball.', 'system');
                 else if (/^FB-STALL|^FB-CONN OFFLINE/.test(mm)) push(e, who + '\'s connection stalled; using the backup path.', 'system');
                 else if (/^EVT-> (INT|FUMBLE)/.test(mm)) push(e, 'TURNOVER on ' + who + '.', 'score');
@@ -539,6 +618,14 @@ function narrate(tl, meta) {
                 break;
             }
             case 'final': push(e, 'FINAL on ' + who + '\'s phone: ' + e.su + '-' + e.so + '.', 'quarter'); break;
+            case 'purge': push(e, who + ' throws away an old ' + String(e.type).replace('OTHER', 'possession change').replace('PAT_RESULT', 'conversion result').toLowerCase() + ' handoff (' + Math.round((e.ageMs || 0) / 1000) + 's old) that had arrived while it was playing.', 'system'); break;
+            case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
+            case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
+            case 'guard': {
+                const g = { 'force-drive': who + ' asked for a drive while still owing its conversion result — refused.', rescue: who + ' would have rescued a drive for itself; it owed a conversion result, so the result was sent instead.',
+                            fallback300: e.why === 'fired' ? 'The five-minute emergency timer fired on ' + who + ' and force-started its drive.' : 'A five-minute emergency timer from an earlier pick-six went off on ' + who + ' and stood down.' };
+                push(e, g[e.what] || (who + ': guard ' + e.what + ' (' + e.why + ')'), e.what === 'fallback300' && e.why === 'fired' ? 'flagline' : 'system'); break;
+            }
         }
     }
     return out;

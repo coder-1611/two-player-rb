@@ -33,8 +33,53 @@ async function pull(g) {
     return toTimeline({ a: aud.a || {}, b: aud.b || {} });
 }
 
+// ---- V380 (room XEDG): the four new rules, on hand-built timelines ----
+// T11 the scorer snapping a normal down after its conversion offer (R-GIFT)
+// T12 a handoff received while live and applied 20s later / queued (R-STALE)
+// T13 the keep-drive firing three times in one quarter (R-KEEP)
+// T14 the 300s fallback firing (R-FALLBACK)
+// T15 both waiting while one screen is hidden reads "screen was off" (R-POSS)
+// T16 8.0 gained with 8.6 to go is NOT a first down — no R-DOWN
+function synthetic() {
+    const T0 = 1700000000000;
+    const mk = (role, dt, k, f) => Object.assign({ t: T0 + dt, role: role, k: k }, f || {});
+    const runs = {};
+    runs.gift = [mk('a', 0, 'bind', { ver: 'V380' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L2 pick-6' }),
+                 mk('a', 9000, 'snap', { q: 2, clk: 51, y: 48, d: 1, tg: 10, poss: 1, dir: 1 })];
+    runs.giftOk = [mk('a', 0, 'bind', { ver: 'V380' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }),
+                   mk('a', 4000, 'snap', { q: 2, clk: 43, y: 35, d: 6, tg: 2, poss: 1, dir: 1 }), mk('a', 9000, 'send', { type: 'KICKOFF', ts: T0 + 9000 })];
+    runs.stale = [mk('b', 0, 'bind', { ver: 'V380' }), mk('b', 1000, 'wait', { on: false, why: 'L1' }),
+                  mk('b', 5000, 'recv', { type: 'OTHER', ts: 777, via: 'sdk' }), mk('b', 30000, 'wait', { on: true, why: 'L2' }),
+                  mk('b', 30100, 'apply', { type: 'OTHER', ts: 777, lagMs: 25100 })];
+    runs.staleOld = [mk('b', 0, 'bind', { ver: 'V378' }), mk('b', 1000, 'wait', { on: false, why: 'L1' }), mk('b', 5000, 'recv', { type: 'OTHER', ts: 777, via: 'sdk' })];
+    runs.purgedAtQ = [mk('b', 0, 'bind', { ver: 'V380' }), mk('b', 900, 'q', { from: 2, to: 3, clk: 120, d: 1, tg: 10, y: 0 }), mk('b', 1000, 'wait', { on: false, why: 'L1' }),
+                      mk('b', 4000, 'recv', { type: 'OTHER', ts: 777, via: 'sdk' }), mk('b', 40000, 'purge', { type: 'OTHER', ts: 777, ageMs: 36000 })];
+    runs.keep = [mk('a', 0, 'bind', { ver: 'V380' }), mk('a', 1000, 'keep', { q: 2, n: 1, y: 4, d: 1 }), mk('a', 2300, 'keep', { q: 2, n: 2, y: 4, d: 1 }), mk('a', 3600, 'keep', { q: 2, n: 3, y: 4, d: 1 })];
+    runs.keepOld = [mk('a', 0, 'bind', { ver: 'V378' }), mk('a', 500, 'q', { from: 1, to: 2, clk: 120, d: 1, tg: 10, y: 4 }),
+                    mk('a', 1000, 'diag', { m: 'QTR-KEEP resume Q2 y4 d1 clk=120' }), mk('a', 2300, 'diag', { m: 'QTR-KEEP resume Q2 y4 d1 clk=120' }), mk('a', 3600, 'diag', { m: 'QTR-KEEP resume Q2 y4 d1 clk=120' })];
+    runs.fallback = [mk('b', 0, 'bind', { ver: 'V380' }), mk('b', 1000, 'guard', { what: 'fallback300', why: 'fired' })];
+    runs.hidden = [mk('a', 0, 'bind', { ver: 'V380' }), mk('b', 0, 'bind', { ver: 'V380' }), mk('a', 500, 'wait', { on: true, why: 'L1' }), mk('b', 500, 'wait', { on: true, why: 'L1' }),
+                   mk('a', 600, 'vis', { h: true })];
+    for (let i = 0; i <= 14; i++) runs.hidden.push(mk('a', 1000 + i * 1000, 'stage', { of: 0, df: 0, ball: 0, wait: true, ovl: true, fps: 60 }));
+    runs.down = [mk('a', 0, 'bind', { ver: 'V380' }), mk('a', 1000, 'settle', { type: 'run', name: 'WALKER', gain: 1, y: -7.71, d: 2, tg: 8.59, q: 1, clk: 20, su: 0, so: 0, y0: -9.12, d0: 1 }),
+                 mk('a', 2000, 'snap', { q: 1, clk: 20, y: -7.71, d: 2, tg: 8.59, poss: 1, dir: 1 }),
+                 mk('a', 8000, 'settle', { type: 'run', name: 'WALKER', gain: 8, y: 0.27, d: 3, tg: 0.62, q: 1, clk: 10, su: 0, so: 0, y0: -7.71, d0: 2 })];
+    const A = tl => audit(tl.slice().sort((x, y) => x.t - y.t), {});
+    check('T11 the scorer snapping a normal down after its conversion offer is a GIFT (R-GIFT)', has(A(runs.gift), 'R-GIFT', /snapped a normal down/), '');
+    check('T11b a conversion kick (down 6) then a kickoff is not (no R-GIFT)', !has(A(runs.giftOk), 'R-GIFT'), JSON.stringify(A(runs.giftOk).flags.map(f => f.msg)));
+    check('T12 a handoff received while live and applied 25s later is STALE (R-STALE)', has(A(runs.stale), 'R-STALE', /applied .* 25s after/), JSON.stringify(A(runs.stale).flags.map(f => f.msg)));
+    check('T12b on an older build the same receipt is flagged as queued (R-STALE)', has(A(runs.staleOld), 'R-STALE', /queued it for the next park/), '');
+    check('T12c a handoff purged right after a quarter change is quiet (no R-STALE)', !has(A(runs.purgedAtQ), 'R-STALE'), JSON.stringify(A(runs.purgedAtQ).flags.map(f => f.msg)));
+    check('T13 the keep-drive firing three times in one quarter is flagged (R-KEEP)', has(A(runs.keep), 'R-KEEP', /3 times in Q2/), '');
+    check('T13b ...and on an older build from its diag lines (R-KEEP)', has(A(runs.keepOld), 'R-KEEP', /resume x3 in Q2/), JSON.stringify(A(runs.keepOld).flags.map(f => f.msg)));
+    check('T14 the 300s fallback firing is flagged (R-FALLBACK)', has(A(runs.fallback), 'R-FALLBACK', /fired/), '');
+    check('T15 both waiting while one screen is hidden reads as IDLE, not DEADLOCK (R-POSS)', has(A(runs.hidden), 'R-POSS', /IDLE: .* a's screen was hidden/) && !has(A(runs.hidden), 'R-POSS', /DEADLOCK/), JSON.stringify(A(runs.hidden).flags.map(f => f.msg)));
+    check('T16 8.0 gained with 8.6 to go leaves 3rd down — no R-DOWN', !has(A(runs.down), 'R-DOWN'), JSON.stringify(A(runs.down).flags.map(f => f.msg)));
+}
+
 (async () => {
     console.log('=== AUDIT SELF-TEST ===');
+    synthetic();
     const g = await TP.startTwoPlayerGame({});
     await sleep(6000);
 

@@ -247,6 +247,7 @@ const SET_Q = `(function (q) {
         // simulates a FRESH boundary, so both are reset the same way the
         // latch is.
         window._rb2p_qSnappedThisQuarter = false;
+        window._rb2p_keepQ = null; window._rb2p_keepN = 0;   // V380: this is a fabricated second rollover into the same quarter
         window._rb2p_quarterResumePending = false;
         try {
             var allB = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
