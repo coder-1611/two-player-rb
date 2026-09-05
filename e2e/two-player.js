@@ -70,8 +70,19 @@ async function waitFor(page, pageFn, timeoutMs) {
 // the single-player vs-KC match — that's what the normal harness does.)
 async function openLobbyPage(browser, label, opts) {
     opts = opts || {};
-    const page = await browser.newPage();
-    await page.setViewport({ width: 900, height: 560 });
+    let page;
+    if (process.env.HEADFUL === '1') {
+        // visible mode: each phone in its OWN window, side by side — a hidden tab loses its
+        // WebGL context (the bridge then reloads it) and Chrome throttles it; two windows don't
+        const left = label === 'A' ? 20 : 980;
+        const cdp = await browser.target().createCDPSession();
+        const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank', newWindow: true, left, top: 40, width: 940, height: 620 });
+        const target = await browser.waitForTarget(t => t._targetId === targetId || (t.id && t.id() === targetId), { timeout: 15000 });
+        page = await target.page();
+    } else {
+        page = await browser.newPage();
+        await page.setViewport({ width: 900, height: 560 });
+    }
     // CRITICAL for two tabs in one browser: the GameMaker engine advances on
     // requestAnimationFrame, which Chrome PAUSES for any hidden/backgrounded
     // tab — and only one tab can be foreground at a time. Focus emulation makes
@@ -187,6 +198,7 @@ async function startTwoPlayerGame(opts) {
     // A typed code must reference a real room, so the host must go first.
     a.role = await hostRoom('A', a.page, code);
     b.role = await joinRoom('B', b.page, code);
+    if (opts.beforeReady) { await opts.beforeReady(a.page, 'a'); await opts.beforeReady(b.page, 'b'); }   // e.g. pick the quarter length
     await readyUp('A', a.page);
     await readyUp('B', b.page);
     await waitForMatch('A', a.page);

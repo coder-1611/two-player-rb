@@ -68,18 +68,23 @@ function stopServer() {
 }
 
 async function launchBrowser() {
+    // HEADFUL=1: a visible window (to watch the bots play); otherwise headless.
+    const headful = process.env.HEADFUL === '1';
     return puppeteer.launch({
         executablePath: CHROME,
-        headless: 'new',
-        args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader',
-               '--enable-unsafe-swiftshader', '--mute-audio', '--window-size=900,560',
+        headless: headful ? false : 'new',
+        defaultViewport: headful ? null : undefined,
+        // headless: software GL so it runs anywhere; headful: the REAL GPU (swiftshader on screen = lag)
+        args: ['--no-sandbox'].concat(headful ? [] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']).concat([
+               '--mute-audio', headful ? '--window-size=1000,640' : '--window-size=900,560',
+               headful ? '--window-position=40,40' : '--window-position=0,0',
                // Two-player sim opens two tabs; a backgrounded tab gets its
                // rAF/timer loop throttled by Chrome, which freezes the engine's
                // room transition mid-launch. These keep BOTH tabs running at
                // full speed (harmless for the single-page tests).
                '--disable-background-timer-throttling',
                '--disable-backgrounding-occluded-windows',
-               '--disable-renderer-backgrounding']
+               '--disable-renderer-backgrounding'])
     });
 }
 
