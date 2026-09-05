@@ -75,6 +75,9 @@ function synthetic() {
     check('T14 the 300s fallback firing is flagged (R-FALLBACK)', has(A(runs.fallback), 'R-FALLBACK', /fired/), '');
     check('T15 both waiting while one screen is hidden reads as IDLE, not DEADLOCK (R-POSS)', has(A(runs.hidden), 'R-POSS', /IDLE: .* a's screen was hidden/) && !has(A(runs.hidden), 'R-POSS', /DEADLOCK/), JSON.stringify(A(runs.hidden).flags.map(f => f.msg)));
     check('T16 8.0 gained with 8.6 to go leaves 3rd down — no R-DOWN', !has(A(runs.down), 'R-DOWN'), JSON.stringify(A(runs.down).flags.map(f => f.msg)));
+    // V382: a refused clock write is on record
+    runs.clock = [mk('b', 0, 'bind', { ver: 'V382' }), mk('b', 1000, 'clock', { from: 65, to: 118, q: 3, who: 'L10259', n: 1 })];
+    check('T17 a clock write the law refused is flagged with its writer (R-CLOCK)', has(A(runs.clock), 'R-CLOCK', /65s -> 118s in Q3 .* REFUSED \(writer L10259\)/), JSON.stringify(A(runs.clock).flags.map(f => f.msg)));
 }
 
 (async () => {

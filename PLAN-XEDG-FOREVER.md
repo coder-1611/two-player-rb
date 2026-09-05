@@ -54,6 +54,18 @@ audible** at the Q1→Q2 rollover (the keep loop above).
    and the delivery watchdog re-sends instead. (Found by the full suite:
    V378's rescue flip had raced the re-send at +8 s.)
 
+7. **Within a quarter, the clock only goes down (V382).** The clock gets what
+   the ball has: an owner. The engine's two clock fields are *witnessed* (every
+   write, engine or bridge, is recorded with its caller) and a 50 ms *judge*
+   compares the resting clock with the last accepted one. Up by more than one
+   second (rounding) in the same quarter, unlicensed, is refused: the accepted
+   clock is put back and the writer is named (`CLOCKGATE refused 1:58 — kept
+   1:05 (Q3, writer L10259)`). A quarter change is an epoch. The legitimate
+   upward writers — OT's 10:00, the agreed quarter length at a rollover, the
+   between-quarters keep, the halftime law, a resume restore, the test
+   director — call `_rb2p_clockLicence(why)` first. This alone would have
+   refused MHUY's mirror write and both XEDG rollbacks.
+
 ## The checker learns each one
 
 - **R-GIFT** — the scorer snapped a normal down while still owing the

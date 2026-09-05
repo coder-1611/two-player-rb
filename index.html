@@ -1232,7 +1232,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V381<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V382<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1300,7 +1300,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V381</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V382</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2528,6 +2528,107 @@
                     return a.yard;
                 } catch (e) { return proposed; }
             };
+
+            // ===== V382 CLOCK LAW: WITHIN A QUARTER THE CLOCK ONLY GOES DOWN =====
+            // Rooms MHUY (a stale live-push clock written onto a LIVE phone) and
+            // XEDG (a handoff record applied 50s late: 1:05 -> 1:58, 1:22 -> 1:52)
+            // moved the clock UP. Every fix so far fenced one writer; the clock
+            // itself had no owner. Now it does, the way the ball has one.
+            //
+            //   witness  the engine's two clock fields (_r11 minutes, _s11 seconds)
+            //            are accessors on the match instance; every write, from the
+            //            engine or the bridge, is recorded with its caller. Nothing
+            //            is refused at write time — the engine's own countdown writes
+            //            transient values (-1 then +60) inside one frame.
+            //   judge    every 50ms the RESTING clock is compared with the last
+            //            accepted one. Up by more than 1 second (rounding) in the
+            //            same quarter, with no licence = REFUSED: the accepted clock
+            //            is put back, the writer is named in the log and the audit.
+            //   epoch    a quarter change resets the law (the engine bumps _Wy
+            //            before it resets the clock; OT is quarter 5).
+            //   licence  _rb2p_clockLicence(why[, ms]) — the legitimate upward
+            //            writers say so first: OT's 10:00, the agreed quarter length
+            //            at a rollover, the between-quarters keep, the halftime law,
+            //            a resume restore, the test director. 15s grace after boot
+            //            and after arming (a fresh match sets its clock late).
+            var clockSt = { m: null, q: null, acc: null, armedMs: 0, refusals: 0, passes: 0, lastDiagMs: 0, sinceDiag: 0, internal: false, w: {} };
+            window._rb2p_clockLicenceUntil = 0;
+            window._rb2p_clockLicence = function (why, ms) {
+                window._rb2p_clockLicenceUntil = Date.now() + (ms || 1500);
+                window._rb2p_clockLicenceWhy = String(why || '');
+                if (window._rb2p_diagLog) window._rb2p_diagLog('CLOCKGATE licence (' + why + ')');
+            };
+            function clockCaller() {
+                try {
+                    var st = (new Error().stack || '').split('\n');
+                    for (var i = 1; i < st.length; i++) {
+                        var ln = st[i];
+                        if (/clockCaller|\[as _r11\]|\[as _s11\]|set engineMinutesLeft|set engineSecondsLeft|Object\.set /.test(ln)) continue;
+                        var m = ln.match(/:(\d+):\d+\)?$/);
+                        return m ? 'L' + m[1] : ln.trim().slice(0, 40);
+                    }
+                } catch (e) {}
+                return '?';
+            }
+            function clockWitness(m) {
+                ['_r11', '_s11'].forEach(function (f) {
+                    var d = Object.getOwnPropertyDescriptor(m, f);
+                    if (d && d.get && d.get._rb2pClock) return;
+                    var val = m[f];
+                    var g = function () { return val; }; g._rb2pClock = true;
+                    Object.defineProperty(m, f, { configurable: true, enumerable: true, get: g,
+                        set: function (v) { val = v; if (!clockSt.internal) clockSt.w[f] = { v: v, at: Date.now(), who: clockCaller() }; } });
+                });
+            }
+            var clockFmt = function (t) { t = Math.max(0, Math.round(Number(t) || 0)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); };
+            window._rb2p_clockGateStats = function () {
+                return { q: clockSt.q, accepted: clockSt.acc, refusals: clockSt.refusals, passes: clockSt.passes,
+                         armedMs: clockSt.armedMs, lastWrites: clockSt.w, licenceUntil: window._rb2p_clockLicenceUntil };
+            };
+            window._rb2p_clockGateTestArm = function () { clockSt.armedMs = 0; window.__rbBootMs = Date.now() - 60000; window._rb2p_clockLicenceUntil = 0; };   // test seam: no grace
+            window._rb2p_clockGateTick = function () {
+                try {
+                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { clockSt.m = null; return 'not in match'; }
+                    var em = RB.engineState(); var m = em && em.rawEngineMatch; if (!m) return 'no match';
+                    var now = Date.now();
+                    if (m !== clockSt.m) {
+                        clockWitness(m);
+                        clockSt.m = m; clockSt.q = m._Wy; clockSt.acc = Number(m._r11) * 60 + Number(m._s11); clockSt.armedMs = now; clockSt.w = {};
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('CLOCKGATE armed Q' + m._Wy + ' ' + clockFmt(clockSt.acc));
+                        return 'armed';
+                    }
+                    var cur = Number(m._r11) * 60 + Number(m._s11);
+                    if (!isFinite(cur)) return 'nan';
+                    if (m._Wy !== clockSt.q) {
+                        clockSt.q = m._Wy; clockSt.acc = cur;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('CLOCKGATE epoch Q' + m._Wy + ' ' + clockFmt(cur));
+                        return 'epoch';
+                    }
+                    if (now < (window._rb2p_clockLicenceUntil || 0) || now - clockSt.armedMs < 15000 || now - (Number(window.__rbBootMs) || 0) < 15000) {
+                        clockSt.acc = cur; return 'licensed';
+                    }
+                    if (cur > clockSt.acc + 1) {
+                        var w1 = clockSt.w._r11, w2 = clockSt.w._s11;
+                        var who = (w1 && w2) ? ((w1.at >= w2.at) ? w1.who : w2.who) : ((w1 || w2 || {}).who || '?');
+                        clockSt.internal = true;
+                        try { m._r11 = Math.floor(clockSt.acc / 60); m._s11 = clockSt.acc % 60; m._Yc1 = 0; } finally { clockSt.internal = false; }
+                        clockSt.refusals++; clockSt.sinceDiag++;
+                        if (now - clockSt.lastDiagMs > 1000) {
+                            clockSt.lastDiagMs = now;
+                            var line = 'CLOCKGATE refused ' + clockFmt(cur) + ' — kept ' + clockFmt(clockSt.acc) + ' (Q' + m._Wy + ', writer ' + who + (clockSt.sinceDiag > 1 ? ', x' + clockSt.sinceDiag : '') + ')';
+                            console.warn('[2P ' + line + ']');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog(line);
+                            if (window._rb2p_audit) window._rb2p_audit('clock', { from: clockSt.acc, to: cur, q: Number(m._Wy), who: who, n: clockSt.sinceDiag });
+                            clockSt.sinceDiag = 0;
+                        }
+                        return 'refused';
+                    }
+                    if (cur < clockSt.acc) clockSt.acc = cur;
+                    clockSt.passes++;
+                    return 'ok';
+                } catch (e) { return 'err ' + (e && e.message); }
+            };
+            setInterval(window._rb2p_clockGateTick, 50);
 
             // ===== V354: A HELD RECORD SHIPS LIVE TIME, NOT STALE TIME =====
             // A drive-end outcome is BUILT when the drive ends and shipped up to 4s
@@ -4834,6 +4935,7 @@
                                     typeof window._rb2p_restoreRawOffStats === 'function')
                                     window._rb2p_restoreRawOffStats(window._rb2p_resumeRawOffStats);
                                 if (!resumedOnce) {
+                                    if (window._rb2p_clockLicence) window._rb2p_clockLicence('resume restore');
                                     if (typeof rs.minutes === 'number') em.engineMinutesLeft = rs.minutes;
                                     if (typeof rs.seconds === 'number') em.engineSecondsLeft = rs.seconds;
                                     em.engineTickAllowance = 0;
@@ -6274,6 +6376,7 @@
                              Number(em.engineSecondsLeft)) <= 0) {
                             window._rb2p_qToppedEver[gq] = true;
                             var gSec = window._rb2p_agreedQuarterSec();
+                            if (window._rb2p_clockLicence) window._rb2p_clockLicence('quarter governor Q' + gq);
                             em.engineMinutesLeft   = Math.floor(gSec / 60);
                             em.engineSecondsLeft   = gSec % 60;
                             em.engineTickAllowance = 0;
@@ -6377,6 +6480,7 @@
                             // or the engine rolls the quarter and loops/freezes.
                             if (Number(engineMatch.engineQuarter) > 5) engineMatch.engineQuarter = 5;
                             if (Number(engineMatch.engineMinutesLeft) < 5) {
+                                if (window._rb2p_clockLicence) window._rb2p_clockLicence('OT clock 10:00');
                                 engineMatch.engineMinutesLeft   = 10;
                                 engineMatch.engineSecondsLeft   = 0;
                                 engineMatch.engineTickAllowance = 0;
@@ -6907,6 +7011,7 @@
                                     return;
                                 }
                                 if (typeof window._rb2p_keepGate === 'function' && !window._rb2p_keepGate(Number(engineMatch.engineQuarter), yard, down)) return;   // V380
+                                if (window._rb2p_clockLicence) window._rb2p_clockLicence('quarter keep');
                                 engineMatch.engineMinutesLeft   = qmin;
                                 engineMatch.engineSecondsLeft   = qrem;
                                 engineMatch.engineTickAllowance = 0;
@@ -9822,6 +9927,7 @@
                         em.engineDownNumber = snap.t11; em.engineDriveFsmStage = snap.Vy;
                         em.engineControllerState = snap.kp; em.enginePossessingTeamIdx = snap.UD;
                         em.engineYardsToGo = snap.toGo; em.engineQuarter = snap.q;
+                        if (window._rb2p_clockLicence) window._rb2p_clockLicence('test restore');
                         em.engineMinutesLeft = snap.min; em.engineSecondsLeft = snap.sec;
                         window._rb2p_pickSixPatCascadeActive    = snap.flags.cascade;
                         window._rb2p_pickSixThisDeviceIsThrower = snap.flags.thrower;
@@ -10041,6 +10147,7 @@
                 console.log('  transitions: ' + (transitions.length ? transitions.join('  ') : '(none)'));
                 console.log('  final Vy=' + fin.engineDriveFsmStage + (frozen ? '  ❌ FROZEN on COMM_STAGE_DRIVE' : ''));
 
+                if (window._rb2p_clockLicence) window._rb2p_clockLicence('test restore');
                 em.engineQuarter = save.q; em.engineMinutesLeft = save.min; em.engineSecondsLeft = save.sec;
                 em.enginePossessingTeamIdx = save.UD; em.engineDriveFsmStage = save.Vy;
                 em.setUserScore(save.u); em.setOpponentScore(save.o); em.engineDownNumber = save.t11;
@@ -10800,6 +10907,7 @@
                         // kp=2 so a hand-off that lands near a quarter boundary
                         // can't be re-parked into WAIT.
                         if (window._rb2p_inOvertime) {
+                            if (window._rb2p_clockLicence) window._rb2p_clockLicence('OT clock 10:00 (after apply)');
                             engineMatch.engineMinutesLeft   = 10;
                             engineMatch.engineSecondsLeft   = 0;
                             engineMatch.engineTickAllowance = 0;
@@ -12178,6 +12286,7 @@
                         // cosmetic. A possession ends ONLY via score/punt/turnover.
                         if (Number(em.engineQuarter) > 5) em.engineQuarter = 5;
                         if (Number(em.engineMinutesLeft) < 5) {
+                            if (window._rb2p_clockLicence) window._rb2p_clockLicence('OT clock 10:00');
                             em.engineMinutesLeft   = 10;
                             em.engineSecondsLeft   = 0;
                             em.engineTickAllowance = 0;
@@ -12363,6 +12472,7 @@
                     var qAg = Number(window._rb2p_quarterMins);
                     var qsec = (qAg === 1 || qAg === 2 || qAg === 3) ? qAg * 60
                              : (Number(window._rb2p_quarterLenSec) >= 1 ? Number(window._rb2p_quarterLenSec) : 120);
+                    if (window._rb2p_clockLicence) window._rb2p_clockLicence('Q3 law');
                     em.engineMinutesLeft   = Math.floor(qsec / 60);
                     em.engineSecondsLeft   = qsec % 60;
                     em.engineTickAllowance = 0;
@@ -12512,6 +12622,7 @@
                         // V109: OT inherits the regulation-end clock (0:00). Give
                         // this possession a clock so it doesn't instantly roll the
                         // quarter (the coordinator keeps it topped up thereafter).
+                        if (window._rb2p_clockLicence) window._rb2p_clockLicence('OT clock 10:00 (OT drive)');
                         em.engineMinutesLeft   = 10;
                         em.engineSecondsLeft   = 0;
                         em.engineTickAllowance = 0;

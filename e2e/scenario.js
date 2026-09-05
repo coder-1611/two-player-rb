@@ -70,6 +70,7 @@ function otherPage(game, page) { return page === game.a.page ? game.b.page : gam
 async function setClock(page, { q, min, sec } = {}) {
     return page.evaluate(({ q, min, sec }) => {
         const s = RB.engineState(); if (!s) return false;
+        if (window._rb2p_clockLicence) window._rb2p_clockLicence('scenario setClock');   // V382: a director's write is licensed
         if (q != null) s.engineQuarter = q;
         if (min != null) s.engineMinutesLeft = min;
         if (sec != null) s.engineSecondsLeft = sec;

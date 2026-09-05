@@ -472,6 +472,11 @@ function audit(tl, extra) {
         }
     }
 
+    // ---- R-CLOCK (V382): the clock law refused an upward write ----
+    for (const e of tl.filter(x => x.k === 'clock'))
+        flag('R-CLOCK', `clock write ${e.from}s -> ${e.to}s in Q${e.q} on ${e.role} REFUSED (writer ${e.who}${e.n > 1 ? ', x' + e.n : ''})`, [e],
+             `Something tried to move ${T(e.role)}'s clock from ${clockStr(e.from)} back up to ${clockStr(e.to)} in quarter ${e.q}; the game refused it and kept ${clockStr(e.from)}.`);
+
     // ---- R-XPORT: sends that never got acked while the other side was alive ----
     {
         const sends = tl.filter(x => x.k === 'send' && x.type !== 'PAT_RESULT' || (x.k === 'send' && x.type === 'PAT_RESULT'));
@@ -501,7 +506,7 @@ const RULE_TEXT = {
     'R-CONT':  'Between two plays of the same drive, the ball or the down changed without a play — a reset or a restore fired in the middle of a drive.',
     'R-SCORE': 'A score changed in a way football cannot produce (it went down, or jumped by an impossible amount), or a phone came back from a refresh with a different score than the other phone had.',
     'R-FINAL': 'The two phones ended the game disagreeing about the final score.',
-    'R-CLOCK': 'Game time went backwards inside a quarter, or the quarter number moved the wrong way.',
+    'R-CLOCK': 'Game time went backwards inside a quarter, or the quarter number moved the wrong way — or (V382+) a write that would have done so was refused by the clock law.',
     'R-POSS':  'The two phones disagreed about who had the ball: both waiting (a dead game), both playing offense, a phone taking the ball with nothing handing it over, or a phone refused when it should have been allowed to play.',
     'R-OVL':   'The WAITING FOR OPPONENT cover misbehaved: it blinked, or it was off while the phone was supposed to be waiting, showing a formation that was not that phone\'s to play.',
     'R-P6':    'A pick-six did not go the way it must: a step was late or missing, the wrong phone built a conversion, two conversions appeared for one score, or a pick-six was "detected" that never happened (usually right after a refresh).',
@@ -618,6 +623,7 @@ function narrate(tl, meta) {
                 break;
             }
             case 'final': push(e, 'FINAL on ' + who + '\'s phone: ' + e.su + '-' + e.so + '.', 'quarter'); break;
+            case 'clock': push(e, 'A write tried to move ' + who + '\'s clock up from ' + clockStr(e.from) + ' to ' + clockStr(e.to) + ' — refused.', 'flagline'); break;
             case 'purge': push(e, who + ' throws away an old ' + String(e.type).replace('OTHER', 'possession change').replace('PAT_RESULT', 'conversion result').toLowerCase() + ' handoff (' + Math.round((e.ageMs || 0) / 1000) + 's old) that had arrived while it was playing.', 'system'); break;
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;

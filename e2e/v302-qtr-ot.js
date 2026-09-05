@@ -274,6 +274,12 @@ const SET_Q = `(function (q) {
     }, SET_Q, SETTLED, STALE);
 
     await sleep(500);   // the tracker runs at 100ms
+    console.log('  A1 state: ' + JSON.stringify(await drv.page.evaluate(() => { const s = RB.engineState(); const d = String(window._rb2p_readDiagLog()); return {
+        q: s.engineQuarter, vy: s.engineDriveFsmStage, kp: s.engineControllerState, y: s.engineYardLineSigned, down: s.engineDownNumber,
+        clk: Number(s.engineMinutesLeft) * 60 + Number(s.engineSecondsLeft), hasBall: s.enginePossessingTeamIdx === s.engineUserTeamIdx,
+        waiting: window._rb2p_userIsWaitingForOpponent, latchQ: window._rb2p_qEndLatchQ, playLive: (typeof rb2pPlayInProgress === 'function') ? rb2pPlayInProgress() : null,
+        gate: window._rb2p_clockGateStats && { q: window._rb2p_clockGateStats().q, acc: window._rb2p_clockGateStats().accepted, ref: window._rb2p_clockGateStats().refusals },
+        diag: d.slice(-400) }; })));
     const latch = await drv.page.evaluate(() =>
         (typeof window._rb2p_qEndSpot === 'function') ? window._rb2p_qEndSpot(2) : null);
     check('A1 Vy=13 park latched the SETTLED spot, not the stale preRollover',
@@ -319,6 +325,7 @@ const SET_Q = `(function (q) {
             // toPeriod5 callers below); this write just clears anything below the
             // running high-water mark.
             s.setUserScore(0); s.setOpponentScore(0);
+            if (window._rb2p_clockLicence) window._rb2p_clockLicence('test: OT setup');   // V382: a director's upward write is licensed
             s.engineMinutesLeft = 1; s.engineSecondsLeft = 0; s.engineTickAllowance = 0;
             window._rb2p_gameOverReported = false;
         }, SET_Q);
