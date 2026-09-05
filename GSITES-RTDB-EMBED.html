@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif}
+  #frame{position:fixed;inset:0;width:100%;height:100%;border:0;display:block}
+  #splash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#8ab7ff;background:#0a0a1a;font-size:15px}
+</style>
+</head>
+<body>
+  <!-- Two-player Retro Bowl. The whole game is one self-contained document stored in
+       Firebase RTDB (engine + data + images all inlined). This bootstrap just fetches
+       that one document and shows it in an iframe — no fetch/XHR/src overrides, no
+       remote code assembly. Paste into Google Sites: Insert -> Embed -> "Embed code"
+       on a "Full page embed" page. -->
+  <div id="splash">Loading game from Firebase…</div>
+  <script>
+  (async function () {
+    var URL_ = 'https://realretrobowl2p-default-rtdb.firebaseio.com/embedcode/selfcontained.json';
+    try {
+      var res = await fetch(URL_);
+      var html = await res.json();               // the entire self-contained game, one string
+      var f = document.createElement('iframe');
+      f.id = 'frame';
+      f.setAttribute('allow', 'autoplay; fullscreen; gamepad; accelerometer; gyroscope; clipboard-read; clipboard-write');
+      f.setAttribute('allowfullscreen', '');
+      f.srcdoc = html;
+      var s = document.getElementById('splash'); if (s) s.remove();
+      document.body.appendChild(f);
+    } catch (e) {
+      var s = document.getElementById('splash'); if (s) s.textContent = 'Load error: ' + (e && e.message || e);
+    }
+  })();
+  </script>
+</body>
+</html>
