@@ -60,6 +60,7 @@ function toTimeline(streams) {
 }
 const fmtT = (t0, t) => ((t - t0) / 1000).toFixed(1).padStart(7) + 's';
 function line(t0, e) {
+    if (!e) return '        (no entry)';
     const f = Object.assign({}, e); delete f.t; delete f.k; delete f.role; delete f.key; delete f.s;
     return fmtT(t0, e.t) + ' [' + e.role + '] ' + e.k + ' ' + JSON.stringify(f);
 }
@@ -116,7 +117,7 @@ function audit(tl, extra) {
         const at = (cites && cites[0] && cites[0].t) || t0;
         const own = (cites || []).find(e => e && typeof e.q === 'number' && typeof e.clk === 'number');
         const near = own || clockAt(at);
-        flags.push({ rule, msg, plain: plain || msg, cites: (cites || []).map(e => line(t0, e)),
+        flags.push({ rule, msg, plain: plain || msg, cites: (cites || []).filter(Boolean).map(e => line(t0, e)),
                      q: near ? near.q : undefined, clk: near ? near.clk : undefined, t: at });
     };
     const byRole = { a: tl.filter(e => e.role === 'a'), b: tl.filter(e => e.role === 'b') };
