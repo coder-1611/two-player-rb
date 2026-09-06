@@ -1232,7 +1232,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V385<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V386<span class="rb-cursor">_</span></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1300,7 +1300,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V385</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V386</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2581,6 +2581,38 @@
                 });
             }
             var clockFmt = function (t) { t = Math.max(0, Math.round(Number(t) || 0)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); };
+            // ===== V386 EMPTY-FIELD LAW (room FEED, Q2 1:50 on phone B) =====
+            // B's play ended while its page was hidden (frames stopped); when the
+            // screen came back the field was EMPTY — no ball, no players — with B
+            // live. Nothing to drag, nothing to tap, and no watchdog covered it:
+            // the stuck-drive watchdog hands off dead FSM stages, the staging
+            // healer keys on a kickoff button. A live phone, drawing frames, with
+            // an empty field for 2.5s and nothing owed, gets its drive staged
+            // again at the yard line the engine still holds.
+            var emptySinceMs = 0, emptyLastMs = 0;
+            setInterval(function () {
+                try {
+                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { emptySinceMs = 0; return; }
+                    if (window._rb2p_userIsWaitingForOpponent === true || window._rb2p_gameOverReported === true) { emptySinceMs = 0; return; }
+                    if (document.hidden || (window._rb2p_diagFpsSeen === true && Number(window._rb2p_diagFps) === 0)) { emptySinceMs = 0; return; }
+                    var em = RB.engineState(); if (!em || !em.rawEngineMatch) { emptySinceMs = 0; return; }
+                    if (em.rawEngineMatch._T11 === 1 || Number(em.engineDownNumber) === 6) { emptySinceMs = 0; return; }
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) { emptySinceMs = 0; return; }
+                    var inst = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    var ball = 0, of = 0, btn = 0;
+                    for (var i = 0; i < inst.length; i++) { var x = inst[i]; if (!x || x._HL2 || !x._eE2) continue; var n = x._eE2._fE2; if (n === 'obj_ball') ball++; else if (n === 'obj_playerOF') of++; else if (/btn|button/.test(n || '') && !/audible|timeout/.test(n || '')) btn++; }
+                    if (ball > 0 || of > 0 || btn > 0) { emptySinceMs = 0; return; }
+                    var now = Date.now();
+                    if (!emptySinceMs) { emptySinceMs = now; return; }
+                    if (now - emptySinceMs < 2500 || now - emptyLastMs < 8000) return;
+                    emptyLastMs = now; emptySinceMs = 0;
+                    var y = Number(em.engineYardLineSigned); if (!isFinite(y) || Math.abs(y) > 49) y = -25;
+                    var ok = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(y, true) : false;
+                    console.warn('[2P EMPTY-FIELD] live with nothing on the field for 2.5s — re-staged the drive at ' + Math.round(y) + ' -> ' + ok);
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('EMPTY-FIELD re-staged the drive at ' + Math.round(y) + (ok ? '' : ' (FAILED)'));
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'empty-field', y: Math.round(y), ok: ok !== false });
+                } catch (e) {}
+            }, 500);
             window._rb2p_clockGateStats = function () {
                 return { q: clockSt.q, accepted: clockSt.acc, refusals: clockSt.refusals, passes: clockSt.passes,
                          armedMs: clockSt.armedMs, lastWrites: clockSt.w, licenceUntil: window._rb2p_clockLicenceUntil };
@@ -4165,6 +4197,7 @@
                                             'cDROP y=' + Math.round(Number(window._rb2p_feedYard0)) +
                                             ' d=' + Number(window._rb2p_feedDown0) + ' prevbkp=' + prev);
                                     window._rb2p_feedYard0     = Number(fem.engineYardLineSigned);    // signed yard line at snap
+                                    window._rb2p_feedIsKick    = !!((fem.rawEngineMatch && fem.rawEngineMatch._T11 === 1) || Number(fem.engineDownNumber) === 6);   // V386: kicks are never narrated as plays
                                     window._rb2p_feedDown0     = Number(fem.engineDownNumber);   // down at snap
                                     window._rb2p_feedThrew     = false;
                                     window._rb2p_feedSawSack   = false;
@@ -4229,6 +4262,7 @@
                                     window._rb2p_feedSawSack   = false;
                                     window._rb2p_feedCatchName = '';
                                     window._rb2p_feedYard0     = Number(fem.engineYardLineSigned);
+                                    window._rb2p_feedIsKick    = !!((fem.rawEngineMatch && fem.rawEngineMatch._T11 === 1) || Number(fem.engineDownNumber) === 6);   // V386: kicks are never narrated as plays
                                     window._rb2p_feedDown0     = Number(fem.engineDownNumber);
                                     var s0d = window._rb2p_feedStat0 = {};
                                     rosterEach(function (p, i2) {
@@ -4354,7 +4388,14 @@
                                     // If nothing was credited, nothing was thrown, and
                                     // nobody was sacked, the settle is consumed in
                                     // silence — whatever _6F did.
-                                    if (!(window._rb2p_feedSawSack === true ||
+                                    // V386 (device report: "Mahomes to Butker 59 yards" at the half): a KICK —
+                                    // kickoff, punt, field goal, PAT — is never a pass or a run; the kicker is
+                                    // not a receiver. Only score deltas describe a kick, never this feed.
+                                    var feedKick = window._rb2p_feedIsKick === true || (fem.rawEngineMatch && fem.rawEngineMatch._T11 === 1);
+                                    if (feedKick) {
+                                        window._rb2p_feedEmitted = true;
+                                        if (window._rb2p_diagLog) window._rb2p_diagLog('cSKIP kick play (no commentary)');
+                                    } else if (!(window._rb2p_feedSawSack === true ||
                                           (window._rb2p_feedThrew === true && qbAttDelta > 0) ||
                                           qbPassDelta > 0.01 ||
                                           qbRushAttDelta > 0 || Math.abs(qbRushYdDelta) > 0.01 ||
