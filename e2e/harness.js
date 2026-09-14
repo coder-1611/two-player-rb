@@ -98,6 +98,7 @@ async function openPage(browser, opts) {
     const errors = [];
     page.on('pageerror', e => { if (!KNOWN_BENIGN_ERR.test(e.message)) errors.push(e.message); });
     if (opts.onConsole) page.on('console', m => opts.onConsole(m.text()));
+    await page.evaluateOnNewDocument(() => { try { localStorage.setItem('rb2p_name', 'Harness'); localStorage.setItem('rb2p_news_v387', '1'); } catch (e) {} });   // V387
     await page.goto(url(), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     await sleep(ENGINE_BOOT_MS);
     if (opts.match) await enterMatch(page, opts.oppUid);

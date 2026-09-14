@@ -1,0 +1,9 @@
+{
+  "rules": {
+    "rooms": { ".read": "auth != null", "$room": { ".write": "auth != null" } },
+    "taps":  { "$room": { ".read": "auth != null", ".write": "auth != null" } },
+    "diag":  { "$key":  { ".read": "auth != null", ".write": "auth != null" } },
+    "complaints": { ".read": "auth != null", "$id": { ".write": "auth != null && !data.exists()" } },
+    "embedcode": { ".read": true }
+  }
+}

@@ -100,6 +100,11 @@
           if (!n.a && outcomes && outcomes.b && outcomes.b.toTeam) n.a = outcomes.b.toTeam; if (!n.b && outcomes && outcomes.a && outcomes.a.toTeam) n.b = outcomes.a.toTeam; } catch (e) {}
     return { a: n.a || 'Phone A', b: n.b || 'Phone B' };
   };
+  // V387: who was holding the phone — rooms/{code}/names/{a|b}
+  const withWho = (nm, who) => ({ a: (who && who.a && who.a !== '?') ? who.a + ' · ' + nm.a : nm.a, b: (who && who.b && who.b !== '?') ? who.b + ' · ' + nm.b : nm.b });
+  const complaintCard = c => '<div class="card" style="padding:10px 14px"><div class="row"><div class="grow"><div class="teams"><b>' + esc(c.name || '?') + '</b>' +
+      (c.room ? ' · <a href="?room=' + esc(c.room) + '">' + esc(c.room) + '</a>' : '') + (c.role ? ' (phone ' + esc(String(c.role).toUpperCase()) + ')' : '') + ' · ' + esc(c.ver || '') + '</div>' +
+      '<div style="margin:6px 0;white-space:pre-wrap">' + esc(c.text || '') + '</div><div class="when">' + esc(fmtWhen(c.ts)) + '</div></div></div></div>';
 
   // ---- the list ----
   async function renderList() {
@@ -107,18 +112,28 @@
     let codes; try { codes = Object.keys(await get('rooms', 'shallow=true') || {}); } catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
     const rows = [];
     for (const code of codes) {
-      const [auditedRec, flag, outcomes, audA] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true')]);
+      const [auditedRec, flag, outcomes, audA, who] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true'), get('rooms/' + code + '/names')]);
       if (!audA) continue;                                   // no transcript = nothing to tell
       const keys = Object.keys(audA); const lastKey = keys.sort().pop(); const lastT = lastKey ? Number(lastKey.split('_')[0]) : 0;
-      rows.push({ code, names: names(outcomes), lastT, audited: auditedRec, flag, live: Date.now() - lastT < 3 * 60 * 1000 });
+      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: Date.now() - lastT < 3 * 60 * 1000 });
     }
     rows.sort((x, y) => y.lastT - x.lastT);
     const showTests = new URLSearchParams(location.search).get('tests') === '1';
-    const real = rows.filter(r => r.names.a !== 'Phone A' || r.names.b !== 'Phone B');
+    const real = rows.filter(r => r.team.a !== 'Phone A' || r.team.b !== 'Phone B');
     const shown = showTests ? rows : real;
     if (!shown.length) { app.innerHTML = '<div class="empty">No recorded games yet. Play one on V365 or later and it will appear here.' + (rows.length ? ' <a href="?tests=1">Show ' + rows.length + ' test-harness games</a>' : '') + '</div>'; return; }
     const foot = (!showTests && rows.length > real.length) ? '<p class="when" style="text-align:center;margin-top:18px">' + (rows.length - real.length) + ' test-harness game' + (rows.length - real.length === 1 ? '' : 's') + ' hidden · <a href="?tests=1">show them</a></p>' : (showTests ? '<p class="when" style="text-align:center;margin-top:18px"><a href="./">hide test-harness games</a></p>' : '');
-    app.innerHTML = shown.map(r => {
+    // V387: bug reports from the in-game "!" box, newest first
+    let complaintsHtml = '';
+    try {
+      const all = await get('complaints') || {};
+      const list = Object.keys(all).map(k => Object.assign({ id: k }, all[k])).filter(c => c && c.ts).sort((x, y) => y.ts - x.ts);
+      const showAll = new URLSearchParams(location.search).get('complaints') === '1';
+      const top = showAll ? list : list.slice(0, 5);
+      if (list.length) complaintsHtml = '<h2 style="margin:0 0 10px">Bug reports <span class="when">(' + list.length + ')</span></h2>' + top.map(complaintCard).join('') +
+        (list.length > top.length ? '<p class="when" style="margin:0 0 18px"><a href="?complaints=1">Show all ' + list.length + '</a></p>' : '<p style="margin:0 0 18px"></p>') + '<h2 style="margin:0 0 10px">Games</h2>';
+    } catch (e) {}
+    app.innerHTML = complaintsHtml + shown.map(r => {
       const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.flag ? '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
@@ -128,13 +143,15 @@
   async function renderGame(code) {
     app.innerHTML = '<div class="empty">Reading ' + esc(code) + '…</div>';
     let aud, outcomes, fin;
-    try { [aud, outcomes, fin] = await Promise.all([get('rooms/' + code + '/audit'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/final')]); }
+    let who = null, myComplaints = [];
+    try { [aud, outcomes, fin, who] = await Promise.all([get('rooms/' + code + '/audit'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/final'), get('rooms/' + code + '/names')]); }
     catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
     if (!aud || (!aud.a && !aud.b)) { app.innerHTML = '<div class="empty">No transcript for ' + esc(code) + ' (played before V365, or already cleaned up). <a href="./">All games</a></div>'; return; }
     const R = window.RB2P_AUDIT;
     const tl = R.toTimeline({ a: aud.a || {}, b: aud.b || {} });
-    const nm = names(outcomes);
+    const nm = withWho(names(outcomes), who);
     const res = R.audit(tl, { names: nm });
+    try { const all = await get('complaints') || {}; myComplaints = Object.keys(all).map(k => all[k]).filter(c => c && c.room === code).sort((x, y) => x.ts - y.ts); } catch (e) {}
     const story = R.narrate(tl, { names: nm });
     // final score as A sees it (a's last score entry, else b's mirrored)
     const lastA = tl.filter(e => e.role === 'a' && e.k === 'score').pop(), lastB = tl.filter(e => e.role === 'b' && e.k === 'score').pop();
@@ -172,6 +189,7 @@
       '<p style="margin:12px 0 0">' + esc(summary) + (tl.clockSkewMs ? ' The two phones\' clocks differed by about ' + Math.abs(tl.clockSkewMs / 1000).toFixed(0) + ' seconds; ' + esc(nm.b) + '\'s lines were shifted to match.' : '') + '</p><div style="margin-top:12px"><a class="btn" href="./" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
 
     if (res.flags.length) {
+      if (myComplaints.length) html += '<h2>What the players reported</h2>' + myComplaints.map(complaintCard).join('');
       html += '<h2>What went wrong</h2><div class="card" style="padding:6px 14px">';
       for (const f of res.flags) {
         const when = (typeof f.q === 'number' && typeof f.clk === 'number') ? 'Q' + f.q + ' ' + mmss(f.clk) : mmss((f.t - tl[0].t) / 1000) + ' of real time in';

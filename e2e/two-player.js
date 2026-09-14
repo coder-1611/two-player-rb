@@ -101,6 +101,7 @@ async function openLobbyPage(browser, label, opts) {
         logs.push(t);
         if (opts.logBridge && /\[2P/.test(t)) console.log('    [' + label + '] ' + t);
     });
+    await page.evaluateOnNewDocument((label) => { try { localStorage.setItem('rb2p_name', 'Bot ' + label); localStorage.setItem('rb2p_news_v387', '1'); } catch (e) {} }, label);   // V387: past the name gate + the announcement
     await page.goto(H.url(), { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     await H.sleep(Number(process.env.RB_E2E_BOOT_MS || 9000));
     const ready = await waitFor(page,

@@ -663,6 +663,50 @@
             cursor: pointer; box-shadow: 4px 4px 0 #0a1838; transition: transform .07s;
         }
         #rb-lobby .rb-join-btn:hover { transform: translate(-1px,-1px); }
+
+        /* ---- V387: the name gate ---- */
+        #rb-lobby[data-active="name"] .rb-screen[data-view="name"] {
+            position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
+            gap: 18px; width: 100%; max-height: 100vh; overflow-y: auto; padding: 56px 24px 56px; text-align: center;
+        }
+        #rb-lobby #rb-name-input { width: min(300px, 80vw); letter-spacing: 3px; text-transform: none; font-size: 15px; }
+        #rb-lobby .rb-playing-as { font-family: 'Press Start 2P', monospace; font-size: 10px; letter-spacing: 2px; color: #ffd23f; margin: 0; }
+        #rb-lobby .rb-playing-as a { color: #fff; cursor: pointer; text-decoration: underline; margin-left: 10px; }
+        /* ---- V387: the bug-report chip, bottom-left, out of the way ---- */
+        #rb-complain {
+            position: fixed; left: 8px; bottom: 8px; z-index: 9997; width: 34px; height: 34px; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            font: bold 18px monospace; color: #ffd23c; background: rgba(10,10,20,.72);
+            border: 2px solid #ffd23c; border-radius: 8px; opacity: .7; cursor: pointer;
+            -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+        }
+        #rb-complain:hover, #rb-complain.open { opacity: 1; }
+        #rb-complain-panel {
+            position: fixed; left: 8px; bottom: 50px; z-index: 9997; width: min(340px, calc(100vw - 16px));
+            background: rgba(8,20,52,.97); border: 3px solid #ffd23c; border-radius: 8px; padding: 12px;
+            color: #fff; font-family: monospace; box-shadow: 4px 4px 0 #0a1838; box-sizing: border-box;
+        }
+        #rb-complain-panel[hidden] { display: none; }
+        #rb-complain-panel h3 { margin: 0 0 8px; font: bold 11px 'Press Start 2P', monospace; letter-spacing: 1px; color: #ffd23c; }
+        #rb-complain-panel textarea { width: 100%; height: 90px; box-sizing: border-box; resize: vertical; font: 13px monospace;
+            color: #fff; background: rgba(0,0,0,.35); border: 2px solid #fff; padding: 8px; outline: none; }
+        #rb-complain-panel .row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+        #rb-complain-panel button { font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 8px 12px;
+            border: 3px solid #0a1838; cursor: pointer; box-shadow: 3px 3px 0 #0a1838; }
+        #rb-complain-send { background: #ffd23f; color: #0a1838; }
+        #rb-complain-close { background: #fff; color: #0a1838; }
+        #rb-complain-panel .note { font-size: 11px; color: rgba(255,255,255,.75); margin: 6px 0 0; line-height: 1.4; }
+        /* ---- V387: first-run announcement ---- */
+        #rb-news { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.84); }
+        #rb-news[hidden] { display: none; }
+        #rb-news .box { width: min(540px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #0d2a6b; border: 5px solid #fff;
+            box-shadow: 8px 8px 0 #0a1838; padding: 22px 24px; color: #fff; font-family: monospace; text-align: left; box-sizing: border-box; }
+        #rb-news h2 { margin: 0 0 14px; font: bold 13px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; text-align: center; line-height: 1.6; }
+        #rb-news p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+        #rb-news b { color: #ffd23f; }
+        #rb-news .chip { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 2px solid #ffd23c; border-radius: 6px; color: #ffd23c; font-weight: bold; vertical-align: middle; }
+        #rb-news button { display: block; margin: 16px auto 0; font: bold 12px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 12px 24px;
+            background: #ffd23f; color: #0a1838; border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
         #rb-lobby .rb-join-btn:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #0a1838; }
 
         #rb-lobby .msg { font-size: 11px; min-height: 14px; margin: 4px 0 0 0; letter-spacing: 1px; color: #ff8c8c; }
@@ -1171,10 +1215,20 @@
                 // must be typable even in-match, so shield it regardless of
                 // lobby visibility. The lobby is shielded only while visible.
                 var inVj = tgt.closest('#rb-verjump');
+                // V387: the bug-report box is typed into IN-MATCH too — shield it always
+                var inCp = tgt.closest('#rb-complain-panel');
                 var lob = document.getElementById('rb-lobby');
                 var inLobby = lob && lob.style.display !== 'none' && tgt.closest('#rb-lobby');
-                if (!inVj && !inLobby) return;
+                if (!inVj && !inLobby && !inCp) return;
 
+                // V387: Enter on the name input = CONTINUE
+                if (e.type === 'keydown' && e.key === 'Enter' && tgt.id === 'rb-name-input') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var goBtn = document.getElementById('rb-name-go');
+                    if (goBtn) goBtn.click();
+                    return;
+                }
                 // Enter on the room-code input triggers JOIN
                 if (e.type === 'keydown' && e.key === 'Enter' &&
                     tgt.id === 'rb-room-input') {
@@ -1209,6 +1263,26 @@
     </script>
 
     <!-- 2-Player Lobby — fullscreen overlay, shown until both players ready -->
+    <!-- V387: bug reports (bottom-left chip) + first-run announcement -->
+    <button id="rb-complain" type="button" title="Report a bug or complaint" aria-label="Report a bug">!</button>
+    <div id="rb-complain-panel" hidden>
+        <h3>REPORT A BUG</h3>
+        <textarea id="rb-complain-text" maxlength="2000" placeholder="What went wrong? Which quarter, what you were doing, what you saw."></textarea>
+        <div class="row">
+            <button id="rb-complain-send" type="button">SEND</button>
+            <button id="rb-complain-close" type="button">CLOSE</button>
+            <span id="rb-complain-status" class="note" style="margin:0"></span>
+        </div>
+        <p class="note">Your name, the room code and the game's own log go with it.</p>
+    </div>
+    <div id="rb-news" hidden>
+        <div class="box">
+            <h2>TWO NEW FEATURES</h2>
+            <p><b>1. Your name.</b> Before you play you'll be asked for your name, once. It shows next to your team on the game records, so we can see who played.</p>
+            <p><b>2. Report a bug.</b> The <span class="chip">!</span> button in the bottom-left corner opens a box. Type what went wrong and send it &mdash; it arrives with the game's own log attached.</p>
+            <button id="rb-news-ok" type="button">GOT IT</button>
+        </div>
+    </div>
     <div id="rb-lobby" data-active="entry">
         <!-- field background layers -->
         <div class="rb-bg-hash" aria-hidden="true"></div>
@@ -1232,7 +1306,8 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V386<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V387<span class="rb-cursor">_</span></p>
+            <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
                 <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
@@ -1250,6 +1325,15 @@
                 </div>
             </div>
             <p id="rb-entry-msg" class="msg"></p>
+        </div>
+
+        <!-- ======================= WHO'S PLAYING (V387) ======================= -->
+        <div data-view="name" class="rb-screen">
+            <h1 class="rb-wordmark">WHO'S <span class="accent">PLAYING?</span></h1>
+            <p class="rb-sub">YOUR NAME GOES NEXT TO YOUR TEAM ON THE GAME RECORDS</p>
+            <input id="rb-name-input" maxlength="16" placeholder="YOUR NAME" autocomplete="off" autocapitalize="words">
+            <button id="rb-name-go" class="rb-cta">CONTINUE</button>
+            <p id="rb-name-msg" class="msg"></p>
         </div>
 
         <!-- ======================= ROOM ======================= -->
@@ -1300,7 +1384,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V386</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V387</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15699,8 +15783,85 @@
             }
             return null;
         }
+        // ===== V387: WHO'S PLAYING — a name before anything else =====
+        // Mandatory and free-form; it does nothing in the game. It is written to
+        // rooms/{code}/names/{role} so the game records say who played.
+        var $lobbyEl = document.getElementById('rb-lobby');
+        var $nameIn = document.getElementById('rb-name-input'), $nameGo = document.getElementById('rb-name-go'),
+            $nameMsg = document.getElementById('rb-name-msg'), $playingAs = document.getElementById('rb-playing-as');
+        function rb2pName() { try { return String(localStorage.getItem('rb2p_name') || '').trim(); } catch (e) { return ''; } }
+        window._rb2p_playerName = rb2pName;
+        function renderPlayingAs() {
+            if (!$playingAs) return;
+            var n = rb2pName();
+            $playingAs.innerHTML = n ? 'PLAYING AS ' + esc(n) + '<a id="rb-name-change">CHANGE</a>' : '';
+            var ch = document.getElementById('rb-name-change');
+            if (ch) ch.addEventListener('click', function () { showNameGate(); });
+        }
+        function showNameGate() {
+            if (!$lobbyEl) return;
+            $lobbyEl.dataset.active = 'name';
+            if ($nameIn) { $nameIn.value = rb2pName(); setTimeout(function () { try { $nameIn.focus(); } catch (e) {} }, 60); }
+        }
+        function commitName() {
+            var n = String(($nameIn && $nameIn.value) || '').trim().replace(/\s+/g, ' ').slice(0, 16);
+            if (n.length < 2) { if ($nameMsg) $nameMsg.textContent = 'At least 2 characters, please.'; return false; }
+            try { localStorage.setItem('rb2p_name', n); } catch (e) {}
+            if ($nameMsg) $nameMsg.textContent = '';
+            if ($lobbyEl) $lobbyEl.dataset.active = 'entry';
+            renderPlayingAs();
+            return true;
+        }
+        if ($nameGo) $nameGo.addEventListener('click', commitName);
+        if ($nameIn) $nameIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitName(); });
+        renderPlayingAs();
+        if (!rb2pName() && $lobbyEl && $lobbyEl.dataset.active === 'entry') showNameGate();
+
+        // ===== V387: first-run announcement =====
+        try {
+            var $news = document.getElementById('rb-news'), $newsOk = document.getElementById('rb-news-ok');
+            if ($news && !localStorage.getItem('rb2p_news_v387')) {
+                $news.hidden = false;
+                if ($newsOk) $newsOk.addEventListener('click', function () { try { localStorage.setItem('rb2p_news_v387', '1'); } catch (e) {} $news.hidden = true; });
+            }
+        } catch (eNews) {}
+
+        // ===== V387: bug reports -> complaints/{id} =====
+        window._rb2p_sendComplaint = async function (text) {
+            var t = String(text || '').trim().slice(0, 2000);
+            if (!t) throw new Error('empty');
+            var ver = ''; try { ver = (document.querySelector('.prompt') || { textContent: '' }).textContent.match(/V\d+/)[0]; } catch (e) {}
+            var rec = { name: rb2pName() || '?', room: myRoom || (function () { try { return sessionStorage.getItem('rb_room') || ''; } catch (e) { return ''; } })(),
+                        role: myRole || '', ver: ver, text: t, ts: Date.now(), ua: String(navigator.userAgent || '').slice(0, 140),
+                        diag: String(window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : '').slice(-1500) };
+            var id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            try { await FB.set(FB.ref(db, 'complaints/' + id), rec); }
+            catch (e1) { if (window._rb2p_fbRestPut) await window._rb2p_fbRestPut('complaints/' + id, rec); else throw e1; }
+            if (window._rb2p_diagLog) window._rb2p_diagLog('COMPLAINT sent ' + id);
+            return id;
+        };
+        (function () {
+            var chip = document.getElementById('rb-complain'), panel = document.getElementById('rb-complain-panel'),
+                ta = document.getElementById('rb-complain-text'), send = document.getElementById('rb-complain-send'),
+                close = document.getElementById('rb-complain-close'), st = document.getElementById('rb-complain-status');
+            if (!chip || !panel) return;
+            function open() { panel.hidden = false; chip.classList.add('open'); if (st) st.textContent = ''; setTimeout(function () { try { ta.focus(); } catch (e) {} }, 40); }
+            function shut() { panel.hidden = true; chip.classList.remove('open'); }
+            chip.addEventListener('click', function () { panel.hidden ? open() : shut(); });
+            if (close) close.addEventListener('click', shut);
+            if (send) send.addEventListener('click', async function () {
+                var t = String(ta.value || '').trim();
+                if (t.length < 3) { if (st) st.textContent = 'Say a little more.'; return; }
+                send.disabled = true; if (st) st.textContent = 'Sending…';
+                try { await window._rb2p_sendComplaint(t); ta.value = ''; if (st) st.textContent = 'Sent. Thank you.'; setTimeout(shut, 1400); }
+                catch (e) { if (st) st.textContent = 'Could not send: ' + (e && e.message || e); }
+                finally { send.disabled = false; }
+            });
+        })();
+
         if ($play2p) {
             $play2p.addEventListener('click', async function () {
+                if (!rb2pName()) { showNameGate(); return; }
                 $entryMsg.textContent = '';
                 $play2p.disabled = true;
                 try {
@@ -15720,6 +15881,7 @@
         }
 
         async function joinByCode() {
+            if (!rb2pName()) { showNameGate(); return; }
             $entryMsg.textContent = '';
             var code = ($input.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
             if (code.length < 1) {
@@ -15790,6 +15952,7 @@
         function enterRoom(code, role, restoring) {
             myRoom = code;
             myRole = role;
+            try { FB.set(FB.ref(db, 'rooms/' + code + '/names/' + role), rb2pName() || '?').catch(function () {}); } catch (eNm) {}   // V387
             myReady = false;
             gameStarted = false;
             sessionStorage.setItem('rb_room', code);
@@ -16535,7 +16698,7 @@
             var badge = document.createElement('div');
             badge.id = 'rb-fb-badge';
             badge.style.cssText =
-                'position:fixed;left:6px;bottom:6px;top:auto;padding:5px 10px;' +
+                'position:fixed;left:50px;bottom:8px;top:auto;padding:5px 10px;' +
                 'background:rgba(0,0,0,0.78);color:#3cff7a;' +
                 'font:bold 11px monospace;z-index:9999;border-radius:4px;' +
                 'letter-spacing:2px;border:1px solid #3cff7a;';
