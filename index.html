@@ -133,7 +133,8 @@
                 // V392: the browser's anonymous Firebase uid — one per browser profile, kept across
                 // visits — so distinct DEVICES can be counted, not just names or fingerprints
                 window._rb2p_uid = function () { try { var t = (window._fbTokPeek ? window._fbTokPeek() : null); if (!t) return ''; var b = t.split('.')[1]; var j = JSON.parse(atob(b.replace(/-/g, '+').replace(/_/g, '/'))); return String(j.sub || j.user_id || ''); } catch (e) { return ''; } };
-                setTimeout(function () { try { rec.uid = window._rb2p_uid(); } catch (e) {} fbRestPut('visits/' + day + '/' + id, rec).catch(function () {}); }, 2500);
+                // the anonymous sign-in happens on first need: get the token FIRST, then read the uid off it
+                setTimeout(function () { fbEnsureTok().then(function () { try { rec.uid = window._rb2p_uid(); } catch (e) {} return fbRestPut('visits/' + day + '/' + id, rec); }).catch(function () {}); }, 2500);
                 // Vercel Web Analytics — only on the Vercel host (no-op until enabled in the dashboard)
                 if (w.src === 'vercel') { ['/_vercel/insights/script.js', '/_vercel/speed-insights/script.js'].forEach(function (u) { var sc = document.createElement('script'); sc.defer = true; sc.src = u; document.head.appendChild(sc); }); }
             } catch (e) {}
@@ -1359,7 +1360,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V392<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V393<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1437,7 +1438,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V392</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V393</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
