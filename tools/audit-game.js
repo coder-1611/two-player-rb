@@ -77,12 +77,15 @@ async function main() {
     fs.writeFileSync(path.join(dir, code + '.md'), render(code, res, tl));
     if (!dry) {
         await put(tok, 'rooms/' + code + '/audited', { ts: Date.now(), flagged: res.flags.length, rules: [...new Set(res.flags.map(f => f.rule))] });
-        if (res.flags.length) await put(tok, 'rooms/' + code + '/flag', { ts: Date.now(), n: res.flags.length, rules: [...new Set(res.flags.map(f => f.rule))], first: res.flags[0].msg });
+        if (!res.flags.length) { try { await fetch(DB + 'rooms/' + code + '/flag.json?auth=' + tok, { method: 'DELETE' }); } catch (e) {} }   // a re-audit that comes out clean clears the old verdict
+        if (res.flags.length) await put(tok, 'rooms/' + code + '/flag', { ts: Date.now(), n: res.flags.length, raw: res.rawFlags.length, rules: [...new Set(res.flags.map(f => f.rule))], first: res.flags[0].msg,
+                                                                    worst: res.impact.worst, worstName: res.impact.worstName, counts: res.impact.counts, chains: res.impact.chains });
     }
     if (asJson) console.log(JSON.stringify(report, null, 1));
     else {
         console.log('=== AUDIT ' + code + ': ' + report.verdict + ' (' + res.entries + ' entries, ' + res.flags.length + ' flags' + (tl.clockSkewMs ? ', b\'s clock shifted ' + (tl.clockSkewMs > 0 ? '+' : '') + (tl.clockSkewMs / 1000).toFixed(1) + 's onto a\'s from ' + tl.clockSkewPairs + ' handoffs' : '') + ') ===');
-        for (const f of res.flags) { console.log('  [' + f.rule + '] ' + (f.q != null ? 'Q' + f.q + ' ' + Math.floor(f.clk / 60) + ':' + ('0' + Math.floor(f.clk % 60)).slice(-2) + ' — ' : '') + f.plain); console.log('      (' + f.msg + ')'); for (const c of f.cites) console.log('      ' + c); }
+        console.log('  impact: ' + res.impact.worstName.toUpperCase() + ' — ' + res.impact.worstText + ' (' + res.impact.raw + ' findings folded into ' + res.impact.folded + (res.impact.chains ? ', ' + res.impact.chains + ' chain' + (res.impact.chains === 1 ? '' : 's') : '') + ')');
+        for (const f of res.flags) { console.log('  [' + f.rule + ' · ' + f.impactName + (f.chain ? ' · chain ' + f.chain : '') + '] ' + (f.q != null ? 'Q' + f.q + ' ' + Math.floor(f.clk / 60) + ':' + ('0' + Math.floor(f.clk % 60)).slice(-2) + ' — ' : '') + f.plain); console.log('      (' + f.msg + ')'); for (const c of f.cites) console.log('      ' + c); }
         console.log('report: audits/' + code + '.md');
     }
     process.exit(res.flags.length ? 1 : 0);

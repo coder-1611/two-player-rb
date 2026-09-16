@@ -78,6 +78,28 @@ function synthetic() {
     // V382: a refused clock write is on record
     runs.clock = [mk('b', 0, 'bind', { ver: 'V382' }), mk('b', 1000, 'clock', { from: 65, to: 118, q: 3, who: 'L10259', n: 1 })];
     check('T17 a clock write the law refused is flagged with its writer (R-CLOCK)', has(A(runs.clock), 'R-CLOCK', /65s -> 118s in Q3 .* REFUSED \(writer L10259\)/), JSON.stringify(A(runs.clock).flags.map(f => f.msg)));
+    // V390: repeats fold, impact is classified, close problems compound
+    runs.repeat = [mk('a', 0, 'bind', { ver: 'V390' })]; for (let i = 0; i < 7; i++) runs.repeat.push(mk('a', 1000 + i * 3000, 'diag', { m: 'FB-STALL live -> REST' }));
+    const rr = A(runs.repeat);
+    check('T18 the same problem seven times is ONE line marked x7 (not seven)', rr.flags.length === 1 && rr.flags[0].count === 7 && /7 times/.test(rr.flags[0].plain) && rr.rawFlags.length === 7, JSON.stringify(rr.flags.map(f => f.plain)));
+    check('T18b a connection stall the backup covered is NOT NOTICEABLE (impact 0)', rr.flags[0].impact === 0 && rr.impact.worstName === 'invisible', JSON.stringify(rr.impact));
+    runs.deadlock = [mk('a', 0, 'bind', { ver: 'V390' }), mk('b', 0, 'bind', { ver: 'V390' }), mk('a', 500, 'wait', { on: true, why: 'L1' }), mk('b', 500, 'wait', { on: true, why: 'L1' })];
+    for (let i = 0; i <= 14; i++) runs.deadlock.push(mk('a', 1000 + i * 1000, 'stage', { of: 0, df: 0, ball: 0, wait: true, ovl: true, fps: 60 }));
+    const rc = A(runs.clock), rk = A(runs.keep), rh = A(runs.hidden), rs = A(runs.stale), rd = A(runs.deadlock);
+    check('T19 impact: a refused clock write = invisible; a keep loop = ball moved; a late handoff = score/clock; a screen off = invisible; a true deadlock = game frozen',
+          rc.flags[0].impact === 0 && rk.flags[0].impact === 1 && rs.flags[0].impact === 2 && rh.flags.some(f => f.rule === 'R-POSS' && f.impact === 0) && rd.flags.some(f => /DEADLOCK/.test(f.msg) && f.impact === 3),
+          JSON.stringify({ rc: rc.flags[0].impact, rk: rk.flags[0].impact, rs: rs.flags[0].impact, rh: rh.flags.map(f => f.rule + f.impact), rd: rd.flags.map(f => f.rule + f.impact) }));
+    // a NORMAL touchdown's conversion resolves through the engine (+1 score, then the kickoff) — not a freeze
+    runs.patOk = [mk('a', 0, 'bind', { ver: 'V390' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }), mk('a', 4000, 'stage', { of: 11, df: 11, ball: 1, kp: 7, wait: false, ovl: false, fps: 60 }),
+                  mk('a', 6000, 'score', { su: 7, so: 0, dsu: 1, dso: 0, q: 1, clk: 40 }), mk('a', 9000, 'send', { type: 'KICKOFF', ts: 9000 })];
+    check('T19b a normal touchdown\'s conversion that scored is not "never resolved" (no R-P6)', !has(A(runs.patOk), 'R-P6'), JSON.stringify(A(runs.patOk).flags.map(f => f.msg)));
+    // three real problems inside 25s: a chain, one level worse than its worst member
+    runs.chain = [mk('a', 0, 'bind', { ver: 'V390' }),
+        mk('a', 1000, 'settle', { type: 'pass', name: 'X', gain: 15, y: 5, d: 1, tg: 10, q: 1, clk: 44, su: 0, so: 0, y0: 0, d0: 1 }),
+        mk('a', 6000, 'settle', { type: 'pass', name: 'X', gain: 8, y: 10.7, d: 2, tg: 2.5, q: 1, clk: 40, su: 0, so: 0, y0: 3.2, d0: 1 }), mk('a', 6500, 'snap', { q: 1, clk: 38, y: 3.2, d: 1, tg: 10, poss: 1, dir: 1 }),   // clock keeps running: the chain is three ball/down problems only
+        mk('a', 12000, 'keep', { q: 2, n: 3, y: 4, d: 1 })];
+    const rch = A(runs.chain);
+    check('T20 three ball/down problems within 25s compound into a SCORE-OR-CLOCK-level chain', rch.impact.chains === 1 && rch.flags.every(f => f.chain === 1) && rch.impact.worstName === 'scoreclock', JSON.stringify({ chains: rch.impact.chains, worst: rch.impact.worstName, flags: rch.flags.map(f => f.rule + ':' + f.impact + ':' + (f.chainImpactName || '-')) }));
 }
 
 (async () => {

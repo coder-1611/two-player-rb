@@ -298,7 +298,8 @@ function audit(tl, extra) {
         const modals = byRole[r].filter(x => x.k === 'conv' && x.ev === 'modal');
         for (const m of modals) {
             const played = byRole[r].find(x => x.k === 'stage' && x.t > m.t && x.t < m.t + 60000 && (x.kp === 7 || x.kp === 5 || x.kp === 11));
-            const resolved = byRole[r].some(x => ((x.k === 'conv' && x.ev === 'made') || (x.k === 'p6' && (x.step === 'resolved' || x.step === 'resultSent'))) && x.t > m.t && x.t < m.t + 120000);
+            const resolved = byRole[r].some(x => ((x.k === 'conv' && (x.ev === 'made' || x.ev === 'missed')) || (x.k === 'p6' && (x.step === 'resolved' || x.step === 'resultSent')) ||
+                                                    (x.k === 'score' && (x.dsu === 1 || x.dsu === 2)) || (x.k === 'send' && /KICKOFF|PAT_RESULT|OTHER/.test(x.type))) && x.t > m.t && x.t < m.t + 120000);
             if (played && !resolved) flag('R-P6', `conversion on ${r} was PLAYED (ball live) but never resolved`, [m, played],
                                           `${T(r)} played the conversion — the ball went live — but the game never decided whether it was good or missed, and nothing moved on.`);
         }
@@ -494,7 +495,72 @@ function audit(tl, extra) {
     }
 
     flags.sort((x, y) => x.t - y.t);
-    return { flags, t0, entries: tl.length };
+
+    // ---- V390: what the PLAYER felt — impact, repeats folded, chains ----
+    // impact 0 invisible (nothing changed for the player: a stall the backup
+    // covered, a refused write, a cosmetic flicker), 1 yardline (the ball, the
+    // down or a play moved), 2 scoreclock (points or game time changed),
+    // 3 gameover (the game froze, deadlocked or ended when it shouldn't).
+    const IMPACT_NAME = ['invisible', 'yardline', 'scoreclock', 'gameover'];
+    const IMPACT_TEXT = ['the player would not have noticed', 'the ball or the down moved', 'the score or the clock changed', 'the game froze, stalled or ended wrongly'];
+    const impactOf = f => {
+        const m = f.msg || '';
+        switch (f.rule) {
+            case 'R-XPORT': return /never received|dropped/.test(m) ? 3 : 0;
+            case 'R-OVL': return 0;
+            case 'R-GATE': return 1;
+            case 'R-YARD': case 'R-DOWN': case 'R-CONT': case 'R-KEEP': return 1;
+            case 'R-SCORE': case 'R-GIFT': case 'R-HALF': return 2;
+            case 'R-CLOCK': return /REFUSED/.test(m) ? 0 : 2;
+            case 'R-STALE': return /purged/.test(m) ? 0 : 2;
+            case 'R-FALLBACK': return /fired/.test(m) ? 3 : 0;
+            case 'R-FINAL': return 3;
+            case 'R-POSS': {
+                if (/^IDLE/.test(m)) return 0;
+                if (/DEADLOCK|stayed WAIT|DOUBLE OFFENSE/.test(m)) return 3;
+                if (/REFUSED going LIVE/.test(m)) { const r = /^([ab]) was REFUSED/.exec(m); const role = r && r[1]; const recovered = role && tl.some(x => x.role === role && x.k === 'wait' && x.on === false && !x.refused && x.t > f.t && x.t < f.t + 15000); return recovered ? 0 : 3; }
+                return 1;
+            }
+            case 'R-P6': {
+                if (/chain broke|never resolved|never went LIVE/.test(m)) return 3;
+                if (/refused|stood down/.test(m)) return 0;
+                if (/35s wall/.test(m)) return 2;
+                return 2;   // phantom, double modal, thrower modal: points
+            }
+        }
+        return 1;
+    };
+    for (const f of flags) { f.impact = impactOf(f); f.impactName = IMPACT_NAME[f.impact]; f.impactText = IMPACT_TEXT[f.impact]; }
+    // fold repeats: same rule, same sentence with the numbers taken out
+    const keyOf = f => f.rule + '|' + String(f.plain).replace(/Q\d+ \d+:\d\d/g, 'Q#').replace(/\d+(\.\d+)?/g, '#');
+    const folded = [], byKey = {};
+    for (const f of flags) {
+        const k = keyOf(f);
+        if (byKey[k]) { const g = byKey[k]; g.count++; g.until = f.t; g.untilQ = f.q; g.untilClk = f.clk; if (f.impact > g.impact) { g.impact = f.impact; g.impactName = IMPACT_NAME[f.impact]; g.impactText = IMPACT_TEXT[f.impact]; } continue; }
+        f.count = 1; byKey[k] = f; folded.push(f);
+    }
+    for (const f of folded) if (f.count > 1) {
+        const span = (typeof f.untilQ === 'number' && typeof f.untilClk === 'number' && typeof f.q === 'number') ? ' (' + f.count + ' times, from Q' + f.q + ' ' + clockStr(f.clk) + ' to Q' + f.untilQ + ' ' + clockStr(f.untilClk) + ')' : ' (' + f.count + ' times)';
+        f.plain = f.plain + span; f.msg = f.msg + ' x' + f.count;
+    }
+    // chains: problems within 25s of each other compound — a chain of three or
+    // more real problems is one level worse than its worst member
+    let chainId = 0;
+    for (let i = 0; i < folded.length; i++) {
+        const f = folded[i]; if (f.chain) continue;
+        const members = [f]; let last = f.until || f.t;
+        for (let j = i + 1; j < folded.length; j++) { const g = folded[j]; if (g.t - last <= 25000) { members.push(g); last = Math.max(last, g.until || g.t); } else break; }
+        if (members.length < 2) continue;
+        chainId++;
+        const worst = Math.max(...members.map(x => x.impact));
+        const real = members.filter(x => x.impact >= 1).length;
+        const chainImpact = Math.min(3, worst + (real >= 3 ? 1 : 0));
+        for (const x of members) { x.chain = chainId; x.chainSize = members.length; x.chainImpact = chainImpact; x.chainImpactName = IMPACT_NAME[chainImpact]; }
+    }
+    const worst = folded.length ? Math.max(...folded.map(x => Math.max(x.impact, x.chainImpact || 0))) : -1;
+    const counts = [0, 0, 0, 0]; folded.forEach(x => counts[x.impact]++);
+    const impact = { worst, worstName: worst >= 0 ? IMPACT_NAME[worst] : 'clean', worstText: worst >= 0 ? IMPACT_TEXT[worst] : 'nothing wrong', counts, names: IMPACT_NAME, texts: IMPACT_TEXT, raw: flags.length, folded: folded.length, chains: chainId };
+    return { flags: folded, rawFlags: flags, impact, t0, entries: tl.length };
 }
 
 

@@ -60,6 +60,11 @@
   .empty { color:var(--dim); padding:30px 0; text-align:center; }
   .err { color:var(--red); }
   @media (prefers-reduced-motion:no-preference) { .card { transition:border-color .15s; } .card:hover { border-color:color-mix(in srgb,var(--green) 35%,var(--line)); } }
+    .pill.i0 { background: #2b3348; color: #c9d1e3; }
+    .pill.i1 { background: #3a3f1f; color: #e6dc7a; }
+    .pill.i2 { background: #4a2c14; color: #ffb36b; }
+    .pill.i3 { background: #4b1d1d; color: #ff8a8a; }
+    .pill.chain { background: #26203d; color: #c7b3ff; }
 </style>
 </head>
 <body>
@@ -104,7 +109,8 @@
   const withWho = (nm, who) => ({ a: (who && who.a && who.a !== '?') ? who.a + ' · ' + nm.a : nm.a, b: (who && who.b && who.b !== '?') ? who.b + ' · ' + nm.b : nm.b });
   const complaintCard = c => '<div class="card" style="padding:10px 14px"><div class="row"><div class="grow"><div class="teams"><b>' + esc(c.name || '?') + '</b>' +
       (c.room ? ' · <a href="?room=' + esc(c.room) + '">' + esc(c.room) + '</a>' : '') + (c.role ? ' (phone ' + esc(String(c.role).toUpperCase()) + ')' : '') + ' · ' + esc(c.ver || '') + '</div>' +
-      '<div style="margin:6px 0;white-space:pre-wrap">' + esc(c.text || '') + '</div><div class="when">' + esc(fmtWhen(c.ts)) + '</div></div></div></div>';
+      (Array.isArray(c.choices) && c.choices.length ? '<div style="margin:6px 0">' + c.choices.map(x => '<span class="pill flag" style="margin:0 6px 4px 0">' + esc(x) + '</span>').join('') + '</div>' : '') +
+      (c.text ? '<div style="margin:6px 0;white-space:pre-wrap">' + esc(c.text) + '</div>' : '') + '<div class="when">' + esc(fmtWhen(c.ts)) + '</div></div></div></div>';
 
   // ---- the list ----
   async function renderList() {
@@ -134,7 +140,8 @@
         (list.length > top.length ? '<p class="when" style="margin:0 0 18px"><a href="?complaints=1">Show all ' + list.length + '</a></p>' : '<p style="margin:0 0 18px"></p>') + '<h2 style="margin:0 0 10px">Games</h2>';
     } catch (e) {}
     app.innerHTML = complaintsHtml + shown.map(r => {
-      const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.flag ? '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
+      const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
+      const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }
@@ -162,13 +169,16 @@
     const lastGame = tl.filter(e => gameKinds[e.k]).pop() || tl[tl.length - 1];
     const ended = tl.some(e => e.k === 'final');
     const live = Date.now() - lastGame.t < 3 * 60 * 1000;
-    const verdict = res.flags.length ? '<span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
+    const IMP = { invisible: 'NOT NOTICEABLE', yardline: 'BALL / DOWN MOVED', scoreclock: 'SCORE OR CLOCK CHANGED', gameover: 'GAME FROZE OR ENDED WRONGLY' };
+    const verdict = res.flags.length ? '<span class="pill i' + res.impact.worst + '">' + IMP[res.impact.worstName] + '</span> <span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
     const dur = ((lastGame.t - tl[0].t) / 60000).toFixed(0);
 
     // plain-English summary
     const byRule = {}; res.flags.forEach(f => { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
     const summary = res.flags.length
-      ? 'The checker found ' + res.flags.length + ' thing' + (res.flags.length === 1 ? '' : 's') + ' that football cannot explain. Each one is listed below with the moment it happened.'
+      ? 'The checker found ' + res.flags.length + ' thing' + (res.flags.length === 1 ? '' : 's') + ' that football cannot explain' + (res.impact.raw > res.impact.folded ? ' (' + res.impact.raw + ' findings, repeats folded)' : '') + '. Worst for the player: ' + res.impact.worstText + '.' +
+          (res.impact.counts[3] ? ' ' + res.impact.counts[3] + ' froze or ended the game.' : '') + (res.impact.counts[2] ? ' ' + res.impact.counts[2] + ' changed the score or clock.' : '') + (res.impact.counts[1] ? ' ' + res.impact.counts[1] + ' moved the ball or the down.' : '') + (res.impact.counts[0] ? ' ' + res.impact.counts[0] + ' the player would not have noticed.' : '') +
+          (res.impact.chains ? ' Problems close together compound: ' + res.impact.chains + ' chain' + (res.impact.chains === 1 ? '' : 's') + ' marked below.' : '') + ' Worst first.'
       : 'Every play, score, clock tick and handoff in this game checks out.';
 
     const mmss = sec => Math.floor(sec / 60) + ':' + ('0' + Math.floor(sec % 60)).slice(-2);
@@ -191,9 +201,11 @@
     if (res.flags.length) {
       if (myComplaints.length) html += '<h2>What the players reported</h2>' + myComplaints.map(complaintCard).join('');
       html += '<h2>What went wrong</h2><div class="card" style="padding:6px 14px">';
-      for (const f of res.flags) {
+      const ordered = res.flags.slice().sort((x, y) => (Math.max(y.impact, y.chainImpact || 0) - Math.max(x.impact, x.chainImpact || 0)) || (x.t - y.t));
+      for (const f of ordered) {
         const when = (typeof f.q === 'number' && typeof f.clk === 'number') ? 'Q' + f.q + ' ' + mmss(f.clk) : mmss((f.t - tl[0].t) / 1000) + ' of real time in';
-        html += '<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="when">' + esc(when) + '</div><div class="what" style="margin:2px 0 4px">' + esc(f.plain) + '</div>' +
+        const badge = '<span class="pill i' + f.impact + '" style="margin-left:8px">' + IMP[f.impactName] + '</span>' + (f.chain ? ' <span class="pill chain">CHAIN ' + f.chain + ' · ' + f.chainSize + ' problems within 25s → ' + IMP[f.chainImpactName] + '</span>' : '');
+        html += '<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="when">' + esc(when) + badge + '</div><div class="what" style="margin:2px 0 4px">' + esc(f.plain) + '</div>' +
                 '<details><summary>' + esc(f.rule) + ' · what the checker looked at</summary><div class="why" style="margin:6px 0">' + esc(R.explain(f.rule)) + '</div><div class="why">' + esc(f.msg) + '</div><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
       }
       html += '</div>';

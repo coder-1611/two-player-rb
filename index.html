@@ -728,6 +728,10 @@
         #rb-complain-send { background: #ffd23f; color: #0a1838; }
         #rb-complain-close { background: #fff; color: #0a1838; }
         #rb-complain-panel .note { font-size: 11px; color: rgba(255,255,255,.75); margin: 6px 0 0; line-height: 1.4; }
+        #rb-complain-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin: 0 0 8px; max-height: 40vh; overflow: auto; }
+        #rb-complain-choices label { display: flex; align-items: flex-start; gap: 6px; font: 12px/1.3 monospace; color: #fff; cursor: pointer; }
+        #rb-complain-choices input { margin: 1px 0 0; accent-color: #ffd23f; flex: none; }
+        @media (max-width: 560px) { #rb-complain-choices { grid-template-columns: 1fr; } }
         /* ---- V387: first-run announcement ---- */
         #rb-news { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.84); }
         #rb-news[hidden] { display: none; }
@@ -1299,7 +1303,20 @@
     <button id="rb-complain" type="button" title="Report a bug or complaint" aria-label="Report a bug">!</button>
     <div id="rb-complain-panel" hidden>
         <h3>REPORT A BUG</h3>
-        <textarea id="rb-complain-text" maxlength="2000" placeholder="What went wrong? Which quarter, what you were doing, what you saw."></textarea>
+        <p class="note" style="margin:0 0 6px">Tick everything that happened:</p>
+        <div id="rb-complain-choices">
+            <label><input type="checkbox" value="Stuck on 'waiting for opponent'"> Stuck on "waiting for opponent"</label>
+            <label><input type="checkbox" value="Score is wrong"> Score is wrong</label>
+            <label><input type="checkbox" value="Clock jumped or ran wrong"> Clock jumped or ran wrong</label>
+            <label><input type="checkbox" value="Ball on the wrong yard line / play undone"> Ball on the wrong yard line / a play got undone</label>
+            <label><input type="checkbox" value="Wrong team has the ball"> Wrong team has the ball</label>
+            <label><input type="checkbox" value="Extra point / 2-pt conversion weird"> Extra point / 2-pt conversion did something weird</label>
+            <label><input type="checkbox" value="Game froze or ended early"> Game froze or ended early</label>
+            <label><input type="checkbox" value="Taps / drags don't work"> Taps or drags don't work</label>
+            <label><input type="checkbox" value="Opponent's play never showed up"> Opponent's play never showed up on my phone</label>
+            <label><input type="checkbox" value="Lag / stutter"> Lag or stutter</label>
+        </div>
+        <textarea id="rb-complain-text" maxlength="2000" placeholder="Anything else? Which quarter, what you were doing, what you saw."></textarea>
         <div class="row">
             <button id="rb-complain-send" type="button">SEND</button>
             <button id="rb-complain-close" type="button">CLOSE</button>
@@ -1338,7 +1355,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V389<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V390<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1416,7 +1433,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V389</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V390</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15859,12 +15876,13 @@
         } catch (eNews) {}
 
         // ===== V387: bug reports -> complaints/{id} =====
-        window._rb2p_sendComplaint = async function (text) {
+        window._rb2p_sendComplaint = async function (text, choices) {
             var t = String(text || '').trim().slice(0, 2000);
-            if (!t) throw new Error('empty');
+            var ch = Array.isArray(choices) ? choices.map(function (x) { return String(x).slice(0, 60); }).slice(0, 12) : [];
+            if (!t && !ch.length) throw new Error('empty');
             var ver = ''; try { ver = (document.querySelector('.prompt') || { textContent: '' }).textContent.match(/V\d+/)[0]; } catch (e) {}
             var rec = { name: rb2pName() || '?', room: myRoom || (function () { try { return sessionStorage.getItem('rb_room') || ''; } catch (e) { return ''; } })(),
-                        role: myRole || '', ver: ver, text: t, ts: Date.now(), ua: String(navigator.userAgent || '').slice(0, 140),
+                        role: myRole || '', ver: ver, text: t, choices: ch, ts: Date.now(), ua: String(navigator.userAgent || '').slice(0, 140),
                         diag: String(window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : '').slice(-1500) };
             var id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
             try { await FB.set(FB.ref(db, 'complaints/' + id), rec); }
@@ -15883,9 +15901,10 @@
             if (close) close.addEventListener('click', shut);
             if (send) send.addEventListener('click', async function () {
                 var t = String(ta.value || '').trim();
-                if (t.length < 3) { if (st) st.textContent = 'Say a little more.'; return; }
+                var picked = Array.prototype.map.call(panel.querySelectorAll('#rb-complain-choices input:checked'), function (i) { return i.value; });
+                if (!picked.length && t.length < 3) { if (st) st.textContent = 'Tick a box or say a little more.'; return; }
                 send.disabled = true; if (st) st.textContent = 'Sending…';
-                try { await window._rb2p_sendComplaint(t); ta.value = ''; if (st) st.textContent = 'Sent. Thank you.'; setTimeout(shut, 1400); }
+                try { await window._rb2p_sendComplaint(t, picked); ta.value = ''; panel.querySelectorAll('#rb-complain-choices input').forEach(function (i) { i.checked = false; }); if (st) st.textContent = 'Sent. Thank you.'; setTimeout(shut, 1400); }
                 catch (e) { if (st) st.textContent = 'Could not send: ' + (e && e.message || e); }
                 finally { send.disabled = false; }
             });
