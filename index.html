@@ -103,6 +103,38 @@
         window._rb2p_fbRestPatch = fbRestPatch;
         window._rb2p_fbRestGet = fbRestGet;
 
+        // ===== V388: WHERE do players come from? A first-party visit beacon =====
+        // Strangers have played ~100 games and nothing recorded which door they
+        // came through: the Vercel site, GitHub Pages, or the Google Sites embed
+        // (the self-contained build in an iframe, where location.hostname is ''
+        // and the referrer is the embedding page). One record per page load,
+        // no IP, nothing the browser doesn't already send with every request.
+        window._rb2p_whereAmI = function () {
+            var framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+            var host = '';
+            try { host = location.hostname || (location.protocol === 'about:' || /srcdoc/.test(String(location.href)) ? 'srcdoc' : ''); } catch (e) {}
+            if (!host && framed) host = 'embedded';
+            var ref = ''; try { ref = String(document.referrer || '').slice(0, 160); } catch (e) {}
+            var src = /vercel\.app$/.test(host) ? 'vercel' : /github\.io$/.test(host) ? 'pages' : /googleusercontent|sites\.google|srcdoc|embedded/.test(host + ' ' + ref) ? 'sites' : /localhost|127\.0\.0\.1/.test(host) ? 'local' : (host || 'unknown');
+            return { host: host, framed: framed, ref: ref, src: src };
+        };
+        (function () {
+            try {
+                var w = window._rb2p_whereAmI();
+                var tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+                var rec = { ts: Date.now(), src: w.src, host: w.host, framed: w.framed, ref: w.ref,
+                            ua: String(navigator.userAgent || '').slice(0, 160), lang: String(navigator.language || ''), tz: tz,
+                            sw: screen.width, sh: screen.height, dpr: window.devicePixelRatio || 1,
+                            touch: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0), platform: String(navigator.platform || '') };
+                var day = new Date().toISOString().slice(0, 10);
+                var id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+                window._rb2p_visitId = day + '/' + id;
+                setTimeout(function () { fbRestPut('visits/' + day + '/' + id, rec).catch(function () {}); }, 2500);
+                // Vercel Web Analytics — only on the Vercel host (no-op until enabled in the dashboard)
+                if (w.src === 'vercel') { ['/_vercel/insights/script.js', '/_vercel/speed-insights/script.js'].forEach(function (u) { var sc = document.createElement('script'); sc.defer = true; sc.src = u; document.head.appendChild(sc); }); }
+            } catch (e) {}
+        })();
+
         // ===== V365: TELEMETRY v2 — an append-only stream per device =====
         // The diag ring is 11 lines; a game cannot be reconstructed from it, and
         // the game that motivated this (a pick-6 whose PAT played but whose
@@ -1306,7 +1338,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V387<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V388<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1384,7 +1416,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V387</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V388</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16432,7 +16464,7 @@
             // chain on top of whatever's there so simulate()/sentLog still
             // work for debugging.
             if (window._rb2p_auditBind) window._rb2p_auditBind(myRoom, myRole);   // V365
-            if (window._rb2p_audit) window._rb2p_audit('bind', { ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole });
+            if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '' }; } catch (e) { return {}; } })()));   // V388: which door
             var origSend = window._twoPlayer.send.bind(window._twoPlayer);
             window._twoPlayer.send = function (outcome) {
                 // V208: stamp the moment we hand the ball to the opponent via a
