@@ -54,7 +54,7 @@ function synthetic() {
     runs.staleOld = [mk('b', 0, 'bind', { ver: 'V378' }), mk('b', 1000, 'wait', { on: false, why: 'L1' }), mk('b', 5000, 'recv', { type: 'OTHER', ts: 777, via: 'sdk' })];
     runs.purgedAtQ = [mk('b', 0, 'bind', { ver: 'V380' }), mk('b', 900, 'q', { from: 2, to: 3, clk: 120, d: 1, tg: 10, y: 0 }), mk('b', 1000, 'wait', { on: false, why: 'L1' }),
                       mk('b', 4000, 'recv', { type: 'OTHER', ts: 777, via: 'sdk' }), mk('b', 40000, 'purge', { type: 'OTHER', ts: 777, ageMs: 36000 })];
-    runs.keep = [mk('a', 0, 'bind', { ver: 'V380' }), mk('a', 1000, 'keep', { q: 2, n: 1, y: 4, d: 1 }), mk('a', 2300, 'keep', { q: 2, n: 2, y: 4, d: 1 }), mk('a', 3600, 'keep', { q: 2, n: 3, y: 4, d: 1 })];
+    runs.keep = [mk('a', 0, 'bind', { ver: 'V380' }), mk('a', 1000, 'keep', { q: 2, n: 1, y: 4, d: 1 }), mk('a', 2300, 'keep', { q: 2, n: 2, y: 4, d: 1 }), mk('a', 3600, 'keep', { q: 2, n: 3, y: 4, d: 1 }), mk('a', 4900, 'keep', { q: 2, n: 4, y: 4, d: 1 })];   // V394: the 4th is the loop
     runs.keepOld = [mk('a', 0, 'bind', { ver: 'V378' }), mk('a', 500, 'q', { from: 1, to: 2, clk: 120, d: 1, tg: 10, y: 4 }),
                     mk('a', 1000, 'diag', { m: 'QTR-KEEP resume Q2 y4 d1 clk=120' }), mk('a', 2300, 'diag', { m: 'QTR-KEEP resume Q2 y4 d1 clk=120' }), mk('a', 3600, 'diag', { m: 'QTR-KEEP resume Q2 y4 d1 clk=120' })];
     runs.fallback = [mk('b', 0, 'bind', { ver: 'V380' }), mk('b', 1000, 'guard', { what: 'fallback300', why: 'fired' })];
@@ -70,7 +70,7 @@ function synthetic() {
     check('T12 a handoff received while live and applied 25s later is STALE (R-STALE)', has(A(runs.stale), 'R-STALE', /applied .* 25s after/), JSON.stringify(A(runs.stale).flags.map(f => f.msg)));
     check('T12b on an older build the same receipt is flagged as queued (R-STALE)', has(A(runs.staleOld), 'R-STALE', /queued it for the next park/), '');
     check('T12c a handoff purged right after a quarter change is quiet (no R-STALE)', !has(A(runs.purgedAtQ), 'R-STALE'), JSON.stringify(A(runs.purgedAtQ).flags.map(f => f.msg)));
-    check('T13 the keep-drive firing three times in one quarter is flagged (R-KEEP)', has(A(runs.keep), 'R-KEEP', /3 times in Q2/), '');
+    check('T13 the keep-drive firing four times in one quarter is flagged (R-KEEP)', has(A(runs.keep), 'R-KEEP', /4 times in Q2/), JSON.stringify(A(runs.keep).flags.map(f => f.msg)));
     check('T13b ...and on an older build from its diag lines (R-KEEP)', has(A(runs.keepOld), 'R-KEEP', /resume x3 in Q2/), JSON.stringify(A(runs.keepOld).flags.map(f => f.msg)));
     check('T14 the 300s fallback firing is flagged (R-FALLBACK)', has(A(runs.fallback), 'R-FALLBACK', /fired/), '');
     check('T15 both waiting while one screen is hidden reads as IDLE, not DEADLOCK (R-POSS)', has(A(runs.hidden), 'R-POSS', /IDLE: .* a's screen was hidden/) && !has(A(runs.hidden), 'R-POSS', /DEADLOCK/), JSON.stringify(A(runs.hidden).flags.map(f => f.msg)));
@@ -98,11 +98,21 @@ function synthetic() {
                    mk('b', 7000, 'send', { type: 'OTHER', ts: 7000, y: -39, q: 2, clk: 1 })];
     const rpc = A(runs.patCut);
     check('T21 a conversion handed over as OTHER instead of a kickoff is "cut off" (R-P6, ball moved)', has(rpc, 'R-P6', /instead of a kickoff/) && rpc.flags[0].impact === 1, JSON.stringify(rpc.flags.map(f => f.msg + ':' + f.impact)));
+    // V394: three shapes that are football, not bugs
+    runs.mirror = [mk('a', 0, 'bind', { ver: 'V394' }), mk('a', 1000, 'snap', { q: 1, clk: 42, y: -22.53, d: 4, tg: 5.05, poss: 1, dir: -1 }),
+                   mk('a', 9000, 'settle', { type: 'run', name: 'X', gain: -4, y: 26.46, d: 1, tg: 10, q: 1, clk: 32, su: 3, so: 0, y0: -22.53, d0: 4 })];
+    check('T22 a failed 4th down that mirrors the line for the other team is not a wrong yard line', !has(A(runs.mirror), 'R-YARD'), JSON.stringify(A(runs.mirror).flags.map(f => f.msg)));
+    runs.spot = [mk('a', 0, 'bind', { ver: 'V394' }), mk('a', 1000, 'settle', { type: 'pass', name: 'X', gain: 20, y: 48, d: 6, tg: 2, q: 2, clk: 50, su: 6, so: 0, y0: 28, d0: 1 }),
+                 mk('a', 4000, 'snap', { q: 2, clk: 50, y: 35, d: 6, tg: 2, poss: 1, dir: 1 })];
+    check('T23 choosing the 1-point kick (the 2 -> the 15 on down 6) is not a moved line', !has(A(runs.spot), 'R-CONT'), JSON.stringify(A(runs.spot).flags.map(f => f.msg)));
+    runs.keep3 = [mk('a', 0, 'bind', { ver: 'V394' }), mk('a', 1000, 'keep', { q: 2, n: 1, y: 4, d: 1 }), mk('a', 2300, 'keep', { q: 2, n: 2, y: 4, d: 1 }), mk('a', 3600, 'keep', { q: 2, n: 3, y: 4, d: 1 })];
+    runs.keep4 = runs.keep3.concat([mk('a', 4900, 'keep', { q: 2, n: 4, y: 4, d: 1 })]);
+    check('T24 the gate refusing a third keep is quiet; a fourth is a loop (R-KEEP)', !has(A(runs.keep3), 'R-KEEP') && has(A(runs.keep4), 'R-KEEP'), JSON.stringify([A(runs.keep3).flags.length, A(runs.keep4).flags.length]));
     // three real problems inside 25s: a chain, one level worse than its worst member
     runs.chain = [mk('a', 0, 'bind', { ver: 'V390' }),
         mk('a', 1000, 'settle', { type: 'pass', name: 'X', gain: 15, y: 5, d: 1, tg: 10, q: 1, clk: 44, su: 0, so: 0, y0: 0, d0: 1 }),
         mk('a', 6000, 'settle', { type: 'pass', name: 'X', gain: 8, y: 10.7, d: 2, tg: 2.5, q: 1, clk: 40, su: 0, so: 0, y0: 3.2, d0: 1 }), mk('a', 6500, 'snap', { q: 1, clk: 38, y: 3.2, d: 1, tg: 10, poss: 1, dir: 1 }),   // clock keeps running: the chain is three ball/down problems only
-        mk('a', 12000, 'keep', { q: 2, n: 3, y: 4, d: 1 })];
+        mk('a', 12000, 'keep', { q: 2, n: 4, y: 4, d: 1 })];   // V394: a fourth keep is the loop
     const rch = A(runs.chain);
     check('T20 three ball/down problems within 25s compound into a SCORE-OR-CLOCK-level chain', rch.impact.chains === 1 && rch.flags.every(f => f.chain === 1) && rch.impact.worstName === 'scoreclock', JSON.stringify({ chains: rch.impact.chains, worst: rch.impact.worstName, flags: rch.flags.map(f => f.rule + ':' + f.impact + ':' + (f.chainImpactName || '-')) }));
 }

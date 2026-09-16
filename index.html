@@ -1360,7 +1360,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V393<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V394<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1438,7 +1438,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V393</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V394</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2770,11 +2770,11 @@
                     var cur = Number(m._r11) * 60 + Number(m._s11);
                     if (!isFinite(cur)) return 'nan';
                     if (m._Wy !== clockSt.q) {
-                        clockSt.q = m._Wy; clockSt.acc = cur;
+                        clockSt.q = m._Wy; clockSt.acc = cur; clockSt.epochUntil = now + 3000;   // V394: the engine resets the clock a frame AFTER it bumps the quarter
                         if (window._rb2p_diagLog) window._rb2p_diagLog('CLOCKGATE epoch Q' + m._Wy + ' ' + clockFmt(cur));
                         return 'epoch';
                     }
-                    if (now < (window._rb2p_clockLicenceUntil || 0) || now - clockSt.armedMs < 15000 || now - (Number(window.__rbBootMs) || 0) < 15000) {
+                    if (now < (window._rb2p_clockLicenceUntil || 0) || now < (clockSt.epochUntil || 0) || now - clockSt.armedMs < 15000 || now - (Number(window.__rbBootMs) || 0) < 15000) {
                         clockSt.acc = cur; return 'licensed';
                     }
                     if (cur > clockSt.acc + 1) {
@@ -2951,7 +2951,10 @@
                         // this can't reset a live drive, and unlike the old
                         // ballSeenEver latch it also recovers a scene that spawned
                         // then reverted to staging (the DHEB device signature).
-                        if (koAny > 0 && plOF === 0 && ticks % 4 === 0) {
+                        // V394 (40 games): this fired at the NEXT quarter's rollover — the cascade briefly shows a
+                        // kickoff button and no offense — and re-forced the drive at the yard it was armed with.
+                        // Once a real formation has been seen, or within 3s of a quarter change, stand down.
+                        if (koAny > 0 && plOF === 0 && !ballSeenEver && Date.now() - (Number(window._rb2p_quarterChangedToMs) || 0) > 3000 && ticks % 4 === 0) {
                             if (window._rb2p_diagLog) window._rb2p_diagLog(
                                 'STUCK@staging ' + (ticks * 300) + 'ms ko=' + koAny +
                                 ' ball=' + balls + ' — re-forcing drive');
@@ -4591,6 +4594,20 @@
                                         var g = Math.round(Number(dy));
                                         if (Math.abs(g) <= 99) evt.yds = g;
                                     }
+                                    // V394: a play that SETTLED in this quarter is proof the quarter is being played —
+                                    // the snap guard could never say so (a resume is always pending at the first snap)
+                                    // ...but NOT the play that crossed the horn: it settles with the quarter already
+                                    // bumped and the clock already reset to the full length. A played quarter shows a
+                                    // clock below the start and time elapsed since the change.
+                                    try {
+                                        if (window._rb2p_noteQuarterPlayed && /^(run|pass|incomplete|sack)$/.test(String(evt.k))) {
+                                            var emQ = RB.engineState();
+                                            var clkQ = emQ ? Number(emQ.engineMinutesLeft) * 60 + Number(emQ.engineSecondsLeft) : 0;
+                                            var fullQ = (window._rb2p_agreedQuarterSec ? Number(window._rb2p_agreedQuarterSec()) : 120) || 120;
+                                            var sinceQ = Date.now() - (Number(window._rb2p_quarterChangedToMs) || 0);
+                                            if (clkQ > 0 && clkQ < fullQ - 0.5 && sinceQ > 1500) window._rb2p_noteQuarterPlayed('settle ' + evt.k + ' at ' + Math.round(clkQ) + 's');
+                                        }
+                                    } catch (eQP) {}
                                     try {   // V365: the settle, as the auditor's ground truth
                                         var emA = RB.engineState();
                                         if (emA && window._rb2p_audit) window._rb2p_audit('settle', {
@@ -5105,6 +5122,7 @@
                                 // a PICK6 the other phone credited +6 for — then a +2. Eight
                                 // phantom points and two conversion modals from one refresh.
                                 if (restoredScore && window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                                if (typeof rs.quarter === 'number' && rs.quarter >= 3 && window._rb2p_q3LawApplied !== true) { window._rb2p_q3LawApplied = true; if (window._rb2p_diagLog) window._rb2p_diagLog('Q3 law skipped — resumed into Q' + rs.quarter + ', halftime already happened'); }   // V394 (OHVZ, PGQH, QLZI, BKQD)
                                 if (typeof rs.quarter  === 'number' && Number(em.engineQuarter) < rs.quarter) { em.engineQuarter = rs.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(rs.quarter) || 0); }
                                 // V198: re-assert saved offensive stats every tick of
                                 // the hold window. The restore is guarded (only raises
@@ -7113,6 +7131,7 @@
                         // never persists — accept the governor's "I topped this
                         // quarter" marker as the equivalent entry condition.
                         if ((halfClockExpired || window._rb2p_qGovToppedQ === halfQ) &&
+                            window._rb2p_qSnappedThisQuarter !== true &&   // V394: a played quarter has nothing to keep
                             halfPossMe && (halfQ === 2 || halfQ === 4) &&
                             Date.now() - engineFsmStageStuckSinceMs >= 1500 &&
                             Date.now() - (window._rb2p_lastOpponentOutcomeApplyMs || 0) >= 3000 &&
@@ -7519,6 +7538,21 @@
             window._rb2p_quarterChangedToMs = 0;
             window._rb2p_keepQ = null; window._rb2p_keepN = 0;   // V380: keeps are counted per quarter, per match
             window._rb2p_quarterChangedTo   = 0;
+            // V394 (23 games, 28 keeps): the between-quarters keep fired AFTER the new quarter's first
+            // play — restoring the previous quarter's spot and the full clock ("my pass got reverted",
+            // clock +12s, and a flood of refused mirror writes on the other phone). The snap guard was
+            // circular: a snap only counted as "played" when no resume was pending, and at the first
+            // snap of a quarter one always is. A SETTLED play is unambiguous: it retires everything.
+            window._rb2p_noteQuarterPlayed = function (why) {
+                try {
+                    var was = window._rb2p_qSnappedThisQuarter === true;
+                    window._rb2p_qSnappedThisQuarter = true;
+                    if (window._rb2p_quarterResumePending === true) window._rb2p_quarterResumePending = false;
+                    window._rb2p_qGovToppedQ = null; window._rb2p_qEndLatchQ = null;
+                    if (typeof window._rb2p_retireBallAnchor === 'function') window._rb2p_retireBallAnchor('a play settled this quarter');
+                    if (!was && window._rb2p_diagLog) window._rb2p_diagLog('QTR-PLAYED (' + why + ') — every quarter-start restore retired');
+                } catch (e) {}
+            };
             window._rb2p_quarterResumePending = false;  // set on non-halftime rollover, cleared when user plays a down
             window._rb2p_preRolloverYard = null;        // user's live spot just before the quarter ended
             window._rb2p_preRolloverDown = null;
@@ -9188,6 +9222,7 @@
                                 return;                     // never constructed
                             }
                             convBuilt++;
+                            window._rb2p_lastConvModalMs = Date.now();   // V394: the drive-end that follows is a kickoff
                             if (window._rb2p_diagLog)
                                 window._rb2p_diagLog('CONVGATE allow ' + (window._rb2p_conversionLastLicence || ''));
                         } else {
@@ -10343,6 +10378,10 @@
 
             function buildUserDriveEndOutcome(pre, post, prevVy) {
                 var type = inferUserDriveEndType(prevVy);
+                // V394 (ILVQ, OHVZ, DMVF, YMLH): a try that dies at the horn ends on a dead stage and was
+                // typed OTHER — the receiver then took the ball on its 11. After a conversion the
+                // scorer kicks off: type it as the touchdown drive-end it is.
+                if (type === 'OTHER' && Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 30000) { type = 'TD'; if (window._rb2p_diagLog) window._rb2p_diagLog('drive-end after a conversion typed TD (kickoff), not OTHER'); }
                 // V317: prevVy is frequently stale on a genuine INT/fumble (reads
                 // active-play → typed OTHER). The real-time _Vy=8 latch is reliable;
                 // if it fired in the last few seconds this possession change IS a

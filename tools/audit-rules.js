@@ -141,7 +141,8 @@ function audit(tl, extra) {
                 // ball on the 2 (+48) for the conversion and marks down 6, so the
                 // line is not "where the gain says" — it is where a touchdown says.
                 const scored = Math.abs(e.y) >= 49.5 || expect >= 49.5 || e.d === 6 || (lastSettle && e.su !== lastSettle.su);
-                if (!scored && Math.abs(e.y - expect) > 1.6)
+                const turnoverMirror = e.d0 === 4 && e.d === 1 && Math.abs(e.y + expect) < 1.6;   // V394: 4th down failed, line mirrored for the other team
+                if (!scored && !turnoverMirror && Math.abs(e.y - expect) > 1.6)
                     flag('R-YARD', `${e.type} for ${e.gain}: line was ${e.y0.toFixed(1)}, should be ${expect.toFixed(1)}, is ${e.y.toFixed(1)}`, [lastSnap, e],
                          `${T(r)}: after a ${e.type} for ${e.gain} yards the ball should have been on ${spot(expect)}, but it was on ${spot(e.y)}.`);
             }
@@ -174,7 +175,8 @@ function audit(tl, extra) {
             if (e.k === 'q' || e.k === 'recv' || e.k === 'wait' || e.k === 'p6' || (e.k === 'diag' && /QTR-KEEP resume|kickoff|RESCUE|forcing/i.test(e.m))) { last = null; continue; }
             if (e.k === 'settle') { last = ['run', 'pass', 'sack', 'incomplete'].includes(e.type) && Math.abs(e.y) < 49.5 ? e : null; continue; }
             if (e.k === 'snap' && last) {
-                if (Math.abs(e.y - last.y) > 1.6 || e.d !== last.d)
+                const convSpotChoice = last.d === 6 && e.d === 6 && Math.abs(last.y) >= 34 && Math.abs(e.y) >= 34;   // V394: the 2 <-> the 15 is the 1-pt / 2-pt choice
+                if ((Math.abs(e.y - last.y) > 1.6 || e.d !== last.d) && !convSpotChoice)
                     flag('R-CONT', `LINE MOVED BETWEEN PLAYS on ${r}: play settled at ${last.y.toFixed(1)} (${last.d}&${last.tg}), next snap at ${e.y.toFixed(1)} (${e.d}&${e.tg})`, [last, e],
                          `${T(r)}: a play was undone. The last play ended on ${spot(last.y)} at ${dd(last.d, last.tg)}, but the next snap was from ${spot(e.y)} at ${dd(e.d, e.tg)}.`);
                 if (typeof e.clk === 'number' && typeof last.clk === 'number' && e.q === last.q && e.clk > last.clk + 0.5)
@@ -466,7 +468,7 @@ function audit(tl, extra) {
         if (keeps.length) {
             const byQ = {};
             for (const k of keeps) if (!byQ[k.q] || k.n > byQ[k.q].n) byQ[k.q] = k;
-            for (const q of Object.keys(byQ)) if (byQ[q].n >= 3)
+            for (const q of Object.keys(byQ)) if (byQ[q].n >= 4)   // V394: n=3 is the gate's refusal, not a loop
                 flag('R-KEEP', `keep-drive fired ${byQ[q].n} times in Q${q} on ${r}`, [byQ[q]], `${T(r)}'s drive was re-staged ${byQ[q].n} times at the start of quarter ${q} — the play kept changing on its own.`);
         } else {
             let q = null, n = 0, firstK = null;
