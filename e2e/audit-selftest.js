@@ -93,6 +93,11 @@ function synthetic() {
     runs.patOk = [mk('a', 0, 'bind', { ver: 'V390' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }), mk('a', 4000, 'stage', { of: 11, df: 11, ball: 1, kp: 7, wait: false, ovl: false, fps: 60 }),
                   mk('a', 6000, 'score', { su: 7, so: 0, dsu: 1, dso: 0, q: 1, clk: 40 }), mk('a', 9000, 'send', { type: 'KICKOFF', ts: 9000 })];
     check('T19b a normal touchdown\'s conversion that scored is not "never resolved" (no R-P6)', !has(A(runs.patOk), 'R-P6'), JSON.stringify(A(runs.patOk).flags.map(f => f.msg)));
+    // ILVQ: a try at the horn that ended as an ordinary possession change instead of a kickoff
+    runs.patCut = [mk('b', 0, 'bind', { ver: 'V391' }), mk('b', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }), mk('b', 4000, 'stage', { of: 11, df: 11, ball: 1, kp: 7, wait: false, ovl: false, fps: 60 }),
+                   mk('b', 7000, 'send', { type: 'OTHER', ts: 7000, y: -39, q: 2, clk: 1 })];
+    const rpc = A(runs.patCut);
+    check('T21 a conversion handed over as OTHER instead of a kickoff is "cut off" (R-P6, ball moved)', has(rpc, 'R-P6', /instead of a kickoff/) && rpc.flags[0].impact === 1, JSON.stringify(rpc.flags.map(f => f.msg + ':' + f.impact)));
     // three real problems inside 25s: a chain, one level worse than its worst member
     runs.chain = [mk('a', 0, 'bind', { ver: 'V390' }),
         mk('a', 1000, 'settle', { type: 'pass', name: 'X', gain: 15, y: 5, d: 1, tg: 10, q: 1, clk: 44, su: 0, so: 0, y0: 0, d0: 1 }),

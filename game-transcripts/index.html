@@ -118,10 +118,14 @@
     let codes; try { codes = Object.keys(await get('rooms', 'shallow=true') || {}); } catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
     const rows = [];
     for (const code of codes) {
+      const hb = await get('rooms/' + code + '/hb');
       const [auditedRec, flag, outcomes, audA, who] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true'), get('rooms/' + code + '/names')]);
       if (!audA) continue;                                   // no transcript = nothing to tell
       const keys = Object.keys(audA); const lastKey = keys.sort().pop(); const lastT = lastKey ? Number(lastKey.split('_')[0]) : 0;
-      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: Date.now() - lastT < 3 * 60 * 1000 });
+      // V391: a backgrounded tab pings forever — 'in progress' needs a VISIBLE phone that pinged in the last 3 minutes
+      const visibleNow = hb && Object.values(hb).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000);
+      const abandoned = !visibleNow && Date.now() - lastT < 24 * 3600 * 1000 && hb && Object.values(hb).some(h => h && Date.now() - Number(h.ts) < 3 * 60 * 1000);
+      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned });
     }
     rows.sort((x, y) => y.lastT - x.lastT);
     const showTests = new URLSearchParams(location.search).get('tests') === '1';
@@ -141,7 +145,7 @@
     } catch (e) {}
     app.innerHTML = complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
-      const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
+      const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }
@@ -168,7 +172,8 @@
     const gameKinds = { snap:1, settle:1, score:1, q:1, send:1, recv:1, conv:1, p6:1, final:1 };
     const lastGame = tl.filter(e => gameKinds[e.k]).pop() || tl[tl.length - 1];
     const ended = tl.some(e => e.k === 'final');
-    const live = Date.now() - lastGame.t < 3 * 60 * 1000;
+    let hbNow = null; try { hbNow = await get('rooms/' + code + '/hb'); } catch (e) {}
+    const live = Date.now() - lastGame.t < 3 * 60 * 1000 || (hbNow && Object.values(hbNow).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000));
     const IMP = { invisible: 'NOT NOTICEABLE', yardline: 'BALL / DOWN MOVED', scoreclock: 'SCORE OR CLOCK CHANGED', gameover: 'GAME FROZE OR ENDED WRONGLY' };
     const verdict = res.flags.length ? '<span class="pill i' + res.impact.worst + '">' + IMP[res.impact.worstName] + '</span> <span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
     const dur = ((lastGame.t - tl[0].t) / 60000).toFixed(0);

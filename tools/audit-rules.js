@@ -298,9 +298,14 @@ function audit(tl, extra) {
         const modals = byRole[r].filter(x => x.k === 'conv' && x.ev === 'modal');
         for (const m of modals) {
             const played = byRole[r].find(x => x.k === 'stage' && x.t > m.t && x.t < m.t + 60000 && (x.kp === 7 || x.kp === 5 || x.kp === 11));
-            const resolved = byRole[r].some(x => ((x.k === 'conv' && (x.ev === 'made' || x.ev === 'missed')) || (x.k === 'p6' && (x.step === 'resolved' || x.step === 'resultSent')) ||
-                                                    (x.k === 'score' && (x.dsu === 1 || x.dsu === 2)) || (x.k === 'send' && /KICKOFF|PAT_RESULT|OTHER/.test(x.type))) && x.t > m.t && x.t < m.t + 120000);
-            if (played && !resolved) flag('R-P6', `conversion on ${r} was PLAYED (ball live) but never resolved`, [m, played],
+            const after = byRole[r].filter(x => x.t > m.t && x.t < m.t + 120000);
+            const resolved = after.some(x => (x.k === 'conv' && (x.ev === 'made' || x.ev === 'missed')) || (x.k === 'p6' && (x.step === 'resolved' || x.step === 'resultSent')) ||
+                                             (x.k === 'score' && (x.dsu === 1 || x.dsu === 2)) || (x.k === 'send' && /KICKOFF|PAT_RESULT/.test(x.type)));
+            // ILVQ: a failed try at the horn left the scene as a possession change (OTHER, ball at the 11) instead of a kickoff
+            const cutShort = !resolved && after.find(x => x.k === 'send' && x.type === 'OTHER');
+            if (played && cutShort) flag('R-P6', `conversion on ${r} ended as a plain possession change (OTHER at ${cutShort.y}) instead of a kickoff`, [m, played, cutShort],
+                                         `${T(r)}'s conversion try was cut off and handed over as an ordinary turnover — ${T(other(r))} got the ball on ${spot(cutShort.y)} instead of a kickoff.`);
+            else if (played && !resolved) flag('R-P6', `conversion on ${r} was PLAYED (ball live) but never resolved`, [m, played],
                                           `${T(r)} played the conversion — the ball went live — but the game never decided whether it was good or missed, and nothing moved on.`);
         }
     }
@@ -523,6 +528,7 @@ function audit(tl, extra) {
             }
             case 'R-P6': {
                 if (/chain broke|never resolved|never went LIVE/.test(m)) return 3;
+                if (/instead of a kickoff/.test(m)) return 1;
                 if (/refused|stood down/.test(m)) return 0;
                 if (/35s wall/.test(m)) return 2;
                 return 2;   // phantom, double modal, thrower modal: points
