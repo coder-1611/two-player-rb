@@ -1372,7 +1372,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V395<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V396<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1450,7 +1450,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V395</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V396</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15376,8 +15376,10 @@
                     // visited yet is kept until it has (tools/audit-watch.js writes
                     // `audited`), so the evidence exists when the report comes in.
                     var rm = all[code] || {};
-                    if (rm.flag) return;
-                    if (rm.audit && !rm.audited) return;
+                    // V396: a room that was PLAYED is never deleted — its audit
+                    // stream and final are the record (user: "stop deleting
+                    // games"). Only lobbies that never produced a game expire.
+                    if (rm.audit || rm.final || rm.audited || rm.flag) return;
                     // newest === 0 for a legacy room with no ts anywhere → treated
                     // as stale and removed.
                     if (now - newestTsIn(all[code]) > ROOM_TTL_MS) {
