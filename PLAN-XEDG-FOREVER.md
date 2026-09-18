@@ -66,6 +66,29 @@ audible** at the Q1→Q2 rollover (the keep loop above).
    director — call `_rb2p_clockLicence(why)` first. This alone would have
    refused MHUY's mirror write and both XEDG rollbacks.
 
+8. **The other phone knows when your screen is off (V395).** Three quarters of
+   the audited freezes were one moment: a conversion or pick-six while one tab
+   was backgrounded. The hidden phone HOLDS the handoff (it cannot stage a
+   drive at 0 fps) — and the visible phone's watchdogs read the silence as a
+   dead partner: the turn rescue took the ball back, the pick-6 watchdog
+   forced a second offense, the 35 s wall resolved a try nobody was watching.
+   Now the opponent's heartbeat (`vis`) is subscribed on every phone
+   (`_rb2p_oppHidden()`), and: the turn rescue stands down while the opponent
+   is hidden; the wait cover says *OPPONENT'S SCREEN IS OFF*; the 35 s wall
+   counts screen-on time only; a held handoff is stamped `held/heldTs` on the
+   record and audited (`guard held`); the pick-6 watchdog never forces a drive
+   while the turn is the opponent's and they are live (QQQP: 18 forces in
+   25 s).
+
+9. **An empty field after a conversion is a hand-off, never a new drive
+   (V395, TBPK).** The engine clears the field for the kickoff after a try.
+   The V386 empty-field law read that as "live with nothing on the field" and
+   re-staged the SCORER's drive at its own 18 — twice in one game, and the
+   opponent never got the ball. Within 40 s of a conversion offer the law now
+   hands off exactly as the stuck-drive watchdog does (Vy=9 →
+   `s_change_possession` → the `_1c1` hook ships the TD kickoff);
+   `_rb2p_emptyFieldAct` is the seam.
+
 ## The checker learns each one
 
 - **R-GIFT** — the scorer snapped a normal down while still owing the
@@ -76,10 +99,12 @@ audible** at the Q1→Q2 rollover (the keep loop above).
 - **R-FALLBACK** — the 300 s fallback fired (always worth a look).
 - R-POSS says *"X's screen was off"* instead of *deadlock* when one phone was
   hidden; R-DOWN uses the unrounded gain.
+- A post-try hand-off typed **TD** (V394) resolves the conversion — no false
+  "never resolved", no false gift (V395; 12 V394 games were mis-rated).
 
 ## Proof
 
 `e2e/v380-xedg.js` replays each mechanism in the harness and asserts the
-law; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
+law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
 XEDG itself, re-audited, must name the gift drive, both stale applies, the
 keep loop and the fallback.

@@ -302,7 +302,7 @@ function audit(tl, extra) {
             const played = byRole[r].find(x => x.k === 'stage' && x.t > m.t && x.t < m.t + 60000 && (x.kp === 7 || x.kp === 5 || x.kp === 11));
             const after = byRole[r].filter(x => x.t > m.t && x.t < m.t + 120000);
             const resolved = after.some(x => (x.k === 'conv' && (x.ev === 'made' || x.ev === 'missed')) || (x.k === 'p6' && (x.step === 'resolved' || x.step === 'resultSent')) ||
-                                             (x.k === 'score' && (x.dsu === 1 || x.dsu === 2)) || (x.k === 'send' && /KICKOFF|PAT_RESULT/.test(x.type)));
+                                             (x.k === 'score' && (x.dsu === 1 || x.dsu === 2)) || (x.k === 'send' && /KICKOFF|PAT_RESULT|^TD$/.test(x.type)));   // V395: V394 ships the post-try hand-off typed TD
             // ILVQ: a failed try at the horn left the scene as a possession change (OTHER, ball at the 11) instead of a kickoff
             const cutShort = !resolved && after.find(x => x.k === 'send' && x.type === 'OTHER');
             if (played && cutShort) flag('R-P6', `conversion on ${r} ended as a plain possession change (OTHER at ${cutShort.y}) instead of a kickoff`, [m, played, cutShort],
@@ -426,7 +426,7 @@ function audit(tl, extra) {
     for (const r of roles) {
         const ev = byRole[r];
         for (const m of ev.filter(x => x.k === 'conv' && x.ev === 'modal')) {
-            const result = ev.find(x => x.k === 'send' && (x.type === 'PAT_RESULT' || x.type === 'KICKOFF') && x.t > m.t && x.t < m.t + 180000);
+            const result = ev.find(x => x.k === 'send' && (x.type === 'PAT_RESULT' || x.type === 'KICKOFF' || x.type === 'TD') && x.t > m.t && x.t < m.t + 180000);   // V395: TD = the typed kickoff
             const recvAfter = ev.find(x => x.k === 'recv' && x.t > m.t);
             const limit = Math.min(result ? result.t : Infinity, recvAfter ? recvAfter.t : Infinity, m.t + 180000);
             const snap = ev.find(x => x.k === 'snap' && x.t > m.t + 1500 && x.t < limit && x.d != null && x.d !== 6);

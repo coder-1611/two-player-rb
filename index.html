@@ -331,6 +331,17 @@
                         window._rb2p_p6AwaitDriveMs = 0;
                     } else if (now - window._rb2p_p6AwaitDriveMs > 4000) {
                         window._rb2p_p6AwaitDriveMs = now;   // one force per 4s, never a storm
+                        // V395 (QQQP): the force ran 18 times over a LIVE opponent —
+                        // the turn was theirs and their ball was in play, so every
+                        // forced drive made two offenses. The possession rule that
+                        // refuses LIVE for that reason now refuses the force too.
+                        var trP = window._rb2p_turnRec, olP = window._rb2p_oppLiveRx;
+                        var oppLiveP = !!(auditRole && trP && trP.owner && trP.owner !== auditRole &&
+                                          olP && now - (Number(olP.at) || 0) < 4000 && olP.iHaveBall === true);
+                        if (oppLiveP) {
+                            try { if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH stood down — the turn is the opponent\'s and they are live'); } catch (e) {}
+                            try { if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'force-drive', ok: false, why: 'opponent live' }); } catch (e) {}
+                        } else {
                         try { if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH no drive 4s after PAT_RESULT — forcing it'); } catch (e) {}
                         try {
                             window._rb2p_pickSixPatCascadeActive = false;
@@ -340,6 +351,7 @@
                             var y = (typeof window._rb2p_kickoffReturnYard === 'function') ? window._rb2p_kickoffReturnYard() : -25;
                             if (typeof window._rb2p_forceUserOffenseDrive === 'function') window._rb2p_forceUserOffenseDrive(y, true);   // V380: fresh — routes, arrows
                         } catch (eF) {}
+                        }
                     }
                 }
                 // thrower: the ledger says the answer was SENT, but nothing applied here
@@ -1360,7 +1372,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V394<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V395<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1438,7 +1450,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V394</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V395</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2728,6 +2740,35 @@
             // an empty field for 2.5s and nothing owed, gets its drive staged
             // again at the yard line the engine still holds.
             var emptySinceMs = 0, emptyLastMs = 0;
+            // V395 (TBPK): after a conversion the engine clears the field for the
+            // KICKOFF. An empty field there means "hand the ball over", never
+            // "re-stage my drive" — the law gave the scorer a fresh drive at its
+            // own 18 five seconds after a MADE two-point try, and the opponent
+            // never got the ball. Within 40s of a conversion offer, an empty
+            // field is handed off the way the stuck-drive watchdog does it
+            // (Vy=9 -> s_change_possession -> the _1c1 hook ships a TD kickoff).
+            window._rb2p_emptyFieldAct = function (em, y) {
+                var sinceConv = Date.now() - (Number(window._rb2p_lastConvModalMs) || 0);
+                var mine = em && em.enginePossessingTeamIdx === em.engineUserTeamIdx;
+                if (sinceConv < 40000 && mine) {
+                    var sent = false;
+                    try {
+                        em.engineDriveFsmStage = 9;
+                        em.enginePriorFsmStage = 9;
+                        var cp = RB.getEngineScript('gml_Script_s_change_possession');
+                        if (typeof cp === 'function') { cp(em.rawEngineMatch, _Sc2); sent = true; }
+                    } catch (eCP) {}
+                    console.warn('[2P EMPTY-FIELD] empty field ' + Math.round(sinceConv / 1000) + 's after a conversion — handing off (TD kickoff), not re-staging -> ' + sent);
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('EMPTY-FIELD after a conversion — handed off (TD kickoff) instead of re-staging my drive' + (sent ? '' : ' (FAILED)'));
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'empty-field', y: Math.round(y), ok: sent, why: 'conversion -> handoff' });
+                    return sent ? 'handoff' : 'failed';
+                }
+                var ok = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(y, true) : false;
+                console.warn('[2P EMPTY-FIELD] live with nothing on the field for 2.5s — re-staged the drive at ' + Math.round(y) + ' -> ' + ok);
+                if (window._rb2p_diagLog) window._rb2p_diagLog('EMPTY-FIELD re-staged the drive at ' + Math.round(y) + (ok ? '' : ' (FAILED)'));
+                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'empty-field', y: Math.round(y), ok: ok !== false });
+                return ok ? 'restage' : 'failed';
+            };
             setInterval(function () {
                 try {
                     if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { emptySinceMs = 0; return; }
@@ -2736,6 +2777,7 @@
                     var em = RB.engineState(); if (!em || !em.rawEngineMatch) { emptySinceMs = 0; return; }
                     if (em.rawEngineMatch._T11 === 1 || Number(em.engineDownNumber) === 6) { emptySinceMs = 0; return; }
                     if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) { emptySinceMs = 0; return; }
+                    if (window._rb2p_userOutcomeSendInProgress) { emptySinceMs = 0; return; }
                     var inst = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var ball = 0, of = 0, btn = 0;
                     for (var i = 0; i < inst.length; i++) { var x = inst[i]; if (!x || x._HL2 || !x._eE2) continue; var n = x._eE2._fE2; if (n === 'obj_ball') ball++; else if (n === 'obj_playerOF') of++; else if (/btn|button/.test(n || '') && !/audible|timeout/.test(n || '')) btn++; }
@@ -2745,10 +2787,7 @@
                     if (now - emptySinceMs < 2500 || now - emptyLastMs < 8000) return;
                     emptyLastMs = now; emptySinceMs = 0;
                     var y = Number(em.engineYardLineSigned); if (!isFinite(y) || Math.abs(y) > 49) y = -25;
-                    var ok = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(y, true) : false;
-                    console.warn('[2P EMPTY-FIELD] live with nothing on the field for 2.5s — re-staged the drive at ' + Math.round(y) + ' -> ' + ok);
-                    if (window._rb2p_diagLog) window._rb2p_diagLog('EMPTY-FIELD re-staged the drive at ' + Math.round(y) + (ok ? '' : ' (FAILED)'));
-                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'empty-field', y: Math.round(y), ok: ok !== false });
+                    window._rb2p_emptyFieldAct(em, y);
                 } catch (e) {}
             }, 500);
             window._rb2p_clockGateStats = function () {
@@ -8959,7 +8998,11 @@
                     // conversion, and past it EVERYTHING releases, loudly. A stuck
                     // flag can cost at most 35 seconds, never a game.
                     if (why) {
-                        if (!window._rb2p_patOwedSinceMs) window._rb2p_patOwedSinceMs = Date.now();
+                        // V395: the wall counts SCREEN-ON time only. A scorer who
+                        // backgrounded the tab for 40s was handed a MISSED try it
+                        // never saw (EODP); the opponent now knows the screen is
+                        // off and waits instead.
+                        if (!window._rb2p_patOwedSinceMs || document.hidden) window._rb2p_patOwedSinceMs = Date.now();
                         else if (Date.now() - Number(window._rb2p_patOwedSinceMs) > 35000) {
                             console.warn('[2P PAT-INV] conversion owed for 35s (' + why +
                                          ') — force-releasing the invariant');
@@ -11277,6 +11320,18 @@
                 if (wait.style.display !== 'flex' && window._rb2p_audit) window._rb2p_audit('ovl', { shown: true, why: String(msg || '').slice(0, 40) });
                 wait.style.display = 'flex';
             }
+            // V395: the status line on the cover tells the truth about WHY
+            // nothing is happening — the opponent's screen is off.
+            window._rb2p_refreshWaitStatus = function () {
+                try {
+                    var st = document.getElementById('rb-wait-status');
+                    if (!st) return;
+                    var hid = (typeof window._rb2p_oppHidden === 'function') && window._rb2p_oppHidden();
+                    var want = hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT';
+                    if (st.textContent !== want) st.textContent = want;
+                } catch (e) {}
+            };
+            setInterval(function () { try { window._rb2p_refreshWaitStatus(); } catch (e) {} }, 3000);
             function hideWait() {
                 if (wait.style.display !== 'none' && window._rb2p_audit) window._rb2p_audit('ovl', { shown: false, why: 'hideWait' });
                 wait.style.display = 'none';
@@ -16627,6 +16682,17 @@
                                      ' — ' + applyBlocked);
                         if (window._rb2p_diagLog) window._rb2p_diagLog(
                             'OUTCOME held (' + val.type + ') — ' + applyBlocked);
+                        // V395: say so on the record and in the audit, so the
+                        // sender's watchdogs and the checker know this was a
+                        // hold, not a loss.
+                        try {
+                            if (window._rb2p_heldStampTs !== val.ts) {
+                                window._rb2p_heldStampTs = val.ts;
+                                fbRestPatch('rooms/' + myRoom + '/outcomes/' + otherRole,
+                                            { held: myRole, heldTs: Date.now(), heldWhy: String(applyBlocked).slice(0, 40) }).catch(function () {});
+                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'held', type: val.type, ts: val.ts, why: String(applyBlocked).slice(0, 40) });
+                            }
+                        } catch (eHS) {}
                         return;
                     }
                     window._rb2p_deferredOutcome = null;
@@ -17246,6 +17312,37 @@
                     if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-> ' + owner + ' (' + String(why || '') + ')');
                 } catch (e) {}
             };
+            // ===== V395 HIDDEN-PHONE AWARENESS =====
+            // Three quarters of the audited freezes sit on one fact: a phone
+            // that backgrounds its tab at a conversion or pick-six HOLDS the
+            // incoming handoff (it cannot stage a drive at 0 fps) — and the
+            // OTHER phone's watchdogs never knew why nothing came back: the
+            // turn rescue re-took the ball, the pick-6 chain gave up, the wall
+            // resolved a try the scorer was never looking at. The opponent's
+            // heartbeat has carried vis:'H'|'V' since V268; this phone now
+            // listens to it, and every watchdog that acts on "nothing is
+            // happening" asks _rb2p_oppHidden() first.
+            window._rb2p_oppHb = null;
+            window._rb2p_oppHidden = function () {
+                try {
+                    var h = window._rb2p_oppHb;
+                    if (!h || h.vis !== 'H') return false;
+                    return Date.now() - (Number(h.at) || 0) < 12000;   // a hidden phone still heartbeats every 5s
+                } catch (e) { return false; }
+            };
+            try {
+                FB.onValue(FB.ref(db, 'rooms/' + myRoom + '/hb/' + (myRole === 'a' ? 'b' : 'a')), function (snap) {
+                    try {
+                        var h = snap.val();
+                        if (!h || typeof h !== 'object') return;
+                        var was = window._rb2p_oppHb ? window._rb2p_oppHb.vis : null;
+                        window._rb2p_oppHb = { ts: Number(h.ts) || 0, fps: Number(h.fps) || 0, vis: h.vis === 'H' ? 'H' : 'V', at: Date.now() };
+                        if (was !== window._rb2p_oppHb.vis && window._rb2p_diagLog) window._rb2p_diagLog('OPP-VIS ' + (h.vis === 'H' ? 'hidden' : 'visible'));
+                        if (was !== window._rb2p_oppHb.vis && window._rb2p_audit) window._rb2p_audit('vis', { opp: true, h: h.vis === 'H' });
+                        try { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); } catch (eW) {}
+                    } catch (e) {}
+                });
+            } catch (eOH) {}
             FB.onValue(FB.ref(db, 'rooms/' + myRoom + '/turn'), function (snap) {
                 try {
                     var t = snap.val();
@@ -17282,7 +17379,14 @@
                         var lsoR = window._rb2p_lastSentOutcome;
                         var handoffInFlight = !!(lsoR && lsoR.ts && Date.now() - (Number(window._rb2p_lastSentOutcomeMs) || 0) < 90000);
                         if (handoffInFlight && turnRescueTicks === 15 && window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE stood down — my handoff is still in flight');
-                        var bothParked = !handoffInFlight && tR && tR.owner === myRole &&
+                        var oppHiddenR = (typeof window._rb2p_oppHidden === 'function') && window._rb2p_oppHidden();
+                        if (oppHiddenR && turnRescueTicks >= 15 && window._rb2p_rescueHiddenLogged !== true) {
+                            window._rb2p_rescueHiddenLogged = true;   // V395: once per hidden spell
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE stood down — the opponent\'s screen is off (their handoff may be held)');
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'rescue', ok: false, why: 'opponent hidden' });
+                        }
+                        if (!oppHiddenR) window._rb2p_rescueHiddenLogged = false;
+                        var bothParked = !handoffInFlight && !oppHiddenR && tR && tR.owner === myRole &&
                             olR && Date.now() - (Number(olR.at) || 0) < 4000 &&
                             olR.iHaveBall !== true &&
                             window._rb2p_pickSixPatCascadeActive !== true &&

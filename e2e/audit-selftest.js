@@ -107,6 +107,10 @@ function synthetic() {
     check('T23 choosing the 1-point kick (the 2 -> the 15 on down 6) is not a moved line', !has(A(runs.spot), 'R-CONT'), JSON.stringify(A(runs.spot).flags.map(f => f.msg)));
     runs.keep3 = [mk('a', 0, 'bind', { ver: 'V394' }), mk('a', 1000, 'keep', { q: 2, n: 1, y: 4, d: 1 }), mk('a', 2300, 'keep', { q: 2, n: 2, y: 4, d: 1 }), mk('a', 3600, 'keep', { q: 2, n: 3, y: 4, d: 1 })];
     runs.keep4 = runs.keep3.concat([mk('a', 4900, 'keep', { q: 2, n: 4, y: 4, d: 1 })]);
+    // V395: the post-try hand-off ships typed TD since V394 — that RESOLVES the conversion (no R-P6, no R-GIFT)
+    runs.patTd = [mk('a', 0, 'bind', { ver: 'V394' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }), mk('a', 4000, 'stage', { of: 11, df: 11, ball: 1, kp: 7, wait: false, ovl: false, fps: 60 }),
+                  mk('a', 7000, 'diag', { m: 'PAT-INV duty retired (conversion over)' }), mk('a', 9000, 'send', { type: 'TD', ts: T0 + 9000, y: 48, q: 1, clk: 100 })];
+    check('T25 a conversion followed by the typed-TD hand-off is resolved (no R-P6 "never resolved", no R-GIFT)', !has(A(runs.patTd), 'R-P6') && !has(A(runs.patTd), 'R-GIFT'), JSON.stringify(A(runs.patTd).flags.map(f => f.msg)));
     check('T24 the gate refusing a third keep is quiet; a fourth is a loop (R-KEEP)', !has(A(runs.keep3), 'R-KEEP') && has(A(runs.keep4), 'R-KEEP'), JSON.stringify([A(runs.keep3).flags.length, A(runs.keep4).flags.length]));
     // three real problems inside 25s: a chain, one level worse than its worst member
     runs.chain = [mk('a', 0, 'bind', { ver: 'V390' }),
