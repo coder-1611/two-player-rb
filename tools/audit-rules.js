@@ -104,6 +104,31 @@ function phantomPick6(tl) {
 
 // ---------------------------------------------------------------- rules
 function audit(tl, extra) {
+    // V397: a rematch reuses the room code. Every 'TURN-> x (match-start)'
+    // after the first begins a new game — the windows of R-GIFT, R-P6, R-HALF
+    // and the chains must never reach across it (LXEI: a rematch's first
+    // snap 56s after the previous game's last conversion read as a GIFT).
+    if (!(extra && extra._seg)) {
+        const starts = tl.filter(e => e.k === 'diag' && /^TURN-> [ab] \(match-start\)$/.test(String(e.m || ''))).map(e => e.t);
+        if (starts.length >= 2) {
+            const segs = []; let from = -Infinity;
+            for (const c of starts.slice(1).map(t => t - 3000)) { segs.push(tl.filter(e => e.t >= from && e.t < c)); from = c; }
+            segs.push(tl.filter(e => e.t >= from));
+            const parts = segs.filter(x => x.length).map((x, i) => audit(x, Object.assign({}, extra || {}, { _seg: i + 1 })));
+            let chainBase = 0; const folded = [], raw = [];
+            parts.forEach((p, i) => {
+                for (const f of p.flags) { f.game = i + 1; if (f.chain) f.chain += chainBase; folded.push(f); }
+                for (const f of p.rawFlags) { f.game = i + 1; raw.push(f); }
+                chainBase += Math.max(0, ...p.flags.map(f => f.chain || 0));
+            });
+            const worst = folded.length ? Math.max(...folded.map(x => Math.max(x.impact, x.chainImpact || 0))) : -1;
+            const counts = [0, 0, 0, 0]; folded.forEach(x => counts[x.impact]++);
+            const p0 = parts[0].impact;
+            const impact = { worst, worstName: worst >= 0 ? p0.names[worst] : 'clean', worstText: worst >= 0 ? p0.texts[worst] : 'nothing wrong', counts, names: p0.names, texts: p0.texts, games: parts.length,
+                             raw: raw.length, folded: folded.length, chains: chainBase };
+            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length };
+        }
+    }
     const flags = [];
     const t0 = tl.length ? tl[0].t : Date.now();
     const names = (extra && extra.names) || {};
@@ -343,15 +368,27 @@ function audit(tl, extra) {
         const budgets = [['detected', 'sent', 9000], ['sent', 'applied', 12000], ['applied', 'modal', 3000], ['modal', 'resultSent', 120000], ['resultSent', 'resultApplied', 8000]];
         // pair modal entries from conv: a modal on the SCORER after 'applied'
         const convModals = tl.filter(x => x.k === 'conv' && x.ev === 'modal');
+        const firstFinal = tl.find(x => x.k === 'final');
         for (let i = 0; i < steps.length; i++) {
             const s = steps[i];
             if (s.step !== 'detected') continue;
+            if (firstFinal && s.t > firstFinal.t) continue;   // V397: the game is over — nothing after the final is a chain
             const chain = { detected: s };
             for (const x of steps.slice(i + 1)) { if (x.step === 'detected') break; if (!chain[x.step]) chain[x.step] = x; }
+            // V397 (LXXH): the other phone's clock can run a second ahead, so its
+            // 'applied' lands BEFORE this phone's 'detected' in the merged
+            // timeline. A step from the other phone up to 5s before 'detected'
+            // belongs to this chain when nothing later claimed it.
+            for (const x of steps.slice(0, i).reverse()) {
+                if (s.t - x.t > 5000) break;
+                if (x.role === s.role || x.step === 'detected' || chain[x.step]) continue;
+                chain[x.step] = x;
+            }
             const m = convModals.find(x => chain.applied && x.t >= chain.applied.t && x.t < chain.applied.t + 3000 && x.role === chain.applied.role);
             if (m) chain.modal = m;
             for (const [from, to, ms] of budgets) {
                 const stepName = { detected: 'the pick-six was seen', sent: 'it was reported to the other phone', applied: 'the other phone credited it', modal: 'the conversion choice appeared', resultSent: 'the conversion result was sent back', resultApplied: 'the conversion result was received' };
+                if (chain[from] && !chain[to] && firstFinal && chain[from].t > firstFinal.t - 5000) continue;   // V397: the game ended here — the chain did not break, it stopped
                 if (chain[from] && !chain[to]) flag('R-P6', `pick-6 chain broke: ${from} at +${((chain[from].t - t0) / 1000).toFixed(1)}s but no ${to}`, [chain[from]], `A pick-six got stuck: ${stepName[from]}, but the next step — ${stepName[to]} — never happened.`);
                 else if (chain[from] && chain[to] && chain[to].t - chain[from].t > ms) flag('R-P6', `pick-6 step ${from} -> ${to} took ${((chain[to].t - chain[from].t) / 1000).toFixed(1)}s (budget ${ms / 1000}s)`, [chain[from], chain[to]], `A pick-six step was slow: ${stepName[to]} took ${((chain[to].t - chain[from].t) / 1000).toFixed(0)} seconds.`);
             }
@@ -399,7 +436,13 @@ function audit(tl, extra) {
         const q3 = tl.find(x => x.k === 'q' && x.to === 3);
         const bFirst = q3 && tl.find(x => x.role === 'b' && x.k === 'snap' && x.q === 3 && x.t > q3.t);
         if (q3 && bFirst) {
+            // V397 (LXEI): A's conversion offered just before the horn resolves
+            // AFTER the quarter number changes (+2 at Q3 3:00, then the TD
+            // hand-off). That tail is the end of the first half, not A taking
+            // the second-half ball.
+            const aConvBeforeHorn = tl.some(x => x.role === 'a' && x.k === 'conv' && x.ev === 'modal' && x.t > q3.t - 30000 && x.t < q3.t);
             const held = tl.filter(x => x.role === 'a' && x.t > q3.t && x.t < bFirst.t &&
+                !(aConvBeforeHorn && x.t < q3.t + 10000 && x.k !== 'snap') &&
                 ((x.k === 'conv' && x.ev === 'modal') || (x.k === 'score' && x.dsu > 0) || x.k === 'snap' || x.k === 'settle'));
             if (held.length) flag('R-HALF', `A had the ball after the Q3 change before B's first Q3 snap (${held.length} events)`, held.slice(0, 4),
                                   `${T('a')} had the ball to start the second half — it should have been ${T('b')} (they get the ball after halftime). ${T('a')} was on the field ${held.length} time${held.length === 1 ? '' : 's'} before ${T('b')}'s first snap.`);

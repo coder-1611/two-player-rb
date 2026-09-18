@@ -111,6 +111,33 @@ function synthetic() {
     runs.patTd = [mk('a', 0, 'bind', { ver: 'V394' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }), mk('a', 4000, 'stage', { of: 11, df: 11, ball: 1, kp: 7, wait: false, ovl: false, fps: 60 }),
                   mk('a', 7000, 'diag', { m: 'PAT-INV duty retired (conversion over)' }), mk('a', 9000, 'send', { type: 'TD', ts: T0 + 9000, y: 48, q: 1, clk: 100 })];
     check('T25 a conversion followed by the typed-TD hand-off is resolved (no R-P6 "never resolved", no R-GIFT)', !has(A(runs.patTd), 'R-P6') && !has(A(runs.patTd), 'R-GIFT'), JSON.stringify(A(runs.patTd).flags.map(f => f.msg)));
+    // V397: a rematch in the same room is a new game — no window reaches across it
+    runs.rematch = [mk('a', 0, 'bind', { ver: 'V395' }), mk('a', 100, 'diag', { m: 'TURN-> a (match-start)' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }),
+                    mk('a', 4000, 'snap', { q: 4, clk: 0, y: 35, d: 6, tg: 2, poss: 1, dir: -1 }), mk('a', 9000, 'final', { su: 60, so: 56 }), mk('b', 9200, 'final', { su: 56, so: 60 }),
+                    mk('a', 20000, 'diag', { m: 'boot' }), mk('a', 30000, 'diag', { m: 'TURN-> a (match-start)' }), mk('b', 30100, 'wait', { on: true, why: 'L5407' }),
+                    mk('a', 33000, 'snap', { q: 1, clk: 180, y: -12, d: 1, tg: 10, poss: 1, dir: 1 })];
+    const rrm = A(runs.rematch);
+    check('T26 a rematch\'s first snap is not a GIFT of the previous game\'s conversion (two games audited apart)', !has(rrm, 'R-GIFT') && rrm.games === 2, JSON.stringify({ games: rrm.games, flags: rrm.flags.map(f => f.msg) }));
+    // V397: the scorer's 'applied' a second before the thrower's 'detected'/'sent' (clock skew) is the same chain
+    runs.skew = [mk('a', 0, 'bind', { ver: 'V395' }), mk('b', 0, 'bind', { ver: 'V395' }),
+                 mk('a', 5000, 'p6', { step: 'applied', su: 26, so: 0 }), mk('a', 5000, 'conv', { ev: 'modal', lic: 'L2 pick-6 (bridge-authorized)' }),
+                 mk('b', 6000, 'p6', { step: 'detected', src: 'score-watcher(+6)' }), mk('b', 6100, 'p6', { step: 'sent', plus6: true, su: 0, so: 26 }),
+                 mk('a', 12000, 'p6', { step: 'resolved', pts: 0 }), mk('a', 14000, 'p6', { step: 'resultSent', su: 26, so: 0 }), mk('b', 15000, 'p6', { step: 'resultApplied', su: 0, so: 26 })];
+    check('T27 a pick-six credited a second before the sender stamped it (clock skew) is a whole chain (no "chain broke")', !has(A(runs.skew), 'R-P6', /chain broke/), JSON.stringify(A(runs.skew).flags.map(f => f.msg)));
+    // V397: a pick-six step logged after the FINAL is the game-over screen's tail
+    runs.postFinal = [mk('a', 0, 'bind', { ver: 'V395' }), mk('a', 1000, 'final', { su: 76, so: 0 }), mk('b', 1200, 'final', { su: 0, so: 76 }),
+                      mk('a', 5000, 'p6', { step: 'detected', src: 'score-watcher(+6)' }), mk('a', 5100, 'p6', { step: 'resultSent', synthetic: true, su: 78, so: 0 })];
+    check('T28 a pick-six step after the final is not a broken chain (no R-P6)', !has(A(runs.postFinal), 'R-P6'), JSON.stringify(A(runs.postFinal).flags.map(f => f.msg)));
+    // V397: A's conversion crossing the halftime horn (+2 at Q3 3:00, then the hand-off) is not A holding the second-half ball
+    runs.halfTail = [mk('a', 0, 'bind', { ver: 'V395' }), mk('b', 0, 'bind', { ver: 'V395' }), mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }),
+                     mk('a', 4000, 'snap', { q: 2, clk: 0, y: 48, d: 6, tg: 2, poss: 1, dir: 1 }), mk('a', 11000, 'q', { from: 2, to: 3, clk: 180, d: 1, tg: 2, y: 48 }), mk('b', 11000, 'q', { from: 2, to: 3, clk: 180, d: 1, tg: 10, y: -25 }),
+                     mk('a', 11100, 'score', { su: 30, so: 24, dsu: 2, dso: 0, q: 3, clk: 180 }), mk('a', 14000, 'send', { type: 'TD', ts: T0 + 14000, q: 3, clk: 180 }),
+                     mk('b', 17000, 'snap', { q: 3, clk: 180, y: -24, d: 1, tg: 10, poss: 1, dir: -1 })];
+    check('T29 a conversion that crosses the halftime horn is not A taking the second-half ball (no R-HALF)', !has(A(runs.halfTail), 'R-HALF'), JSON.stringify(A(runs.halfTail).flags.map(f => f.msg)));
+    runs.finalMid = [mk('a', 0, 'bind', { ver: 'V395' }), mk('b', 0, 'bind', { ver: 'V395' }), mk('b', 1000, 'p6', { step: 'detected', src: 'score-watcher(+6)' }), mk('b', 1100, 'p6', { step: 'sent', plus6: true, su: 0, so: 76 }),
+                     mk('a', 1500, 'p6', { step: 'applied', su: 76, so: 0 }), mk('a', 1500, 'conv', { ev: 'modal', lic: 'L2 pick-6 (bridge-authorized)' }),
+                     mk('b', 3000, 'final', { su: 0, so: 76 }), mk('a', 3500, 'final', { su: 76, so: 0 }), mk('a', 8000, 'p6', { step: 'resultSent', synthetic: true, su: 78, so: 0 })];
+    check('T28b a chain that was running when the final came stopped, it did not break (no R-P6)', !has(A(runs.finalMid), 'R-P6', /chain broke/), JSON.stringify(A(runs.finalMid).flags.map(f => f.msg)));
     check('T24 the gate refusing a third keep is quiet; a fourth is a loop (R-KEEP)', !has(A(runs.keep3), 'R-KEEP') && has(A(runs.keep4), 'R-KEEP'), JSON.stringify([A(runs.keep3).flags.length, A(runs.keep4).flags.length]));
     // three real problems inside 25s: a chain, one level worse than its worst member
     runs.chain = [mk('a', 0, 'bind', { ver: 'V390' }),
