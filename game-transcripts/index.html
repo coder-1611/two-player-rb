@@ -46,6 +46,7 @@
   .filters label { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:4px 10px; font-size:12px; color:var(--dim); cursor:pointer; user-select:none; }
   .filters input { accent-color:var(--green); }
   .qhead { color:var(--green); font-weight:700; letter-spacing:1px; margin:18px 0 6px; font-size:13px; text-transform:uppercase; }
+  .qhead.game { color:#ffb400; border-top:3px double var(--line); padding-top:16px; margin-top:30px; font-size:14px; }
   .ln { display:grid; grid-template-columns:66px 14px 1fr; gap:10px; padding:5px 0; border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent); align-items:start; }
   .ln .t { color:var(--mute); font-size:12px; font-variant-numeric:tabular-nums; padding-top:1px; }
   .ln .r { width:10px; height:10px; border-radius:2px; margin-top:6px; }
@@ -119,13 +120,13 @@
     const rows = [];
     for (const code of codes) {
       const hb = await get('rooms/' + code + '/hb');
-      const [auditedRec, flag, outcomes, audA, who] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true'), get('rooms/' + code + '/names')]);
+      const [auditedRec, flag, outcomes, audA, who, gamesRec] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true'), get('rooms/' + code + '/names'), get('rooms/' + code + '/games')]);
       if (!audA) continue;                                   // no transcript = nothing to tell
       const keys = Object.keys(audA); const lastKey = keys.sort().pop(); const lastT = lastKey ? Number(lastKey.split('_')[0]) : 0;
       // V391: a backgrounded tab pings forever — 'in progress' needs a VISIBLE phone that pinged in the last 3 minutes
       const visibleNow = hb && Object.values(hb).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000);
       const abandoned = !visibleNow && Date.now() - lastT < 24 * 3600 * 1000 && hb && Object.values(hb).some(h => h && Date.now() - Number(h.ts) < 3 * 60 * 1000);
-      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned });
+      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned, games: gamesRec ? Object.keys(gamesRec).length : 0 });
     }
     rows.sort((x, y) => y.lastT - x.lastT);
     const showTests = new URLSearchParams(location.search).get('tests') === '1';
@@ -146,7 +147,7 @@
     app.innerHTML = complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
       const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
-      return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
+      return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }
 
@@ -180,12 +181,13 @@
 
     // plain-English summary
     const byRule = {}; res.flags.forEach(f => { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
-    const summary = res.flags.length
+    let summary = res.flags.length
       ? 'The checker found ' + res.flags.length + ' thing' + (res.flags.length === 1 ? '' : 's') + ' that football cannot explain' + (res.impact.raw > res.impact.folded ? ' (' + res.impact.raw + ' findings, repeats folded)' : '') + '. Worst for the player: ' + res.impact.worstText + '.' +
           (res.impact.counts[3] ? ' ' + res.impact.counts[3] + ' froze or ended the game.' : '') + (res.impact.counts[2] ? ' ' + res.impact.counts[2] + ' changed the score or clock.' : '') + (res.impact.counts[1] ? ' ' + res.impact.counts[1] + ' moved the ball or the down.' : '') + (res.impact.counts[0] ? ' ' + res.impact.counts[0] + ' the player would not have noticed.' : '') +
           (res.impact.chains ? ' Problems close together compound: ' + res.impact.chains + ' chain' + (res.impact.chains === 1 ? '' : 's') + ' marked below.' : '') + ' Worst first.'
       : 'Every play, score, clock tick and handoff in this game checks out.';
 
+    if (res.games > 1) summary += ' This room code was reused: ' + res.games + ' games were played back to back. Each is checked on its own, and the play-by-play below is divided between them.';
     const mmss = sec => Math.floor(sec / 60) + ':' + ('0' + Math.floor(sec % 60)).slice(-2);
     const gameClock = (q, clk) => (typeof q === 'number' && typeof clk === 'number') ? 'Q' + q + ' ' + mmss(clk) : '';
     const human = msg => String(msg)
@@ -227,6 +229,7 @@
       for (const s of story) {
         if (typeof s.q === 'number') lastQ = s.q;
         if (typeof s.clk === 'number') lastClk = s.clk;
+        if (s.kind === 'game') { out += '<div class="qhead game">' + esc(s.text) + '</div>'; continue; }
         if (s.kind === 'quarter') { out += '<div class="qhead">' + esc(s.text) + '</div>'; continue; }
         if (!on[s.kind]) continue;
         const gc = gameClock(lastQ, lastClk) || '—';

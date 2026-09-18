@@ -30,14 +30,14 @@ async function put(tok, p, obj) {
     return r.ok;
 }
 
-const { toTimeline, audit, line, fmtT } = require('./audit-rules.js');
+const { toTimeline, audit, line, fmtT, gameStarts } = require('./audit-rules.js');
 
 // ---------------------------------------------------------------- report
 function render(code, res, tl) {
     const lines = [];
     lines.push('# Audit ' + code);
     lines.push('');
-    lines.push('entries: ' + res.entries + '   flags: ' + res.flags.length + '   verdict: ' + (res.flags.length ? 'FLAGGED' : 'CLEAN'));
+    lines.push('entries: ' + res.entries + '   flags: ' + res.flags.length + '   verdict: ' + (res.flags.length ? 'FLAGGED' : 'CLEAN') + (res.games > 1 ? '   games in this room: ' + res.games + ' (checked apart)' : ''));
     lines.push('');
     const byRule = {};
     for (const f of res.flags) (byRule[f.rule] = byRule[f.rule] || []).push(f);
@@ -51,7 +51,11 @@ function render(code, res, tl) {
     }
     lines.push('## Timeline');
     lines.push('```');
-    for (const e of tl) lines.push(line(res.t0, e));
+    const starts = gameStarts(tl); let gi = 1;
+    for (const e of tl) {
+        while (gi < starts.length && e.t >= starts[gi] - 1) { lines.push('===== GAME ' + (gi + 1) + ' OF ' + starts.length + ' — new game, same room ====='); gi++; }
+        lines.push(line(res.t0, e));
+    }
     lines.push('```');
     return lines.join('\n');
 }

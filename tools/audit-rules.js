@@ -103,13 +103,24 @@ function phantomPick6(tl) {
 }
 
 // ---------------------------------------------------------------- rules
+// V398: where each game in a reused room begins. A 'game' entry (written at
+// every match start since V398) or, on older builds, the host's
+// 'TURN-> x (match-start)' line. Both phones write one within a few seconds —
+// one boundary.
+function gameStarts(tl) {
+    const marks = tl.filter(e => e.k === 'game' || (e.k === 'diag' && /^TURN-> [ab] \(match-start\)$/.test(String(e.m || '')))).map(e => e.t).sort((x, y) => x - y);
+    const out = [];
+    for (const t of marks) if (!out.length || t - out[out.length - 1] > 10000) out.push(t);
+    return out;
+}
+
 function audit(tl, extra) {
     // V397: a rematch reuses the room code. Every 'TURN-> x (match-start)'
     // after the first begins a new game — the windows of R-GIFT, R-P6, R-HALF
     // and the chains must never reach across it (LXEI: a rematch's first
     // snap 56s after the previous game's last conversion read as a GIFT).
     if (!(extra && extra._seg)) {
-        const starts = tl.filter(e => e.k === 'diag' && /^TURN-> [ab] \(match-start\)$/.test(String(e.m || ''))).map(e => e.t);
+        const starts = gameStarts(tl);
         if (starts.length >= 2) {
             const segs = []; let from = -Infinity;
             for (const c of starts.slice(1).map(t => t - 3000)) { segs.push(tl.filter(e => e.t >= from && e.t < c)); from = c; }
@@ -117,7 +128,7 @@ function audit(tl, extra) {
             const parts = segs.filter(x => x.length).map((x, i) => audit(x, Object.assign({}, extra || {}, { _seg: i + 1 })));
             let chainBase = 0; const folded = [], raw = [];
             parts.forEach((p, i) => {
-                for (const f of p.flags) { f.game = i + 1; if (f.chain) f.chain += chainBase; folded.push(f); }
+                for (const f of p.flags) { f.game = i + 1; f.plain = 'Game ' + (i + 1) + ' of ' + parts.length + ' in this room — ' + f.plain; if (f.chain) f.chain += chainBase; folded.push(f); }
                 for (const f of p.rawFlags) { f.game = i + 1; raw.push(f); }
                 chainBase += Math.max(0, ...p.flags.map(f => f.chain || 0));
             });
@@ -751,8 +762,16 @@ function narrate(tl, meta) {
             }
         }
     }
+    // V398: the barrier between games in a reused room
+    const starts = gameStarts(tl);
+    if (starts.length >= 2) {
+        for (let i = 1; i < starts.length; i++)
+            out.push({ t: starts[i] - 1, rel: (starts[i] - 1 - t0) / 1000, role: 'a', kind: 'game',
+                       text: 'GAME ' + (i + 1) + ' OF ' + starts.length + ' — a new game in the same room. Nothing above carries over.' });
+        out.sort((x, y) => x.t - y.t);
+    }
     return out;
 }
 
-return { toTimeline, audit, narrate, explain, line, fmtT, phantomPick6 };
+return { toTimeline, audit, narrate, explain, line, fmtT, phantomPick6, gameStarts };
 });

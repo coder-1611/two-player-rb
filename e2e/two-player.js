@@ -199,7 +199,7 @@ async function startTwoPlayerGame(opts) {
     // A typed code must reference a real room, so the host must go first.
     a.role = await hostRoom('A', a.page, code);
     b.role = await joinRoom('B', b.page, code);
-    if (opts.beforeReady) { await opts.beforeReady(a.page, 'a'); await opts.beforeReady(b.page, 'b'); }   // e.g. pick the quarter length
+    if (opts.beforeReady) { await opts.beforeReady(a.page, 'a', code); await opts.beforeReady(b.page, 'b', code); }   // e.g. pick the quarter length; V398: the room code too
     await readyUp('A', a.page);
     await readyUp('B', b.page);
     await waitForMatch('A', a.page);

@@ -138,6 +138,18 @@ function synthetic() {
                      mk('a', 1500, 'p6', { step: 'applied', su: 76, so: 0 }), mk('a', 1500, 'conv', { ev: 'modal', lic: 'L2 pick-6 (bridge-authorized)' }),
                      mk('b', 3000, 'final', { su: 0, so: 76 }), mk('a', 3500, 'final', { su: 76, so: 0 }), mk('a', 8000, 'p6', { step: 'resultSent', synthetic: true, su: 78, so: 0 })];
     check('T28b a chain that was running when the final came stopped, it did not break (no R-P6)', !has(A(runs.finalMid), 'R-P6', /chain broke/), JSON.stringify(A(runs.finalMid).flags.map(f => f.msg)));
+    // V398: the 'game' marker splits a reused room; the narrator draws the barrier; flags say which game
+    {
+        const R = require('../tools/audit-rules.js');
+        runs.marked = [mk('a', 0, 'bind', { ver: 'V398' }), mk('b', 0, 'bind', { ver: 'V398' }), mk('a', 100, 'game', { qmins: 3, ver: 'V398' }), mk('b', 900, 'game', { qmins: 3, ver: 'V398' }),
+                       mk('a', 1000, 'conv', { ev: 'modal', lic: 'L1 touchdown' }), mk('a', 4000, 'snap', { q: 4, clk: 0, y: 35, d: 6, tg: 2, poss: 1, dir: -1 }), mk('a', 9000, 'final', { su: 60, so: 56 }),
+                       mk('a', 30000, 'game', { qmins: 3, ver: 'V398' }), mk('b', 30400, 'game', { qmins: 3, ver: 'V398' }), mk('a', 33000, 'snap', { q: 1, clk: 180, y: -12, d: 1, tg: 10, poss: 1, dir: 1 }),
+                       mk('a', 40000, 'settle', { type: 'run', name: 'X', gain: 5, y: 0, d: 2, tg: 5, q: 1, clk: 170, su: 0, so: 0, y0: -12, d0: 1 })];
+        const rm = A(runs.marked); const st = R.narrate(runs.marked.slice().sort((x, y) => x.t - y.t), {}).filter(x => x.kind === 'game');
+        check('T30 two game markers = two games checked apart, a barrier line in the story, and a flag names its game',
+              rm.games === 2 && R.gameStarts(runs.marked).length === 2 && st.length === 1 && /GAME 2 OF 2/.test(st[0].text) && has(rm, 'R-YARD', /run for 5/) && /^Game 2 of 2 in this room/.test(rm.flags.find(f => f.rule === 'R-YARD').plain) && !has(rm, 'R-GIFT'),
+              JSON.stringify({ games: rm.games, story: st.map(x => x.text), flags: rm.flags.map(f => f.plain) }));
+    }
     check('T24 the gate refusing a third keep is quiet; a fourth is a loop (R-KEEP)', !has(A(runs.keep3), 'R-KEEP') && has(A(runs.keep4), 'R-KEEP'), JSON.stringify([A(runs.keep3).flags.length, A(runs.keep4).flags.length]));
     // three real problems inside 25s: a chain, one level worse than its worst member
     runs.chain = [mk('a', 0, 'bind', { ver: 'V390' }),
