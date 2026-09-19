@@ -1046,7 +1046,12 @@
         html.rb-rot90 #rb-lobby .rb-roomtitle { font-size: clamp(30px, 6vh, 62px); }
         html.rb-rot90 #rb-lobby .rb-cta       { font-size: clamp(16px, 2.4vh, 24px); }
         html.rb-rot90 #rb-lobby .vs           { font-size: clamp(20px, 3vh, 30px); }
-    </style>
+    
+        /* V399: solo fallback — a visitor with nobody to play against still gets a game */
+        .rb-solo { margin-top: 22px; text-align: center; font-size: 10px; letter-spacing: .06em; color: #8fa1b3; line-height: 1.9; }
+        .rb-solo a { color: #ffd23c; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+        .rb-solo a:hover { color: #fff; }
+</style>
 </head>
 
 <body>
@@ -1372,7 +1377,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V398<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V399<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1391,6 +1396,7 @@
                 </div>
             </div>
             <p id="rb-entry-msg" class="msg"></p>
+            <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
         </div>
 
         <!-- ======================= WHO'S PLAYING (V387) ======================= -->
@@ -1450,7 +1456,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V398</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V399</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -17726,7 +17732,7 @@
             if (typeof window._rb2p_resetBoxHighWater === 'function') window._rb2p_resetBoxHighWater();   // V334
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/feed')).catch(function () {});   // V307
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/evt')).catch(function () {});    // V335
-            // ===== V398: a CLEAR BARRIER between games in a reused room =====
+            // ===== V399: a CLEAR BARRIER between games in a reused room =====
             // A rematch keeps the room code. Every match start now: writes a
             // game marker (rooms/{code}/games/{ms}), drops the previous game's
             // `audited` marker so the watcher audits this game too, clears the
