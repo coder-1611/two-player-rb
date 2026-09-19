@@ -403,6 +403,14 @@
          otherwise present Google a brand-new URL on every crawl. This pins the indexable
          address to the clean homepage. -->
     <link rel="canonical" href="https://two-player-rb.vercel.app/" />
+    <!-- V401: social cards + structured data + landing pages -->
+    <meta property="og:title" content="Retro Bowl 2P — Play Two-Player Retro Bowl in Your Browser" />
+    <meta property="og:description" content="Create a room, share the 4-letter code, and play a friend head-to-head. Free, no download, no sign-up." />
+    <meta property="og:url" content="https://two-player-rb.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://two-player-rb.vercel.app/favicon.jpg" />
+    <meta name="twitter:card" content="summary" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"Retro Bowl 2P","url":"https://two-player-rb.vercel.app/","description":"A free fan-made two-player mode for Retro Bowl. Create a room, share the code, and play a friend head-to-head in the browser.","genre":"Sports","playMode":"MultiPlayer","numberOfPlayers":{"@type":"QuantitativeValue","value":2},"applicationCategory":"Game","operatingSystem":"Any (web browser)","gamePlatform":["Web browser","Chromebook","iOS","Android"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true}</script>
 
     <!-- Retro pixel font for the 2P lobby (V211 redesign) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1051,6 +1059,8 @@
         .rb-solo { margin-top: 22px; text-align: center; font-size: 10px; letter-spacing: .06em; color: #8fa1b3; line-height: 1.9; }
         .rb-solo a { color: #ffd23c; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
         .rb-solo a:hover { color: #fff; }
+        .rb-links { margin-top: 6px; font-size: 8px; }
+        .rb-links a { color: #8fa1b3; text-decoration: none; }
 </style>
 </head>
 
@@ -1377,7 +1387,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V399<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V401<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1397,6 +1407,7 @@
             </div>
             <p id="rb-entry-msg" class="msg"></p>
             <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
+            <p class="rb-solo rb-links"><a href="/how-to-play/">HOW TO PLAY</a> &middot; <a href="/play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="/unblocked/">UNBLOCKED</a></p>
         </div>
 
         <!-- ======================= WHO'S PLAYING (V387) ======================= -->
@@ -1456,7 +1467,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V399</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V401</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -17732,7 +17743,7 @@
             if (typeof window._rb2p_resetBoxHighWater === 'function') window._rb2p_resetBoxHighWater();   // V334
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/feed')).catch(function () {});   // V307
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/evt')).catch(function () {});    // V335
-            // ===== V399: a CLEAR BARRIER between games in a reused room =====
+            // ===== V401: a CLEAR BARRIER between games in a reused room =====
             // A rematch keeps the room code. Every match start now: writes a
             // game marker (rooms/{code}/games/{ms}), drops the previous game's
             // `audited` marker so the watcher audits this game too, clears the
