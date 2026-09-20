@@ -167,16 +167,16 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
             const n = window._rb2p_keepN || 0;
             if (n && seen[seen.length - 1] !== n) seen.push(n);
             if (n === 2 && n2 == null) n2 = Date.now() - t0;
-            if (/QTR-KEEP LOOP — keep #3/.test(since())) break;
+            if (/QTR-KEEP LOOP — keep #4/.test(since())) break;   // V403: #3 is a fresh spawn now; #4 is the refusal
         }
         window._rb2p_quarterResumePending = false;
         const d = since();
-        return { seen, resumes: (d.match(/QTR-KEEP resume Q/g) || []).length, loop: /QTR-KEEP LOOP — keep #3/.test(d),
+        return { seen, resumes: (d.match(/QTR-KEEP resume Q/g) || []).length, loop: /QTR-KEEP LOOP — keep #4/.test(d), fresh: /QTR-KEEP #3 — .*fresh spawn/.test(d),
                  healed: (d.match(/LOOP-GUARD healed/g) || []).length, ball: window._rb2p_realDriveRunning(), tail: d.slice(-240) };
     });
     console.log('  T6: ' + JSON.stringify(t6));
-    check('T6 the keep-drive heals before it spawns and refuses its third firing in one quarter',
-          t6.seen.includes(2) && t6.seen.includes(3) && t6.loop && t6.healed >= 3, JSON.stringify(t6));
+    check('T6 the keep-drive heals before it spawns, spawns FRESH on its third firing (V403) and refuses the fourth',
+          t6.seen.includes(2) && t6.seen.includes(3) && t6.fresh && (t6.ball === true || t6.loop) && t6.healed >= 2, JSON.stringify(t6));   // V403: the fresh spawn usually produces the real drive (ball) — then no fourth keep is ever needed
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');

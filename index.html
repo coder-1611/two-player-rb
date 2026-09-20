@@ -184,7 +184,10 @@
         }
         setInterval(function () { auditFlush(false); }, 1500);
         try {
-            window.addEventListener('pagehide', function () { window._rb2p_audit('vis', { h: true, why: 'pagehide' }); auditFlush(true); });
+            window.addEventListener('pagehide', function () { window._rb2p_audit('vis', { h: true, why: 'pagehide' }); auditFlush(true);
+                // V403: tell the other phone this one LEFT (tab closed / navigated away),
+                // not merely hid. keepalive lets the PUT outlive the page.
+                try { if (window._rb2p_hbUrl) fetch(window._rb2p_hbUrl, { method: 'PUT', keepalive: true, body: JSON.stringify({ ts: Date.now(), fps: 0, vis: 'X' }) }).catch(function () {}); } catch (eHX) {} });
             document.addEventListener('visibilitychange', function () { window._rb2p_audit('vis', { h: !!document.hidden }); });
         } catch (eAV) {}
 
@@ -1387,7 +1390,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V402<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V403<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1468,7 +1471,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V402</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V403</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -8904,6 +8907,19 @@
                     window._rb2p_keepN = (window._rb2p_keepN || 0) + 1;
                     if (window._rb2p_audit && (window._rb2p_keepN <= 3 || window._rb2p_keepN % 10 === 0))
                         window._rb2p_audit('keep', { q: q, n: window._rb2p_keepN, y: Math.round(Number(yard)), d: down });
+                    // V403: the THIRD keep used to be refused and the parked scene
+                    // "healed" — which painted a formation that never went live.
+                    // 31 of 32 refused keeps since V380 left the field dead for
+                    // 30-55s (BEDT, DNYZ ended there). The third firing is now a
+                    // FRESH spawn (new play, routes reset — the pick-6 path's
+                    // proven restart); the fourth and later are still refused.
+                    if (window._rb2p_keepN === 3) {
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP #3 — the parked scene keeps coming back; fresh spawn at ' + Math.round(Number(yard)) + ' instead of healing it');
+                        var freshOk = false;
+                        try { freshOk = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(Number(yard), true) : false; } catch (eFS) {}
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'keep-fresh', q: q, y: Math.round(Number(yard)), d: down, ok: freshOk !== false });
+                        return false;
+                    }
                     if (window._rb2p_keepN >= 3) {
                         if (Date.now() - (window._rb2p_keepLoopDiagMs || 0) > 5000) {
                             window._rb2p_keepLoopDiagMs = Date.now();
@@ -11345,7 +11361,8 @@
                     var st = document.getElementById('rb-wait-status');
                     if (!st) return;
                     var hid = (typeof window._rb2p_oppHidden === 'function') && window._rb2p_oppHidden();
-                    var want = hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT';
+                    var left = (typeof window._rb2p_oppLeft === 'function') && window._rb2p_oppLeft();
+                    var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT');
                     if (st.textContent !== want) st.textContent = want;
                 } catch (e) {}
             };
@@ -12253,7 +12270,29 @@
             // Q1) so a rematch re-arms it.
             window._rb2p_gameOverReported = false;
             var gameOverWasInMatch = false;
+            var gameOverLastQ = 0, gameOverLastClk = -1;   // V403: what the match looked like the last time we saw it
             var gameOverConfirmTicks = 0;   // V179: end signal must persist (anti Q3->Q4-blip)
+            // V403: a thin FINAL strip shown the moment the horn decides the game,
+            // while the box score assembles. Hidden when the real final shows.
+            window._rb2p_showFinalSoon = function (u, o) {
+                try {
+                    var el = document.getElementById('rb-final-soon');
+                    if (!el) {
+                        el = document.createElement('div'); el.id = 'rb-final-soon';
+                        el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:1600;padding:10px 12px;text-align:center;font-family:Anton,sans-serif;font-size:clamp(15px,2.2vw,22px);letter-spacing:3px;color:#ffb400;background:rgba(0,0,0,.88);border-bottom:2px solid #ffb400;pointer-events:none;';
+                        document.body.appendChild(el);
+                    }
+                    var txt = 'FINAL \u2014 ' + u + ' \u2013 ' + o + ' \u2014 tallying the box score, stay on this page';
+                    if (el.textContent !== txt) el.textContent = txt;
+                    if (el.style.display !== 'block') {
+                        el.style.display = 'block';
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('FINAL-SOON banner ' + u + '-' + o);
+                        if (window._rb2p_audit) window._rb2p_audit('ovl', { shown: true, why: 'final soon' });
+                        setTimeout(function () { try { el.style.display = 'none'; } catch (e) {} }, 45000);
+                    }
+                } catch (e) {}
+            };
+            window._rb2p_hideFinalSoon = function () { try { var el = document.getElementById('rb-final-soon'); if (el) el.style.display = 'none'; } catch (e) {} };
             var gameOverPlayWaitTicks = 0;  // V202: ticks the FINAL is held while the last play resolves
             // V202: true while a snapped down is still RESOLVING — the ball is in a
             // moving/undecided state (aiming, in the air, a runner is up, a return,
@@ -12307,8 +12346,15 @@
                     // mid-OT without a reported game-over: force the 2P FINAL from
                     // the last box score we cached during OT, then publish it so the
                     // V107 backstop ends the other device too.
-                    if (gameOverWasInMatch && !nowInMatch && window._rb2p_inOvertime &&
+                    // V403 (IAPL): a reload into the fifth quarter with a DECIDED score
+                    // leaves OT disarmed (right), the engine then ends the game
+                    // natively and leaves the match room — and this fallback only
+                    // fired for OT, so the FINAL never came (87s of killed popups).
+                    // Past the horn (Q5, or Q4 at 0:00) the native end IS the final.
+                    var pastHornV403 = gameOverLastQ >= 5 || (gameOverLastQ === 4 && gameOverLastClk === 0);
+                    if (gameOverWasInMatch && !nowInMatch && (window._rb2p_inOvertime || pastHornV403) &&
                         !window._rb2p_gameOverReported) {
+                        if (!window._rb2p_inOvertime && window._rb2p_diagLog) window._rb2p_diagLog('FINAL from the engine\'s native end past the horn (Q' + gameOverLastQ + ')');
                         console.log('[2P OT] engine ended the game natively — forcing 2P FINAL');
                         window._rb2p_gameOverReported = true;
                         var natRep = window._rb2p_lastOtBoxScore ||
@@ -12324,6 +12370,7 @@
                     var mn = Number(em.engineMinutesLeft);
                     var sc = Number(em.engineSecondsLeft);
                     var u = Number(em.userScore) || 0, o = Number(em.opponentScore) || 0;
+                    gameOverLastQ = q; gameOverLastClk = (mn === 0 && sc === 0) ? 0 : 1;   // V403
                     // Re-arm on a clearly-fresh match.
                     if (window._rb2p_gameOverReported && q <= 1 && u === 0 && o === 0) {
                         window._rb2p_gameOverReported = false;
@@ -12380,6 +12427,10 @@
                     // QTR-CEIL clamping 6->5 over and over, FINAL never firing).
                     if (q >= 5) {
                         if (!window._rb2p_pastRegSeenMs) window._rb2p_pastRegSeenMs = Date.now();
+                        // V403: say FINAL the instant the horn decides it. The real
+                        // final screen needs ~6.5s (a 5s dwell + confirm ticks) and
+                        // 5 of 13 games at the horn were closed inside that window.
+                        if (typeof window._rb2p_showFinalSoon === 'function') window._rb2p_showFinalSoon(u, o);
                     } else window._rb2p_pastRegSeenMs = 0;
                     var pastRegulation = (q >= 5) &&
                         (Date.now() - Number(window._rb2p_pastRegSeenMs) > 5000);
@@ -13253,6 +13304,7 @@
                 '</div>';
             if (window._rb2p_arenaApply) window._rb2p_arenaApply();
             finalOverlay.style.display = 'block';
+            try { if (window._rb2p_hideFinalSoon) window._rb2p_hideFinalSoon(); } catch (eFS) {}   // V403
             try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
             if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
             var lv = document.getElementById('rb-final-leave');
@@ -14287,8 +14339,10 @@
                         // 5s interval still ticks — hb stayed fresh and the
                         // stale-check alone never fired (YZAW: B locked for the
                         // whole match, A never saw a banner).
+                        if (window._rb2p_hbSuspend === true) throw 0;   // V403 test seam: a page that "left" stops heartbeating
                         fbAuthUrl(hbBase + '/hb/' + role + '.json')
                             .then(function (u) {
+                                window._rb2p_hbUrl = u;   // V403: the pagehide beacon reuses it
                                 return fetch(u, {
                                     method: 'PUT', body: JSON.stringify({
                                         ts: Date.now(), fps: diagFps,
@@ -17343,6 +17397,11 @@
             // listens to it, and every watchdog that acts on "nothing is
             // happening" asks _rb2p_oppHidden() first.
             window._rb2p_oppHb = null;
+            // V403: the opponent closed the tab (its pagehide beacon said so) and has
+            // not heartbeated since. Clears itself the moment they come back.
+            window._rb2p_oppLeft = function () {
+                try { var h = window._rb2p_oppHb; return !!(h && h.vis === 'X' && Date.now() - (Number(h.at) || 0) < 15 * 60000); } catch (e) { return false; }
+            };
             window._rb2p_oppHidden = function () {
                 try {
                     var h = window._rb2p_oppHb;
@@ -17356,9 +17415,9 @@
                         var h = snap.val();
                         if (!h || typeof h !== 'object') return;
                         var was = window._rb2p_oppHb ? window._rb2p_oppHb.vis : null;
-                        window._rb2p_oppHb = { ts: Number(h.ts) || 0, fps: Number(h.fps) || 0, vis: h.vis === 'H' ? 'H' : 'V', at: Date.now() };
-                        if (was !== window._rb2p_oppHb.vis && window._rb2p_diagLog) window._rb2p_diagLog('OPP-VIS ' + (h.vis === 'H' ? 'hidden' : 'visible'));
-                        if (was !== window._rb2p_oppHb.vis && window._rb2p_audit) window._rb2p_audit('vis', { opp: true, h: h.vis === 'H' });
+                        window._rb2p_oppHb = { ts: Number(h.ts) || 0, fps: Number(h.fps) || 0, vis: h.vis === 'H' ? 'H' : (h.vis === 'X' ? 'X' : 'V'), at: Date.now() };
+                        if (was !== window._rb2p_oppHb.vis && window._rb2p_diagLog) window._rb2p_diagLog('OPP-VIS ' + (h.vis === 'H' ? 'hidden' : (h.vis === 'X' ? 'LEFT' : 'visible')));
+                        if (was !== window._rb2p_oppHb.vis && window._rb2p_audit) window._rb2p_audit('vis', { opp: true, h: h.vis !== 'V', left: h.vis === 'X' });
                         try { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); } catch (eW) {}
                     } catch (e) {}
                 });
@@ -17714,6 +17773,7 @@
             // (notably the OT coin flip) look like a prior-match leftover.
             try { sessionStorage.setItem('rb2p_matchStartMs', String(window._rb2p_matchStartMs)); } catch (eMS) {}
             hideFinal();
+            try { if (window._rb2p_hideFinalSoon) window._rb2p_hideFinalSoon(); } catch (eFS2) {}   // V403
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/final')).catch(function () {});
             // V62: clear any prior overtime coin flips so a rematch's OT
             // re-coordinates from scratch.

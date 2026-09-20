@@ -756,7 +756,8 @@ function narrate(tl, meta) {
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
             case 'guard': {
-                const g = { 'force-drive': who + ' asked for a drive while still owing its conversion result — refused.', rescue: who + ' would have rescued a drive for itself; it owed a conversion result, so the result was sent instead.',
+                const g = { 'keep-fresh': who + '\'s parked scene kept coming back at the quarter start — its drive was spawned fresh' + (e.ok === false ? ' (FAILED)' : '') + '.',
+                            'force-drive': who + ' asked for a drive while still owing its conversion result — refused.', rescue: who + ' would have rescued a drive for itself; it owed a conversion result, so the result was sent instead.',
                             fallback300: e.why === 'fired' ? 'The five-minute emergency timer fired on ' + who + ' and force-started its drive.' : 'A five-minute emergency timer from an earlier pick-six went off on ' + who + ' and stood down.' };
                 push(e, g[e.what] || (who + ': guard ' + e.what + ' (' + e.why + ')'), e.what === 'fallback300' && e.why === 'fired' ? 'flagline' : 'system'); break;
             }

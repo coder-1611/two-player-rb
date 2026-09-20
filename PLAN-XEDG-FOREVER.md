@@ -89,6 +89,33 @@ audible** at the Q1→Q2 rollover (the keep loop above).
    `s_change_possession` → the `_1c1` hook ships the TD kickoff);
    `_rb2p_emptyFieldAct` is the seam.
 
+10. **The third keep is a fresh spawn, never a "healed" scene (V403).** Since
+    V380 the keep gate refused the third between-quarters keep and healed the
+    parked scene; the healed scene painted a formation that never went live.
+    31 of 32 refused keeps left the field dead for 30-55 s (BEDT and DNYZ
+    ended there). The third firing now spawns the drive fresh (routes reset,
+    the pick-6 path's restart); the fourth and later are still refused.
+    Audit `guard keep-fresh`.
+
+11. **FINAL is said the instant the horn decides it (V403).** The real final
+    screen needs ~6.5 s (a 5 s past-regulation dwell plus confirm ticks) and
+    5 of 13 games at the horn were closed inside that window, so neither
+    phone ever recorded a final. A gold FINAL strip (`#rb-final-soon`) shows
+    the score the moment Q5 is reached with a decided score; the final
+    overlay and every match start hide it.
+
+12. **The engine's native end past the horn is the final (V403, IAPL).** A
+    reload into the fifth quarter with a decided score leaves OT disarmed
+    (correct), the engine then ends the game natively and leaves the match
+    room; the fallback that reports that as the 2P final used to require OT.
+    It now fires whenever the match was last seen in Q5, or Q4 at 0:00.
+
+13. **"Opponent left" is a state the other phone can see (V403).** A pagehide
+    writes `hb/{role}` with `vis:'X'` through a keepalive PUT; the other phone
+    (`_rb2p_oppLeft()`) shows OPPONENT LEFT THE GAME — WAITING FOR THEM TO
+    COME BACK, and the next heartbeat clears it. Test seam
+    `_rb2p_hbSuspend`.
+
 ## The checker learns each one
 
 - **R-GIFT** — the scorer snapped a normal down while still owing the
@@ -105,6 +132,6 @@ audible** at the Q1→Q2 rollover (the keep loop above).
 ## Proof
 
 `e2e/v380-xedg.js` replays each mechanism in the harness and asserts the
-law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
+law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/v403-endings.js` laws 10-13; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
 XEDG itself, re-audited, must name the gift drive, both stale applies, the
 keep loop and the fallback.
