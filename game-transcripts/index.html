@@ -144,7 +144,25 @@
       if (list.length) complaintsHtml = '<h2 style="margin:0 0 10px">Bug reports <span class="when">(' + list.length + ')</span></h2>' + top.map(complaintCard).join('') +
         (list.length > top.length ? '<p class="when" style="margin:0 0 18px"><a href="?complaints=1">Show all ' + list.length + '</a></p>' : '<p style="margin:0 0 18px"></p>') + '<h2 style="margin:0 0 10px">Games</h2>';
     } catch (e) {}
-    app.innerHTML = complaintsHtml + shown.map(r => {
+    // V404: who is playing — the two-player doors vs the solo game (main-retro-bowl.vercel.app), today and the last 7 days
+    let playersHtml = '';
+    try {
+      const dayStr = d => d.toISOString().slice(0, 10);
+      const now = new Date(); const dayList = []; for (let i = 6; i >= 0; i--) dayList.push(dayStr(new Date(now.getTime() - i * 86400000)));
+      const per = await Promise.all(dayList.map(async d => { const [v, so] = await Promise.all([get('visits/' + d), get('solo/' + d)]); return { d, v: v || {}, so: so || {} }; }));
+      const agg = { today: { two: new Set(), solo: new Set(), soloPlayed: new Set(), soloMatches: 0, twoVisits: 0, soloVisits: 0 }, week: { two: new Set(), solo: new Set(), soloPlayed: new Set(), soloMatches: 0, twoVisits: 0, soloVisits: 0 } };
+      for (const p of per) {
+        const buckets = [agg.week].concat(p.d === dayList[6] ? [agg.today] : []);
+        for (const k in p.v) { const r = p.v[k]; if (!r) continue; for (const b of buckets) { if (r.src === 'solo') { b.soloVisits++; if (r.uid) b.solo.add(r.uid); } else { b.twoVisits++; if (r.uid) b.two.add(r.uid); } } }
+        for (const k in p.so) { const r = p.so[k]; if (!r) continue; for (const b of buckets) { if (r.played === true || Number(r.inMatchSec) >= 20) { if (r.uid) b.soloPlayed.add(r.uid); else b.soloPlayed.add(k); } b.soloMatches += Number(r.matches) || 0; } }
+      }
+      const cell = (n, label) => '<div style="text-align:center;min-width:86px"><div style="font-family:Anton,sans-serif;font-size:26px;line-height:1">' + n + '</div><div class="when" style="margin-top:2px">' + esc(label) + '</div></div>';
+      const block = (title, b) => '<div style="flex:1 1 280px"><div class="teams" style="margin-bottom:6px"><b>' + esc(title) + '</b></div><div style="display:flex;gap:14px;flex-wrap:wrap">' +
+        cell(b.two.size, 'two-player devices') + cell(b.twoVisits, 'two-player visits') + cell(b.solo.size, 'solo devices') + cell(b.soloPlayed.size, 'solo players (played)') + cell(b.soloMatches, 'solo matches') + '</div></div>';
+      playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' +
+        '<p class="when" style="margin:10px 0 0">Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
+    } catch (e) { playersHtml = ''; }
+    app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
       const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
