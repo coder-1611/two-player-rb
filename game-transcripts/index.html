@@ -164,7 +164,8 @@
     } catch (e) { playersHtml = ''; }
     app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
-      const pill = r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>';
+      const done = r.audited && typeof r.audited.complete === 'boolean' ? (r.audited.complete ? '<span class="pill clean">COMPLETE</span> ' : (r.audited.horn ? '<span class="pill i1">INCOMPLETE</span> ' : '<span class="pill i0">UNFINISHED</span> ')) : '';
+      const pill = done + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }
@@ -205,6 +206,12 @@
           (res.impact.chains ? ' Problems close together compound: ' + res.impact.chains + ' chain' + (res.impact.chains === 1 ? '' : 's') + ' marked below.' : '') + ' Worst first.'
       : 'Every play, score, clock tick and handoff in this game checks out.';
 
+    // V405: complete = the stats screen appeared on both phones
+    if (res.complete) {
+      if (res.complete.complete) summary += ' Complete: the stats screen appeared on both phones.';
+      else if (res.complete.horn) summary += ' INCOMPLETE: the game was decided at the horn but ' + esc(res.complete.incompleteWhy || 'a phone never showed the stats screen') + '.';
+      else summary += ' Not finished: the game never reached the end of the fourth quarter.';
+    }
     if (res.games > 1) summary += ' This room code was reused: ' + res.games + ' games were played back to back. Each is checked on its own, and the play-by-play below is divided between them.';
     const mmss = sec => Math.floor(sec / 60) + ':' + ('0' + Math.floor(sec % 60)).slice(-2);
     const gameClock = (q, clk) => (typeof q === 'number' && typeof clk === 'number') ? 'Q' + q + ' ' + mmss(clk) : '';

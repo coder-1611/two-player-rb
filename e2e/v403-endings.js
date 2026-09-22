@@ -83,12 +83,13 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     check('T4 a pagehide writes hb vis:X (keepalive) and the other phone reads OPPONENT LEFT THE GAME',
           hbUrlReady && hb && hb.vis === 'X' && left && /OPPONENT LEFT THE GAME/.test(status), JSON.stringify({ hbUrlReady, hb, left, status }));
     // the leaving phone comes back: its next heartbeat must clear the state
-    await off.page.evaluate(() => { window._rb2p_hbSuspend = false; });
+    await off.page.evaluate(() => { window._rb2p_hbSuspend = false; window.dispatchEvent(new Event('pageshow')); });   // V405: a returning page heartbeats at once
     let back = false; const trace = [];
     for (let i = 0; i < 14 && !back; i++) {
         await sleep(1000);
         back = await def.page.evaluate(() => !window._rb2p_oppLeft());
-        if (i % 3 === 2) trace.push({ i, hb: await TP.fbGet('rooms/' + g.code + '/hb/' + off.role), opp: await def.page.evaluate(() => window._rb2p_oppHb), inMatch: await off.page.evaluate(() => RB.isEngineInMatchRoom()), susp: await off.page.evaluate(() => window._rb2p_hbSuspend) });
+        if (i % 3 === 2) trace.push({ i, hb: await TP.fbGet('rooms/' + g.code + '/hb/' + off.role), opp: await def.page.evaluate(() => window._rb2p_oppHb), inMatch: await off.page.evaluate(() => RB.isEngineInMatchRoom()), susp: await off.page.evaluate(() => window._rb2p_hbSuspend),
+                                    cls: await off.page.evaluate(() => document.documentElement.classList.contains('rb-in-match')), room: await off.page.evaluate(() => sessionStorage.getItem('rb_room')), hbNow: await off.page.evaluate(() => window._rb2p_hbNow('trace')) });
     }
     check('T4b ...and the next heartbeat clears it', back, JSON.stringify(trace));
 

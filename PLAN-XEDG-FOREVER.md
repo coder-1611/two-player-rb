@@ -116,6 +116,33 @@ audible** at the Q1→Q2 rollover (the keep loop above).
     COME BACK, and the next heartbeat clears it. Test seam
     `_rb2p_hbSuspend`.
 
+14. **A kick is a played try (V405, SSFQ/DJPM).** The conversion snap detector
+    only knew the snap states; a 1-point kick never passed through them, so a
+    missed kick was never "played" and the miss detector starved. In kick mode
+    (`enginePatModeFlag`) the ball leaving rest is the try
+    (`_rb2p_patTryStarted`).
+
+15. **A try whose possession has flipped away is over, not restored (V405).**
+    The PAT invariant used to re-claim possession, restore down 6 and pin the
+    ball back to the 2 whenever the ball was off the spot — undoing the
+    engine's own move to the kickoff after a missed try, on a field the engine
+    had already cleared, and hiding the "possession flipped away" signal the
+    miss detector reads. Now, 8 s after the offer with possession flipped and
+    no ball on the field, it marks the try played and stands down; the guard
+    resolves MISSED and the result ships. Audit `guard try-over`.
+
+16. **One conversion offer at a time (V405, ITXQ).** The modal builder refuses
+    a second conversion modal while one is up within 20 s
+    (`_rb2p_convDuplicate`).
+
+17. **A game is complete only when the stats screen appears after Q4 or
+    overtime (V405).** Client: 20 s past a decided horn on a visible page the
+    FINAL is forced through any hold (`guard final-forced`). Checker: R-FINAL
+    flags a phone that stayed on the page without a final (game-over level)
+    or closed before it (incomplete, the player's doing); `res.complete`
+    carries the verdict, the audited record stores `complete/horn`, the
+    transcripts page shows COMPLETE / INCOMPLETE / UNFINISHED.
+
 ## The checker learns each one
 
 - **R-GIFT** — the scorer snapped a normal down while still owing the
@@ -132,6 +159,6 @@ audible** at the Q1→Q2 rollover (the keep loop above).
 ## Proof
 
 `e2e/v380-xedg.js` replays each mechanism in the harness and asserts the
-law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/v403-endings.js` laws 10-13; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
+law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/v403-endings.js` laws 10-13; `e2e/v405-complete.js` laws 14-17; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
 XEDG itself, re-audited, must name the gift drive, both stale applies, the
 keep loop and the fallback.

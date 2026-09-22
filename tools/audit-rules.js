@@ -137,7 +137,7 @@ function audit(tl, extra) {
             const p0 = parts[0].impact;
             const impact = { worst, worstName: worst >= 0 ? p0.names[worst] : 'clean', worstText: worst >= 0 ? p0.texts[worst] : 'nothing wrong', counts, names: p0.names, texts: p0.texts, games: parts.length,
                              raw: raw.length, folded: folded.length, chains: chainBase };
-            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length };
+            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, complete: parts[parts.length - 1].complete };
         }
     }
     const flags = [];
@@ -241,6 +241,37 @@ function audit(tl, extra) {
             for (const dv of deltas) {
                 if (dv < 0) flag('R-SCORE', `a score went DOWN by ${-dv} on ${r}`, [e], `A score went DOWN by ${-dv} on ${T(r)}'s phone.`);
                 else if (dv > 0 && ![1, 2, 3, 6, 7, 8].includes(dv)) flag('R-SCORE', `illegal score delta +${dv} on ${r}`, [e], `${T(r)}'s board jumped by ${dv} points at once — no single play is worth that.`);
+            }
+        }
+    }
+    // ---- COMPLETE = the stats screen appeared after Q4 or overtime ----
+    // V405: a game that reached the end of regulation with a decided score, or
+    // ended an overtime round, is not complete until BOTH phones showed the
+    // final. A phone that stayed visible and never got there is a game defect;
+    // a phone that closed before the final is the player's doing (still incomplete).
+    const complete = { horn: null, finals: {}, complete: false, incompleteWhy: '' };
+    {
+        const q5 = tl.find(x => x.k === 'q' && x.to >= 5);
+        const scoreAt = (r, t) => { const s = byRole[r].filter(x => x.k === 'score' && x.t <= t + 3000).pop(); return s ? [s.su, s.so] : null; };
+        let horn = null;
+        if (q5) { const sc = scoreAt(q5.role, q5.t) || scoreAt(other(q5.role), q5.t); if (sc && sc[0] !== sc[1]) horn = q5; }
+        const otEnd = tl.find(x => x.k === 'diag' && /round complete|walk-off/.test(String(x.m || '')));
+        if (!horn && otEnd) horn = otEnd;
+        complete.horn = horn ? horn.t : null;
+        for (const r of roles) { const f = byRole[r].find(x => x.k === 'final'); complete.finals[r] = f ? f.t : null; }
+        complete.complete = roles.length > 0 && roles.every(r => complete.finals[r]);
+        if (horn && !complete.complete) {
+            for (const r of roles) {
+                if (complete.finals[r]) continue;
+                const hid = byRole[r].find(x => x.k === 'vis' && x.h === true && x.t > horn.t && x.t < horn.t + 30000);
+                const stayed = byRole[r].some(x => x.t > horn.t + 30000);
+                if (!hid && stayed) { complete.incompleteWhy = r + ' stayed on the page but the final never appeared';
+                    flag('R-FINAL', `${r} never reached the stats screen: the game was decided at the horn but no final appeared in 30s while the page stayed open`, [horn],
+                         `${T(r)}'s game ended at the horn but the stats screen never appeared, even though the phone stayed on the page.`); }
+                else if (hid) { complete.incompleteWhy = r + ' closed the page ' + ((hid.t - horn.t) / 1000).toFixed(0) + 's after the horn, before the final';
+                    flag('R-FINAL', `${r} closed the page ${((hid.t - horn.t) / 1000).toFixed(0)}s after the horn, before the stats screen appeared`, [horn, hid],
+                         `${T(r)} left ${((hid.t - horn.t) / 1000).toFixed(0)} seconds after the horn, before the stats screen came up — the game is not complete.`); }
+                else complete.incompleteWhy = r + ' has no final on record';
             }
         }
     }
@@ -575,7 +606,7 @@ function audit(tl, extra) {
             case 'R-CLOCK': return /REFUSED/.test(m) ? 0 : 2;
             case 'R-STALE': return /purged/.test(m) ? 0 : 2;
             case 'R-FALLBACK': return /fired/.test(m) ? 3 : 0;
-            case 'R-FINAL': return 3;
+            case 'R-FINAL': return /closed the page/.test(m) ? 0 : 3;   // V405: a player leaving before the stats is not the game's fault
             case 'R-POSS': {
                 if (/^IDLE/.test(m)) return 0;
                 if (/DEADLOCK|stayed WAIT|DOUBLE OFFENSE/.test(m)) return 3;
@@ -622,7 +653,7 @@ function audit(tl, extra) {
     const worst = folded.length ? Math.max(...folded.map(x => Math.max(x.impact, x.chainImpact || 0))) : -1;
     const counts = [0, 0, 0, 0]; folded.forEach(x => counts[x.impact]++);
     const impact = { worst, worstName: worst >= 0 ? IMPACT_NAME[worst] : 'clean', worstText: worst >= 0 ? IMPACT_TEXT[worst] : 'nothing wrong', counts, names: IMPACT_NAME, texts: IMPACT_TEXT, raw: flags.length, folded: folded.length, chains: chainId };
-    return { flags: folded, rawFlags: flags, impact, t0, entries: tl.length };
+    return { flags: folded, rawFlags: flags, impact, t0, entries: tl.length, complete };
 }
 
 
@@ -633,7 +664,7 @@ const RULE_TEXT = {
     'R-DOWN':  'The down after a play was not the one football gives you (first down if the gain covered the distance, otherwise the next down).',
     'R-CONT':  'Between two plays of the same drive, the ball or the down changed without a play — a reset or a restore fired in the middle of a drive.',
     'R-SCORE': 'A score changed in a way football cannot produce (it went down, or jumped by an impossible amount), or a phone came back from a refresh with a different score than the other phone had.',
-    'R-FINAL': 'The two phones ended the game disagreeing about the final score.',
+    'R-FINAL': 'A game is complete only when the stats screen appears after the fourth quarter or overtime. This flag means it did not (or the two phones disagreed about the final score).',
     'R-CLOCK': 'Game time went backwards inside a quarter, or the quarter number moved the wrong way — or (V382+) a write that would have done so was refused by the clock law.',
     'R-POSS':  'The two phones disagreed about who had the ball: both waiting (a dead game), both playing offense, a phone taking the ball with nothing handing it over, or a phone refused when it should have been allowed to play.',
     'R-OVL':   'The WAITING FOR OPPONENT cover misbehaved: it blinked, or it was off while the phone was supposed to be waiting, showing a formation that was not that phone\'s to play.',
@@ -756,7 +787,9 @@ function narrate(tl, meta) {
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
             case 'guard': {
-                const g = { 'keep-fresh': who + '\'s parked scene kept coming back at the quarter start — its drive was spawned fresh' + (e.ok === false ? ' (FAILED)' : '') + '.',
+                const g = { 'try-over': who + '\'s conversion try was over (possession had flipped, field clear) — the bridge stood down and let it resolve as missed.',
+                            'final-forced': 'The stats screen was forced on ' + who + ' 20 seconds past a decided horn (' + e.su + '-' + e.so + ').',
+                            'keep-fresh': who + '\'s parked scene kept coming back at the quarter start — its drive was spawned fresh' + (e.ok === false ? ' (FAILED)' : '') + '.',
                             'force-drive': who + ' asked for a drive while still owing its conversion result — refused.', rescue: who + ' would have rescued a drive for itself; it owed a conversion result, so the result was sent instead.',
                             fallback300: e.why === 'fired' ? 'The five-minute emergency timer fired on ' + who + ' and force-started its drive.' : 'A five-minute emergency timer from an earlier pick-six went off on ' + who + ' and stood down.' };
                 push(e, g[e.what] || (who + ': guard ' + e.what + ' (' + e.why + ')'), e.what === 'fallback300' && e.why === 'fired' ? 'flagline' : 'system'); break;

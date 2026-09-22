@@ -1390,7 +1390,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V404<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V405<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1471,7 +1471,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V404</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V405</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4315,6 +4315,15 @@
                     // once it has DIED scoreless the guardian may call it a miss.
                     try {
                         if (window._rb2p_patPlayPending === true) {
+                            // V405 (SSFQ, DJPM): a 1-point KICK never passes through the snap
+                            // states below, so a missed kick was never "played" — the PAT
+                            // invariant then restored the scene the engine had already cleared
+                            // for the kickoff, and the field sat empty until the 35s wall.
+                            // In kick mode, the ball leaving rest is the try.
+                            if (!window._rb2p_patPlaySnappedMs && window._rb2p_patTryStarted(bkp, prev, true)) {
+                                window._rb2p_patPlaySnappedMs = Date.now();
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT kick launched (bkp ' + bkp + ')');
+                            }
                             if (!window._rb2p_patPlaySnappedMs && (bkp === 2 || bkp === 3 || bkp === 5 || bkp === 7 || bkp === 11) && (prev === 0 || prev == null || prev === 1)) {
                                 window._rb2p_patPlaySnappedMs = Date.now();
                                 if (window._rb2p_diagLog) window._rb2p_diagLog('PAT play snapped (bkp ' + bkp + ')');
@@ -8969,6 +8978,19 @@
             //   S5  our own persisted patDuty record ("I owe a conversion")
             // Any one of them means a conversion is owed, and while one is owed
             // the ball IS on the 2 and nothing may take the scene away.
+            // V405: does this ball-state change mean the conversion try has begun?
+            // kick mode (the engine's PAT flag _Z21) + the ball leaving rest = a kick.
+            window._rb2p_patTryStarted = function (bkp, prev, checkKick) {
+                try {
+                    if (!checkKick) return false;
+                    var emK = RB.engineState();
+                    if (!emK || !Number(emK.enginePatModeFlag)) return false;
+                    return bkp !== 0 && bkp != null && (prev === 0 || prev == null);
+                } catch (e) { return false; }
+            };
+            window._rb2p_convDuplicate = function () {
+                try { return Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 20000 && window._rb2p_patModalUp() === true; } catch (e) { return false; }
+            };
             window._rb2p_patModalUp = function () {
                 try {
                     var pl = (typeof window._rb2p_enumeratePopupInstances === 'function')
@@ -9290,6 +9312,9 @@
                         if (isConversion) {
                             var refusal = '';
                             try { refusal = window._rb2p_conversionGate(); } catch (eG) { refusal = ''; }
+                            // V405 (ITXQ): a second modal stacked on the first left the scorer
+                            // unable to answer for 35s. One offer at a time.
+                            try { if (!refusal && window._rb2p_convDuplicate()) refusal = 'a conversion modal is already up (duplicate)'; } catch (eDup) {}
                             if (refusal) {
                                 convRefused++;
                                 window._rb2p_convGateLastRefusal = refusal;
@@ -9392,6 +9417,25 @@
                         return;
                     }
                     var off = Math.abs(yardNow - window._rb2p_CONV_SPOT_2PT) > 0.5;
+                    // V405: possession has flipped AWAY and the field is clear more than 8s
+                    // after the offer — the engine finished a try this bridge never saw
+                    // (a missed kick) and moved on to the kickoff. Restoring the scene
+                    // here paints nothing (the field is gone) and hides the very signal the
+                    // miss detector reads. Mark the try as played and stand down.
+                    if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx &&
+                        Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) > 8000 &&
+                        window._rb2p_patPlayPending === true && !window._rb2p_patPlaySnappedMs) {
+                        var fldOver = false;
+                        try { var allO = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || []; fldOver = true;
+                              for (var oi = 0; oi < allO.length; oi++) { var ox = allO[oi]; if (ox && !ox._HL2 && ox._eE2 && ox._eE2._fE2 === 'obj_ball') { fldOver = false; break; } } } catch (eFO) {}
+                        if (fldOver) {
+                            window._rb2p_patPlaySnappedMs = Date.now() - 4000;
+                            window._rb2p_patPlayDiedMs = Date.now() - 2000;
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV the try is over (possession flipped away, field clear) — standing down for the miss detector');
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'try-over', why: 'possession flipped, field clear' });
+                            patFixTicks = 0; patWrongModalTicks = 0; return;
+                        }
+                    }
                     // C3: +48 is signed relative to the POSSESSING team — if the
                     // engine thinks the opponent possesses, "the 2" is at the
                     // wrong end of the field. Claim possession before pinning.
@@ -12434,6 +12478,19 @@
                     } else window._rb2p_pastRegSeenMs = 0;
                     var pastRegulation = (q >= 5) &&
                         (Date.now() - Number(window._rb2p_pastRegSeenMs) > 5000);
+                    // V405: a game is complete only when the stats screen has appeared.
+                    // 20s past a decided horn with this page visible, nothing may hold
+                    // the FINAL any longer — not a play in progress, not a PAT hold.
+                    if (q >= 5 && u !== o && !window._rb2p_inOvertime && !document.hidden &&
+                        Date.now() - Number(window._rb2p_pastRegSeenMs) > 20000 &&
+                        (typeof window._rb2p_canGameEnd !== 'function' || window._rb2p_canGameEnd())) {
+                        window._rb2p_gameOverReported = true;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('FINAL forced — 20s past a decided horn (Q' + q + ' ' + u + '-' + o + ')');
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'final-forced', q: q, su: u, so: o });
+                        var repF = (typeof window._rb2p_collectBoxScore === 'function') ? window._rb2p_collectBoxScore() : { players: [] };
+                        if (typeof window._rb2p_reportGameOver === 'function') window._rb2p_reportGameOver(repF);
+                        return;
+                    }
                     // CRITICAL: Vy=13 is the BETWEEN-QUARTERS park (every quarter
                     // end momentarily sits at Wy=N, clock 0:00, Vy=13, kp!=2 before
                     // the bridge resumes the next quarter). Without the Vy!=13 guard
@@ -14364,6 +14421,28 @@
             // controller's case-0 step consumes it to proceed from the
             // kickoff-wait into the play. This dismisses a stuck GET READY/
             // Kick Off staging when the on-screen button is a corpse.
+            // V405: a phone that comes back (pageshow / visible again) says so at once
+            // instead of waiting for the next 5s heartbeat — the other side's
+            // "OPPONENT LEFT" clears immediately.
+            window._rb2p_hbNow = function (why) {
+                try {
+                    if (window._rb2p_hbSuspend === true) return false;
+                    if (!document.documentElement.classList.contains('rb-in-match')) return false;
+                    var room = '', role = '';
+                    try { room = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
+                    try { role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : ''; } catch (e) {}
+                    if (!room || !role) return false;
+                    fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/hb/' + role + '.json')
+                        .then(function (u) { window._rb2p_hbUrl = u; return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), fps: Number(window._rb2p_diagFps) || 0, vis: document.hidden ? 'H' : 'V' }) }); })
+                        .catch(function () {});
+                    if (window._rb2p_diagLog && why) window._rb2p_diagLog('HB now (' + why + ')');
+                    return true;
+                } catch (e) { return false; }
+            };
+            try {
+                window.addEventListener('pageshow', function () { window._rb2p_hbNow('pageshow'); });
+                document.addEventListener('visibilitychange', function () { if (!document.hidden) window._rb2p_hbNow('visible'); });
+            } catch (eHN) {}
             window._rb2p_proceedKickoff = function () {
                 var n = 0;
                 try {
