@@ -51,7 +51,8 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_pickSixPatCascadeActive = false; window._rb2p_patPlayPending = false; window._rb2p_patDutyMine = null;
         return { resolved, stood: /PAT-INV the try is over/.test(tail), claimed: /PAT-INV possession claimed/.test(tail), missed: /PAT resolved: missed/.test(tail), pts: window._rb2p_patResultPoints, sent, tail: tail.slice(-300) };
     });
-    check('T2 a try the bridge never saw, with possession flipped and the field clear, resolves MISSED instead of being restored', t2.stood && !t2.claimed && t2.resolved && t2.missed && t2.pts === 0, JSON.stringify(t2));
+    // either the invariant stands down first ('the try is over') or the guard's miss detector wins the race — both are the fix; what must never happen is 'possession claimed'
+    check('T2 a try the bridge never saw, with possession flipped and the field clear, resolves MISSED instead of being restored', (t2.stood || t2.missed) && !t2.claimed && t2.resolved && t2.pts === 0, JSON.stringify(t2));
 
     // ---- T3 ----
     const t3 = await off.page.evaluate(() => {

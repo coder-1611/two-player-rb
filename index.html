@@ -1390,7 +1390,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V405<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V406<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1471,7 +1471,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V405</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V406</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2760,6 +2760,35 @@
             // healer keys on a kickoff button. A live phone, drawing frames, with
             // an empty field for 2.5s and nothing owed, gets its drive staged
             // again at the yard line the engine still holds.
+            // ===== V406 (IPHM and 7 more today): a conversion that crosses the horn =====
+            // The try was offered at 0:00, ran into the next quarter, the engine rolled
+            // the quarter with the ball still at the 2 and reset the down to 1, the +2
+            // landed — and the scorer KEPT the ball at the 2 for a fresh drive (a
+            // touchdown three snaps later). After a conversion the drive is over. Once
+            // the try has resolved and no play is running, a ball sitting at the 2 on
+            // down 1 in the new quarter is handed off as the touchdown's kickoff.
+            window._rb2p_postConvHandoffFor = 0;
+            setInterval(function () {
+                try {
+                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) return;
+                    if (window._rb2p_userIsWaitingForOpponent === true || window._rb2p_gameOverReported === true) return;
+                    var offer = Number(window._rb2p_lastConvModalMs) || 0, qc = Number(window._rb2p_quarterChangedToMs) || 0, now = Date.now();
+                    if (!offer || now - offer > 90000 || qc <= offer || window._rb2p_postConvHandoffFor === offer) return;
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
+                    if (window._rb2p_patPlayPending === true) return;
+                    var em = RB.engineState(); if (!em || !em.rawEngineMatch) return;
+                    if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return;
+                    if (Number(em.engineDownNumber) === 6) return;
+                    if (Math.abs(Math.abs(Number(em.engineYardLineSigned)) - 48) > 1.5) return;
+                    if (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) return;
+                    window._rb2p_postConvHandoffFor = offer;
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('POST-CONV the try crossed the horn and left me a drive at the 2 — handing off (TD kickoff)');
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'post-conv-handoff', y: Math.round(Number(em.engineYardLineSigned)), d: Number(em.engineDownNumber) });
+                    var ok = false;
+                    try { ok = window._rb2p_emptyFieldAct(em, Number(em.engineYardLineSigned)) === 'handoff'; } catch (eH) {}
+                    if (!ok) { try { em.engineDriveFsmStage = 9; em.enginePriorFsmStage = 9; var cpH = RB.getEngineScript('gml_Script_s_change_possession'); if (typeof cpH === 'function') cpH(em.rawEngineMatch, _Sc2); } catch (eH2) {} }
+                } catch (e) {}
+            }, 300);
             var emptySinceMs = 0, emptyLastMs = 0;
             // V395 (TBPK): after a conversion the engine clears the field for the
             // KICKOFF. An empty field there means "hand the ball over", never
@@ -4429,6 +4458,7 @@
                                             at:  Number(_Ai(p, 'stat_attempts')) || 0        // V346: pass attempts (the incompletion delta)
                                         };
                                     });
+                                    try { window._rb2p_scoreAtLastSnap = Number(fem.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); } catch (eSAS) {}   // V406
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fem.engineYardLineSigned)) + ' d=' + Number(fem.engineDownNumber));
                                     // V368: a REAL snap (the dead->live edge of the ball) is
@@ -9060,6 +9090,38 @@
                         // off and waits instead.
                         if (!window._rb2p_patOwedSinceMs || document.hidden) window._rb2p_patOwedSinceMs = Date.now();
                         else if (Date.now() - Number(window._rb2p_patOwedSinceMs) > 35000) {
+                            // V406 (ZNJM, FVCL): the wall counted from the OFFER and fired 3s after
+                            // a kick was launched, and 3s after a made 2-pt had already scored
+                            // and handed off — shipping MISSED over a real +1/+2.
+                            var emW = null; try { emW = RB.engineState(); } catch (eW) {}
+                            var wallSnapped = Number(window._rb2p_patPlaySnappedMs) || 0;
+                            if (wallSnapped && Date.now() - wallSnapped < 20000) {
+                                window._rb2p_patOwedSinceMs = Date.now() - 20000;   // a launched try gets 15 more seconds from here
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall deferred — the try is in flight');
+                                return why;
+                            }
+                            if (window._rb2p_userIsWaitingForOpponent === true &&
+                                Date.now() - (Number(window._rb2p_lastSentOutcomeMs) || 0) < 15000) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall stood down — the drive already handed off');
+                                window._rb2p_patOwedSinceMs = 0; window._rb2p_patPlayPending = false; window._rb2p_patDutyMine = null; window._rb2p_p6ScorerOwes = false;
+                                try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eSD) {}
+                                return '';
+                            }
+                            var wallDelta = emW ? (Number(emW.userScore) || 0) - (Number(window._rb2p_patUserScoreAtStart) || 0) : 0;
+                            if (wallDelta >= 1 && wallDelta <= 2 && window._rb2p_pickSixThisDeviceIsThrower !== true &&
+                                (window._rb2p_p6ScorerOwes === true || window._rb2p_patPlayPending === true || window._rb2p_patDutyMine)) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall — the score moved +' + wallDelta + ': resolving the conversion as MADE and shipping the result');
+                                if (window._rb2p_audit) window._rb2p_audit('conv', { ev: 'made', pts: wallDelta, wall: true });
+                                if (window._rb2p_p6Step) window._rb2p_p6Step('resolved', { pts: wallDelta, wall: true });
+                                window._rb2p_patOwedSinceMs = 0;
+                                window._rb2p_patPlayPending = false; window._rb2p_patPlayResolved = true;
+                                window._rb2p_patResolvedMs = Date.now(); window._rb2p_patResultPoints = wallDelta;
+                                window._rb2p_patPlaySnappedMs = 0; window._rb2p_patPlayDiedMs = 0;
+                                if (typeof window._rb2p_shipSyntheticPatResult === 'function') window._rb2p_shipSyntheticPatResult('35s wall, made +' + wallDelta);
+                                if (typeof window._rb2p_unwedgeConversion === 'function') window._rb2p_unwedgeConversion('35s wall (made)');
+                                window._rb2p_userIsWaitingForOpponent = true;
+                                return '';
+                            }
                             console.warn('[2P PAT-INV] conversion owed for 35s (' + why +
                                          ') — force-releasing the invariant');
                             // V380 (room XEDG, Q2 0:56): RELEASING is not RESOLVING. KC's phone
@@ -9210,6 +9272,13 @@
                         // alone. This is the second rope, not the first.
                         if (Number(em.engineDriveFsmStage) === 9)
                             return 'L1b engine touchdown stage';
+                        // V406 (HJSK, CBUS): the per-tick baseline had already absorbed the +6 by
+                        // the time the engine asked for the modal — the offer was refused (R2)
+                        // and the scorer sat on an unanswerable try. The score at the last
+                        // SNAP is a baseline nothing can race.
+                        var sas = Number(window._rb2p_scoreAtLastSnap);
+                        if (isFinite(sas) && u - sas >= 6 && now - (Number(window._rb2p_lastSnapMs) || 0) < 30000)
+                            return 'L1c touchdown (+6 since the snap)';
                     }
                 } catch (e) {}
                 // L3 — a live conversion re-popping. S5 (the persisted duty
@@ -10502,7 +10571,7 @@
                 // V394 (ILVQ, OHVZ, DMVF, YMLH): a try that dies at the horn ends on a dead stage and was
                 // typed OTHER — the receiver then took the ball on its 11. After a conversion the
                 // scorer kicks off: type it as the touchdown drive-end it is.
-                if (type === 'OTHER' && Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 30000) { type = 'TD'; if (window._rb2p_diagLog) window._rb2p_diagLog('drive-end after a conversion typed TD (kickoff), not OTHER'); }
+                if (type === 'OTHER' && Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 60000) { type = 'TD'; if (window._rb2p_diagLog) window._rb2p_diagLog('drive-end after a conversion typed TD (kickoff), not OTHER'); }
                 // V317: prevVy is frequently stale on a genuine INT/fumble (reads
                 // active-play → typed OTHER). The real-time _Vy=8 latch is reliable;
                 // if it fired in the last few seconds this possession change IS a
@@ -10543,7 +10612,7 @@
                 var secLeft = (live && typeof live.engineSecondsLeft === 'number') ? live.engineSecondsLeft : 0;
                 var built = {
                     type: type,
-                    turnover: isTurnover,   // V317: cosmetic blast hint (see above)
+                    turnover: isTurnover && (type === 'INT' || type === 'OTHER'),   // V317: cosmetic blast hint; V406: never on a kickoff/TD/PAT_RESULT
                     yardLine: yard,
                     ownSide: ownSide,
                     scoreUser: post.engineScoreboard[post.engineUserTeamIdx],
@@ -10945,7 +11014,10 @@
                         // the type string. A bare type:'INT' with turnover:false
                         // is exactly the synthesized-label class (PILP) and still
                         // blasted through this fallback.
-                        : (outcome.turnover === true);
+                        // V406 (YGJM complaint "keeps saying intercepted"): the hint alone is
+                        // not enough — it rode on kickoffs after a touchdown (a transient
+                        // Vy=8 in the cascade). Without deltas, only an INT-typed outcome.
+                        : (outcome.type === 'INT');
                     if (v350Takeaway && !rb2pGameOver) {
                         try {
                             var v348Eb = window._rb2p_evtBlastedAt || {};
@@ -16850,7 +16922,7 @@
                     }
                     window._rb2p_deferredOutcome = null;
                     window._rb2p_deferredOutcomeSinceMs = 0;
-                    lastTs = val.ts;
+                    lastTs = val.ts; window._rb2p_lastAppliedOutcomeTs = val.ts;   // V406
                     if (window._rb2p_audit) window._rb2p_audit('recv', { type: val.type, ts: val.ts, via: via || 'sdk',   // V365
                         su: val.scoreUser, so: val.scoreOpp, y: val.yardLine, q: val.quarter,
                         clk: Number(val.minutesLeft) * 60 + Number(val.secondsLeft) });
@@ -16980,7 +17052,7 @@
                     window._rb2p_deferredOutcome = null;
                     window._rb2p_deferredOutcomeSinceMs = 0;
                     if (val.ts <= lastTs) return 'already applied';
-                    lastTs = val.ts;
+                    lastTs = val.ts; window._rb2p_lastAppliedOutcomeTs = val.ts;   // V406
                     console.log('[2P OUTCOME] applying held ' + val.type + ' after ' +
                                 heldMs + 'ms (' + (why || 'drain') + ')' +
                                 (blocked ? ' — PAST THE WALL, still ' + blocked : ''));
@@ -17638,6 +17710,10 @@
                     var opponentLivePayload = snap.val();
                     if (!opponentLivePayload || !opponentLivePayload.ts ||
                         opponentLivePayload.ts <= lastOpponentLiveTs) return;
+                    // V406 (MHQP): a reconnecting phone flushes live pushes queued BEFORE its
+                    // hand-off; their iHaveBall:true is from a drive that is over.
+                    if (opponentLivePayload.iHaveBall === true &&
+                        Number(opponentLivePayload.ts) < (Number(window._rb2p_lastAppliedOutcomeTs) || 0)) return;
                     lastOpponentLiveTs = opponentLivePayload.ts;
                     // V336/V337: track the opponent's liveness + claimed possession
                     // (local receipt clock — never the sender's, to dodge skew).

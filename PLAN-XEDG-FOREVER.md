@@ -143,6 +143,32 @@ audible** at the Q1→Q2 rollover (the keep loop above).
     carries the verdict, the audited record stores `complete/horn`, the
     transcripts page shows COMPLETE / INCOMPLETE / UNFINISHED.
 
+18. **A conversion that crosses the horn ends the drive (V406, IPHM and 7
+    more in one day).** The try ran into the next quarter, the engine rolled
+    the quarter with the ball at the 2 and the down reset to 1, the points
+    landed, and the scorer kept the ball at the 2 for a fresh drive. A 300 ms
+    watcher now hands such a drive off as the touchdown's kickoff
+    (`guard post-conv-handoff`).
+
+19. **The 35 s wall respects a try in flight and a try already scored (V406,
+    ZNJM, FVCL).** It defers while a launched try is under 20 s old, stands
+    down when the drive has already handed off, and resolves MADE (+1/+2)
+    when the score moved since the offer, instead of shipping MISSED over
+    real points. The post-try hand-off is typed TD for 60 s, not 30.
+
+20. **The conversion licence cannot be raced (V406, HJSK, CBUS).** The +6 is
+    also measured against the score at the last snap (`L1c`), so the offer is
+    never refused because the per-tick baseline absorbed the touchdown first.
+
+21. **INTERCEPTED needs a takeaway (V406, the YGJM complaint).** The banner
+    lights only on real INT/fumble deltas or an INT-typed outcome; the
+    cosmetic `turnover` hint never rides on a kickoff, TD or PAT_RESULT.
+
+22. **Live pushes from before the last hand-off are dead (V406, MHQP).** A
+    reconnecting phone's queued `iHaveBall:true` pushes older than the last
+    applied outcome are ignored; a silent phone is reported as SILENT, not
+    DEADLOCK.
+
 ## The checker learns each one
 
 - **R-GIFT** — the scorer snapped a normal down while still owing the
@@ -159,6 +185,6 @@ audible** at the Q1→Q2 rollover (the keep loop above).
 ## Proof
 
 `e2e/v380-xedg.js` replays each mechanism in the harness and asserts the
-law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/v403-endings.js` laws 10-13; `e2e/v405-complete.js` laws 14-17; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
+law; `e2e/v395-hidden.js` covers laws 8 and 9; `e2e/v403-endings.js` laws 10-13; `e2e/v405-complete.js` laws 14-17; `e2e/v406-today.js` laws 18-22; `e2e/audit-selftest.js` injects each new bug shape and asserts the flag.
 XEDG itself, re-audited, must name the gift drive, both stale applies, the
 keep loop and the fallback.

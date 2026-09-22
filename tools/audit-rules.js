@@ -335,8 +335,14 @@ function audit(tl, extra) {
                         const hid = roles.find(r => hidden[r]);
                         if (hid) flag('R-POSS', `IDLE: both devices waiting for ${secs}s while ${hid}'s screen was hidden`, [e],
                                       `${T(hid)}'s screen was off (or the app was in the background) for ${secs} seconds while ${T(other(hid))} waited for it.`);
-                        else flag('R-POSS', `DEADLOCK: both devices waiting for ${secs}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e],
-                                  `Both phones sat on "waiting for opponent" for ${secs} seconds — the game was stuck.`);
+                        else {
+                            // V406 (LVVB): a phone that stopped writing anything at all did not deadlock — it closed or crashed
+                            const silent = roles.find(r => r !== e.role && !byRole[r].some(x => x.t > e.t - 30000 && x.t <= e.t));
+                            if (silent) flag('R-POSS', `SILENT: ${silent}'s phone stopped reporting while ${other(silent)} waited ${secs}s`, [e],
+                                             `${T(silent)}'s phone went silent (closed, crashed or lost its connection) while ${T(other(silent))} waited ${secs} seconds.`);
+                            else flag('R-POSS', `DEADLOCK: both devices waiting for ${secs}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e],
+                                     `Both phones sat on "waiting for opponent" for ${secs} seconds — the game was stuck.`);
+                        }
                         bothWaitSince = null;
                     }
                 }
@@ -608,7 +614,7 @@ function audit(tl, extra) {
             case 'R-FALLBACK': return /fired/.test(m) ? 3 : 0;
             case 'R-FINAL': return /closed the page/.test(m) ? 0 : 3;   // V405: a player leaving before the stats is not the game's fault
             case 'R-POSS': {
-                if (/^IDLE/.test(m)) return 0;
+                if (/^IDLE|^SILENT/.test(m)) return 0;
                 if (/DEADLOCK|stayed WAIT|DOUBLE OFFENSE/.test(m)) return 3;
                 if (/REFUSED going LIVE/.test(m)) { const r = /^([ab]) was REFUSED/.exec(m); const role = r && r[1]; const recovered = role && tl.some(x => x.role === role && x.k === 'wait' && x.on === false && !x.refused && x.t > f.t && x.t < f.t + 15000); return recovered ? 0 : 3; }
                 return 1;
@@ -787,7 +793,8 @@ function narrate(tl, meta) {
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
             case 'guard': {
-                const g = { 'try-over': who + '\'s conversion try was over (possession had flipped, field clear) — the bridge stood down and let it resolve as missed.',
+                const g = { 'post-conv-handoff': who + '\'s conversion had crossed the quarter horn and left it a drive at the 2 — handed off as the kickoff instead.',
+                            'try-over': who + '\'s conversion try was over (possession had flipped, field clear) — the bridge stood down and let it resolve as missed.',
                             'final-forced': 'The stats screen was forced on ' + who + ' 20 seconds past a decided horn (' + e.su + '-' + e.so + ').',
                             'keep-fresh': who + '\'s parked scene kept coming back at the quarter start — its drive was spawned fresh' + (e.ok === false ? ' (FAILED)' : '') + '.',
                             'force-drive': who + ' asked for a drive while still owing its conversion result — refused.', rescue: who + ' would have rescued a drive for itself; it owed a conversion result, so the result was sent instead.',
