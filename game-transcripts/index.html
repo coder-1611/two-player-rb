@@ -153,8 +153,9 @@
       const agg = { today: { two: new Set(), solo: new Set(), soloPlayed: new Set(), soloMatches: 0, twoVisits: 0, soloVisits: 0 }, week: { two: new Set(), solo: new Set(), soloPlayed: new Set(), soloMatches: 0, twoVisits: 0, soloVisits: 0 } };
       for (const p of per) {
         const buckets = [agg.week].concat(p.d === dayList[6] ? [agg.today] : []);
-        for (const k in p.v) { const r = p.v[k]; if (!r) continue; for (const b of buckets) { if (r.src === 'solo') { b.soloVisits++; if (r.uid) b.solo.add(r.uid); } else { b.twoVisits++; if (r.uid) b.two.add(r.uid); } } }
-        for (const k in p.so) { const r = p.so[k]; if (!r) continue; for (const b of buckets) { if (r.played === true || Number(r.inMatchSec) >= 20) { if (r.uid) b.soloPlayed.add(r.uid); else b.soloPlayed.add(k); } b.soloMatches += Number(r.matches) || 0; } }
+        const isTest = r => r && (r.src === 'local' || /localhost|127\.0\.0\.1/.test(String(r.host || '')) || /HeadlessChrome/.test(String(r.ua || '')));
+        for (const k in p.v) { const r = p.v[k]; if (!r || isTest(r)) continue; for (const b of buckets) { if (r.src === 'solo') { b.soloVisits++; if (r.uid) b.solo.add(r.uid); } else { b.twoVisits++; if (r.uid) b.two.add(r.uid); } } }
+        for (const k in p.so) { const r = p.so[k]; if (!r || isTest(r)) continue; for (const b of buckets) { if (r.played === true || Number(r.inMatchSec) >= 20) { if (r.uid) b.soloPlayed.add(r.uid); else b.soloPlayed.add(k); } b.soloMatches += Number(r.matches) || 0; } }
       }
       const cell = (n, label) => '<div style="text-align:center;min-width:86px"><div style="font-family:Anton,sans-serif;font-size:26px;line-height:1">' + n + '</div><div class="when" style="margin-top:2px">' + esc(label) + '</div></div>';
       const block = (title, b) => '<div style="flex:1 1 280px"><div class="teams" style="margin-bottom:6px"><b>' + esc(title) + '</b></div><div style="display:flex;gap:14px;flex-wrap:wrap">' +

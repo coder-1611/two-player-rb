@@ -732,7 +732,7 @@ function narrate(tl, meta) {
             case 'bind':
                 push(e, who + (e.ver ? ' joined on ' + e.ver : ' joined') + (out.some(o => o.role === e.role && o.kind === 'system') ? ' again (after a refresh)' : '') + '.', 'system'); break;
             case 'q':
-                if (lastQ[e.role] !== e.to) { lastQ[e.role] = e.to; push(e, (e.to === 3 ? 'Halftime. ' : '') + (e.to === 5 ? 'Overtime begins' : 'Quarter ' + e.to + ' begins') + ' on ' + who + '\'s phone' + (e.to === 2 || e.to === 4 ? ', same drive continues from ' + spot(e.y) + ', ' + dd(e.d, e.tg) : '') + '.', 'quarter'); }
+                if (lastQ[e.role] !== e.to) { lastQ[e.role] = e.to; push(e, (e.to === 3 ? 'Halftime. ' : '') + (e.to === 5 ? (((() => { const sc = tl.filter(x => x.role === e.role && x.k === 'score' && x.t <= e.t + 3000).pop(); return sc && sc.su === sc.so; })()) ? 'Overtime begins' : 'End of regulation (the clock hit 0:00 in the 4th)') : 'Quarter ' + e.to + ' begins') + ' on ' + who + '\'s phone' + (e.to === 2 || e.to === 4 ? ', same drive continues from ' + spot(e.y) + ', ' + dd(e.d, e.tg) : '') + '.', 'quarter'); }
                 break;
             case 'settle': {
                 const g = (typeof e.gain === 'number') ? e.gain : null;

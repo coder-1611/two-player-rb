@@ -43,13 +43,14 @@ async function main() {
         const [v, s] = await Promise.all([get(tok, 'visits/' + d), get(tok, 'solo/' + d)]);
         const two = { visits: 0, devices: new Set(), bySrc: {}, newDevices: 0 };
         const solo = { visits: 0, devices: new Set(), sessions: 0, played: 0, playedDevices: new Set(), matches: 0, durs: [], newDevices: 0, tz: {} };
+        const isTest = r => r && (r.src === 'local' || /localhost|127\.0\.0\.1/.test(String(r.host || '')) || /HeadlessChrome/.test(String(r.ua || '')));
         for (const k in (v || {})) {
-            const r = v[k]; if (!r) continue;
+            const r = v[k]; if (!r || isTest(r)) continue;
             if (r.src === 'solo') { solo.visits++; if (r.uid) { if (!solo.devices.has(r.uid) && !seenBefore.solo.has(r.uid)) solo.newDevices++; solo.devices.add(r.uid); } if (r.tz) solo.tz[r.tz] = (solo.tz[r.tz] || 0) + 1; }
             else { two.visits++; two.bySrc[r.src || '?'] = (two.bySrc[r.src || '?'] || 0) + 1; if (r.uid) { if (!two.devices.has(r.uid) && !seenBefore.two.has(r.uid)) two.newDevices++; two.devices.add(r.uid); } }
         }
         for (const k in (s || {})) {
-            const r = s[k]; if (!r) continue;
+            const r = s[k]; if (!r || isTest(r)) continue;
             solo.sessions++;
             const dur = Number(r.dur) || 0; solo.durs.push(dur);
             if (r.played === true || Number(r.inMatchSec) >= 20) { solo.played++; if (r.uid) solo.playedDevices.add(r.uid); }
