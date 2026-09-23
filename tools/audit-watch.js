@@ -52,10 +52,18 @@ async function tick() {
     }
 }
 
+// V409: refresh the all-time totals (stats/alltime) after audits, at most every 10 minutes
+let statsAt = 0;
+function refreshStats() {
+    if (Date.now() - statsAt < 10 * 60 * 1000) return;
+    statsAt = Date.now();
+    try { execFileSync(process.execPath, [path.join(__dirname, 'alltime-stats.js')], { encoding: 'utf8', timeout: 120000 }); log('stats/alltime refreshed'); }
+    catch (e) { log('stats refresh failed: ' + String((e && e.message) || e).slice(0, 120)); }
+}
 (async () => {
     log('audit-watch started');
     for (;;) {
-        try { await tick(); } catch (e) { log('tick error: ' + (e && e.message)); }
+        try { const before = statsAt; await tick(); refreshStats(); } catch (e) { log('tick error: ' + (e && e.message)); }
         await new Promise(r => setTimeout(r, POLL_MS));
     }
 })();

@@ -85,5 +85,11 @@ async function main() {
     const tot = rows.reduce((a, r) => ({ tv: a.tv + r.two.visits, sv: a.sv + r.solo.visits, sp: a.sp + r.solo.played, sm: a.sm + r.solo.matches }), { tv: 0, sv: 0, sp: 0, sm: 0 });
     console.log('\ntotals: two-player visits ' + tot.tv + ' · solo visits ' + tot.sv + ' · solo sessions that played ' + tot.sp + ' · solo matches started ' + tot.sm);
     console.log('note: solo records exist only from the beacon deploy on 2026-09-21; "played" = a match was on the field (22 sprites) for 20s+.');
+    try {
+        const st = await get(tok, 'stats/alltime');
+        if (st && st.two) console.log('\nALL TIME (stats/alltime, updated ' + new Date(st.updatedAt).toLocaleString() + '): two-player games ' + st.two.games + ' (' + st.two.complete + ' to the stats screen) · ' +
+            st.two.personHours + ' person-hours on screen · ' + st.two.gameHours + ' game-hours · ' + st.two.devices + ' devices / ' + st.two.visits + ' visits since the beacon · solo: ' +
+            st.solo.devices + ' devices, ' + st.solo.played + ' sessions that played, ' + st.solo.hours + ' h on page (' + st.solo.matchHours + ' h in a match)');
+    } catch (e) {}
 }
 main().catch(e => { console.error(e); process.exit(1); });

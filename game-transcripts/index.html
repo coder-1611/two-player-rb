@@ -171,7 +171,21 @@
       const cell = (n, label) => '<div style="text-align:center;min-width:86px"><div style="font-family:Anton,sans-serif;font-size:26px;line-height:1">' + n + '</div><div class="when" style="margin-top:2px">' + esc(label) + '</div></div>';
       const block = (title, b) => '<div style="flex:1 1 280px"><div class="teams" style="margin-bottom:6px"><b>' + esc(title) + '</b></div><div style="display:flex;gap:14px;flex-wrap:wrap">' +
         cell(b.two.size, 'two-player devices') + cell(b.twoVisits, 'two-player visits') + cell(b.solo.size, 'solo devices') + cell(b.soloPlayed.size, 'solo players (played)') + cell(b.soloMatches, 'solo matches') + '</div></div>';
-      playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' +
+      // V409: all time — published by tools/alltime-stats.js (the audit archives hold the games and the screen time)
+      let allHtml = '';
+      try {
+        const st = await get('stats/alltime');
+        if (st && st.two) {
+          const fmtDay = ms => ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '?';
+          allHtml = '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>All time</b> <span class="when">(games and hours since ' + esc(fmtDay(st.two.since)) + ', visits since ' + esc(fmtDay(st.two.visitsSince)) + ', solo since ' + esc(fmtDay(st.solo && st.solo.since)) + '; updated ' + esc(fmtWhen(st.updatedAt)) + ')</span></div>' +
+            '<div style="display:flex;gap:14px;flex-wrap:wrap">' +
+            cell(st.two.games, 'two-player games') + cell(st.two.complete, 'played to the stats screen') + cell(st.two.personHours, 'hours on screen (per person)') + cell(st.two.gameHours, 'game-hours (both players)') +
+            cell(st.two.devices, 'two-player devices') + cell(st.two.visits, 'two-player visits') +
+            cell(st.solo ? st.solo.devices : 0, 'solo devices') + cell(st.solo ? st.solo.played : 0, 'solo sessions that played') + cell(st.solo ? st.solo.hours : 0, 'solo hours on page') + '</div>' +
+            '<p class="when" style="margin:8px 0 0">Hours on screen count each phone\'s time between its own events, with idle gaps over five minutes left out (a tab open through lunch is not play). Two-player games are match starts with at least three snaps in the recorded games.</p></div>';
+        }
+      } catch (e) { allHtml = ''; }
+      playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' + allHtml +
         '<p class="when" style="margin:10px 0 0">Days are your local calendar days (' + esc((Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time')) + '). Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
     } catch (e) { playersHtml = ''; }
     app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
