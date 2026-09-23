@@ -802,7 +802,8 @@ function narrate(tl, meta) {
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
             case 'guard': {
-                const g = { 'silent-rescue': who + '\'s opponent went silent after handing over the turn — ' + who + ' took the ball at ' + spot(e.y) + '.',
+                const g = { 'field-check': 'Nobody was on the field for 10 seconds — ' + who + '\'s team was put back on at ' + spot(e.y) + ' (' + (e.why || '') + ').',
+                            'silent-rescue': who + '\'s opponent went silent after handing over the turn — ' + who + ' took the ball at ' + spot(e.y) + '.',
                             'end-by-player': who + ' ended the game from the waiting screen (' + (e.why || 'opponent gone') + ') and saw the stats.',
                             'post-conv-handoff': who + '\'s conversion had crossed the quarter horn and left it a drive at the 2 — handed off as the kickoff instead.',
                             'try-over': who + '\'s conversion try was over (possession had flipped, field clear) — the bridge stood down and let it resolve as missed.',

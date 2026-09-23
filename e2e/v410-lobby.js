@@ -3,8 +3,7 @@
 //   T1  a host whose seat dropped (connection blink) still has a room: the friend's code joins as B, and the seat keeper restores A
 //   T2  the host's waiting line names the code, says how to use it, and offers an invite link
 //   T3  an invite link (?join=CODE) opens straight into the friend's room
-//   T4  the turn is mine and the opponent went silent: I take the ball where their last push left it
-//   T5  a gone or frozen opponent: after a minute the waiting cover offers END GAME, which shows the stats
+//   (T4/T5 replaced by the V411 field check: e2e/v411-field-check.js)
 //   T6  a try snapped before the horn: the drive left at the 2 is handed off at once (no 3s window to snap it)
 const H = require('./harness');
 const TP = require('./two-player');
@@ -53,39 +52,6 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     await sleep(6000);
     const aWait = await g.a.page.evaluate(() => window._rb2p_userIsWaitingForOpponent === true);
     const off = aWait ? g.b : g.a, def = aWait ? g.a : g.b;
-
-    const t4 = await def.page.evaluate(async (role) => {
-        window._rb2p_diagLog('T4-START');
-        const calls = []; const realF = window._rb2p_forceUserOffenseDrive; const realS = window._rb2p_oppSilentMs;
-        window._rb2p_forceUserOffenseDrive = (y, fresh) => { calls.push({ y, fresh }); return true; };
-        window._rb2p_oppSilentMs = () => 30000;
-        window._rb2p_lastSentOutcome = null; window._rb2p_silentRescueFor = null;
-        window._rb2p_oppLiveRx = { at: Date.now() - 30000, iHaveBall: false, yardLine: 3.64, down: 1 };
-        window._rb2p_turnRec = { owner: role, at: Date.now() - 20000 };
-        const t0 = Date.now(); while (Date.now() - t0 < 5000 && !calls.length) await new Promise(r => setTimeout(r, 100));
-        window._rb2p_forceUserOffenseDrive = realF; window._rb2p_oppSilentMs = realS;
-        const d = String(window._rb2p_readDiagLog()); const tail = d.slice(d.lastIndexOf('T4-START'));
-        window._rb2p_userIsWaitingForOpponent = true;
-        return { calls, logged: /TURN-RESCUE the opponent went silent/.test(tail) };
-    }, def.role);
-    check('T4 the turn is mine and the opponent is silent: I take the ball at their last spot (fresh drive)', t4.logged && t4.calls.length === 1 && Math.abs(t4.calls[0].y - 3.64) < 0.01 && t4.calls[0].fresh === true, JSON.stringify(t4));
-
-    const t5 = await def.page.evaluate(async () => {
-        const realS = window._rb2p_oppSilentMs, realR = window._rb2p_reportGameOver;
-        let reported = null; window._rb2p_reportGameOver = r => { reported = r; };
-        window._rb2p_userIsWaitingForOpponent = true; window._rb2p_gameOverReported = false;
-        window._rb2p_oppSilentMs = () => 10000; window._rb2p_refreshWaitStatus();
-        const before = document.getElementById('rb-end-game'); const shownEarly = !!(before && before.style.display !== 'none');
-        window._rb2p_oppSilentMs = () => 70000; window._rb2p_refreshWaitStatus();
-        const eb = document.getElementById('rb-end-game'); const shown = !!(eb && eb.style.display !== 'none');
-        const status = document.getElementById('rb-wait-status').textContent;
-        if (eb) eb.click();
-        window._rb2p_oppSilentMs = realS; window._rb2p_reportGameOver = realR; window._rb2p_gameOverReported = false;
-        window._rb2p_refreshWaitStatus();
-        return { shownEarly, shown, status, reported: !!reported };
-    });
-    check('T5 END GAME appears only after a minute of silence, the cover says the phone stopped responding, and pressing it shows the stats',
-          !t5.shownEarly && t5.shown && /STOPPED RESPONDING/.test(t5.status) && t5.reported, JSON.stringify(t5));
 
     const t6 = await off.page.evaluate(async () => {
         window._rb2p_diagLog('T6-START');

@@ -1399,7 +1399,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V410<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V411<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1480,7 +1480,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V410</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V411</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -11537,28 +11537,6 @@
                     var silentMs = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
                     var silent = !left && silentMs > 20000;
                     var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (silent ? "OPPONENT'S PHONE STOPPED RESPONDING" : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT'));
-                    // V410: after a minute of a gone or frozen opponent, the waiting player can end
-                    // the game and see the stats instead of staring at the cover forever
-                    var endOk = window._rb2p_userIsWaitingForOpponent === true && window._rb2p_gameOverReported !== true &&
-                                ((left && Date.now() - (Number(window._rb2p_oppHb && window._rb2p_oppHb.at) || 0) > 60000) || silentMs > 60000);
-                    var eb = document.getElementById('rb-end-game');
-                    if (endOk && !eb && st.parentNode) {
-                        eb = document.createElement('button'); eb.id = 'rb-end-game'; eb.type = 'button';
-                        eb.textContent = 'END GAME AND SEE THE STATS';
-                        eb.style.cssText = 'display:block;margin:14px auto 0;font:inherit;font-size:14px;letter-spacing:2px;padding:8px 16px;background:#ffd23c;color:#08122a;border:0;cursor:pointer;pointer-events:auto;position:relative;z-index:5;';
-                        eb.onclick = function () {
-                            try {
-                                if (window._rb2p_gameOverReported === true) return;
-                                window._rb2p_gameOverReported = true;
-                                if (window._rb2p_diagLog) window._rb2p_diagLog('END GAME pressed — opponent ' + (left ? 'left' : 'silent ' + Math.round(silentMs / 1000) + 's'));
-                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'end-by-player', why: left ? 'opponent left' : 'opponent silent' });
-                                var repE = (typeof window._rb2p_collectBoxScore === 'function') ? window._rb2p_collectBoxScore() : { players: [] };
-                                if (typeof window._rb2p_reportGameOver === 'function') window._rb2p_reportGameOver(repE);
-                            } catch (eE) {}
-                        };
-                        st.parentNode.appendChild(eb);
-                    }
-                    if (eb) eb.style.display = endOk ? 'block' : 'none';
                     if (st.textContent !== want) st.textContent = want;
                 } catch (e) {}
             };
@@ -17650,6 +17628,57 @@
                     if (window._rb2p_audit) window._rb2p_audit('possinv', { why: why });
                 } catch (e) {}
             }
+            // ===== V411: THE FIELD CHECK — at least one team is always on the field =====
+            // Every 10 seconds each phone asks one question: is somebody playing?
+            // I am live, or the opponent's live push says THEY have the ball — fine.
+            // If both are waiting on two checks in a row (10s+), nobody is on the
+            // field and the game is stuck, whatever the cause (a lost hand-off, a
+            // frozen phone, a race). Fix it on the spot:
+            //   - the turn record says it is mine (or nobody has claimed it) -> I take the ball
+            //   - it says it is theirs but their phone has said nothing for 30s -> I take it
+            //     and claim the turn (they rejoin as the defense when they come back)
+            //   - it is theirs and their phone is alive -> their own check takes it
+            // The ball goes where their last live push left it (after a hand-off that is
+            // my spot), else where my engine has it, else my 25.
+            var fieldEmptyChecks = 0;
+            window._rb2p_fieldCheck = function () {
+                try {
+                    if (!myRoom || !myRole) return 'no room';
+                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { fieldEmptyChecks = 0; return 'not in match'; }
+                    if (window._rb2p_gameOverReported === true) { fieldEmptyChecks = 0; return 'game over'; }
+                    if (window._rb2p_userIsWaitingForOpponent !== true) { fieldEmptyChecks = 0; return 'I am on the field'; }
+                    var now = Date.now(), ol = window._rb2p_oppLiveRx;
+                    if (ol && now - (Number(ol.at) || 0) < 5000 && ol.iHaveBall === true) { fieldEmptyChecks = 0; return 'opponent is on the field'; }
+                    if (typeof window._rb2p_oppHidden === 'function' && window._rb2p_oppHidden()) { fieldEmptyChecks = 0; return 'opponent screen off (their hand-off is held)'; }
+                    if (document.hidden) { fieldEmptyChecks = 0; return 'my screen is off'; }
+                    // things that are legitimately in flight
+                    if (window._rb2p_pickSixPatCascadeActive === true || window._rb2p_patPlayPending === true) { fieldEmptyChecks = 0; return 'conversion in progress'; }
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) { fieldEmptyChecks = 0; return 'conversion owed'; }
+                    if (window._rb2p_deferredOutcome || (window._twoPlayer && window._twoPlayer.pending && window._twoPlayer.pending.length)) { fieldEmptyChecks = 0; return 'a hand-off is waiting to apply'; }
+                    if (now - (Number(window._rb2p_lastSentOutcomeMs) || 0) < 10000) { fieldEmptyChecks = 0; return 'my hand-off was just sent'; }
+                    if (++fieldEmptyChecks < 2) return 'nobody on the field (check ' + fieldEmptyChecks + ')';
+                    var tr = window._rb2p_turnRec;
+                    var silent = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
+                    var mine = !tr || !tr.owner || tr.owner === myRole;
+                    if (!mine && silent < 30000) return 'nobody on the field — the turn is theirs and their phone is alive (their check takes it)';
+                    fieldEmptyChecks = 0;
+                    var y = null;
+                    if (ol && ol.iHaveBall === false && isFinite(ol.yardLine) && Math.abs(ol.yardLine) <= 49 && ol.yardLine !== 0) y = Number(ol.yardLine);
+                    if (y === null) { try { y = Number(RB.engineState().engineYardLineSigned); } catch (eY) {} }
+                    if (!isFinite(y) || Math.abs(y) > 49 || y === 0) y = -25;
+                    var why = mine ? 'the turn is mine' : 'their phone has been silent ' + Math.round(silent / 1000) + 's';
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('FIELD-CHECK nobody on the field for 10s+ (' + why + ') — putting my team on at ' + Math.round(y));
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'field-check', y: Math.round(y), why: why, silentMs: silent });
+                    var ok = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(y, true) : false;
+                    if (ok !== false) {
+                        window._rb2p_userIsWaitingForOpponent = false;
+                        if (!mine) window._rb2p_declareTurnOwner('ME', 'field-check');
+                        return 'fixed: my team is on the field';
+                    }
+                    return 'fix failed (force-drive refused)';
+                } catch (e) { return 'error'; }
+            };
+            setInterval(function () { try { window._rb2p_fieldCheck(); } catch (e) {} }, 10000);
             window._rb2p_declareTurnOwner = function (owner, why) {
                 try {
                     if (!myRoom || !myRole) return;
@@ -17756,27 +17785,6 @@
                             if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'rescue', ok: false, why: 'opponent hidden' });
                         }
                         if (!oppHiddenR) window._rb2p_rescueHiddenLogged = false;
-                        // V410 (DPSY, Laith's complaint): the opponent's phone froze 1s after
-                        // handing me the turn (turn record written, outcome never sent) and went
-                        // silent. Both-parked needs a FRESH live push from them, so nothing
-                        // rescued and I waited forever. The turn is mine and they are silent:
-                        // take the ball where their last push left it.
-                        var oppSilentR = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
-                        if (!handoffInFlight && tR && tR.owner === myRole && oppSilentR > 20000 &&
-                            Date.now() - (Number(tR.at) || 0) > 15000 && window._rb2p_silentRescueFor !== tR.at &&
-                            window._rb2p_pickSixPatCascadeActive !== true && window._rb2p_patPlayPending !== true &&
-                            window._rb2p_gameOverReported !== true && window._rb2p_p6ScorerOwes !== true) {
-                            window._rb2p_silentRescueFor = tR.at;
-                            var olS = window._rb2p_oppLiveRx, yS = null;
-                            if (olS && olS.iHaveBall === false && isFinite(olS.yardLine) && Math.abs(olS.yardLine) <= 49) yS = olS.yardLine;
-                            if (yS === null) { try { yS = Number(RB.engineState().engineYardLineSigned); } catch (eYS) {} }
-                            if (!isFinite(yS) || Math.abs(yS) > 49) yS = -25;
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE the opponent went silent ' + Math.round(oppSilentR / 1000) + 's after handing me the turn — taking the ball at ' + Math.round(yS));
-                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'silent-rescue', y: Math.round(yS), silentMs: oppSilentR });
-                            var okS = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(yS, true) : false;
-                            if (okS !== false) { window._rb2p_userIsWaitingForOpponent = false; try { hideWait(); } catch (eHW) {} }
-                            return;
-                        }
                         var bothParked = !handoffInFlight && !oppHiddenR && tR && tR.owner === myRole &&
                             olR && Date.now() - (Number(olR.at) || 0) < 4000 &&
                             olR.iHaveBall !== true &&
