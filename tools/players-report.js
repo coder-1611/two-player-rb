@@ -20,7 +20,9 @@ async function get(tok, p, q) {
     const r = await fetch(DB + p + '.json?auth=' + tok + (q ? '&' + q : ''), { cache: 'no-store' });
     return r.ok ? r.json() : null;
 }
-const dayStr = d => d.toISOString().slice(0, 10);
+// V408: records live under UTC-day keys; the report buckets by this machine's LOCAL calendar day (America/Chicago here)
+const utcKey = d => d.toISOString().slice(0, 10);
+const dayStr = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 const median = xs => { if (!xs.length) return 0; const s = xs.slice().sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 
 async function main() {
@@ -38,9 +40,17 @@ async function main() {
             for (const k in v) { const r = v[k]; if (!r || !r.uid) continue; (r.src === 'solo' ? seenBefore.solo : seenBefore.two).add(r.uid); }
         }
     } catch (e) {}
+    // pull every UTC key that can hold the window, then bucket by local day of each record's ts
+    const utcKeys = []; for (let i = days + 1; i >= -1; i--) { const k = utcKey(new Date(today.getTime() - i * 86400000)); if (!utcKeys.includes(k)) utcKeys.push(k); }
+    const byLocal = {}; for (const d of list) byLocal[d] = { v: {}, s: {} };
+    for (const k of utcKeys) {
+        const [v, s] = await Promise.all([get(tok, 'visits/' + k), get(tok, 'solo/' + k)]);
+        for (const id in (v || {})) { const r = v[id]; if (!r || !r.ts) continue; const ld = dayStr(new Date(r.ts)); if (byLocal[ld]) byLocal[ld].v[id] = r; }
+        for (const id in (s || {})) { const r = s[id]; if (!r || !r.ts) continue; const ld = dayStr(new Date(r.ts)); if (byLocal[ld]) byLocal[ld].s[id] = r; }
+    }
     const rows = [];
     for (const d of list) {
-        const [v, s] = await Promise.all([get(tok, 'visits/' + d), get(tok, 'solo/' + d)]);
+        const v = byLocal[d].v, s = byLocal[d].s;
         const two = { visits: 0, devices: new Set(), bySrc: {}, newDevices: 0 };
         const solo = { visits: 0, devices: new Set(), sessions: 0, played: 0, playedDevices: new Set(), matches: 0, durs: [], newDevices: 0, tz: {} };
         const isTest = r => r && (r.src === 'local' || /localhost|127\.0\.0\.1/.test(String(r.host || '')) || /HeadlessChrome/.test(String(r.ua || '')));
@@ -64,7 +74,7 @@ async function main() {
                     matches: solo.matches, medianDurSec: median(solo.durs), topTz: Object.entries(solo.tz).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0] + ' ' + x[1]) } });
     }
     if (json) { console.log(JSON.stringify(rows, null, 1)); return; }
-    console.log('WHO IS PLAYING — last ' + days + ' day' + (days === 1 ? '' : 's') + ' (devices = distinct browsers by anonymous id; "new" = never seen before that day)\n');
+    console.log('WHO IS PLAYING — last ' + days + ' day' + (days === 1 ? '' : 's') + ' (local calendar days; devices = distinct browsers by anonymous id; "new" = never seen before that day)\n');
     console.log('day         | TWO-PLAYER visits devices new  doors                 | SOLO visits devices new  played(dev)  matches  median-min');
     for (const r of rows) {
         const doors = Object.entries(r.two.bySrc).map(x => x[0] + ':' + x[1]).join(' ') || '-';

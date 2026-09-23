@@ -147,9 +147,20 @@
     // V404: who is playing — the two-player doors vs the solo game (main-retro-bowl.vercel.app), today and the last 7 days
     let playersHtml = '';
     try {
-      const dayStr = d => d.toISOString().slice(0, 10);
-      const now = new Date(); const dayList = []; for (let i = 6; i >= 0; i--) dayList.push(dayStr(new Date(now.getTime() - i * 86400000)));
-      const per = await Promise.all(dayList.map(async d => { const [v, so] = await Promise.all([get('visits/' + d), get('solo/' + d)]); return { d, v: v || {}, so: so || {} }; }));
+      // V408: records are stored under UTC-day keys, but "today" is the viewer's LOCAL calendar day
+      // (the UTC day rolls over at 7 PM Central, which made the count look like it fell from 98 to 23).
+      // Fetch the UTC keys that can hold the last 8 local days, then bucket every record by its own
+      // timestamp in local time.
+      const utcKey = d => d.toISOString().slice(0, 10);
+      const localKey = ms => { const d = new Date(ms); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+      const now = new Date(); const dayList = []; for (let i = 6; i >= 0; i--) dayList.push(localKey(now.getTime() - i * 86400000));
+      const utcKeys = []; for (let i = 8; i >= -1; i--) { const k = utcKey(new Date(now.getTime() - i * 86400000)); if (!utcKeys.includes(k)) utcKeys.push(k); }
+      const fetched = await Promise.all(utcKeys.map(async d => { const [v, so] = await Promise.all([get('visits/' + d), get('solo/' + d)]); return { v: v || {}, so: so || {} }; }));
+      const per = dayList.map(d => ({ d, v: {}, so: {} }));
+      for (const f of fetched) {
+        for (const k in f.v) { const r = f.v[k]; if (!r || !r.ts) continue; const p = per.find(x => x.d === localKey(r.ts)); if (p) p.v[k] = r; }
+        for (const k in f.so) { const r = f.so[k]; if (!r || !r.ts) continue; const p = per.find(x => x.d === localKey(r.ts)); if (p) p.so[k] = r; }
+      }
       const agg = { today: { two: new Set(), solo: new Set(), soloPlayed: new Set(), soloMatches: 0, twoVisits: 0, soloVisits: 0 }, week: { two: new Set(), solo: new Set(), soloPlayed: new Set(), soloMatches: 0, twoVisits: 0, soloVisits: 0 } };
       for (const p of per) {
         const buckets = [agg.week].concat(p.d === dayList[6] ? [agg.today] : []);
@@ -161,7 +172,7 @@
       const block = (title, b) => '<div style="flex:1 1 280px"><div class="teams" style="margin-bottom:6px"><b>' + esc(title) + '</b></div><div style="display:flex;gap:14px;flex-wrap:wrap">' +
         cell(b.two.size, 'two-player devices') + cell(b.twoVisits, 'two-player visits') + cell(b.solo.size, 'solo devices') + cell(b.soloPlayed.size, 'solo players (played)') + cell(b.soloMatches, 'solo matches') + '</div></div>';
       playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' +
-        '<p class="when" style="margin:10px 0 0">Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
+        '<p class="when" style="margin:10px 0 0">Days are your local calendar days (' + esc((Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time')) + '). Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
     } catch (e) { playersHtml = ''; }
     app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
