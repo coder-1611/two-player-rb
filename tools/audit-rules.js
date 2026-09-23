@@ -162,11 +162,14 @@ function audit(tl, extra) {
     // ---- R-YARD / R-DOWN: the play-by-play arithmetic, per device ----
     for (const r of roles) {
         const ev = byRole[r];
-        let lastSnap = null, lastSettle = null;
+        let lastSnap = null, lastSettle = null, lastResetAt = -Infinity, lastResetQ3 = false;
         for (const e of ev) {
             if (e.k === 'snap') { lastSnap = e; continue; }
-            if (e.k === 'q' || e.k === 'recv' || e.k === 'wait') { lastSettle = null; lastSnap = null; continue; }
+            if (e.k === 'q' || e.k === 'recv' || e.k === 'wait') { lastSettle = null; lastSnap = null; lastResetAt = e.t; lastResetQ3 = e.k === 'q' && e.to === 3; continue; }
             if (e.k !== 'settle') continue;
+            // V410: a "settle" fired within 1.5s of a hand-off or a quarter change is the new drive being staged
+            // (or halftime resetting the ball for the kickoff), not a play with a gain
+            if (e.t - lastResetAt < 1500) { lastSettle = e; continue; }
             const scrim = ['run', 'pass', 'sack', 'incomplete'].includes(e.type);
             if (scrim && e.gain != null && typeof e.y0 === 'number' && typeof e.y === 'number') {
                 // The line of scrimmage moves by exactly the gain, in the
@@ -447,7 +450,10 @@ function audit(tl, extra) {
             }
             // duplicate modals on the scorer
             if (chain.applied) {
-                const dup = convModals.filter(x => x.role === chain.applied.role && x.t >= chain.applied.t && x.t < chain.applied.t + 60000);
+                // V410 (UFHY): the window ends where this chain's result was sent — the NEXT pick-six's modal is not a duplicate
+                const dupEnd = Math.min(chain.applied.t + 60000, chain.resultSent ? chain.resultSent.t : Infinity,
+                                        ...steps.filter(x => x.step === 'applied' && x.role === chain.applied.role && x.t > chain.applied.t).map(x => x.t));
+                const dup = convModals.filter(x => x.role === chain.applied.role && x.t >= chain.applied.t && x.t < dupEnd);
                 if (dup.length > 1) flag('R-P6', `${dup.length} conversion modals built for one pick-6 on ${chain.applied.role}`, dup, `${T(chain.applied.role)} was asked to choose a conversion ${dup.length} times for one score.`);
             }
         }
@@ -489,7 +495,10 @@ function audit(tl, extra) {
             // hand-off). That tail is the end of the first half, not A taking
             // the second-half ball.
             const aConvBeforeHorn = tl.some(x => x.role === 'a' && x.k === 'conv' && x.ev === 'modal' && x.t > q3.t - 30000 && x.t < q3.t);
-            const held = tl.filter(x => x.role === 'a' && x.t > q3.t && x.t < bFirst.t &&
+            // V410 (ISOO, OKGT): the last play of the half snapped before the horn and settled just after it — not A holding the ball
+            const lastSnapBefore = tl.filter(x => x.role === 'a' && x.k === 'snap' && x.t < q3.t).pop();
+            const playAcrossHorn = x => x.k === 'settle' && lastSnapBefore && x.t - q3.t < 3000 && q3.t - lastSnapBefore.t < 30000;
+            const held = tl.filter(x => x.role === 'a' && x.t > q3.t && x.t < bFirst.t && !playAcrossHorn(x) &&
                 !(aConvBeforeHorn && x.t < q3.t + 10000 && x.k !== 'snap') &&
                 ((x.k === 'conv' && x.ev === 'modal') || (x.k === 'score' && x.dsu > 0) || x.k === 'snap' || x.k === 'settle'));
             if (held.length) flag('R-HALF', `A had the ball after the Q3 change before B's first Q3 snap (${held.length} events)`, held.slice(0, 4),
@@ -793,7 +802,9 @@ function narrate(tl, meta) {
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
             case 'guard': {
-                const g = { 'post-conv-handoff': who + '\'s conversion had crossed the quarter horn and left it a drive at the 2 — handed off as the kickoff instead.',
+                const g = { 'silent-rescue': who + '\'s opponent went silent after handing over the turn — ' + who + ' took the ball at ' + spot(e.y) + '.',
+                            'end-by-player': who + ' ended the game from the waiting screen (' + (e.why || 'opponent gone') + ') and saw the stats.',
+                            'post-conv-handoff': who + '\'s conversion had crossed the quarter horn and left it a drive at the 2 — handed off as the kickoff instead.',
                             'try-over': who + '\'s conversion try was over (possession had flipped, field clear) — the bridge stood down and let it resolve as missed.',
                             'final-forced': 'The stats screen was forced on ' + who + ' 20 seconds past a decided horn (' + e.su + '-' + e.so + ').',
                             'keep-fresh': who + '\'s parked scene kept coming back at the quarter start — its drive was spawned fresh' + (e.ok === false ? ' (FAILED)' : '') + '.',

@@ -1399,7 +1399,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V409<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V410<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1480,7 +1480,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V409</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V410</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2783,8 +2783,17 @@
                     if (window._rb2p_userIsWaitingForOpponent === true || window._rb2p_gameOverReported === true) return;
                     var offer = Number(window._rb2p_lastConvModalMs) || 0, qc = Number(window._rb2p_quarterChangedToMs) || 0, now = Date.now();
                     if (!offer || now - offer > 90000 || qc <= offer || window._rb2p_postConvHandoffFor === offer) return;
-                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
-                    if (window._rb2p_patPlayPending === true) return;
+                    // V410 (TXKB): the try itself was snapped (down 6) before the horn, so it is
+                    // over — do not wait the 3s the duty takes to retire; the kid snapped the
+                    // gift drive inside that window.
+                    var trySnapped = Number(window._rb2p_lastSnapDown) === 6 && Number(window._rb2p_lastSnapMs) > offer && Number(window._rb2p_lastSnapMs) < qc;
+                    if (!trySnapped) {
+                        if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
+                        if (window._rb2p_patPlayPending === true) return;
+                    } else {
+                        window._rb2p_patPlayPending = false; window._rb2p_patDutyMine = null; window._rb2p_p6ScorerOwes = false;
+                        try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eSD) {}
+                    }
                     var em = RB.engineState(); if (!em || !em.rawEngineMatch) return;
                     if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return;
                     if (Number(em.engineDownNumber) === 6) return;
@@ -4467,7 +4476,7 @@
                                             at:  Number(_Ai(p, 'stat_attempts')) || 0        // V346: pass attempts (the incompletion delta)
                                         };
                                     });
-                                    try { window._rb2p_scoreAtLastSnap = Number(fem.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); } catch (eSAS) {}   // V406
+                                    try { window._rb2p_scoreAtLastSnap = Number(fem.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); window._rb2p_lastSnapDown = Number(fem.engineDownNumber); } catch (eSAS) {}   // V406, V410
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fem.engineYardLineSigned)) + ' d=' + Number(fem.engineDownNumber));
                                     // V368: a REAL snap (the dead->live edge of the ball) is
@@ -11525,7 +11534,31 @@
                     if (!st) return;
                     var hid = (typeof window._rb2p_oppHidden === 'function') && window._rb2p_oppHidden();
                     var left = (typeof window._rb2p_oppLeft === 'function') && window._rb2p_oppLeft();
-                    var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT');
+                    var silentMs = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
+                    var silent = !left && silentMs > 20000;
+                    var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (silent ? "OPPONENT'S PHONE STOPPED RESPONDING" : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT'));
+                    // V410: after a minute of a gone or frozen opponent, the waiting player can end
+                    // the game and see the stats instead of staring at the cover forever
+                    var endOk = window._rb2p_userIsWaitingForOpponent === true && window._rb2p_gameOverReported !== true &&
+                                ((left && Date.now() - (Number(window._rb2p_oppHb && window._rb2p_oppHb.at) || 0) > 60000) || silentMs > 60000);
+                    var eb = document.getElementById('rb-end-game');
+                    if (endOk && !eb && st.parentNode) {
+                        eb = document.createElement('button'); eb.id = 'rb-end-game'; eb.type = 'button';
+                        eb.textContent = 'END GAME AND SEE THE STATS';
+                        eb.style.cssText = 'display:block;margin:14px auto 0;font:inherit;font-size:14px;letter-spacing:2px;padding:8px 16px;background:#ffd23c;color:#08122a;border:0;cursor:pointer;pointer-events:auto;position:relative;z-index:5;';
+                        eb.onclick = function () {
+                            try {
+                                if (window._rb2p_gameOverReported === true) return;
+                                window._rb2p_gameOverReported = true;
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('END GAME pressed — opponent ' + (left ? 'left' : 'silent ' + Math.round(silentMs / 1000) + 's'));
+                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'end-by-player', why: left ? 'opponent left' : 'opponent silent' });
+                                var repE = (typeof window._rb2p_collectBoxScore === 'function') ? window._rb2p_collectBoxScore() : { players: [] };
+                                if (typeof window._rb2p_reportGameOver === 'function') window._rb2p_reportGameOver(repE);
+                            } catch (eE) {}
+                        };
+                        st.parentNode.appendChild(eb);
+                    }
+                    if (eb) eb.style.display = endOk ? 'block' : 'none';
                     if (st.textContent !== want) st.textContent = want;
                 } catch (e) {}
             };
@@ -15650,6 +15683,7 @@
                     // stream and final are the record (user: "stop deleting
                     // games"). Only lobbies that never produced a game expire.
                     if (rm.audit || rm.final || rm.audited || rm.flag) return;
+                    if (rm.names && now - newestTsIn(all[code]) < 48 * 60 * 60 * 1000) return;   // V410: a lobby people sat in is kept 2 days
                     // newest === 0 for a legacy room with no ts anywhere → treated
                     // as stale and removed.
                     if (now - newestTsIn(all[code]) > ROOM_TTL_MS) {
@@ -16236,6 +16270,23 @@
         if ($nameIn) $nameIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitName(); });
         renderPlayingAs();
         if (!rb2pName() && $lobbyEl && $lobbyEl.dataset.active === 'entry') showNameGate();
+        // V410: an invite link (?join=CODE) fills the code and joins once a name is set
+        try {
+            var joinParam = String(new URLSearchParams(location.search).get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+            if (joinParam) {
+                $input.value = joinParam;
+                var joinTries = 0;
+                var joinIv = setInterval(function () {
+                    try {
+                        if (++joinTries > 60) { clearInterval(joinIv); return; }
+                        if (!rb2pName() || !$lobbyEl || $lobbyEl.dataset.active !== 'entry' || typeof db === 'undefined' || !db) return;
+                        clearInterval(joinIv);
+                        try { history.replaceState(null, '', location.pathname); } catch (eH) {}
+                        joinByCode();
+                    } catch (e) {}
+                }, 500);
+            }
+        } catch (eJP) {}
 
         // ===== V387: first-run announcement =====
         try {
@@ -16350,26 +16401,47 @@
         }
 
         async function claimSlot(code) {
-            // V316: the room must ALREADY EXIST (someone hosted it via PLAY 2P).
-            // Previously the A-slot transaction below would happily commit into a
-            // null slot of a NON-existent room, so typing a random code silently
-            // CREATED a brand-new game instead of joining. A joiner may only enter a
-            // room whose /players node is already present; otherwise it's 'notfound'.
+            // V410 (complaints MXIP, ITYV "our codes are not working"): a host whose
+            // connection blinked (school Wi-Fi, a tab switch that froze the page)
+            // lost its seat to onDisconnect — the room then had NO players and the
+            // friend's code answered "No room". The host's NAME stays in the room,
+            // so a named room is a live room; and a joiner takes the seat the host
+            // did not name (normally B), never the host's own seat.
             var playersSnap = await FB.get(FB.ref(db, 'rooms/' + code + '/players'));
-            if (!playersSnap.exists() || playersSnap.val() == null) return 'notfound';
-            // Try A, then B; return the role we ended up with (or null = full).
-            var resA = await FB.runTransaction(
-                FB.ref(db, 'rooms/' + code + '/players/a'),
-                function (cur) { return cur === null ? { ts: Date.now(), ready: false, sid: mySessionId() } : undefined; }
-            );
-            if (resA.committed) return 'a';
-            var resB = await FB.runTransaction(
-                FB.ref(db, 'rooms/' + code + '/players/b'),
-                function (cur) { return cur === null ? { ts: Date.now(), ready: false, sid: mySessionId() } : undefined; }
-            );
-            if (resB.committed) return 'b';
+            var namesSnap = await FB.get(FB.ref(db, 'rooms/' + code + '/names'));
+            var names = namesSnap.val() || {};
+            var hasPlayers = playersSnap.exists() && playersSnap.val() != null;
+            if (!hasPlayers && !names.a && !names.b) return 'notfound';
+            var order = (names.a && !names.b) ? ['b', 'a'] : (names.b && !names.a) ? ['a', 'b'] : ['a', 'b'];
+            for (var oi = 0; oi < order.length; oi++) {
+                var res = await FB.runTransaction(
+                    FB.ref(db, 'rooms/' + code + '/players/' + order[oi]),
+                    function (cur) { return cur === null ? { ts: Date.now(), ready: false, sid: mySessionId() } : undefined; }
+                );
+                if (res.committed) return order[oi];
+            }
             return null;
         }
+        // V410: the seat keeper — while I sit in a room before kickoff, my seat must
+        // exist. A blink of the connection lets onDisconnect remove it; put it back
+        // (with my session id) and re-arm the disconnect handler.
+        setInterval(function () {
+            try {
+                if (!myRoom || !myRole || gameStarted) return;
+                var lob = document.getElementById('rb-lobby');
+                if (!lob || lob.getAttribute('data-active') !== 'room') return;
+                var seatRef = FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole);
+                FB.runTransaction(seatRef, function (cur) {
+                    if (cur === null) return { ts: Date.now(), ready: !!myReady, sid: mySessionId() };
+                    return undefined;
+                }).then(function (r) {
+                    if (r && r.committed) {
+                        FB.onDisconnect(seatRef).remove();
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('SEAT restored in ' + myRoom + ' (' + myRole + ') after a connection blink');
+                    }
+                }).catch(function () {});
+            } catch (e) {}
+        }, 4000);
 
         function enterRoom(code, role, restoring) {
             myRoom = code;
@@ -16698,7 +16770,16 @@
             var bothIn = !!(a && b);
             $ready.disabled = !bothIn;
             if (!bothIn) {
-                $status.textContent = 'Waiting for opponent to join…';
+                // V410 (complaint ITYV "how to see the code"): say what the code is for
+                $status.innerHTML = 'Waiting for your friend — tell them the code <b style="color:#ffd23c;letter-spacing:3px">' + myRoom +
+                    '</b>. They type it in the CODE box and tap JOIN. <button type="button" id="rb-copy-link" style="margin-left:8px;font:inherit;font-size:.85em;padding:2px 8px;cursor:pointer">COPY INVITE LINK</button>';
+                try {
+                    var cl = document.getElementById('rb-copy-link');
+                    if (cl) cl.onclick = function () {
+                        var link = location.origin + location.pathname + '?join=' + myRoom;
+                        try { navigator.clipboard.writeText(link).then(function () { cl.textContent = 'LINK COPIED'; }, function () { cl.textContent = link; }); } catch (eC) { cl.textContent = link; }
+                    };
+                } catch (eCL) {}
             } else if (a.ready && b.ready) {
                 $status.textContent = 'Starting…';
             } else if (
@@ -17601,6 +17682,17 @@
             window._rb2p_oppLeft = function () {
                 try { var h = window._rb2p_oppHb; return !!(h && h.vis === 'X' && Date.now() - (Number(h.at) || 0) < 15 * 60000); } catch (e) { return false; }
             };
+            // V410: how long since the opponent's phone said anything at all (heartbeat
+            // every 5s, live pushes every 0.5s). A closed tab says 'X'; a frozen or
+            // crashed one just stops.
+            window._rb2p_oppSilentMs = function () {
+                try {
+                    var h = window._rb2p_oppHb, lastAt = Math.max(Number(h && h.at) || 0, Number(window._rb2p_oppLiveRxAt) || 0);
+                    if (!lastAt) return 0;
+                    if (h && h.vis === 'H' && Date.now() - (Number(h.at) || 0) < 90000) return 0;   // a hidden tab heartbeats slowly
+                    return Date.now() - lastAt;
+                } catch (e) { return 0; }
+            };
             window._rb2p_oppHidden = function () {
                 try {
                     var h = window._rb2p_oppHb;
@@ -17664,6 +17756,27 @@
                             if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'rescue', ok: false, why: 'opponent hidden' });
                         }
                         if (!oppHiddenR) window._rb2p_rescueHiddenLogged = false;
+                        // V410 (DPSY, Laith's complaint): the opponent's phone froze 1s after
+                        // handing me the turn (turn record written, outcome never sent) and went
+                        // silent. Both-parked needs a FRESH live push from them, so nothing
+                        // rescued and I waited forever. The turn is mine and they are silent:
+                        // take the ball where their last push left it.
+                        var oppSilentR = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
+                        if (!handoffInFlight && tR && tR.owner === myRole && oppSilentR > 20000 &&
+                            Date.now() - (Number(tR.at) || 0) > 15000 && window._rb2p_silentRescueFor !== tR.at &&
+                            window._rb2p_pickSixPatCascadeActive !== true && window._rb2p_patPlayPending !== true &&
+                            window._rb2p_gameOverReported !== true && window._rb2p_p6ScorerOwes !== true) {
+                            window._rb2p_silentRescueFor = tR.at;
+                            var olS = window._rb2p_oppLiveRx, yS = null;
+                            if (olS && olS.iHaveBall === false && isFinite(olS.yardLine) && Math.abs(olS.yardLine) <= 49) yS = olS.yardLine;
+                            if (yS === null) { try { yS = Number(RB.engineState().engineYardLineSigned); } catch (eYS) {} }
+                            if (!isFinite(yS) || Math.abs(yS) > 49) yS = -25;
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE the opponent went silent ' + Math.round(oppSilentR / 1000) + 's after handing me the turn — taking the ball at ' + Math.round(yS));
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'silent-rescue', y: Math.round(yS), silentMs: oppSilentR });
+                            var okS = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(yS, true) : false;
+                            if (okS !== false) { window._rb2p_userIsWaitingForOpponent = false; try { hideWait(); } catch (eHW) {} }
+                            return;
+                        }
                         var bothParked = !handoffInFlight && !oppHiddenR && tR && tR.owner === myRole &&
                             olR && Date.now() - (Number(olR.at) || 0) < 4000 &&
                             olR.iHaveBall !== true &&
@@ -17767,7 +17880,8 @@
                     // (local receipt clock — never the sender's, to dodge skew).
                     window._rb2p_oppLiveRxAt = Date.now();
                     window._rb2p_oppLiveRx = { at: Date.now(),
-                                               iHaveBall: opponentLivePayload.iHaveBall === true };
+                                               iHaveBall: opponentLivePayload.iHaveBall === true,
+                                               yardLine: Number(opponentLivePayload.yardLine), down: Number(opponentLivePayload.down) };   // V410
                     var engineMatch = RB.engineState();
                     if (!engineMatch || engineMatch.engineScoreboard == null ||
                         engineMatch.engineUserTeamIdx == null) return;
