@@ -350,9 +350,19 @@
                         var trP = window._rb2p_turnRec, olP = window._rb2p_oppLiveRx;
                         var oppLiveP = !!(auditRole && trP && trP.owner && trP.owner !== auditRole &&
                                           olP && now - (Number(olP.at) || 0) < 4000 && olP.iHaveBall === true);
-                        if (oppLiveP) {
-                            try { if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH stood down — the turn is the opponent\'s and they are live'); } catch (e) {}
-                            try { if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'force-drive', ok: false, why: 'opponent live' }); } catch (e) {}
+                        // V413 (SQHJ): standing down every 4s kept the timer armed for 115s;
+                        // when the opponent's drive ended in a SECOND pick-six to me, the stale
+                        // timer fired inside my new conversion, killed its modal and left me
+                        // owing a result I could not play. The drive this timer waited for
+                        // went to the opponent (halftime) or a new conversion is mine: retire.
+                        var newConvP = (window._rb2p_p6ScorerOwes === true && window._rb2p_pickSixThisDeviceIsThrower !== true) ||
+                                       (window._rb2p_pickSixPatCascadeActive === true && window._rb2p_pickSixThisDeviceIsThrower !== true) ||
+                                       window._rb2p_patPlayPending === true ||
+                                       (typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp());
+                        if (oppLiveP || newConvP) {
+                            window._rb2p_p6AwaitDriveMs = 0;
+                            try { if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH retired — ' + (newConvP ? 'a new conversion is mine' : 'the opponent has the ball (the drive went to them)')); } catch (e) {}
+                            try { if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'p6-watch-retired', why: newConvP ? 'new conversion' : 'opponent has the ball' }); } catch (e) {}
                         } else {
                         try { if (window._rb2p_diagLog) window._rb2p_diagLog('P6-WATCH no drive 4s after PAT_RESULT — forcing it'); } catch (e) {}
                         try {
@@ -1408,7 +1418,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V412<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V414<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1490,7 +1500,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V412</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V414</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2250,7 +2260,7 @@
                 }
             } catch (eI) {}
 
-            function forceUserOffenseDrive(yardLine, freshDrive) {
+            function forceUserOffenseDrive(yardLine, freshDrive, restoreDD) {
                 try {
                     var engineMatch = RB.engineState();
                     if (!engineMatch) return false;
@@ -2378,6 +2388,11 @@
                     engineMatch.enginePossessingTeamIdx = engineMatch.engineUserTeamIdx;
                     engineMatch.engineDownNumber = 1;
                     engineMatch.engineYardsToGo = 10;
+                    // V413: the field check restores the last healthy down and distance
+                    if (restoreDD && Number(restoreDD.down) >= 1 && Number(restoreDD.down) <= 4 && Number(restoreDD.toGo) > 0) {
+                        engineMatch.engineDownNumber = Number(restoreDD.down);
+                        engineMatch.engineYardsToGo = Number(restoreDD.toGo);
+                    }
                     // V59: wipe any leftover commentary from the prior
                     // possession (e.g. the engine's "$teamname turn it over"
                     // built from the OLD possessing team) so the fresh drive
@@ -12455,6 +12470,7 @@
             window._rb2p_gameOverReported = false;
             var gameOverWasInMatch = false;
             var gameOverLastQ = 0, gameOverLastClk = -1;   // V403: what the match looked like the last time we saw it
+            var gameOverLastU = null, gameOverLastO = null;   // V413
             var gameOverConfirmTicks = 0;   // V179: end signal must persist (anti Q3->Q4-blip)
             // V403: a thin FINAL strip shown the moment the horn decides the game,
             // while the box score assembles. Hidden when the real final shows.
@@ -12544,6 +12560,20 @@
                         var natRep = window._rb2p_lastOtBoxScore ||
                             (typeof window._rb2p_collectBoxScore === 'function'
                                 ? window._rb2p_collectBoxScore() : { players: [] });
+                        // V413 (JUQX, FWQB x3): the engine has already LEFT the match room, so a
+                        // fresh box read says 0-0 and phone B's stats screen showed 0-0. Use the
+                        // last score seen in the match and the last good box.
+                        try {
+                            natRep = Object.assign({}, natRep || {});
+                            var lgb = window._rb2p_lastGoodBoxScore || {};
+                            if (gameOverLastU != null && (Number(natRep.score) || 0) + (Number(natRep.oppScore) || 0) < gameOverLastU + gameOverLastO) {
+                                natRep.score = gameOverLastU; natRep.oppScore = gameOverLastO;
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('FINAL score taken from the last in-match board ' + gameOverLastU + '-' + gameOverLastO + ' (the engine had already left the match)');
+                            }
+                            if ((!natRep.players || !natRep.players.length) && lgb.players && lgb.players.length) natRep.players = lgb.players.slice();
+                            if (!natRep.team && lgb.team) natRep.team = lgb.team;
+                            if (!natRep.oppTeam && lgb.oppTeam) natRep.oppTeam = lgb.oppTeam;
+                        } catch (eNR) {}
                         if (typeof window._rb2p_reportGameOver === 'function') window._rb2p_reportGameOver(natRep);
                     }
                     gameOverWasInMatch = nowInMatch;
@@ -12555,6 +12585,7 @@
                     var sc = Number(em.engineSecondsLeft);
                     var u = Number(em.userScore) || 0, o = Number(em.opponentScore) || 0;
                     gameOverLastQ = q; gameOverLastClk = (mn === 0 && sc === 0) ? 0 : 1;   // V403
+                    gameOverLastU = u; gameOverLastO = o;   // V413: the board the stats screen must show
                     // Re-arm on a clearly-fresh match.
                     if (window._rb2p_gameOverReported && q <= 1 && u === 0 && o === 0) {
                         window._rb2p_gameOverReported = false;
@@ -17667,54 +17698,171 @@
                     if (window._rb2p_audit) window._rb2p_audit('possinv', { why: why });
                 } catch (e) {}
             }
-            // ===== V411: THE FIELD CHECK — at least one team is always on the field =====
-            // Every 10 seconds each phone asks one question: is somebody playing?
-            // I am live, or the opponent's live push says THEY have the ball — fine.
-            // If both are waiting on two checks in a row (10s+), nobody is on the
-            // field and the game is stuck, whatever the cause (a lost hand-off, a
-            // frozen phone, a race). Fix it on the spot:
-            //   - the turn record says it is mine (or nobody has claimed it) -> I take the ball
-            //   - it says it is theirs but their phone has said nothing for 30s -> I take it
-            //     and claim the turn (they rejoin as the defense when they come back)
-            //   - it is theirs and their phone is alive -> their own check takes it
-            // The ball goes where their last live push left it (after a hand-off that is
-            // my spot), else where my engine has it, else my 25.
-            var fieldEmptyChecks = 0;
+            // ===== V413: THE FIELD CHECK — a freeze puts possession back how it was =====
+            // The rule (the owner's): when the game freezes, possession goes back to
+            // how it was the last time the game was NOT frozen — unless the ball
+            // legitimately changed hands after that. Nobody grabs a ball that was not
+            // theirs (V411 took it from a phone that was only reloading: KKFU).
+            //
+            // LAST GOOD — sampled every second while exactly one team is on the field
+            //   and no conversion is in progress:
+            //   * I am live with a play on my field, their push does not claim the ball
+            //       -> owner me, at my line / down / distance
+            //   * I am parked and their fresh push says they have the ball
+            //       -> owner them
+            // A LATER possession change moves it: a hand-off I sent, a hand-off of
+            // theirs I applied, or a turn record a hand-off wrote (send / pick-6 /
+            // halftime / overtime) — never one written by a recovery.
+            // FROZEN — the same state on two checks 10 seconds apart:
+            //   * nobody on the field (both parked)
+            //   * both on the field (I am live and their fresh push says they are)
+            //   * I owe a conversion result and no conversion is on my screen
+            // RESTORE — to the rightful owner:
+            //   * me, parked       -> my team back on the field, at my last good line /
+            //                         down / distance (or where their push left the
+            //                         ball if it was handed to me)
+            //   * them, I am live  -> I park (the double offense ends)
+            //   * them, I am parked-> their own check puts them back on
+            // If both stay parked 30s while both phones are alive and visible, our two
+            // views disagree and the shared turn record decides.
+            var fieldEmptyChecks = 0, fieldDoubleChecks = 0, fieldOweChecks = 0, fieldDisagreeChecks = 0;
+            window._rb2p_lastGood = null;
+            function fieldPlayOnScreen() {
+                try {
+                    var all = (typeof _Sc2 !== 'undefined' && _Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [], of = 0, ball = 0;
+                    for (var i = 0; i < all.length; i++) { var x = all[i]; if (!x || x._HL2 || !x._eE2) continue; var n = x._eE2._fE2; if (n === 'obj_playerOF') of++; else if (n === 'obj_ball') ball++; }
+                    return of >= 6 && ball > 0;
+                } catch (e) { return false; }
+            }
+            function conversionInProgress() {
+                try {
+                    if (window._rb2p_pickSixPatCascadeActive === true || window._rb2p_patPlayPending === true) return true;
+                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return true;
+                    var em = RB.engineState(); if (em && Number(em.engineDownNumber) === 6) return true;
+                } catch (e) {}
+                return false;
+            }
+            setInterval(function () {
+                try {
+                    if (!myRoom || !myRole || document.hidden) return;
+                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) return;
+                    if (window._rb2p_gameOverReported === true || conversionInProgress()) return;
+                    var now = Date.now(), ol = window._rb2p_oppLiveRx;
+                    var oppHas = !!(ol && now - (Number(ol.at) || 0) < 3000 && ol.iHaveBall === true);
+                    var iLive = window._rb2p_userIsWaitingForOpponent !== true;
+                    var lg = null;
+                    if (iLive && !oppHas && fieldPlayOnScreen()) {
+                        var em = RB.engineState();
+                        var d = Number(em.engineDownNumber), tg = Number(em.engineYardsToGo), y = Number(em.engineYardLineSigned);
+                        if (d >= 1 && d <= 4 && isFinite(y) && Math.abs(y) <= 49.5) lg = { room: myRoom, owner: myRole, at: now, yard: y, down: d, toGo: isFinite(tg) && tg > 0 ? tg : 10 };
+                    } else if (!iLive && oppHas) {
+                        lg = { room: myRoom, owner: otherRole, at: now };
+                    }
+                    if (lg) {
+                        window._rb2p_lastGood = lg;
+                        if (now - (Number(window._rb2p_lastGoodSavedMs) || 0) > 5000) { window._rb2p_lastGoodSavedMs = now; try { sessionStorage.setItem('rb2p_lastGood', JSON.stringify(lg)); } catch (eS) {} }
+                    }
+                } catch (e) {}
+            }, 1000);
+            // who SHOULD have the ball: the last healthy owner, moved by any later hand-off
+            window._rb2p_rightfulOwner = function () {
+                var lg = window._rb2p_lastGood;
+                if (!lg) { try { var sv = JSON.parse(sessionStorage.getItem('rb2p_lastGood') || 'null'); if (sv && sv.room === myRoom) lg = window._rb2p_lastGood = sv; } catch (e) {} }
+                var now = Date.now();
+                var r = lg ? { owner: lg.owner, at: Number(lg.at) || 0, why: 'the last moment the game was not frozen (' + Math.round((now - (Number(lg.at) || 0)) / 1000) + 's ago)', spot: lg.owner === myRole ? { yard: lg.yard, down: lg.down, toGo: lg.toGo } : null }
+                           : { owner: null, at: 0, why: 'no healthy moment on record', spot: null };
+                var sent = Number(window._rb2p_lastSentOutcomeMs) || 0;
+                if (sent > r.at) r = { owner: otherRole, at: sent, why: 'I handed the ball over after that', spot: null };
+                var appl = Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0;
+                if (appl > r.at) r = { owner: myRole, at: appl, why: 'their hand-off to me was applied after that', spot: null };
+                var tr = window._rb2p_turnRec;
+                if (tr && (tr.owner === 'a' || tr.owner === 'b') && Number(tr.at) > r.at + 500 && !/field-check|restore|rescue/.test(String(tr.why || '')))
+                    r = { owner: tr.owner, at: Number(tr.at), why: 'a hand-off moved the turn after that (' + (tr.why || 'turn') + ')', spot: null };
+                return r;
+            };
+            function fieldRestoreMine(ro, why) {
+                var ol = window._rb2p_oppLiveRx, now = Date.now();
+                var y = null, dd = null, from = '';
+                if (ro.spot && isFinite(ro.spot.yard)) { y = Number(ro.spot.yard); dd = { down: ro.spot.down, toGo: ro.spot.toGo }; from = 'my last good line'; }
+                else if (ol && ol.iHaveBall === false && isFinite(ol.yardLine) && Math.abs(ol.yardLine) <= 49 && ol.yardLine !== 0 && Number(ol.at) >= ro.at - 3000) { y = Number(ol.yardLine); from = 'where their last push left the ball'; }
+                if (y === null) { try { y = Number(RB.engineState().engineYardLineSigned); from = 'my engine\'s line'; } catch (eY) {} }
+                if (!isFinite(y) || Math.abs(y) > 49 || y === 0) { y = -25; from = 'my 25 (no spot on record)'; }
+                if (window._rb2p_diagLog) window._rb2p_diagLog('FIELD-CHECK ' + why + ' — the ball is mine (' + ro.why + '): my team back on at ' + Math.round(y) + (dd ? ' ' + dd.down + '&' + Math.round(dd.toGo) : '') + ' (' + from + ')');
+                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'field-restore', owner: myRole, y: Math.round(y), d: dd ? dd.down : 1, why: ro.why, state: why });
+                var ok = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(y, true, dd) : false;
+                if (ok !== false) {
+                    window._rb2p_userIsWaitingForOpponent = false;
+                    try { window._rb2p_declareTurnOwner('ME', 'restore'); } catch (eT) {}
+                    return 'restored: my team is back on the field';
+                }
+                return 'restore failed (force-drive refused)';
+            }
             window._rb2p_fieldCheck = function () {
                 try {
                     if (!myRoom || !myRole) return 'no room';
-                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { fieldEmptyChecks = 0; return 'not in match'; }
-                    if (window._rb2p_gameOverReported === true) { fieldEmptyChecks = 0; return 'game over'; }
-                    if (window._rb2p_userIsWaitingForOpponent !== true) { fieldEmptyChecks = 0; return 'I am on the field'; }
+                    if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { fieldEmptyChecks = fieldDoubleChecks = fieldOweChecks = fieldDisagreeChecks = 0; return 'not in match'; }
+                    if (window._rb2p_gameOverReported === true) { fieldEmptyChecks = fieldDoubleChecks = fieldOweChecks = fieldDisagreeChecks = 0; return 'game over'; }
+                    if (document.hidden) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'my screen is off'; }
                     var now = Date.now(), ol = window._rb2p_oppLiveRx;
-                    if (ol && now - (Number(ol.at) || 0) < 5000 && ol.iHaveBall === true) { fieldEmptyChecks = 0; return 'opponent is on the field'; }
-                    if (typeof window._rb2p_oppHidden === 'function' && window._rb2p_oppHidden()) { fieldEmptyChecks = 0; return 'opponent screen off (their hand-off is held)'; }
-                    if (document.hidden) { fieldEmptyChecks = 0; return 'my screen is off'; }
-                    // things that are legitimately in flight
-                    if (window._rb2p_pickSixPatCascadeActive === true || window._rb2p_patPlayPending === true) { fieldEmptyChecks = 0; return 'conversion in progress'; }
-                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) { fieldEmptyChecks = 0; return 'conversion owed'; }
-                    if (window._rb2p_deferredOutcome || (window._twoPlayer && window._twoPlayer.pending && window._twoPlayer.pending.length)) { fieldEmptyChecks = 0; return 'a hand-off is waiting to apply'; }
-                    if (now - (Number(window._rb2p_lastSentOutcomeMs) || 0) < 10000) { fieldEmptyChecks = 0; return 'my hand-off was just sent'; }
-                    if (++fieldEmptyChecks < 2) return 'nobody on the field (check ' + fieldEmptyChecks + ')';
-                    var tr = window._rb2p_turnRec;
-                    var silent = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
-                    var mine = !tr || !tr.owner || tr.owner === myRole;
-                    if (!mine && silent < 30000) return 'nobody on the field — the turn is theirs and their phone is alive (their check takes it)';
-                    fieldEmptyChecks = 0;
-                    var y = null;
-                    if (ol && ol.iHaveBall === false && isFinite(ol.yardLine) && Math.abs(ol.yardLine) <= 49 && ol.yardLine !== 0) y = Number(ol.yardLine);
-                    if (y === null) { try { y = Number(RB.engineState().engineYardLineSigned); } catch (eY) {} }
-                    if (!isFinite(y) || Math.abs(y) > 49 || y === 0) y = -25;
-                    var why = mine ? 'the turn is mine' : 'their phone has been silent ' + Math.round(silent / 1000) + 's';
-                    if (window._rb2p_diagLog) window._rb2p_diagLog('FIELD-CHECK nobody on the field for 10s+ (' + why + ') — putting my team on at ' + Math.round(y));
-                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'field-check', y: Math.round(y), why: why, silentMs: silent });
-                    var ok = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(y, true) : false;
-                    if (ok !== false) {
-                        window._rb2p_userIsWaitingForOpponent = false;
-                        if (!mine) window._rb2p_declareTurnOwner('ME', 'field-check');
-                        return 'fixed: my team is on the field';
+                    // (3) I owe a conversion result and no conversion is on my screen (SQHJ: a
+                    //     stale watchdog killed the modal and left the scorer owing forever)
+                    var owesNoModal = window._rb2p_p6ScorerOwes === true && window._rb2p_pickSixThisDeviceIsThrower !== true &&
+                                      !(typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp()) &&
+                                      window._rb2p_patPlayPending !== true && !(typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) &&
+                                      now - (Number(window._rb2p_lastConvModalMs) || 0) > 15000;
+                    if (owesNoModal) {
+                        if (++fieldOweChecks < 2) return 'I owe a conversion result with no conversion on screen (check 1)';
+                        fieldOweChecks = 0;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('FIELD-CHECK I owed a conversion result but no conversion was on my screen — resolving it as missed and handing the ball over');
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'field-owe', why: 'owed a result with no conversion on screen' });
+                        window._rb2p_patPlayResolved = true; window._rb2p_patResolvedMs = now; window._rb2p_patResultPoints = 0;
+                        if (typeof window._rb2p_shipSyntheticPatResult === 'function') window._rb2p_shipSyntheticPatResult('field check: owed with no conversion');
+                        window._rb2p_userIsWaitingForOpponent = true;
+                        return 'fixed: the owed result was shipped';
                     }
-                    return 'fix failed (force-drive refused)';
+                    fieldOweChecks = 0;
+                    // legitimately in flight: leave it alone
+                    if (conversionInProgress()) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'conversion in progress'; }
+                    if (window._rb2p_deferredOutcome || (window._twoPlayer && window._twoPlayer.pending && window._twoPlayer.pending.length)) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'a hand-off is waiting to apply'; }
+                    if (now - (Number(window._rb2p_lastSentOutcomeMs) || 0) < 10000) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'my hand-off was just sent'; }
+                    if (now - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) < 10000) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'their hand-off was just applied'; }
+                    var oppHas = !!(ol && now - (Number(ol.at) || 0) < 5000 && ol.iHaveBall === true);
+                    var iLive = window._rb2p_userIsWaitingForOpponent !== true;
+                    var state = (iLive && oppHas) ? 'both teams on the field' : ((!iLive && !oppHas) ? 'nobody on the field' : '');
+                    if (!state) { fieldEmptyChecks = fieldDoubleChecks = fieldDisagreeChecks = 0; return iLive ? 'I am on the field' : 'opponent is on the field'; }
+                    if (!iLive && typeof window._rb2p_oppHidden === 'function' && window._rb2p_oppHidden()) { fieldEmptyChecks = 0; return 'opponent screen off (their hand-off is held)'; }
+                    var n = iLive ? ++fieldDoubleChecks : ++fieldEmptyChecks;
+                    if (iLive) fieldEmptyChecks = 0; else fieldDoubleChecks = 0;
+                    if (n < 2) return state + ' (check 1)';
+                    var ro = window._rb2p_rightfulOwner();
+                    if (ro.owner === myRole) {
+                        if (iLive) { fieldDoubleChecks = 0; return state + ' — the ball is mine (' + ro.why + '); their check parks them'; }
+                        fieldEmptyChecks = 0; fieldDisagreeChecks = 0;
+                        return fieldRestoreMine(ro, state);
+                    }
+                    if (ro.owner === otherRole) {
+                        if (iLive) {
+                            fieldDoubleChecks = 0;
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('FIELD-CHECK ' + state + ' — the ball is theirs (' + ro.why + '): parking my team');
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'field-park', owner: otherRole, why: ro.why });
+                            window._rb2p_userIsWaitingForOpponent = true;
+                            return 'parked: the ball is theirs';
+                        }
+                        // parked and theirs: their own check restores them. If they stay parked
+                        // while alive and visible for 30s, our views disagree: the turn record decides.
+                        var h = window._rb2p_oppHb;
+                        var alive = !!(h && h.vis === 'V' && now - (Number(h.at) || 0) < 12000 && ol && now - (Number(ol.at) || 0) < 5000);
+                        if (alive && ++fieldDisagreeChecks >= 3) {
+                            fieldDisagreeChecks = 0;
+                            var trD = window._rb2p_turnRec;
+                            if (trD && trD.owner === myRole) return fieldRestoreMine({ owner: myRole, at: now, why: 'both phones parked 30s and the shared turn record says mine', spot: null }, state);
+                        }
+                        return state + ' — the ball is theirs (' + ro.why + '); their check restores them';
+                    }
+                    // nothing on record at all: the shared turn record decides
+                    var tr0 = window._rb2p_turnRec;
+                    if (tr0 && tr0.owner === myRole && !iLive) { fieldEmptyChecks = 0; return fieldRestoreMine({ owner: myRole, at: now, why: 'no healthy moment on record; the turn record says mine', spot: null }, state); }
+                    return state + ' — no owner on record';
                 } catch (e) { return 'error'; }
             };
             setInterval(function () { try { window._rb2p_fieldCheck(); } catch (e) {} }, 10000);
@@ -17730,7 +17878,7 @@
                            { owner: owner, by: myRole, why: String(why || ''), seq: seq, ts: Date.now() })
                         .catch(function () {});
                     // Adopt our own declaration at once (don't wait for the echo).
-                    window._rb2p_turnRec = { owner: owner, at: Date.now() };
+                    window._rb2p_turnRec = { owner: owner, at: Date.now(), why: String(why || '') };
                     if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-> ' + owner + ' (' + String(why || '') + ')');
                 } catch (e) {}
             };
@@ -17785,7 +17933,7 @@
                 try {
                     var t = snap.val();
                     if (!t || (t.owner !== 'a' && t.owner !== 'b')) return;
-                    window._rb2p_turnRec = { owner: t.owner, at: Date.now() };
+                    window._rb2p_turnRec = { owner: t.owner, at: Date.now(), why: String(t.why || '') };
                 } catch (e) {}
             });
             setInterval(function () {

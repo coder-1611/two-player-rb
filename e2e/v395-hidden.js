@@ -66,7 +66,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         await new Promise(r => setTimeout(r, 2500));
         window._rb2p_forceUserOffenseDrive = realF; window._rb2p_p6AwaitDriveMs = sP6 || 0; window._rb2p_turnRec = sTr; window._rb2p_oppLiveRx = sOl;
         const d = String(window._rb2p_readDiagLog()); const tail = d.slice(d.lastIndexOf('T4-START'));
-        return { forced, stood: /P6-WATCH stood down — the turn is the opponent's and they are live/.test(tail), role, tail: tail.slice(-200) };
+        return { forced, stood: /P6-WATCH stood down — the turn is the opponent's and they are live|P6-WATCH retired — the opponent has the ball/.test(tail)   /* V414: it now retires (no force, no re-arm) */, role, tail: tail.slice(-200) };
     }, def.role);
     check('T4 P6-WATCH stands down over a live opponent instead of forcing a second offense', t4.forced === 0 && t4.stood === true, JSON.stringify(t4));
 
