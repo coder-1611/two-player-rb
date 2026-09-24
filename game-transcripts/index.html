@@ -185,6 +185,22 @@
             '<p class="when" style="margin:8px 0 0">Hours on screen count each phone\'s time between its own events, with idle gaps over five minutes left out (a tab open through lunch is not play). Two-player games are match starts with at least three snaps in the recorded games.</p></div>';
         }
       } catch (e) { allHtml = ''; }
+      // V412: this week vs last week, and the three doors
+      let weekHtml = '';
+      try {
+        const st2 = await get('stats/alltime'); const w = st2 && st2.weekly;
+        if (w) {
+          const pct = (a, b) => b ? ((a >= b ? '+' : '') + Math.round(100 * (a - b) / b) + '%') : '—';
+          const doorsTxt = Object.entries(w.doors || {}).map(([n, d]) => n + ' ' + (d.status === 200 ? '✓ ' + d.ver : '✗ HTTP ' + d.status)).join(' · ');
+          const bars = (w.last14 || []).map(d => '<div title="' + esc(d.day + ': ' + d.games + ' games, ' + d.visits + ' visits') + '" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:48px"><div style="background:var(--green);opacity:.85;height:' + Math.max(2, Math.round(48 * d.games / Math.max(1, ...(w.last14 || []).map(x => x.games)))) + 'px"></div></div>').join('');
+          weekHtml = '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>This week vs last week</b> <span class="when">(the same weekdays: ' + esc((w.weekdays || []).join(', ')) + ')</span></div>' +
+            '<div style="display:flex;gap:14px;flex-wrap:wrap">' + cell(w.thisWeek.games, 'games this week') + cell(w.lastWeek.games, 'games last week') + cell(pct(w.thisWeek.games, w.lastWeek.games), 'change') + cell(w.thisWeek.visits, 'visits this week') + '</div>' +
+            '<div style="display:flex;gap:3px;align-items:flex-end;margin-top:10px" aria-label="games per day, last 14 days">' + bars + '</div><div class="when" style="margin-top:2px">games per day, last 14 days</div>' +
+            '<p class="when" style="margin:8px 0 0">Doors: ' + esc(doorsTxt) + '</p>' +
+            ((w.warnings || []).length ? '<p style="margin:8px 0 0;color:var(--red);font-weight:600">' + w.warnings.map(esc).join('<br>') + '</p>' : '<p class="when" style="margin:6px 0 0">No warnings: traffic is holding and every door is up.</p>') + '</div>';
+        }
+      } catch (e) { weekHtml = ''; }
+      allHtml = weekHtml + allHtml;
       playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' + allHtml +
         '<p class="when" style="margin:10px 0 0">Days are your local calendar days (' + esc((Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time')) + '). Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
     } catch (e) { playersHtml = ''; }

@@ -82,6 +82,43 @@ async function fromDb() {
              solo: { visits: out.solo.visits, devices: out.solo.devices.size, sessions: out.solo.sessions, played: out.solo.played, hours: out.solo.hours, matchHours: out.solo.matchHours, matches: out.solo.matches } };
 }
 
+// V412: the weekly check — weekday traffic this week vs the same weekdays last week, and every door up
+const localDay = ms => { const d = new Date(ms); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+async function weekly() {
+    const tok = await require('./fb-auth.js').token();
+    const get = async p => { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+    const now = new Date(), perDay = {};
+    for (let i = 16; i >= -1; i--) {
+        const k = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10);
+        const v = await get('visits/' + k) || {};
+        for (const id in v) { const r = v[id]; if (!r || !r.ts || isTest(r) || r.src === 'solo') continue; const d = localDay(r.ts); (perDay[d] = perDay[d] || { visits: 0, devices: new Set() }).visits++; if (r.uid) perDay[d].devices.add(r.uid); }
+    }
+    // games per local day from the archives
+    const dir = path.resolve(__dirname, '..', 'audits'), gamesDay = {};
+    for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
+        let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
+        const tl = j.timeline || []; if (tl.filter(e => e.k === 'snap').length < 3) continue;
+        const d = localDay(Math.min(...tl.map(e => e.t))); gamesDay[d] = (gamesDay[d] || 0) + 1;
+    }
+    // weekdays so far this week (Mon..yesterday, plus today if after 3 PM) vs the same weekdays a week earlier
+    const today = new Date(); const dow = (today.getDay() + 6) % 7;   // Mon=0
+    const days = []; for (let i = dow; i >= 0; i--) { const d = new Date(today.getTime() - i * 86400000); if (i === 0 && today.getHours() < 15) continue; if (d.getDay() === 0 || d.getDay() === 6) continue; days.push(d); }
+    const sum = (list, shift) => list.reduce((a, d) => { const k = localDay(d.getTime() - shift * 86400000); const p = perDay[k]; return { visits: a.visits + (p ? p.visits : 0), games: a.games + (gamesDay[k] || 0), days: a.days + 1 }; }, { visits: 0, games: 0, days: 0 });
+    const thisWeek = sum(days, 0), lastWeek = sum(days, 7);
+    const doors = {};
+    for (const [name, u] of [['vercel', 'https://two-player-rb.vercel.app/'], ['pages', 'https://coder-1611.github.io/two-player-rb/'], ['firebase', 'https://realretrobowl2p.web.app/']]) {
+        try { const r = await fetch(u + '?cb=' + Date.now(), { cache: 'no-store' }); const t = await r.text(); doors[name] = { status: r.status, ver: (t.match(/GAME — (V\d+)/) || [])[1] || '' }; } catch (e) { doors[name] = { status: 0, ver: '' }; }
+    }
+    const warnings = [];
+    if (lastWeek.games >= 20 && thisWeek.games < lastWeek.games * 0.5) warnings.push('weekday games are down ' + Math.round(100 - 100 * thisWeek.games / lastWeek.games) + '% on the same weekdays last week — check whether the site is blocked at school');
+    if (lastWeek.visits >= 100 && thisWeek.visits < lastWeek.visits * 0.5) warnings.push('weekday visits are down ' + Math.round(100 - 100 * thisWeek.visits / lastWeek.visits) + '% on the same weekdays last week — check whether the site is blocked at school');
+    const vers = new Set(Object.values(doors).map(d => d.ver));
+    for (const [n, d] of Object.entries(doors)) if (d.status !== 200) warnings.push(n + ' door is down (HTTP ' + d.status + ')');
+    if (vers.size > 1) warnings.push('the doors serve different versions: ' + Object.entries(doors).map(([n, d]) => n + ' ' + d.ver).join(', '));
+    const last14 = []; for (let i = 13; i >= 0; i--) { const k = localDay(now.getTime() - i * 86400000); last14.push({ day: k, visits: perDay[k] ? perDay[k].visits : 0, devices: perDay[k] ? perDay[k].devices.size : 0, games: gamesDay[k] || 0 }); }
+    return { thisWeek, lastWeek, weekdays: days.map(d => localDay(d.getTime())), doors, warnings, last14 };
+}
+
 (async () => {
     const a = fromArchives();
     const d = await fromDb();
@@ -89,6 +126,7 @@ async function fromDb() {
         two: { games: a.games, complete: a.complete, phoneSessions: a.phones, personHours: Math.round(a.personHours * 10) / 10, gameHours: Math.round(a.gameHours * 10) / 10, since: a.since, until: a.until,
                visits: d.visits, devices: d.devices, visitsSince: d.firstVisit },
         solo: { visits: d.solo.visits, devices: d.solo.devices, sessions: d.solo.sessions, played: d.solo.played, hours: Math.round(d.solo.hours * 10) / 10, matchHours: Math.round(d.solo.matchHours * 10) / 10, matches: d.solo.matches, since: Date.parse('2026-09-21T13:55:00Z') },
+        weekly: await weekly(),
         notes: 'two-player games and hours from the audit archives (recorded games since 2026-09-02, idle gaps over 5 min excluded); visits/devices since the visit beacon (2026-09-14); solo since 2026-09-21' };
     console.log(JSON.stringify(stats, null, 1));
     if (dry) return;

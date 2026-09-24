@@ -1072,6 +1072,15 @@
         .rb-solo a { color: #ffd23c; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
         .rb-solo a:hover { color: #fff; }
         .rb-links { margin-top: 6px; font-size: 8px; }
+        /* V412: short screens (a Chromebook browser is ~657px tall) — the solo and backup-door
+           lines sat under the ticker, below the fold of a screen nobody scrolls */
+        @media (max-height: 760px) {
+            #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"] { gap: 9px; padding: 18px 24px 44px; }
+            #rb-lobby[data-active="entry"] .rb-wordmark { font-size: clamp(28px, 8.5vh, 66px); }
+            #rb-lobby[data-active="entry"] .rb-hero { gap: 8px; }
+            #rb-lobby[data-active="entry"] .rb-football { transform: scale(.8); }
+            .rb-solo { margin-top: 6px; line-height: 1.6; }
+        }
         .rb-links a { color: #8fa1b3; text-decoration: none; }
 </style>
 </head>
@@ -1399,7 +1408,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V411<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V412<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1419,6 +1428,7 @@
             </div>
             <p id="rb-entry-msg" class="msg"></p>
             <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
+            <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
             <p class="rb-solo rb-links"><a href="/how-to-play/">HOW TO PLAY</a> &middot; <a href="/play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="/unblocked/">UNBLOCKED</a></p>
             <p class="rb-solo rb-links">BUILT BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=lobby" rel="author">LOCAL WEB TECH</a></p>
         </div>
@@ -1480,7 +1490,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V411</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V412</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -13487,6 +13497,9 @@
                     '<button id="rb-final-leave" style="margin-top:42px;font-family:\'Anton\',sans-serif;font-size:clamp(17px,2vw,22px);' +
                       'letter-spacing:2px;text-transform:uppercase;color:#0b120d;background:' + GOLD + ';border:none;border-radius:3px;' +
                       'padding:15px 40px;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.45),0 0 30px ' + GOLD + '3a;">BACK TO LOBBY</button>' +
+                    // V412: bring a new player next time, and never lose the game to a search result
+                    '<button id="rb-final-share" style="margin:14px 0 0 12px;font-family:\'Anton\',sans-serif;font-size:clamp(15px,1.7vw,19px);letter-spacing:2px;color:' + GOLD + ';background:transparent;border:2px solid ' + GOLD + ';border-radius:3px;padding:11px 26px;cursor:pointer;">SHARE THE GAME WITH A FRIEND</button>' +
+                    ((function () { try { return localStorage.getItem('rb2p_bookmarkHint') ? '' : '<div id="rb-final-bookmark" style="margin-top:16px;font-size:14px;letter-spacing:1px;color:' + CHALK + ';opacity:.9">TIP: PRESS <b>CTRL + D</b> TO BOOKMARK THIS PAGE &mdash; THEN YOU CAN ALWAYS GET BACK HERE, EVEN IF SEARCH DOESN\'T SHOW IT.</div>'; } catch (e) { return ''; } })()) +
                   '</div>' +
                 '</div>';
             if (window._rb2p_arenaApply) window._rb2p_arenaApply();
@@ -13494,6 +13507,13 @@
             try { if (window._rb2p_hideFinalSoon) window._rb2p_hideFinalSoon(); } catch (eFS) {}   // V403
             try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
             if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
+            try { localStorage.setItem('rb2p_bookmarkHint', '1'); } catch (eBH) {}   // V412: the tip shows once
+            var shb = document.getElementById('rb-final-share');
+            if (shb) shb.addEventListener('click', function () {
+                var site = location.origin + location.pathname;
+                try { navigator.clipboard.writeText(site).then(function () { shb.textContent = 'LINK COPIED — SEND IT TO A FRIEND'; }, function () { shb.textContent = site; }); } catch (eS) { shb.textContent = site; }
+                if (window._rb2p_audit) try { window._rb2p_audit('guard', { what: 'share' }); } catch (eA) {}
+            });
             var lv = document.getElementById('rb-final-leave');
             if (lv) lv.addEventListener('click', function () {
                 finalOverlay.style.display = 'none';
@@ -16248,6 +16268,17 @@
         if ($nameIn) $nameIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitName(); });
         renderPlayingAs();
         if (!rb2pName() && $lobbyEl && $lobbyEl.dataset.active === 'entry') showNameGate();
+        // V412: the backup-doors line always names the doors you are NOT on
+        try {
+            var bd = document.getElementById('rb-backup-doors');
+            if (bd) {
+                var doors = [['two-player-rb.vercel.app', 'https://two-player-rb.vercel.app/'], ['coder-1611.github.io/two-player-rb', 'https://coder-1611.github.io/two-player-rb/'], ['realretrobowl2p.web.app', 'https://realretrobowl2p.web.app/']];
+                var here = location.hostname || '';
+                var others = doors.filter(function (d) { return d[0].split('/')[0] !== here; }).slice(0, 2);
+                if (!here || window.self !== window.top) bd.style.display = 'none';   // inside the Google Sites embed: the lobby is theirs
+                else bd.innerHTML = 'BLOCKED? PLAY AT ' + others.map(function (d) { return '<a href="' + d[1] + '">' + d[0] + '</a>'; }).join(' OR ') + ' &mdash; SAME ROOM CODES';
+            }
+        } catch (eBD) {}
         // V410: an invite link (?join=CODE) fills the code and joins once a name is set
         try {
             var joinParam = String(new URLSearchParams(location.search).get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
@@ -16322,6 +16353,14 @@
                         return;
                     }
                     enterRoom(code, 'a', false);
+                    // V412: one tap = a room AND the invite link on the clipboard
+                    try {
+                        var inv = location.origin + location.pathname + '?join=' + code;
+                        navigator.clipboard.writeText(inv).then(function () {
+                            var cl = document.getElementById('rb-copy-link'); if (cl) cl.textContent = 'INVITE LINK COPIED — PASTE IT TO YOUR FRIEND';
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('INVITE link copied on PLAY 2P');
+                        }, function () {});
+                    } catch (eInv) {}
                 } catch (e) {
                     $entryMsg.textContent = 'Connection error: ' + (e.message || e);
                     console.log('[lobby play2p err]', e);

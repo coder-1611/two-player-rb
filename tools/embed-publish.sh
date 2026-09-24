@@ -46,3 +46,10 @@ if [ "$STORED" = "$VER" ] && [ "$META" = "$VER" ]; then
 else
     echo "[embed] FAILED — stored=$STORED meta=$META wanted=$VER"; exit 1
 fi
+
+# V412: the Firebase-hosted backup door (realretrobowl2p.web.app) ships the same build,
+# so a kid sent there by the "if it's blocked" line never lands on a stale version.
+echo "[hosting] deploying realretrobowl2p.web.app"
+firebase deploy --only hosting --project "$PROJECT" --config firebase-hosting.json --non-interactive >/dev/null 2>&1 || echo "[hosting] deploy FAILED"
+HV="$(curl -fsS "https://realretrobowl2p.web.app/?cb=$(date +%s)" | grep -o 'GAME — V[0-9]*' | head -1 | grep -o 'V[0-9]*')" || HV=''
+if [ "$HV" = "$VER" ]; then echo "[hosting] OK — realretrobowl2p.web.app serves $VER"; else echo "[hosting] MISMATCH — web.app=$HV wanted=$VER"; fi
