@@ -29,7 +29,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_declareTurnOwner = () => {};
         const base = () => { window._rb2p_lastSentOutcomeMs = 0; window._rb2p_lastOpponentOutcomeApplyMs = 0; window._rb2p_deferredOutcome = null;
                              if (window._twoPlayer && window._twoPlayer.pending) window._twoPlayer.pending.length = 0; window._rb2p_p6ScorerOwes = false; };
-        const two = () => [window._rb2p_fieldCheck(), window._rb2p_fieldCheck()];
+        const two = () => { const a = window._rb2p_fieldCheck(); window._rb2p_fieldAge(10000); return [a, window._rb2p_fieldCheck()]; };   // V415: 10 real seconds
         const out = {};
         // R1
         base(); window._rb2p_userIsWaitingForOpponent = true;
@@ -41,8 +41,8 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         // R2
         base(); window._rb2p_userIsWaitingForOpponent = true;
         window._rb2p_lastGood = { room, owner: other, at: now - 40000 };
-        window._rb2p_turnRec = { owner: me, at: now - 15000, why: 'send-OTHER' };
-        window._rb2p_oppLiveRx = { at: now - 14000, iHaveBall: false, yardLine: 3.64 };
+        window._rb2p_turnRec = { owner: me, at: now - 20000, why: 'send-OTHER' };
+        window._rb2p_oppLiveRx = { at: now - 19000, iHaveBall: false, yardLine: 3.64 };
         const c2 = calls.length; out.r2 = two().concat(JSON.stringify(calls.slice(c2)));
         // R3
         base(); window._rb2p_userIsWaitingForOpponent = true;

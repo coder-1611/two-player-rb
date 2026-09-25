@@ -1418,7 +1418,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V414<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V415<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1500,7 +1500,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V414</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V415</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2290,6 +2290,15 @@
                     }
                     var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
                     if (typeof setUpPlay !== 'function') return false;
+                    // V415 (VJGW): the possession-change hook ignores every hand-off while
+                    // this one-shot flag is up; only APPLYING an incoming outcome used to
+                    // clear it. A drive staged any other way (field check, rescue, OT
+                    // kickoff) left it up — phone A then sent nothing for 5.5 minutes and
+                    // played the other team's offense too. A forced drive is a new drive.
+                    if (window._rb2p_userOutcomeSendInProgress) {
+                        window._rb2p_userOutcomeSendInProgress = false;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('SEND guard cleared — a new drive of mine was staged');
+                    }
                     // V140: user is on offense again → re-enable the MAX defender
                     // speed bump (cleared after a turnover so the return ran normal).
                     window._rb2p_intReturnActive = false;
@@ -2808,6 +2817,10 @@
                     if (window._rb2p_userIsWaitingForOpponent === true || window._rb2p_gameOverReported === true) return;
                     var offer = Number(window._rb2p_lastConvModalMs) || 0, qc = Number(window._rb2p_quarterChangedToMs) || 0, now = Date.now();
                     if (!offer || now - offer > 90000 || qc <= offer || window._rb2p_postConvHandoffFor === offer) return;
+                    // V415 (HUPE, MEOE): a try that crosses the HALFTIME horn is followed by
+                    // the second-half kickoff to B (the halftime rule) — handing the ball
+                    // to the other team as well made two offenses. Q2/Q4 keep the hand-off.
+                    try { var qNow = Number(RB.engineState().engineQuarter); if (qNow === 3 || qNow >= 5) { window._rb2p_postConvHandoffFor = offer; if (window._rb2p_diagLog) window._rb2p_diagLog('POST-CONV the try crossed into Q' + qNow + ' — the ' + (qNow === 3 ? 'halftime' : 'end-of-regulation') + ' rule decides possession, no hand-off'); return; } } catch (eQ3) {}
                     // V410 (TXKB): the try itself was snapped (down 6) before the horn, so it is
                     // over — do not wait the 3s the duty takes to retire; the kid snapped the
                     // gift drive inside that window.
@@ -2843,7 +2856,9 @@
             window._rb2p_emptyFieldAct = function (em, y) {
                 var sinceConv = Date.now() - (Number(window._rb2p_lastConvModalMs) || 0);
                 var mine = em && em.enginePossessingTeamIdx === em.engineUserTeamIdx;
-                if (sinceConv < 40000 && mine) {
+                // V415: right after the halftime horn the halftime rule owns the kickoff
+                var halftimeJust = Number(em && em.engineQuarter) === 3 && Date.now() - (Number(window._rb2p_quarterChangedToMs) || 0) < 10000;
+                if (sinceConv < 40000 && mine && !halftimeJust) {
                     var sent = false;
                     try {
                         em.engineDriveFsmStage = 9;
@@ -4385,6 +4400,15 @@
                     // V378 (room GVCG): the conversion play's own life, recorded. Once
                     // it is SNAPPED the play owns the ball (the invariant stands down);
                     // once it has DIED scoreless the guardian may call it a miss.
+                    // V415: every conversion try's start (kick or snap, normal TD or pick-six)
+                    try {
+                        var emTry = RB.engineState();
+                        if (emTry && Number(emTry.engineDownNumber) === 6 && bkp !== 0 && bkp != null && (prev === 0 || prev == null) &&
+                            Date.now() - (Number(window._rb2p_convTrySnappedMs) || 0) > 3000) {
+                            window._rb2p_convTrySnappedMs = Date.now();
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('CONV try started (bkp ' + bkp + ')');
+                        }
+                    } catch (eTry) {}
                     try {
                         if (window._rb2p_patPlayPending === true) {
                             // V405 (SSFQ, DJPM): a 1-point KICK never passes through the snap
@@ -9137,7 +9161,21 @@
                             // a kick was launched, and 3s after a made 2-pt had already scored
                             // and handed off — shipping MISSED over a real +1/+2.
                             var emW = null; try { emW = RB.engineState(); } catch (eW) {}
-                            var wallSnapped = Number(window._rb2p_patPlaySnappedMs) || 0;
+                            var wallSnapped = Math.max(Number(window._rb2p_patPlaySnappedMs) || 0,
+                                                       // V415 (LNRI): a NORMAL touchdown's try was invisible to the
+                                                       // wall (only pick-six tries were tracked); it fired 2.5s into
+                                                       // a snapped 2-point try and turned it into a live down
+                                                       Number(window._rb2p_convTrySnappedMs) > (Number(window._rb2p_lastConvModalMs) || 0) ? Number(window._rb2p_convTrySnappedMs) : 0);
+                            // V415: the player is looking at the 1 PT / 2 PT choice — give them 90s from the offer
+                            if (!wallSnapped && typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp() &&
+                                Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 90000) {
+                                window._rb2p_patOwedSinceMs = Date.now() - 30000;
+                                if (window._rb2p_convWallPatienceFor !== window._rb2p_lastConvModalMs) {
+                                    window._rb2p_convWallPatienceFor = window._rb2p_lastConvModalMs;
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall waits — the conversion choice is on screen (up to 90s)');
+                                }
+                                return why;
+                            }
                             if (wallSnapped && Date.now() - wallSnapped < 20000) {
                                 window._rb2p_patOwedSinceMs = Date.now() - 20000;   // a launched try gets 15 more seconds from here
                                 if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall deferred — the try is in flight');
@@ -12117,6 +12155,14 @@
                     if (window._rb2p_userIsWaitingForOpponent === true && !scorerPlayingPat) {
                         if (window._twoPlayer.pending.length > 0) {
                             var o = window._twoPlayer.pending.shift();
+                            // V415 (VJGW): a hand-off that arrived while I was already playing,
+                            // and that I have played real snaps past, describes a possession
+                            // that is over. Applying it 338s later rewound the score and the ball.
+                            if (o && o._rxMs && Number(window._rb2p_lastSnapMs) > Number(o._rxMs) + 1000 && Date.now() - Number(o._rxMs) > 20000) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('OUTCOME purged (' + o.type + ', ' + Math.round((Date.now() - Number(o._rxMs)) / 1000) + 's old) — I have played past it');
+                                if (window._rb2p_audit) window._rb2p_audit('purge', { type: o.type, ts: o.ts, ageMs: Date.now() - Number(o._rxMs), why: 'played past it' });
+                                return;
+                            }
                             if (window._rb2p_audit) window._rb2p_audit('apply', { type: o && o.type, ts: o && o.ts, lagMs: Date.now() - (Number(o && o._rxMs) || Date.now()) });   // V380
                             if (applyOpponentOutcome(o)) hideWait();
                             else showWait('apply failed — see console');
@@ -13247,6 +13293,80 @@
             // A round boundary is reached the instant the two counts are equal
             // and > 0. Because possessions strictly alternate, both devices hit
             // each boundary with identical counts and identical synced scores.
+            // ===== V415 (LYHM): an overtime touchdown is a touchdown =====
+            // The engine's own overtime is sudden death: a touchdown skips the 1 PT /
+            // 2 PT choice and jumps to "overtime over". The bridge blocks that game-over
+            // (equal possessions decide OT here), which left the scorer on the SAME
+            // line with the SAME down — scoring again and again (A +12, B +18 in one
+            // possession each; "score is wrong"). Now, in OT:
+            //   1. a touchdown the engine did not follow with a conversion gets one
+            //      (the same 1 PT / 2 PT modal the pick-six path builds);
+            //   2. the drive then ENDS: once the try is over — or 30s after the
+            //      touchdown with no try in the air — the ball is handed to the other
+            //      team as a touchdown kickoff, and they get their answering possession.
+            var otTd = null, otTdPrevScore = null;
+            function otHandOffAsTd(why) {
+                try {
+                    var em = RB.engineState(); if (!em || !em.rawEngineMatch) return false;
+                    if (typeof window._rb2p_unwedgeConversion === 'function') { try { window._rb2p_unwedgeConversion('OT touchdown hand-off'); } catch (eU) {} }
+                    window._rb2p_patPlayPending = false; window._rb2p_patDutyMine = null; window._rb2p_p6ScorerOwes = false;
+                    try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eSD) {}
+                    window._rb2p_userOutcomeSendInProgress = false;
+                    em.enginePossessingTeamIdx = em.engineUserTeamIdx;
+                    if (Number(em.engineDownNumber) === 6) em.engineDownNumber = 1;
+                    em.engineDriveFsmStage = 9; em.enginePriorFsmStage = 9;
+                    window._rb2p_lastConvModalMs = Date.now();   // the drive-end that follows is typed TD (kickoff)
+                    var cp = RB.getEngineScript('gml_Script_s_change_possession');
+                    if (typeof cp === 'function') cp(em.rawEngineMatch, _Sc2);
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('OT-TD drive over (' + why + ') — handing the ball over as a touchdown kickoff');
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'ot-td-handoff', why: why });
+                    return true;
+                } catch (e) { return false; }
+            }
+            window._rb2p_otTdCheck = function () {
+                try {
+                    if (!window._rb2p_inOvertime || window._rb2p_gameOverReported === true) { otTd = null; otTdPrevScore = null; return 'not in overtime'; }
+                    var em = RB.engineState(); if (!em || !em.rawEngineMatch) return 'no engine';
+                    var now = Date.now(), u = Number(em.userScore) || 0;
+                    if (otTdPrevScore === null) otTdPrevScore = u;
+                    var d = u - otTdPrevScore; otTdPrevScore = u;
+                    if (d === 6 && window._rb2p_userIsWaitingForOpponent !== true && window._rb2p_pickSixPatCascadeActive !== true) {
+                        otTd = { at: now, score: u, offered: false };
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('OT-TD touchdown in overtime (' + (u - 6) + ' -> ' + u + ')');
+                    }
+                    if (!otTd) return 'no overtime touchdown pending';
+                    // the drive already ended: a hand-off went out after the touchdown
+                    if (Number(window._rb2p_lastSentOutcomeMs) > otTd.at || window._rb2p_userIsWaitingForOpponent === true) { otTd = null; return 'handed off'; }
+                    var modal = typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp();
+                    var down6 = Number(em.engineDownNumber) === 6;
+                    var tryAt = Number(window._rb2p_convTrySnappedMs) || 0;
+                    var tryLive = tryAt > otTd.at && (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress());
+                    // 1. offer the conversion the engine skipped
+                    if (!otTd.offered && now - otTd.at > 900) {
+                        otTd.offered = true;
+                        if (!modal && !down6) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('OT-TD the engine skipped the conversion (its overtime is sudden death) — offering 1 PT / 2 PT');
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'ot-td-conversion' });
+                            em.enginePossessingTeamIdx = em.engineUserTeamIdx; em.engineDownNumber = 6; em.engineYardsToGo = 2;
+                            try {
+                                window._rb2p_convAuthMs = Date.now();
+                                var msg = _Xi(em.rawEngineMatch, _Sc2, "matchmsg_PATor2");
+                                _wm(em.rawEngineMatch, _Sc2, "", msg, _Xi(em.rawEngineMatch, _Sc2, "match_1pt"), _Xi(em.rawEngineMatch, _Sc2, "match_2pt"), 100367, 100369, 16777215, 0.7);
+                            } catch (eW) { if (window._rb2p_diagLog) window._rb2p_diagLog('OT-TD conversion offer failed: ' + String(eW && eW.message || eW).slice(0, 60)); }
+                        }
+                        return 'conversion offered';
+                    }
+                    // 2. the try is over (points credited, or it was snapped and the ball is dead) -> hand off
+                    var tryOver = u > otTd.score || (tryAt > otTd.at && !tryLive && now - tryAt > 2500);
+                    if (tryOver && !tryLive) { otTd = null; return otHandOffAsTd(u > otTdPrevScore ? 'the try is over' : 'the try is over') ? 'handed off after the try' : 'hand-off failed'; }
+                    // 3. nothing in the air 30s after the touchdown (the choice is still up counts as waiting, up to 60s)
+                    var limit = modal ? 60000 : 30000;
+                    if (!tryLive && now - otTd.at > limit) { otTd = null; return otHandOffAsTd('no try ' + Math.round(limit / 1000) + 's after the touchdown') ? 'handed off (timeout)' : 'hand-off failed'; }
+                    return 'waiting for the try';
+                } catch (e) { return 'error'; }
+            };
+            window._rb2p_otTdAge = function (ms) { if (otTd) otTd.at -= ms; };
+            setInterval(function () { try { window._rb2p_otTdCheck(); } catch (e) {} }, 300);
             window._rb2p_otDeclareGameOver = function (reason) {
                 if (window._rb2p_gameOverReported) return;
                 window._rb2p_gameOverReported = true;
@@ -17803,6 +17923,10 @@
                     if (typeof RB === 'undefined' || !RB.isEngineInMatchRoom || !RB.isEngineInMatchRoom()) { fieldEmptyChecks = fieldDoubleChecks = fieldOweChecks = fieldDisagreeChecks = 0; return 'not in match'; }
                     if (window._rb2p_gameOverReported === true) { fieldEmptyChecks = fieldDoubleChecks = fieldOweChecks = fieldDisagreeChecks = 0; return 'game over'; }
                     if (document.hidden) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'my screen is off'; }
+                    // V415 (VJGW): coming back from 164s in the background, two throttled
+                    // ticks fired together and "10 seconds" took 2. Right after the screen
+                    // returns, give the game a moment to catch up.
+                    if (Date.now() - (Number(window._rb2p_lastVisibleMs) || 0) < 8000) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'my screen just came back'; }
                     var now = Date.now(), ol = window._rb2p_oppLiveRx;
                     // (3) I owe a conversion result and no conversion is on my screen (SQHJ: a
                     //     stale watchdog killed the modal and left the scorer owing forever)
@@ -17811,7 +17935,8 @@
                                       window._rb2p_patPlayPending !== true && !(typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) &&
                                       now - (Number(window._rb2p_lastConvModalMs) || 0) > 15000;
                     if (owesNoModal) {
-                        if (++fieldOweChecks < 2) return 'I owe a conversion result with no conversion on screen (check 1)';
+                        if (!fieldOweChecks) fieldOweChecks = now;
+                        if (now - fieldOweChecks < 9500) return 'I owe a conversion result with no conversion on screen (' + Math.round((now - fieldOweChecks) / 1000) + 's)';
                         fieldOweChecks = 0;
                         if (window._rb2p_diagLog) window._rb2p_diagLog('FIELD-CHECK I owed a conversion result but no conversion was on my screen — resolving it as missed and handing the ball over');
                         if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'field-owe', why: 'owed a result with no conversion on screen' });
@@ -17826,14 +17951,21 @@
                     if (window._rb2p_deferredOutcome || (window._twoPlayer && window._twoPlayer.pending && window._twoPlayer.pending.length)) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'a hand-off is waiting to apply'; }
                     if (now - (Number(window._rb2p_lastSentOutcomeMs) || 0) < 10000) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'my hand-off was just sent'; }
                     if (now - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) < 10000) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'their hand-off was just applied'; }
+                    // V415 (VJGW): their turn record moved to me 2s before their hand-off itself
+                    // arrived; the check "restored" in between. A moved turn means a hand-off
+                    // is on its way — wait for it.
+                    var trIF = window._rb2p_turnRec;
+                    if (trIF && now - (Number(trIF.at) || 0) < 15000 && !/field-check|restore|rescue/.test(String(trIF.why || ''))) { fieldEmptyChecks = fieldDoubleChecks = 0; return 'the turn just moved — a hand-off is on its way'; }
                     var oppHas = !!(ol && now - (Number(ol.at) || 0) < 5000 && ol.iHaveBall === true);
                     var iLive = window._rb2p_userIsWaitingForOpponent !== true;
                     var state = (iLive && oppHas) ? 'both teams on the field' : ((!iLive && !oppHas) ? 'nobody on the field' : '');
                     if (!state) { fieldEmptyChecks = fieldDoubleChecks = fieldDisagreeChecks = 0; return iLive ? 'I am on the field' : 'opponent is on the field'; }
                     if (!iLive && typeof window._rb2p_oppHidden === 'function' && window._rb2p_oppHidden()) { fieldEmptyChecks = 0; return 'opponent screen off (their hand-off is held)'; }
-                    var n = iLive ? ++fieldDoubleChecks : ++fieldEmptyChecks;
-                    if (iLive) fieldEmptyChecks = 0; else fieldDoubleChecks = 0;
-                    if (n < 2) return state + ' (check 1)';
+                    // counters hold the time the state was first seen: 10 REAL seconds, not two ticks
+                    if (iLive) { fieldEmptyChecks = 0; if (!fieldDoubleChecks) fieldDoubleChecks = now; }
+                    else { fieldDoubleChecks = 0; if (!fieldEmptyChecks) fieldEmptyChecks = now; }
+                    var seenMs = now - (iLive ? fieldDoubleChecks : fieldEmptyChecks);
+                    if (seenMs < 9500) return state + ' (' + Math.round(seenMs / 1000) + 's)';
                     var ro = window._rb2p_rightfulOwner();
                     if (ro.owner === myRole) {
                         if (iLive) { fieldDoubleChecks = 0; return state + ' — the ball is mine (' + ro.why + '); their check parks them'; }
@@ -17865,7 +17997,10 @@
                     return state + ' — no owner on record';
                 } catch (e) { return 'error'; }
             };
-            setInterval(function () { try { window._rb2p_fieldCheck(); } catch (e) {} }, 10000);
+            // test seam: age the first-seen times as if the checks had run this long
+            window._rb2p_fieldAge = function (ms) { if (fieldEmptyChecks) fieldEmptyChecks -= ms; if (fieldDoubleChecks) fieldDoubleChecks -= ms; if (fieldOweChecks) fieldOweChecks -= ms; window._rb2p_lastVisibleMs = (Number(window._rb2p_lastVisibleMs) || 0) - ms; };
+            try { document.addEventListener('visibilitychange', function () { if (!document.hidden) window._rb2p_lastVisibleMs = Date.now(); }); } catch (eLV) {}
+            setInterval(function () { try { window._rb2p_fieldCheck(); } catch (e) {} }, 5000);
             window._rb2p_declareTurnOwner = function (owner, why) {
                 try {
                     if (!myRoom || !myRole) return;

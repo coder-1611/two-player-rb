@@ -114,6 +114,7 @@ function gameStarts(tl) {
     return out;
 }
 
+const GAMEKINDS = new Set(['snap', 'settle', 'score', 'send', 'recv', 'conv', 'p6', 'final']);
 function audit(tl, extra) {
     // V397: a rematch reuses the room code. Every 'TURN-> x (match-start)'
     // after the first begins a new game — the windows of R-GIFT, R-P6, R-HALF
@@ -313,7 +314,11 @@ function audit(tl, extra) {
             if (e.k === 'p6' && e.step === 'detected') cascade = true;
             if (e.k === 'p6' && (e.step === 'resultApplied' || e.step === 'driveStarted')) cascade = false;
             if (e.k === 'diag' && /PAT-INV force-release|PAT-INV 35s wall/.test(e.m)) cascade = false;   // the 35s wall ended it
-            if (e.k === 'vis') hidden[e.role] = e.h === true;
+            // V415: an OPP-VIS line is logged by the OTHER phone about this one; a held
+            // hand-off means this phone's page is hidden (GNYU, FSCE were mislabelled DEADLOCK)
+            if (e.k === 'vis') { if (e.opp) hidden[other(e.role)] = e.h === true; else hidden[e.role] = e.h === true; }
+            if (e.k === 'guard' && e.what === 'held') hidden[e.role] = true;
+            if (e.k === 'diag' && /^OUTCOME drained/.test(String(e.m || ''))) hidden[e.role] = false;
             if (e.k === 'recv') lastRecv[e.role] = e.t;
             if (e.k === 'diag' && /^OUTCOME (drained|held)/.test(e.m)) lastRecv[e.role] = e.t;
             if (e.k === 'q') lastQ[e.role] = e.t;
@@ -440,6 +445,15 @@ function audit(tl, extra) {
             for (const [from, to, ms] of budgets) {
                 const stepName = { detected: 'the pick-six was seen', sent: 'it was reported to the other phone', applied: 'the other phone credited it', modal: 'the conversion choice appeared', resultSent: 'the conversion result was sent back', resultApplied: 'the conversion result was received' };
                 if (chain[from] && !chain[to] && firstFinal && chain[from].t > firstFinal.t - 5000) continue;   // V397: the game ended here — the chain did not break, it stopped
+                // V415: both players closed the game within 20s of this step — they left; nothing broke
+                if (chain[from] && !chain[to]) {
+                    const stepT = chain[from].t;
+                    // a phone that CLOSED the page (pagehide) within 20s of the step and never played again left the game
+                    const leaver = roles.find(r => byRole[r].some(x => x.k === 'vis' && x.h === true && !x.opp && x.why === 'pagehide' && x.t >= stepT - 2000 && x.t <= stepT + 20000) &&
+                                                   !byRole[r].some(x => GAMEKINDS.has(x.k) && x.t > stepT + 22000));
+                    if (leaver) { flag('R-P6', `LEFT: ${leaver} closed the game during the pick-six (${from} at +${((stepT - t0) / 1000).toFixed(1)}s, no ${to})`, [chain[from]],
+                                       `${T(leaver)} closed the game during the pick-six — nothing froze; the game was left unfinished.`); continue; }
+                }
                 if (chain[from] && !chain[to]) flag('R-P6', `pick-6 chain broke: ${from} at +${((chain[from].t - t0) / 1000).toFixed(1)}s but no ${to}`, [chain[from]], `A pick-six got stuck: ${stepName[from]}, but the next step — ${stepName[to]} — never happened.`);
                 else if (chain[from] && chain[to] && chain[to].t - chain[from].t > ms) flag('R-P6', `pick-6 step ${from} -> ${to} took ${((chain[to].t - chain[from].t) / 1000).toFixed(1)}s (budget ${ms / 1000}s)`, [chain[from], chain[to]], `A pick-six step was slow: ${stepName[to]} took ${((chain[to].t - chain[from].t) / 1000).toFixed(0)} seconds.`);
             }
@@ -629,6 +643,7 @@ function audit(tl, extra) {
                 return 1;
             }
             case 'R-P6': {
+                if (/^LEFT:/.test(m)) return 0;   // V415: the players left
                 if (/chain broke|never resolved|never went LIVE/.test(m)) return 3;
                 if (/instead of a kickoff/.test(m)) return 1;
                 if (/refused|stood down/.test(m)) return 0;
@@ -802,7 +817,9 @@ function narrate(tl, meta) {
             case 'apply': if ((e.lagMs || 0) > 5000) push(e, who + ' applies a handoff that arrived ' + Math.round(e.lagMs / 1000) + ' seconds ago.', 'flagline'); break;
             case 'keep': push(e, 'Quarter ' + e.q + ' continues for ' + who + ' from ' + spot(e.y) + (e.n > 1 ? ' (re-staged, attempt ' + e.n + ')' : '') + '.', e.n >= 3 ? 'flagline' : 'system'); break;
             case 'guard': {
-                const g = { 'field-restore': 'The game had frozen (' + (e.state || 'nobody on the field') + ') — possession went back to ' + who + ' as it was before (' + (e.why || '') + '), at ' + spot(e.y) + '.',
+                const g = { 'ot-td-conversion': 'Overtime touchdown by ' + who + ' — the engine skipped the conversion, so it was offered.',
+                            'ot-td-handoff': who + '\'s overtime drive ended after the touchdown (' + (e.why || '') + ') — the other team got its answering possession.',
+                            'field-restore': 'The game had frozen (' + (e.state || 'nobody on the field') + ') — possession went back to ' + who + ' as it was before (' + (e.why || '') + '), at ' + spot(e.y) + '.',
                             'field-park': 'Both teams were on the field — the ball was the other side\'s (' + (e.why || '') + '), so ' + who + ' parked.',
                             'field-owe': who + ' owed a conversion result with no conversion on screen — it was resolved as missed and the ball handed over.',
                             'p6-watch-retired': who + '\'s pick-six watchdog retired (' + (e.why || '') + ').',
