@@ -84,7 +84,10 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
   // ---- one anonymous identity, cached and refreshed (never re-minted per load) ----
-  async function token() {
+  // V416: the list reads rooms in parallel — share one in-flight sign-in so they never mint an account each
+  let tokenInFlight = null;
+  function token() { if (!tokenInFlight) tokenInFlight = tokenFresh().finally(() => { tokenInFlight = null; }); return tokenInFlight; }
+  async function tokenFresh() {
     let t = null; try { t = JSON.parse(localStorage.getItem('rb2p_tx_tok') || 'null'); } catch (e) {}
     const now = Date.now();
     if (t && t.id && t.exp && now < t.exp - 300000) return t.id;
@@ -98,6 +101,19 @@
     localStorage.setItem('rb2p_tx_tok', JSON.stringify(t)); return t.id;
   }
   async function get(path, q) { const tok = await token(); const r = await fetch(DB + path + '.json?auth=' + tok + (q ? '&' + q : ''), { cache:'no-store' }); if (!r.ok) return null; return r.json(); }
+  // V416: the list's per-room reads go over the Firebase SDK's one websocket. REST here is HTTP/1.1 and a
+  // browser runs only 6 REST requests at a time — the ~3,000 room reads took 20s+ that way. REST stays the fallback.
+  let sdkP = null;
+  function sdk() {
+    if (!sdkP) sdkP = Promise.race([(async () => {
+      const [A, D, AU] = await Promise.all([import('https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js'), import('https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js'), import('https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js')]);
+      const app = A.initializeApp({ apiKey: KEY, databaseURL: DB, projectId: 'realretrobowl2p' }, 'transcripts');
+      await AU.signInAnonymously(AU.getAuth(app));          // one anonymous user per browser, kept by the SDK
+      const db = D.getDatabase(app);
+      return async (path, lastKeyOnly) => { const s = await D.get(lastKeyOnly ? D.query(D.ref(db, path), D.orderByKey(), D.limitToLast(1)) : D.ref(db, path)); return s.exists() ? s.val() : null; };
+    })(), new Promise((_, no) => setTimeout(() => no(new Error('sdk slow')), 10000))]);
+    return sdkP;
+  }
 
   const fmtWhen = ts => { if (!ts) return ''; const d = new Date(ts); return d.toLocaleDateString(undefined, { month:'short', day:'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' }); };
   const names = (outcomes) => {
@@ -117,17 +133,36 @@
   async function renderList() {
     app.innerHTML = '<div class="empty">Reading games…</div>';
     let codes; try { codes = Object.keys(await get('rooms', 'shallow=true') || {}); } catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
+    // V416: start the card's reads now so they download while the rooms load
+    const memo = new Map(); const getM = (p, q) => { const k = p + '?' + (q || ''); if (!memo.has(k)) memo.set(k, get(p, q).catch(() => null)); return memo.get(k); };
+    getM('complaints'); getM('stats/alltime');
+    { const now = new Date(); for (let i = 8; i >= -1; i--) { const k = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10); getM('visits/' + k); getM('solo/' + k); } }
+    // V416: read the rooms many at a time (one at a time took ~42s at 512 rooms and grew with every game — rooms are never deleted)
     const rows = [];
-    for (const code of codes) {
-      const hb = await get('rooms/' + code + '/hb');
-      const [auditedRec, flag, outcomes, audA, who, gamesRec] = await Promise.all([get('rooms/' + code + '/audited'), get('rooms/' + code + '/flag'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/audit/a', 'shallow=true'), get('rooms/' + code + '/names'), get('rooms/' + code + '/games')]);
-      if (!audA) continue;                                   // no transcript = nothing to tell
+    let done = 0, next = 0;
+    const progress = () => { const el = app.querySelector('.empty'); if (el) el.textContent = 'Reading games… ' + done + ' / ' + codes.length; };
+    let read = null; try { read = await sdk(); } catch (e) { read = null; }
+    const rd = read || ((path, lastKeyOnly) => get(path, lastKeyOnly ? 'orderBy=%22$key%22&limitToLast=1' : ''));
+    async function readRoom(code) {
+      // only the newest audit key is needed (the whole key list was 7 MB across all rooms)
+      const [audA, auditedRec, flag, outcomes, who, gamesRec] = await Promise.all([rd('rooms/' + code + '/audit/a', true), rd('rooms/' + code + '/audited'), rd('rooms/' + code + '/flag'), rd('rooms/' + code + '/outcomes'), rd('rooms/' + code + '/names'), rd('rooms/' + code + '/games')]);
+      if (!audA) return;                                     // no transcript = nothing to tell
       const keys = Object.keys(audA); const lastKey = keys.sort().pop(); const lastT = lastKey ? Number(lastKey.split('_')[0]) : 0;
+      // the heartbeat only matters for 'in progress' / 'abandoned', and both need game events in the last 24h
+      const hb = Date.now() - lastT < 24 * 3600 * 1000 ? await rd('rooms/' + code + '/hb') : null;
       // V391: a backgrounded tab pings forever — 'in progress' needs a VISIBLE phone that pinged in the last 3 minutes
       const visibleNow = hb && Object.values(hb).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000);
       const abandoned = !visibleNow && Date.now() - lastT < 24 * 3600 * 1000 && hb && Object.values(hb).some(h => h && Date.now() - Number(h.ts) < 3 * 60 * 1000);
       rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned, games: gamesRec ? Object.keys(gamesRec).length : 0 });
     }
+    async function worker() {
+      while (next < codes.length) {
+        const code = codes[next++];
+        try { await readRoom(code); } catch (e) {}            // one bad room never blanks the list
+        done++; if (done % 16 === 0) progress();
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(read ? 64 : 8, codes.length) }, worker));
     rows.sort((x, y) => y.lastT - x.lastT);
     const showTests = new URLSearchParams(location.search).get('tests') === '1';
     const real = rows.filter(r => r.team.a !== 'Phone A' || r.team.b !== 'Phone B');
@@ -137,7 +172,7 @@
     // V387: bug reports from the in-game "!" box, newest first
     let complaintsHtml = '';
     try {
-      const all = await get('complaints') || {};
+      const all = await getM('complaints') || {};
       const list = Object.keys(all).map(k => Object.assign({ id: k }, all[k])).filter(c => c && c.ts).sort((x, y) => y.ts - x.ts);
       const showAll = new URLSearchParams(location.search).get('complaints') === '1';
       const top = showAll ? list : list.slice(0, 5);
@@ -155,7 +190,7 @@
       const localKey = ms => { const d = new Date(ms); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
       const now = new Date(); const dayList = []; for (let i = 6; i >= 0; i--) dayList.push(localKey(now.getTime() - i * 86400000));
       const utcKeys = []; for (let i = 8; i >= -1; i--) { const k = utcKey(new Date(now.getTime() - i * 86400000)); if (!utcKeys.includes(k)) utcKeys.push(k); }
-      const fetched = await Promise.all(utcKeys.map(async d => { const [v, so] = await Promise.all([get('visits/' + d), get('solo/' + d)]); return { v: v || {}, so: so || {} }; }));
+      const fetched = await Promise.all(utcKeys.map(async d => { const [v, so] = await Promise.all([getM('visits/' + d), getM('solo/' + d)]); return { v: v || {}, so: so || {} }; }));
       const per = dayList.map(d => ({ d, v: {}, so: {} }));
       for (const f of fetched) {
         for (const k in f.v) { const r = f.v[k]; if (!r || !r.ts) continue; const p = per.find(x => x.d === localKey(r.ts)); if (p) p.v[k] = r; }
@@ -173,8 +208,9 @@
         cell(b.two.size, 'two-player devices') + cell(b.twoVisits, 'two-player visits') + cell(b.solo.size, 'solo devices') + cell(b.soloPlayed.size, 'solo players (played)') + cell(b.soloMatches, 'solo matches') + '</div></div>';
       // V409: all time — published by tools/alltime-stats.js (the audit archives hold the games and the screen time)
       let allHtml = '';
+      const stAllP = getM('stats/alltime');   // V416: read once, used by both blocks
       try {
-        const st = await get('stats/alltime');
+        const st = await stAllP;
         if (st && st.two) {
           const fmtDay = ms => ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '?';
           allHtml = '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>All time</b> <span class="when">(games and hours since ' + esc(fmtDay(st.two.since)) + ', visits since ' + esc(fmtDay(st.two.visitsSince)) + ', solo since ' + esc(fmtDay(st.solo && st.solo.since)) + '; updated ' + esc(fmtWhen(st.updatedAt)) + ')</span></div>' +
@@ -188,7 +224,7 @@
       // V412: this week vs last week, and the three doors
       let weekHtml = '';
       try {
-        const st2 = await get('stats/alltime'); const w = st2 && st2.weekly;
+        const st2 = await stAllP; const w = st2 && st2.weekly;
         if (w) {
           const pct = (a, b) => b ? ((a >= b ? '+' : '') + Math.round(100 * (a - b) / b) + '%') : '—';
           const doorsTxt = Object.entries(w.doors || {}).map(([n, d]) => n + ' ' + (d.status === 200 ? '✓ ' + d.ver : '✗ HTTP ' + d.status)).join(' · ');
