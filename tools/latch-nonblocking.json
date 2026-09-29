@@ -147,5 +147,6 @@
  "var:bothStuckLong": "the same reading past its 5s grace — it only sets the monitor's must/can report (telemetry)",
  "var:bothStuckSince": "when the monitor first saw both phones parked with no decision — the start of its 5s grace, telemetry only",
  "room:clock": "a scratch server-time probe the resume writes and reads once ({.sv} then GET) to judge 'game in progress' on the server's clock; nothing waits on it",
- "storage:rb2p_auditOutbox_": "the audit outbox (V419): telemetry entries waiting to upload; nothing in the game waits on them"
+ "storage:rb2p_auditOutbox_": "the audit outbox (V419): telemetry entries waiting to upload; nothing in the game waits on them",
+ "window._rb2p_convChoice": "the last 1 PT / 2 PT choice {pts, at}, stamped where the engine dispatches the button (V424); the overtime try's set-up net acts only on a choice newer than the touchdown — it enables a set-up, it never holds one up"
 }

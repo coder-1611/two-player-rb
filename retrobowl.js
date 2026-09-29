@@ -55961,14 +55961,18 @@ function _hB(_, t, i) {
                     }
                     break;
                 case 1:
-                    yyfequal(n._Wy, 5) ? (_1c1(n, _),
+                    // V424 (2P, room QJFB): the conversion marker (down 6) is checked BEFORE the sudden-death
+                    // overtime branch. The 2P overtime plays a 1 PT / 2 PT try after a touchdown; in the engine's
+                    // own order a MADE 2-point try in overtime flipped possession and gave the OTHER team +6
+                    // (e2e/probe-ot2pt.js: 14-14 -> 14-20). Regulation is unchanged (quarter 5 only).
+                    yyfgreaterequal(n._t11, 6) ? (_Dt(30378501),
+                            n._Sb1 = _Ft(n._Sb1, 968186802),
+                            n._Sb1[_Gt(n._0z)] = yyfplus(n._Sb1[_Gt(n._0z)], 2),
+                            n._Vy = 1) : yyfequal(n._Wy, 5) ? (_1c1(n, _),
                         _Dt(30378501),
                         n._Sb1 = _Ft(n._Sb1, 968186802),
                         n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 6),
-                        n._Vy = 17) : yyfgreaterequal(n._t11, 6) ? (_Dt(30378501),
-                            n._Sb1 = _Ft(n._Sb1, 968186802),
-                            n._Sb1[_Gt(n._0z)] = yyfplus(n._Sb1[_Gt(n._0z)], 2),
-                            n._Vy = 1) : (_1c1(n, _),
+                        n._Vy = 17) : (_1c1(n, _),
                                 _Dt(30378501),
                                 n._Sb1 = _Ft(n._Sb1, 968186802),
                                 n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 6),

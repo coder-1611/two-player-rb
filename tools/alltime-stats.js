@@ -91,22 +91,30 @@ function freezeCounter() {
     const R = require('./audit-rules.js');
     const dir = AUDITS;
     const now = Date.now(), dayMs = 86400000;
-    const out = { measuredGames: 0, frozenGames: 0, frozenSec: 0, today: { games: 0, frozen: 0, sec: 0 }, week: { games: 0, frozen: 0, sec: 0 }, since: null, recent: [] };
+    // V424: every frozen game is TEMPORARY (the game went on after it) or PERMANENT (it never did — a
+    // game with any permanent freeze counts as permanent); archives are re-aligned with today's rules
+    const out = { measuredGames: 0, frozenGames: 0, frozenSec: 0, temporaryGames: 0, permanentGames: 0,
+                  today: { games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0 }, week: { games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0 }, since: null, recent: [] };
     const todayKey = localDay(now);
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
-        const tl = (j.timeline || []).slice().sort((a, b) => a.t - b.t);
+        let tl0 = j.timeline || []; try { tl0 = R.realign(tl0); } catch (e) {}
+        const tl = tl0.slice().sort((a, b) => a.t - b.t);
         const binds = tl.filter(e => e.k === 'bind');
         if (!tl.length || !tl.some(e => e.k === 'act') || (binds.length && binds.every(b => isTest(b)))) continue;
         let res; try { res = R.audit(tl, {}); } catch (e) { continue; }
         if (!res.frozen || !res.frozen.measured) continue;
         const games = Math.max(1, res.games || 1), sec = res.frozen.sec || 0, t = tl[0].t;
-        out.measuredGames += games; if (sec > 0) { out.frozenGames++; out.frozenSec += sec; }
+        const kind = sec > 0 ? ((res.frozen.permanent && res.frozen.permanent.n > 0) ? 'permanent' : 'temporary') : null;
+        out.measuredGames += games; if (sec > 0) { out.frozenGames++; out.frozenSec += sec; out[kind + 'Games']++; }
         if (!out.since || t < out.since) out.since = t;
-        const bucket = b => { b.games += games; if (sec > 0) { b.frozen++; b.sec += sec; } };
+        const bucket = b => { b.games += games; if (sec > 0) { b.frozen++; b.sec += sec; b[kind]++; } };
         if (localDay(t) === todayKey) bucket(out.today);
         if (now - t < 7 * dayMs) bucket(out.week);
-        if (sec > 0) out.recent.push({ room: f.replace(/\.json$/, ''), t, sec, why: (res.frozen.intervals.find(iv => iv.ms > 10000) || {}).why || '' });
+        if (sec > 0) {
+            const iv = res.frozen.intervals.find(x => x.kind === 'permanent') || res.frozen.intervals.find(x => x.kind) || {};
+            out.recent.push({ room: f.replace(/\.json$/, ''), t, sec, kind, why: iv.why || '', resumedBy: iv.resumedBy || '' });
+        }
     }
     out.recent = out.recent.sort((a, b) => b.t - a.t).slice(0, 10);
     return out;

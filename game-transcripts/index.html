@@ -228,10 +228,12 @@
         const stF = await stAllP; const fz = stF && stF.freeze;
         if (fz) {
           const fzCell = (n, label, bad) => '<div style="text-align:center;min-width:86px"><div style="font-family:Anton,sans-serif;font-size:26px;line-height:1;' + (bad ? 'color:var(--red)' : '') + '">' + n + '</div><div class="when" style="margin-top:4px">' + esc(label) + '</div></div>';
-          const recent = (fz.recent || []).map(x => '<a href="?room=' + esc(x.room) + '">' + esc(x.room) + '</a> ' + x.sec + 's' + (x.why ? ' (' + esc(x.why) + ')' : '')).join(' · ');
+          const recent = (fz.recent || []).map(x => '<a href="?room=' + esc(x.room) + '">' + esc(x.room) + '</a> ' + x.sec + 's' + (x.kind ? ' ' + (x.kind === 'permanent' ? '<b style="color:var(--red)">permanent</b>' : 'temporary') : '') + (x.why ? ' (' + esc(x.why) + ')' : '')).join(' · ');
           freezeHtml = '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>Freezes</b> <span class="when">(seconds a phone that had to play, on screen and online, could not — measured since ' + (fz.since ? new Date(fz.since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'the next game') + ')</span></div>' +
             '<div style="display:flex;gap:14px;flex-wrap:wrap">' + fzCell(fz.today.frozen, 'games frozen today', fz.today.frozen > 0) + fzCell(fz.today.games, 'games measured today') +
-            fzCell(fz.week.frozen, 'frozen, last 7 days', fz.week.frozen > 0) + fzCell(fz.week.games, 'measured, last 7 days') + fzCell(fz.frozenSec + 's', 'frozen seconds, all', fz.frozenSec > 0) + '</div>' +
+            fzCell(fz.week.frozen, 'frozen, last 7 days', fz.week.frozen > 0) + fzCell(fz.week.games, 'measured, last 7 days') + fzCell(fz.frozenSec + 's', 'frozen seconds, all', fz.frozenSec > 0) +
+            // V424: temporary = the game went on after the freeze; permanent = it never did (the players left stuck)
+            (typeof fz.temporaryGames === 'number' ? fzCell(fz.temporaryGames, 'temporary (game went on)', fz.temporaryGames > 0) + fzCell(fz.permanentGames, 'permanent (never went on)', fz.permanentGames > 0) : '') + '</div>' +
             (recent ? '<p class="when" style="margin:8px 0 0">Latest: ' + recent + '</p>' : '<p class="when" style="margin:6px 0 0">No freezes on record.</p>') + '</div>';
         }
       } catch (e) { freezeHtml = ''; }
@@ -257,7 +259,9 @@
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
       const done = r.audited && typeof r.audited.complete === 'boolean' ? (r.audited.complete ? '<span class="pill clean">COMPLETE</span> ' : (r.audited.horn ? '<span class="pill i1">INCOMPLETE</span> ' : '<span class="pill i0">UNFINISHED</span> ')) : '';
       // V419: frozen seconds, measured by the can-act monitor (games from V419 on)
-      const froze = r.audited && r.audited.frozenMeasured ? (Number(r.audited.frozenSec) > 0 ? '<span class="pill i3">FROZE ' + Number(r.audited.frozenSec) + 's</span> ' : '<span class="pill clean">NO FREEZE</span> ') : '';
+      // V424: TEMPORARY (the game went on after it) or PERMANENT (it never did)
+      const fKind = r.audited && r.audited.frozenKind === 'permanent' ? ' · PERMANENT' : (r.audited && r.audited.frozenKind === 'temporary' ? ' · TEMPORARY' : '');
+      const froze = r.audited && r.audited.frozenMeasured ? (Number(r.audited.frozenSec) > 0 ? '<span class="pill ' + (fKind === ' · TEMPORARY' ? 'i2' : 'i3') + '">FROZE ' + Number(r.audited.frozenSec) + 's' + fKind + '</span> ' : '<span class="pill clean">NO FREEZE</span> ') : '';
       const pill = done + froze + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;

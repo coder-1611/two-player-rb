@@ -85,6 +85,11 @@ const mark = (page, m) => page.evaluate((m) => { window._rb2p_diagLog(m); }, m);
         em.engineMinutesLeft = Number(em.engineMinutesLeft) + 1;
     });
     await sleep(2500);                                                 // several 500ms live pushes
+    // V424: read the COMMITTED clock — the gate's own tick first. The mirror writes every 500ms and the gate
+    // puts the kept clock back within 50ms; a bare read landed in that window about 1 time in 10 (on V423 as
+    // well: the raw 3:01 between a push and the tick). If the gate ever accepted the stale clock, the tick
+    // leaves it there and this still fails.
+    await def.page.evaluate(() => window._rb2p_clockGateTick());
     const defAfter = await clk(def.page);
     const d4 = await since(def.page, 'T4-START');
     const t4 = { defBefore, defAfter, refused: /CLOCKGATE refused/.test(d4) };

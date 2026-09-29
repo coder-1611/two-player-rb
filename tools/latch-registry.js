@@ -86,6 +86,9 @@ const blocking = {
     // ---------------------------------------------------------------- quarters, halftime, overtime
     'window._rb2p_q3LawApplied': e('guard', 'halftime law', 'the law ran', 'a new match', 'the half', 'V422: a failed staging re-arms it (100 x 200ms, the same stored draw)'),
     'window._rb2p_q3ForceTries': e('guard', 'halftime law', 'a failed staging', 'a successful one', '20s', 'the law stops retrying'),
+    'var:q3HoldSince': e('guard', 'halftime law', 'the partner is playing a first-half conversion (its flow record says one is owed, or this phone threw the pick-six)', 'neither holds any more',
+        '120s with the partner\'s record (its own cap), 20s without it', 'the law takes the second-half kickoff (V424, UVXN)'),
+    'var:q3HoldSawConv': e('guard', 'halftime law', 'with q3HoldSince: the partner\'s record showed the try', 'with q3HoldSince', 'with q3HoldSince', 'the try is over once the record stops showing it (V424)'),
     'window._rb2p_q3KickoffPending': e('guard', 'halftime law', 'the halftime park', 'the law', '20s', 'released'),
     'window._rb2p_quarterResumePending': e('guard', 'quarter keep', 'a quarter change with the ball', 'a snap, a clock tick, a send, an apply, a law, a park (the latch reset)', '30s on screen (V422, F28)', 'expires, audited latch-expired'),
     'window._rb2p_keepN': e('guard', 'quarter keep', 'each keep', 'per quarter', 'keep #4+ refused', 'heal only'),

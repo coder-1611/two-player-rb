@@ -28,14 +28,23 @@ function toTimeline(streams) {
     // is the skew, independent of the latency itself. Shift b onto a's clock.
     let skew = 0, pairs = 0;
     // V419: since V419 every phone's 'sync' entries carry the server's clock (srv) beside its own
-    // (t). When both phones have them, put each onto server time directly (median srv - t per
-    // phone; the upload latency is in both, so the phones line up within a few hundred ms).
+    // (t). When both phones have them, put each onto server time directly.
+    // V424 (FQHW): srv - t is the clock offset PLUS that upload's delay (never less), so the
+    // offset is the SMALLEST sample, not the median — a background tab's upload that sat 27s
+    // made the median 27653ms (the other sample was 121ms), slid one phone's whole stream 24s
+    // and invented "both have the ball for 20s". And one device playing both seats (the same
+    // account on both) has ONE clock: one offset for both.
     try {
         const roles = [...new Set(out.map(e => e.role))];
         const off = {};
         for (const r of roles) {
             const d = out.filter(e => e.role === r && e.k === 'sync' && typeof e.srv === 'number').map(e => e.srv - e.t).sort((x, y) => x - y);
-            if (d.length) off[r] = d[Math.floor(d.length / 2)];
+            if (d.length) off[r] = d[0];
+        }
+        const uidsOf = r => new Set(out.filter(e => e.role === r && e.k === 'bind' && e.uid).map(e => e.uid));
+        if (roles.length === 2 && roles.every(r => typeof off[r] === 'number')) {
+            const u0 = uidsOf(roles[0]), u1 = uidsOf(roles[1]);
+            if ([...u0].some(u => u1.has(u))) { const one = Math.min(off[roles[0]], off[roles[1]]); off[roles[0]] = one; off[roles[1]] = one; out.sameDevice = true; }
         }
         if (roles.length && roles.every(r => typeof off[r] === 'number')) {
             for (const e of out) e.t += off[e.role];
@@ -155,7 +164,9 @@ function audit(tl, extra) {
             const p0 = parts[0].impact;
             const impact = { worst, worstName: worst >= 0 ? p0.names[worst] : 'clean', worstText: worst >= 0 ? p0.texts[worst] : 'nothing wrong', counts, names: p0.names, texts: p0.texts, games: parts.length,
                              raw: raw.length, folded: folded.length, chains: chainBase };
-            const frozenAll = { measured: parts.some(p => p.frozen && p.frozen.measured), sec: parts.reduce((a, p) => a + ((p.frozen && p.frozen.sec) || 0), 0), intervals: [].concat(...parts.map(p => (p.frozen && p.frozen.intervals) || [])) };
+            const sumK = k => ({ n: parts.reduce((a, p) => a + ((p.frozen && p.frozen[k] && p.frozen[k].n) || 0), 0), sec: parts.reduce((a, p) => a + ((p.frozen && p.frozen[k] && p.frozen[k].sec) || 0), 0) });
+            const frozenAll = { measured: parts.some(p => p.frozen && p.frozen.measured), sec: parts.reduce((a, p) => a + ((p.frozen && p.frozen.sec) || 0), 0), intervals: [].concat(...parts.map(p => (p.frozen && p.frozen.intervals) || [])),
+                                temporary: sumK('temporary'), permanent: sumK('permanent') };
             return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, complete: parts[parts.length - 1].complete, frozen: frozenAll };
         }
     }
@@ -462,6 +473,14 @@ function audit(tl, extra) {
             }
             const m = convModals.find(x => chain.applied && x.t >= chain.applied.t && x.t < chain.applied.t + 3000 && x.role === chain.applied.role);
             if (m) chain.modal = m;
+            // V424 (UVXN): a conversion answer that reached the thrower after its halftime law was MERGED
+            // there (V422's moot: the score taken, the ball given by the law) — it was received. V424 pages
+            // log it as resultApplied {moot}; older pages left only the purge.
+            if (chain.resultSent && !chain.resultApplied) {
+                const mp = tl.find(x => x.k === 'purge' && x.epochMoot && x.type === 'PAT_RESULT' && x.role !== chain.resultSent.role &&
+                                        x.t >= chain.resultSent.t - 5000 && x.t < chain.resultSent.t + 20000);
+                if (mp) chain.resultApplied = Object.assign({}, mp, { step: 'resultApplied', moot: true });
+            }
             for (const [from, to, ms] of budgets) {
                 const stepName = { detected: 'the pick-six was seen', sent: 'it was reported to the other phone', applied: 'the other phone credited it', modal: 'the conversion choice appeared', resultSent: 'the conversion result was sent back', resultApplied: 'the conversion result was received' };
                 if (chain[from] && !chain[to] && firstFinal && chain[from].t > firstFinal.t - 5000) continue;   // V397: the game ended here — the chain did not break, it stopped
@@ -482,8 +501,8 @@ function audit(tl, extra) {
                 if (chain[from] && !chain[to]) flag('R-P6', `pick-6 chain broke: ${from} at +${((chain[from].t - t0) / 1000).toFixed(1)}s but no ${to}`, [chain[from]], `A pick-six got stuck: ${stepName[from]}, but the next step — ${stepName[to]} — never happened.`);
                 else if (chain[from] && chain[to] && chain[to].t - chain[from].t > ms) flag('R-P6', `pick-6 step ${from} -> ${to} took ${((chain[to].t - chain[from].t) / 1000).toFixed(1)}s (budget ${ms / 1000}s)`, [chain[from], chain[to]], `A pick-six step was slow: ${stepName[to]} took ${((chain[to].t - chain[from].t) / 1000).toFixed(0)} seconds.`);
             }
-            // the thrower must go LIVE within 6s of resultApplied
-            if (chain.resultApplied) {
+            // the thrower must go LIVE within 6s of resultApplied (a merged answer: the halftime law gives the ball)
+            if (chain.resultApplied && !chain.resultApplied.moot) {
                 const live = tl.find(x => x.k === 'wait' && x.on === false && x.role === chain.resultApplied.role && x.t >= chain.resultApplied.t - 500 && x.t < chain.resultApplied.t + 6000);
                 if (!live) flag('R-P6', `thrower (${chain.resultApplied.role}) never went LIVE within 6s of PAT_RESULT`, [chain.resultApplied], `${T(chain.resultApplied.role)} never got the ball back after the conversion.`);
             }
@@ -666,16 +685,24 @@ function audit(tl, extra) {
                 const ms = t - o.from;
                 if (ms >= 3000) frozen.intervals.push({ role: o.role, from: o.from, ms, why: o.why });
             };
+            // V424 (RPLB): a phone is on screen only while it says so. A screen that went dark stays dark until
+            // the phone reports it visible again — a status line its dark page writes later (RPLB: "can act,
+            // need not" 25s after its screen went off) is no "on screen". And a phone whose stream goes SILENT
+            // for 20s is not there: a running page writes something every few seconds (a hung one, the
+            // watchdog's stall), so silence is a page the phone froze, closed or never delivered.
+            // Offline too: a phone whose connection dropped (FB-CONN OFFLINE) is not reachable until it is back.
+            const visHid = {}, silent = {}, offline = {};
+            const eff = r => { const x = st[r]; return (visHid[r] || silent[r] || offline[r]) ? Object.assign({}, x, { why: visHid[r] ? 'hidden' : 'offline', can: false }) : x; };
             const evalAt = (t) => {
                 const roles2 = Object.keys(st);
                 for (const r of roles2) {
-                    const x = st[r];
+                    const x = eff(r);
                     const stuck = x.must && !x.can && !x.soft && !/^(hidden|offline)$/.test(x.why || '');
                     if (stuck && !open['one' + r]) open['one' + r] = { from: t, why: x.why, role: r };
                     if (!stuck) closeIv('one' + r, t);
                 }
                 if (roles2.length === 2) {
-                    const [p, q] = roles2.map(r => st[r]);
+                    const [p, q] = roles2.map(r => eff(r));
                     const onScreen = y => !(/^(hidden|offline)$/.test(y.why || '')) && y.why !== 'not in a match' && y.why !== 'game over';
                     const bothWait = !p.must && !q.must && onScreen(p) && onScreen(q) && p.why !== 'game over' && q.why !== 'game over';
                     const bothLive = p.must && q.must && p.can && q.can;
@@ -685,22 +712,50 @@ function audit(tl, extra) {
                     if (!bothLive) closeIv('bl', t);
                 }
             };
+            // the silences: after each phone's entry, the next one of its own more than 20s later (or none) —
+            // gone from 5s after that entry (a page on screen writes at least every 5s: its stage line)
+            // (only for a phone whose build writes that 5s stage line — V419+ pages; an older build's stream
+            // has no such heartbeat and its gaps mean nothing)
+            const SILENT_MS = 20000, GONE_AFTER_MS = 5000, marks = [];
+            for (const r of roles) {
+                const ev = byRole[r];
+                if (!ev.some(x => x.k === 'stage')) continue;
+                for (let i = 0; i < ev.length; i++) {
+                    const nextT = i + 1 < ev.length ? ev[i + 1].t : null;
+                    if ((nextT == null ? endAt : nextT) - ev[i].t > SILENT_MS) marks.push({ t: ev[i].t + GONE_AFTER_MS, role: r, k: '_silent' });
+                }
+            }
+            const evs = tl.concat(marks).sort((x, y) => x.t - y.t);
             // a hand-off in flight is not "both waiting": from a send until the other side applies it
-            for (const e of tl) {
+            for (const e of evs) {
+                if (e.k === '_silent') { silent[e.role] = true; evalAt(e.t); continue; }
+                if (silent[e.role]) { silent[e.role] = false; if (st[e.role]) evalAt(e.t); }
                 if (e.k === 'act') { st[e.role] = { must: !!e.must, can: e.can !== false, why: e.why || '', soft: !!e.soft }; evalAt(e.t); }
                 else if (e.k === 'send') { if (open.bw) { delete open.bw; } }
-                else if (e.k === 'vis' && !e.opp && e.h === true && st[e.role]) { st[e.role].why = 'hidden'; st[e.role].can = false; evalAt(e.t); }
+                else if (e.k === 'vis' && !e.opp) { visHid[e.role] = e.h === true; if (st[e.role]) evalAt(e.t); }
+                else if (e.k === 'bind' || (e.k === 'diag' && e.m === 'boot')) { if (visHid[e.role] || offline[e.role]) { visHid[e.role] = false; offline[e.role] = false; if (st[e.role]) evalAt(e.t); } }   // a reloaded page starts on screen
+                else if (e.k === 'diag' && /^FB-CONN (OFFLINE|online)$/.test(e.m || '')) { offline[e.role] = /OFFLINE/.test(e.m); if (st[e.role]) evalAt(e.t); }
             }
             for (const k of Object.keys(open)) closeIv(k, endAt);
             // §3(d): a decided game gets 20s to show its stats screen; everything else 10s
             const limitOf = iv => /^stats screen missing/.test(iv.why || '') ? 20000 : T_FREEZE;
+            // V424: TEMPORARY or PERMANENT. A freeze is temporary when the game went on after it — a
+            // play was snapped, or the stats screen came up — and permanent when nothing did: the
+            // players left or the recording ended with the game still stuck.
+            frozen.temporary = { n: 0, sec: 0 }; frozen.permanent = { n: 0, sec: 0 };
             for (const iv of frozen.intervals) {
                 iv.why = String(iv.why || '').replace(/ \d+s$/, '');
                 if (iv.ms > limitOf(iv)) {
                     frozen.sec += Math.round((iv.ms) / 1000);
+                    const endT = iv.from + iv.ms;
+                    const resumed = tl.find(e => e.t >= endT - 500 && (e.k === 'snap' || e.k === 'final'));
+                    iv.kind = resumed ? 'temporary' : 'permanent';
+                    if (resumed) iv.resumedBy = resumed.k === 'final' ? 'the stats screen' : resumed.role + ' snapped';
+                    frozen[iv.kind].n++; frozen[iv.kind].sec += Math.round(iv.ms / 1000);
                     const who = iv.role === 'ab' ? 'both phones' : T(iv.role);
-                    flag('R-FREEZE', `FROZEN: ${iv.role === 'ab' ? iv.why : iv.role + ' could not act (' + iv.why + ')'} for ${(iv.ms / 1000).toFixed(0)}s`, [tl.find(e => e.t >= iv.from) || tl[0]],
-                         `${who === 'both phones' ? 'Both phones' : who} ${iv.role === 'ab' ? (iv.why === 'both waiting' ? 'sat waiting for each other' : 'both thought they had the ball') : 'could not play (' + iv.why + ')'} for ${(iv.ms / 1000).toFixed(0)} seconds while on screen.`);
+                    const kindText = resumed ? `TEMPORARY — the game went on (${iv.resumedBy} ${((resumed.t - endT) / 1000).toFixed(0)}s later)` : 'PERMANENT — the game never went on';
+                    flag('R-FREEZE', `FROZEN: ${iv.role === 'ab' ? iv.why : iv.role + ' could not act (' + iv.why + ')'} for ${(iv.ms / 1000).toFixed(0)}s — ${iv.kind}`, [tl.find(e => e.t >= iv.from) || tl[0]],
+                         `${who === 'both phones' ? 'Both phones' : who} ${iv.role === 'ab' ? (iv.why === 'both waiting' ? 'sat waiting for each other' : 'both thought they had the ball') : 'could not play (' + iv.why + ')'} for ${(iv.ms / 1000).toFixed(0)} seconds while on screen. ${kindText}.`);
                 } else if (iv.role !== 'ab') {
                     flag('R-FREEZE', `near miss: ${iv.role} could not act (${iv.why}) for ${(iv.ms / 1000).toFixed(0)}s, then could again`, [tl.find(e => e.t >= iv.from) || tl[0]],
                          `${T(iv.role)} was briefly unable to play (${iv.why}) for ${(iv.ms / 1000).toFixed(0)} seconds, then the game carried on.`);
@@ -944,5 +999,19 @@ function narrate(tl, meta) {
     return out;
 }
 
-return { toTimeline, audit, narrate, explain, line, fmtT, phantomPick6, gameStarts };
+// V424: an archived timeline (tools/audit-watch.js) was aligned with the rules of its day, but every
+// entry keeps its phone's RAW time in its key ("<t>_<seq>"): rebuild the two streams and align them
+// again with today's rules (FQHW's archive carries the old median offset — a 24s slide).
+function realign(tl) {
+    const streams = {};
+    for (const e of tl || []) {
+        const raw = Number(String((e && e.key) || '').split('_')[0]);
+        if (!e || !e.role || !isFinite(raw) || raw <= 0) return tl;   // not an archived timeline: as it is
+        const c = Object.assign({}, e); delete c.role; delete c.key; c.t = raw;
+        (streams[e.role] = streams[e.role] || {})[e.key] = c;
+    }
+    return toTimeline(streams);
+}
+
+return { toTimeline, realign, audit, narrate, explain, line, fmtT, phantomPick6, gameStarts };
 });
