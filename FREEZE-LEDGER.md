@@ -192,3 +192,67 @@ The review lists 19 problems, each with a scenario, code lines and the smallest 
 - **F9's grace timer** started at the first parked tick instead of at a wake, so every rescue took 16 s instead of 8. `v378` T3 caught it; the timer is now wake-only.
 - **The first send-guard expiry (45 s)** would have cleared a guard that legitimately lasts the opponent's whole drive. The design review caught it; it now expires only while the phone has the ball (20 s). `v419-accuracy` T8a/T8b.
 - **The monitor's wedge check counted touches only.** A Chromebook mouse drag would have read as wedged; all pointer types count now. `v419-canact` C9.
+
+## Phase 2 design v2 (2026-09-29): per-phone FLOW records, causal ownership, act-on-self
+
+**Why not one shared compare-and-swap record.** Two writers on one node need a compare-and-swap on each transport, retries, and care for late SDK transactions. The same six problems (#6, #8, #9, #10, #11, #17) close without any of that if each phone writes only ITS OWN record and every decision acts only on the deciding phone.
+
+**The record: `rooms/{code}/flow/{role}`.** Only that phone writes it: REST PUT first (fetchT 3 s), on change (at most 1/s), and at least every 5 s as a heartbeat. Readers keep the highest `seq` they've seen and ignore older ones, so a stale SDK flush can't win.
+
+```
+{ gid,                 // this game's id: host A's games/{ms} key; B adopts it from rooms/{code}/games
+  seq,                 // monotonic per writer
+  ver, srv: {.sv},     // build label, server time of the write
+  vis: 'V'|'H', live,  // screen on? am I on offense (wait flag false)?
+  plays,               // plays I snapped this game (monotonic)
+  spot: {y, d, tg, q, clk, plays},   // my last SETTLED or STAGED field state while I had the ball (my frame); written at settle, even when hidden
+  sent:   {ts, type, y, after} | null,   // my last hand-off: ts = the record's ts (MY clock); after = my staged value when I sent it (the causal link)
+  held:   {since, type} | null,          // a drive end decided but still held (the 4–12 s pick-six window): in flight from the _1c1 edge (review #1)
+  staged: ts,          // the last PARTNER hand-off ts I actually STAGED (the partner's clock); the ack moves here (review #12)
+  conv:   {owed, modal, tryStarted} | null,   // a conversion I owe (review #13: now shared)
+  final: bool }        // my stats screen is up
+```
+
+**Who must act (the same function on both phones).** Inputs: both flow records, each read fresh (REST poll ≤ 6 s old, or an SDK update). A record older than 15 s by local receipt time is UNKNOWN, and an unknown input means no decision, only the honest status.
+
+1. **A hold is in flight:** `X.held` is set → nobody acts (the sender's hold timer resolves it).
+2. **A hand-off is unapplied:** `X.sent` is set and `Y.staged !== X.sent.ts` → Y must APPLY `outcomes/X`, fetched over REST, idempotent by ts.
+3. **Both hand-offs are staged:** the later one is the one whose `after` names the other's send. `Y.sent.after === X.sent.ts` means Y's send came after X's, so X owns; else Y owns. No cross-clock comparison anywhere.
+4. **Special hand-offs without an outcome record:** halftime (the Q3 law), the OT flip and the opening kickoff are written as pseudo-sends with deterministic ids (`gid+'/H'`, `gid+'/OT'+n`, `gid+'/K0'`), so rule 3 covers them.
+5. **A conversion is owed:** `X.conv.owed` → X must act (re-offer, or play the try). Y's FINAL and every "end" wait for it; the wall counts X's can-act seconds.
+
+**The authority on THIS phone** (`_rb2p_recover(reason)`), triggered by the can-act monitor when a hard reason has held for `T_ACT` visible, frames-advancing seconds since its onset (the clock restarts at every wake), or by a detector. It acts on this phone only:
+
+1. **I must apply:** `apply` = re-apply `outcomes/partner` through the normal apply path (score, clock, PICK6 / PAT_RESULT branches included); never a bare force (review #11).
+2. **I owe a conversion:** `reoffer` it.
+3. **I own the ball but I'm not staged or live:**
+   - if my try is resolved and my kickoff was never sent: `handoff` (`s_change_possession`, so `_1c1` ships the TD kickoff — review #4);
+   - otherwise `restore` at `flow.spot`, the last settled/staged state (review #5), with its down and distance.
+4. **The partner owns and I'm live:** `park`, only when `partnerPresent` (a V flow/heartbeat within 12 s by local receipt).
+5. **Decided game, no conversion owed anywhere, no stats screen:** `final`.
+6. **Local remedies,** no decision needed: unwedge (clear slot 0, no synthetic release), scroll heal, engine kick, stats re-render.
+7. **Forbidden:**
+   - any action from a hidden page;
+   - any action against an old-build partner's turn record (a partner with no flow record → local remedies only; review #14);
+   - a score change, a clock rise within a quarter, a spot other than `flow.spot` or the applied outcome, a reload, an end before the horn, taking the ball from an absent partner.
+
+   Every action is logged as `guard recover {reason, action, before, after}`.
+
+**The registry (review #2).** GUARDS (resettable, with a deadline and an expiry action) are kept apart from OBLIGATIONS (never reset; they resolve only by their own completion):
+- **Obligations:** the held send, `deferredOutcome`, `pending`, `lastSentOutcome`, the send guard, a conversion owed, `quarterResumePending` plus its captures, `ot/p{n}`, `gameOverReported`.
+- **Obligation ages** count visible, online seconds, with an 8 s grace after a wake.
+- **Check:** `tools/latch-check.js` in the suite: every `window._rb2p_*`, closure guard, storage key and gate path is in the registry or on the allow-list with a reason.
+
+**Resume (review #12).** On visible, reconnect or reload, read both flows and `outcomes/partner` over REST. Apply any partner hand-off newer than my `staged`, whatever its type or age. Re-sends reuse the original ts. The resume clock is the lower of the two same-quarter clocks.
+
+**Rollout.**
+1. V421 ships the flow records in SHADOW mode (written; the rule computed and logged as `own {who, why}`; no action) plus a checker rule comparing the rule's answer with what actually happened.
+2. After real games agree, the authority switches on and the detectors move under it one by one.
+
+## V421 (2026-09-29): the flow records ship in SHADOW mode
+
+- Each phone publishes `rooms/{code}/flow/{role}` over REST (≤ 1/s on change, 5 s heartbeat); nothing acts on it. The rule's answer is logged as audit `own {who, why}` on every change, so real games can be scored against it (`node tools/flow-sim.js` prints a LIVE section once `own` entries exist).
+- A reload carries on from the phone's own record (read back before anything is published); the partner's record is ordered by the server's write time, not a per-phone counter.
+- Every REST helper now gives up after 8 s (`fetchT`), and `fbRestGetX` tells an absent record from a failed read.
+- Tests: `e2e/v421-flow.js` 6/6; the full regression (26 suites) and `run.js` 15/15 green on this build.
+- **The v2 design review** (`scratchpad/phase2-v2-review.md`, 18 items) found the rule does not hold at halftime/OT, across reloads, or when the partner's record goes stale. Headline: in 44 of 204 real games that reached Q3, a hand-off decided at the Q2 horn shipped ~4 s later stamped Q3; in 20 the sender was B, so the rule names A while the halftime law gives B the ball (6 of those already had two offenses). The authority does NOT switch on until those are fixed (V422: epoch-stamped hand-offs, facts apart from presence, trusted records only, the V208 rejection in the chain, no action across a horn or before the OT flip).

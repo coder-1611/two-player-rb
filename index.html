@@ -106,22 +106,35 @@
         // time. So the two transports fail independently, and anything the
         // match cannot afford to lose now travels on both.
         var FB_REST_BASE = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
+        // V421 (Phase 2 review #9): every REST call gives up after 8s — a request that never
+        // answers must not hold whatever is waiting on it (the outcomePollBusy failure).
         async function fbRestPut(path, obj) {
             var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
-            var r = await fetch(u, { method: 'PUT', body: JSON.stringify(obj) });
+            var r = await fetchT(u, { method: 'PUT', body: JSON.stringify(obj) }, 8000);
             return r.ok;
         }
         async function fbRestPatch(path, obj) {
             var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
-            var r = await fetch(u, { method: 'PATCH', body: JSON.stringify(obj) });
+            var r = await fetchT(u, { method: 'PATCH', body: JSON.stringify(obj) }, 8000);
             return r.ok;
         }
         async function fbRestGet(path) {
             var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
-            var r = await fetch(u, { cache: 'no-store' });
+            var r = await fetchT(u, { cache: 'no-store' }, 8000);
             if (!r.ok) return null;
             return r.json();
         }
+        // V421 (review #9): a read that tells ABSENT ({ok:true, val:null}) from FAILED ({ok:false}) —
+        // "no record" and "no answer" must never be the same thing to a decision.
+        async function fbRestGetX(path, ms) {
+            try {
+                var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+                var r = await fetchT(u, { cache: 'no-store' }, ms || 4000);
+                if (!r.ok) return { ok: false, status: r.status };
+                return { ok: true, val: await r.json() };
+            } catch (e) { return { ok: false, err: String(e && e.message).slice(0, 60) }; }
+        }
+        window._rb2p_fbRestGetX = fbRestGetX;
         window._rb2p_fbRestPut = fbRestPut;
         window._rb2p_fbRestPatch = fbRestPatch;
         window._rb2p_fbRestGet = fbRestGet;
@@ -1514,7 +1527,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V420<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V421<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1596,7 +1609,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V420</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V421</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -6440,6 +6453,7 @@
                         if (outcome.type !== 'PAT_RESULT') {
                             window._rb2p_pendingTurnoverOutcome = outcome;
                             window._rb2p_pendingTurnoverHeldMs = Date.now();   // V354: delivery watchdog
+                            try { if (window._rb2p_flowNote) window._rb2p_flowNote('held', { type: outcome.type }); } catch (eFH) {}   // V421: in flight from the decision, not the send
                             var holdStartMs = Date.now();
                             var fireHeldSend = function () {
                                 window._rb2p_pendingTurnoverSendTimer = null;
@@ -6584,6 +6598,7 @@
                         clearTimeout(window._rb2p_pendingTurnoverSendTimer);
                         window._rb2p_pendingTurnoverSendTimer = null;
                         window._rb2p_pendingTurnoverOutcome = null; window._rb2p_pendingTurnoverHeldMs = 0;
+                        try { if (window._rb2p_flowNote) window._rb2p_flowNote('held-clear', {}); } catch (eFH2) {}
                         console.log('[2P PICK6] cancelled held turnover send — upgraded to PICK6');
                     }
                     // Consume the _Ak1 latch so the same TD replay cannot
@@ -10965,6 +10980,7 @@
                         clearTimeout(window._rb2p_pendingTurnoverSendTimer);
                         window._rb2p_pendingTurnoverSendTimer = null;
                         window._rb2p_pendingTurnoverOutcome = null; window._rb2p_pendingTurnoverHeldMs = 0;
+                        try { if (window._rb2p_flowNote) window._rb2p_flowNote('held-clear', {}); } catch (eFH3) {}
                         console.log('[2P] dropped held turnover send — inbound ' +
                                     outcome.type + ' outcome supersedes it');
                     }
@@ -18179,6 +18195,165 @@
             window._rb2p_fieldAge = function (ms) { if (fieldEmptyChecks) fieldEmptyChecks -= ms; if (fieldDoubleChecks) fieldDoubleChecks -= ms; if (fieldOweChecks) fieldOweChecks -= ms; window._rb2p_lastVisibleMs = (Number(window._rb2p_lastVisibleMs) || 0) - ms; };
             try { document.addEventListener('visibilitychange', function () { if (!document.hidden) window._rb2p_lastVisibleMs = Date.now(); }); } catch (eLV) {}
             setInterval(function () { try { window._rb2p_fieldCheck(); } catch (e) {} }, 5000);
+
+            // ===== V421 (NEVER-FREEZE Phase 2, increment A — SHADOW): the per-phone FLOW record =====
+            // FREEZE-LEDGER.md "Phase 2 design v2". Each phone writes ONLY its own record,
+            // rooms/{room}/flow/{role}, REST first, and the owner of the ball follows from the causal chain of
+            // hand-offs: "X sent ts" / "Y staged ts" / "Y's send came after (after=) X's". Every comparison is
+            // equality or order within ONE sender's clock — never two phones' clocks. Replayed over 12,021
+            // real snaps the rule named the player 98.9% of the time (tools/flow-sim.js). In this increment
+            // nothing ACTS on it: the rule's answer is logged (audit 'own') so real games can check it.
+            (function () {
+                var RANK = function (ep) { if (!ep) return -1; if (ep === 'K0') return 0; if (ep === 'H') return 1; var m = /^OT(\d+)$/.exec(ep); return m ? 10 + Number(m[1]) : -1; };
+                var partnerRole = myRole === 'a' ? 'b' : 'a';
+                function epochStart(ep, receiver, gid) {
+                    var tag = 'E:' + ep;
+                    return { gid: gid, ep: ep, epRx: receiver,
+                             sent: receiver === myRole ? null : { ts: tag, type: 'LAW', after: null },
+                             staged: receiver === myRole ? tag : null };
+                }
+                var F = { gid: 'pending', seq: 0, plays: 0, spot: null, held: null, final: false, gameSrv: 0 };
+                Object.assign(F, epochStart('K0', 'a', 'pending'));
+                var dirty = true, lastPutMs = 0, putBusy = false, lastPubSig = '';
+                var P = { rec: null, srv: -1, rxMs: 0 };      // the partner's record, its server write time, local receipt time
+                // a RELOAD (the resume path installs this too) must not start a blank record over the real one:
+                // nothing is published until my own record has been read back, or a new game has started
+                var restored = false;
+                window._rb2p_flowNote = function (kind, d) {
+                    try {
+                        d = d || {};
+                        if (kind === 'game') {                   // a new game: A names it; B adopts A's name
+                            restored = true;
+                            var gidN = myRole === 'a' ? ('g' + String(d.ms || Date.now())) : 'pending';
+                            F = { gid: gidN, seq: F.seq, plays: 0, spot: null, held: null, final: false, gameSrv: 0 };
+                            Object.assign(F, epochStart('K0', 'a', gidN));
+                        } else if (kind === 'held') F.held = { since: Date.now(), type: d.type || '' };
+                        else if (kind === 'held-clear') F.held = null;
+                        else if (kind === 'send') { F.sent = { ts: d.ts, type: d.type || '', y: d.y, after: F.staged }; F.held = null; }
+                        else if (kind === 'staged') { if (d.ts != null) F.staged = d.ts; }          // applied, or dropped as moot
+                        else if (kind === 'settle') F.spot = { y: d.y, d: d.d, tg: d.tg, q: d.q, clk: d.clk, plays: F.plays };
+                        else if (kind === 'snap') F.plays++;
+                        else if (kind === 'ep') {
+                            if (RANK(d.id) > RANK(F.ep)) { var keep = { gid: F.gid, seq: F.seq, plays: F.plays, spot: F.spot, final: F.final, gameSrv: F.gameSrv }; F = Object.assign(keep, epochStart(d.id, d.receiver, F.gid)); F.held = null; }
+                        } else if (kind === 'final') F.final = true;
+                        dirty = true;
+                    } catch (e) {}
+                };
+                // every event already passes through the audit: observe it rather than edit dozens of call sites
+                var realAuditF = window._rb2p_audit;
+                window._rb2p_audit = function (k, f) {
+                    try {
+                        if (k === 'send' && f && f.ts != null) window._rb2p_flowNote('send', { ts: f.ts, type: f.type, y: f.y });
+                        else if ((k === 'apply' || k === 'purge') && f && f.ts != null) window._rb2p_flowNote('staged', { ts: f.ts });
+                        else if (k === 'settle' && f) window._rb2p_flowNote('settle', f);
+                        else if (k === 'snap') window._rb2p_flowNote('snap', f);
+                        else if (k === 'q' && f && Number(f.to) >= 3 && Number(f.to) <= 4) window._rb2p_flowNote('ep', { id: 'H', receiver: 'b' });
+                        else if (k === 'game' && f) window._rb2p_flowNote('game', f);
+                        else if (k === 'final') window._rb2p_flowNote('final', f);
+                    } catch (e) {}
+                    return realAuditF.apply(this, arguments);
+                };
+                // overtime: each period's coin flip starts an epoch
+                try {
+                    var realOtK = window._rb2p_applyOtKickoff;
+                    if (typeof realOtK === 'function' && !realOtK.__rb2pFlow) {
+                        window._rb2p_applyOtKickoff = function (receiver) {
+                            try { var per = Number(window._rb2p_otFlipSeenPeriod) || 5; window._rb2p_flowNote('ep', { id: 'OT' + per, receiver: receiver }); } catch (e) {}
+                            return realOtK.apply(this, arguments);
+                        };
+                        window._rb2p_applyOtKickoff.__rb2pFlow = true;
+                    }
+                } catch (eOt) {}
+                // the rule — the same pure function on both phones
+                window._rb2p_flowOwner = function (fa, fb) {
+                    if (!fa || !fb) return { who: null, why: 'missing record' };
+                    if (!fa.gid || fa.gid === 'pending' || fa.gid !== fb.gid) return { who: null, why: 'game ids differ' };
+                    var ep = RANK(fa.ep) >= RANK(fb.ep) ? fa.ep : fb.ep, rx = RANK(fa.ep) >= RANK(fb.ep) ? fa.epRx : fb.epRx;
+                    var tag = 'E:' + ep;
+                    var norm = function (f, role) {                // a record still in an older epoch counts as the new epoch's start
+                        if (f.ep === ep) return f;
+                        return { sent: rx === role ? null : { ts: tag, after: null }, staged: rx === role ? tag : null, held: null };
+                    };
+                    var A = norm(fa, 'a'), B = norm(fb, 'b');
+                    if (A.held) return { who: null, why: 'a hold in flight', inFlight: 'a' };
+                    if (B.held) return { who: null, why: 'b hold in flight', inFlight: 'b' };
+                    if (A.sent && B.staged !== A.sent.ts) return { who: 'b', why: 'a->b unapplied', apply: 'b' };
+                    if (B.sent && A.staged !== B.sent.ts) return { who: 'a', why: 'b->a unapplied', apply: 'a' };
+                    if (A.sent && !B.sent) return { who: 'b', why: 'only a sent' };
+                    if (B.sent && !A.sent) return { who: 'a', why: 'only b sent' };
+                    if (!A.sent && !B.sent) return { who: null, why: 'no sends' };
+                    if (B.sent.after === A.sent.ts) return { who: 'a', why: 'b sent after a' };
+                    if (A.sent.after === B.sent.ts) return { who: 'b', why: 'a sent after b' };
+                    return { who: null, why: 'chain broken' };
+                };
+                window._rb2p_flowState = function () { return { me: JSON.parse(JSON.stringify(F)), partner: P.rec, partnerAgeMs: P.rxMs ? Date.now() - P.rxMs : null }; };   // test seam
+                function takePartner(rec) {
+                    if (!rec || typeof rec !== 'object') return;
+                    // order by the SERVER's write time (one clock; it survives the partner reloading): an older
+                    // record — a late SDK notification after a newer REST read — never wins
+                    var s = Number(rec.srv) || 0;
+                    if (P.rec && s <= P.srv) return;
+                    P.rec = rec; P.srv = s; P.rxMs = Date.now();
+                    // B adopts A's game id once A's record is from THIS game (server time, one clock)
+                    if (myRole === 'b' && rec.gid && rec.gid !== 'pending' && F.gid !== rec.gid && F.gameSrv && Number(rec.srv) >= F.gameSrv - 15000) { F.gid = rec.gid; dirty = true; }
+                }
+                // after a reload: carry on from my own record if it belongs to this room's latest game
+                (function tryRestoreFlow() {
+                    if (restored) return;
+                    if (typeof window._rb2p_fbRestGetX !== 'function' || !myRoom || !myRole) { setTimeout(tryRestoreFlow, 2000); return; }
+                    Promise.all([window._rb2p_fbRestGetX('rooms/' + myRoom + '/flow/' + myRole, 3000),
+                                 window._rb2p_fbRestGetX('rooms/' + myRoom + '/games', 3000)]).then(function (rs) {
+                        if (restored) return;                    // a new game started meanwhile: its record wins
+                        if (!rs[0].ok || !rs[1].ok) { setTimeout(tryRestoreFlow, 2000); return; }
+                        var rec = rs[0].val, latest = 0;
+                        Object.keys(rs[1].val || {}).forEach(function (k) { if (Number(k) > latest) latest = Number(k); });
+                        var recMs = rec && /^g\d+$/.test(String(rec.gid)) ? Number(String(rec.gid).slice(1)) : 0;
+                        if (rec && typeof rec === 'object' && (myRole === 'b' ? rec.gid && rec.gid !== 'pending' : recMs) && recMs >= latest) {
+                            var keepSeq = Number(rec.seq) || 0;
+                            delete rec.srv; delete rec.vis; delete rec.live; delete rec.conv; delete rec.ver;
+                            F = Object.assign({ gid: 'pending', seq: 0, plays: 0, spot: null, held: null, final: false, gameSrv: 0, sent: null, staged: null }, rec);
+                            F.seq = keepSeq; F.held = null;    // a hold dies with the page that held it (the resume path re-decides)
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW restored from my record ' + F.gid + ' ep ' + F.ep + ' seq ' + keepSeq);
+                        }
+                        restored = true; dirty = true;
+                    }, function () { setTimeout(tryRestoreFlow, 2000); });
+                })();
+                try { FB.onValue(FB.ref(db, 'rooms/' + myRoom + '/flow/' + partnerRole), function (snap) { try { takePartner(snap.val()); } catch (e) {} }); } catch (eFS) {}
+                setInterval(function () {                          // REST poll: the SDK socket is the path most often dead
+                    try { if (typeof window._rb2p_fbRestGetX === 'function') window._rb2p_fbRestGetX('rooms/' + myRoom + '/flow/' + partnerRole, 3000).then(function (r) { if (r && r.ok) takePartner(r.val); }); } catch (e) {}
+                }, 3000);
+                setInterval(function () {                          // publish: on change (at most 1/s), and a 5s heartbeat
+                    try {
+                        var em = RB.engineState() || {};
+                        F.vis = document.hidden ? 'H' : 'V';
+                        F.live = window._rb2p_userIsWaitingForOpponent !== true;
+                        F.conv = (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) ? { owed: true, modal: !!(window._rb2p_patModalUp && window._rb2p_patModalUp()) } : null;
+                        F.ver = (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '');
+                        var pubSig = F.vis + '|' + F.live + '|' + JSON.stringify(F.conv);   // screen, offense and conversion changes go out at once
+                        if (pubSig !== lastPubSig) { lastPubSig = pubSig; dirty = true; }
+                        if (putBusy || !myRoom || !myRole || !restored) return;
+                        if (!dirty && Date.now() - lastPutMs < 5000) return;
+                        putBusy = true; dirty = false; lastPutMs = Date.now();
+                        F.seq = (Number(F.seq) || 0) + 1;
+                        var body = JSON.parse(JSON.stringify(F)); body.srv = { '.sv': 'timestamp' };
+                        window._rb2p_fbRestPut('rooms/' + myRoom + '/flow/' + myRole, body).then(function (ok) {
+                            putBusy = false; if (!ok) dirty = true;
+                            // learn this game's start in SERVER time from the first write after a new game
+                            if (ok && !F.gameSrv) window._rb2p_fbRestGetX('rooms/' + myRoom + '/flow/' + myRole + '/srv', 3000).then(function (r) { if (r && r.ok && r.val) F.gameSrv = Number(r.val); });
+                        }, function () { putBusy = false; dirty = true; });
+                    } catch (e) { putBusy = false; }
+                }, 1000);
+                var lastOwnSig = '';
+                setInterval(function () {                          // SHADOW: log the rule's answer next to what is actually happening
+                    try {
+                        var fresh = P.rec && Date.now() - P.rxMs < 15000;
+                        var mine = JSON.parse(JSON.stringify(F));
+                        var o = fresh ? window._rb2p_flowOwner(myRole === 'a' ? mine : P.rec, myRole === 'a' ? P.rec : mine) : { who: null, why: 'partner record stale' };
+                        var sig = o.who + '|' + o.why + '|' + (F.live ? 1 : 0);
+                        if (sig !== lastOwnSig) { lastOwnSig = sig; if (realAuditF) realAuditF('own', { who: o.who, why: o.why, live: F.live, ep: F.ep }); }
+                    } catch (e) {}
+                }, 2000);
+            })();
 
             // ===== V419 (latch inventory: the VJGW flag) =====
             // _rb2p_userOutcomeSendInProgress is set at MY drive end together with WAIT, and it
