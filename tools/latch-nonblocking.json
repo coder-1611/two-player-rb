@@ -145,5 +145,7 @@
  "window._rb2p_flowRefusalLogMs": "rate limit for the force-drive guard's log line (once per 5s); it only decides whether to write a diag",
  "var:bothStuck": "the can-act monitor's per-tick reading 'both phones parked, no decision' — telemetry for the checker; nothing waits on it",
  "var:bothStuckLong": "the same reading past its 5s grace — it only sets the monitor's must/can report (telemetry)",
- "var:bothStuckSince": "when the monitor first saw both phones parked with no decision — the start of its 5s grace, telemetry only"
+ "var:bothStuckSince": "when the monitor first saw both phones parked with no decision — the start of its 5s grace, telemetry only",
+ "room:clock": "a scratch server-time probe the resume writes and reads once ({.sv} then GET) to judge 'game in progress' on the server's clock; nothing waits on it",
+ "storage:rb2p_auditOutbox_": "the audit outbox (V419): telemetry entries waiting to upload; nothing in the game waits on them"
 }

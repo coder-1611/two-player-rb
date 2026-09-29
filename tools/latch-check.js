@@ -52,6 +52,8 @@ function scan(src) {
     }
     // storage keys
     for (const m of src.matchAll(/(?:session|local)Storage\.(?:getItem|setItem|removeItem)\(\s*['"]([^'"]+)['"]/g)) found.storage.add(m[1]);
+    // keys built from a literal prefix by a helper (e.g. 'rb2p_flow_' + room + '_' + role)
+    for (const m of src.matchAll(/['"]((?:rb2p|rb)_[A-Za-z0-9]+(?:[A-Za-z0-9]*)_)['"]\s*\+/g)) found.storage.add(m[1]);
     // room records
     for (const m of src.matchAll(/['"]rooms\/['"]\s*\+\s*[A-Za-z_$][\w$.]*\s*\+\s*['"]\/([A-Za-z0-9_]+)/g)) found.room.add(m[1]);
     return found;

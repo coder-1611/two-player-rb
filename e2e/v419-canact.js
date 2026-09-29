@@ -5,7 +5,8 @@
 //   C2  a 40x40 element over the field point reads "covered by #v419-block" within 2s, and clears when removed
 //   C3  the bridge's own wait cover, forced onto the phone that has the ball, is lifted within 2s
 //   C4  an engine that stops stepping reads "engine not stepping"
-//   C5  (phone layout) a touch the engine still holds with no finger on the glass reads "pointer wedged"
+//   C5  (phone layout) a touch the engine still holds with no finger on the glass reads "pointer wedged"; C5b the
+//       V423 authority releases it within 4s (a local remedy)
 //   C7  a hand-off waiting on a phone whose engine stopped reads "hand-off waiting, no frames"
 //   C8  a decided game with no stats screen reads "stats screen missing"
 //   C9  a held mouse button (a Chromebook drag) is not "pointer wedged"
@@ -128,8 +129,13 @@ async function waitState(page, pred, ms) {
     // the finger lifts, but only the document hears it (the engine's canvas listener never does)
     await moff.page.evaluate(() => { try { document.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [], bubbles: true })); } catch (e) {} });
     const c5 = await waitState(moff.page, s => !s.can && s.why === 'pointer wedged', 16000);   // a lost pointer-up ages out at 10s, then 2s of wedge
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     check('C5 (touch phone) a touch the engine still holds with no finger on the glass reads "pointer wedged"', c5.ms !== null, JSON.stringify(c5));
+    // V423: the recovery authority releases it (a local remedy) within 4s more — the engine's own heal waits for a new touch
+    const uw0 = await moff.page.evaluate(() => (window._rb2p_recoverStats || {}).unwedge || 0);
+    const c5b = await waitState(moff.page, s => s.why !== 'pointer wedged', 9000);
+    const uw1 = await moff.page.evaluate(() => (window._rb2p_recoverStats || {}).unwedge || 0);
+    check('C5b the recovery authority releases the wedged touch (no new touch needed)', c5b.ms !== null && uw1 > uw0, JSON.stringify({ c5b, uw0, uw1 }));
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await gm.cleanup();
 
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');

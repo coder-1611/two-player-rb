@@ -1548,7 +1548,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V422<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V423<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1630,7 +1630,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V422</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V423</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16591,8 +16591,21 @@
                         }
                     }
                 } catch (eLO) {}
+                // V423 (the v2 review #6): "is a game in progress?" also on the SERVER's clock — the partner's flow
+                // record written within the last 60s for a game not over. oppFresh above compares the partner's phone
+                // clock with mine (phones differ by up to 40s): a skewed partner could make a live game look over.
+                var flowLive = false;
+                try {
+                    if (typeof window._rb2p_fbRestPut === 'function' && typeof window._rb2p_fbRestGetX === 'function') {
+                        var okClk = await window._rb2p_fbRestPut('rooms/' + savedRoom + '/clock/' + savedRole, { '.sv': 'timestamp' });
+                        var nowSrv = okClk ? await window._rb2p_fbRestGetX('rooms/' + savedRoom + '/clock/' + savedRole, 4000) : null;
+                        var pFlow = await window._rb2p_fbRestGetX('rooms/' + savedRoom + '/flow/' + oppRole, 4000);
+                        if (nowSrv && nowSrv.ok && typeof nowSrv.val === 'number' && pFlow && pFlow.ok && pFlow.val && typeof pFlow.val.srv === 'number')
+                            flowLive = pFlow.val.final !== true && nowSrv.val - pFlow.val.srv < 60000;
+                    }
+                } catch (eFL) {}
                 var inProgress = oppFresh || myFresh || turnoverActive || turnoverForMe ||
-                                 patDutyMine || !!lostOutcome;
+                                 patDutyMine || !!lostOutcome || flowLive;
                 // V266: BACK TO LOBBY on the FINAL screen is a deliberate exit —
                 // never resume the finished match it reloads away from.
                 try {
@@ -18502,6 +18515,7 @@
                 var partnerRole = myRole === 'a' ? 'b' : 'a';
                 var BOOT = Math.random().toString(36).slice(2, 8);           // this page life (two tabs = two writers)
                 var ssKey = function () { return 'rb2p_flow_' + myRoom + '_' + myRole; };
+                var heldKey = function () { return 'rb2p_flowHeld_' + myRoom + '_' + myRole; };
                 function epochStart(ep, receiver, gid) {
                     var tag = 'E:' + ep;
                     return { gid: gid, ep: ep, epRx: receiver,
@@ -18529,6 +18543,23 @@
                         setTimeout(function () { try { if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW restored from this tab ' + F.gid + ' ep ' + F.ep + ' seq ' + F.seq); } catch (e) {} }, 0);
                     }
                 } catch (eTR) {}
+                try {
+                    var hk = (myRoom && myRole) ? JSON.parse(sessionStorage.getItem(heldKey()) || 'null') : null;
+                    if (hk && hk.o && restored && hk.gid === F.gid && !/^(INT|PICK6)$/.test(String(hk.o.type)) &&
+                        !(F.sent && String(F.sent.ts) === String(hk.o.ts)) && window._twoPlayer && typeof window._twoPlayer.send === 'function') {
+                        sessionStorage.removeItem(heldKey());
+                        var ho = hk.o;
+                        setTimeout(function () {
+                            try {
+                                if (typeof window._rb2p_restampOutcome === 'function') window._rb2p_restampOutcome(ho);
+                                window._rb2p_userIsWaitingForOpponent = true;
+                                window._twoPlayer.send(ho);
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW shipped the ' + ho.type + ' this page was holding when it reloaded');
+                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'held-resent', type: ho.type, ts: ho.ts });
+                            } catch (eHO) {}
+                        }, 0);
+                    } else if (hk) sessionStorage.removeItem(heldKey());
+                } catch (eHR) {}
                 // the tab copy is written only once the record is the real one (never a blank record over it)
                 function keep() { F.v = (Number(F.v) || 0) + 1; dirty = true; try { if (restored && myRoom && myRole) sessionStorage.setItem(ssKey(), JSON.stringify(F)); } catch (eSS) {} }
                 window._rb2p_flowNote = function (kind, d) {
@@ -18544,9 +18575,12 @@
                         } else if (kind === 'held') {
                             F.held = { since: Date.now(), type: d.type || '' };
                             if (d.outcome && d.outcome.fe == null) d.outcome.fe = F.ep;    // the epoch this drive ENDED in
+                            // V423 (the v2 review #7): the held hand-off survives a reload — kept in this tab, keyed to
+                            // this game, until it ships or is superseded (the pick-six upgrade, an inbound hand-off)
+                            try { if (d.outcome && restored && F.gid !== 'pending') sessionStorage.setItem(heldKey(), JSON.stringify({ gid: F.gid, o: d.outcome })); } catch (eHK) {}
                         }
-                        else if (kind === 'held-clear') F.held = null;
-                        else if (kind === 'send') { F.sent = { ts: d.ts, type: d.type || '', y: d.y, after: (d.fa !== undefined ? d.fa : F.staged), ep: d.fe || F.ep }; F.held = null; }
+                        else if (kind === 'held-clear') { F.held = null; try { sessionStorage.removeItem(heldKey()); } catch (eHC) {} }
+                        else if (kind === 'send') { F.sent = { ts: d.ts, type: d.type || '', y: d.y, after: (d.fa !== undefined ? d.fa : F.staged), ep: d.fe || F.ep }; F.held = null; try { sessionStorage.removeItem(heldKey()); } catch (eHS) {} }
                         else if (kind === 'staged') { if (d.ts != null) F.staged = d.ts; }          // applied, or dropped as moot
                         else if (kind === 'rej') { if (d.ts != null) F.rej = d.ts; }
                         else if (kind === 'rx') {                // the partner's hand-off as it reached me (both transports)
@@ -19065,7 +19099,7 @@
                 var T_PARK = 2000;                 // live on the partner's ball: sooner (no legitimate state looks like it)
                 var COOL_MS = 12000;               // the same action again only after this (never a tug of war)
                 var since = {}, lastAt = {}, busy = false, missing = {};
-                window._rb2p_recoverStats = { apply: 0, restage: 0, park: 0, refused: 0 };
+                window._rb2p_recoverStats = { apply: 0, restage: 0, park: 0, unwedge: 0, refused: 0 };
                 function dur(k, cond) { if (!cond) { since[k] = 0; return 0; } if (!since[k]) since[k] = Date.now(); return Date.now() - since[k]; }
                 function convBusy() {
                     try {
@@ -19191,6 +19225,18 @@
                     record('restage', 'both phones parked and the ball is mine — ' + how + (ok ? '' : ' (force REFUSED)'), before);
                 }
 
+                // V423: a LOCAL remedy, no decision needed — the engine holds a touch no finger is making (a lost
+                // pointer-up). The engine's own V250 heal waits for the NEXT touch; this releases it the way the
+                // engine's touchend does, so the phone that must act can.
+                function doUnwedge() {
+                    var before = state(), n = 0;
+                    try { for (var i = 0; i < _Bo2.length; i++) { if (_Bo2[i] !== -1 && _Bo2[i] !== undefined) n++; _Bo2[i] = -1; } } catch (e1) {}
+                    try { if (typeof _Zo2 !== 'undefined') for (var j = 0; j < _Zo2.length; j++) if (_Zo2[j]) _Zo2[j]._hn2 = 0; } catch (e2) {}
+                    try { if (typeof _cp2 !== 'undefined') for (var k = 0; k < _cp2.length; k++) if (_cp2[k]) _cp2[k]._dp2 = 0; } catch (e3) {}
+                    try { if (typeof _bp2 !== 'undefined') _bp2 = 0; } catch (e4) {}
+                    record('unwedge', 'the engine held a touch no finger was making for 4s — released like a touchend (' + n + ' slot' + (n === 1 ? '' : 's') + ')', before);
+                }
+
                 function doPark(v) {
                     var before = state();
                     window._rb2p_userIsWaitingForOpponent = true;
@@ -19200,6 +19246,11 @@
                 window._rb2p_recoverTick = function () {
                     if (document.hidden || busy) { since = {}; return 'idle'; }
                     if (!(RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) { since = {}; return 'not in match'; }
+                    try {
+                        var ca = (typeof window._rb2p_canActState === 'function') ? window._rb2p_canActState() : null;
+                        var tWedge = dur('wedge', !!(ca && ca.must && ca.can === false && ca.why === 'pointer wedged'));
+                        if (tWedge > T_ACT && cooled('unwedge')) { since.wedge = 0; doUnwedge(); return 'unwedge'; }
+                    } catch (eWd) {}
                     if (decided()) { since = {}; return 'decided'; }
                     var v = window._rb2p_flowVerdict();
                     // FACTS decide, not presence: a partner that hid after handing off still handed off
