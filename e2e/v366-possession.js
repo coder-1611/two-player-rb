@@ -145,6 +145,9 @@ const census = page => page.evaluate(() => {
     // ---- T5: the overlay lift needs the ledger ----
     await reset(off.page);
     const t5 = await off.page.evaluate(async (opp) => {
+        // V422: this is the turn-record ledger's rule, which stays in charge for a partner on an older build
+        // (with a trusted flow chain, a parked phone the chain gives the ball to is restaged — v422-authority)
+        var realV5 = window._rb2p_flowVerdict; window._rb2p_flowVerdict = function () { return { facts: false, fresh: false, who: null, why: 'test: an old-build partner', epoch: { ok: false }, mine: {}, partner: null }; };
         // stage a formation, park, and say the turn is the opponent's
         if (typeof window._rb2p_forceUserOffenseDrive === 'function') window._rb2p_forceUserOffenseDrive(-25);
         await new Promise(r => setTimeout(r, 800));
@@ -160,6 +163,7 @@ const census = page => page.evaluate(() => {
         }
         var of = 0, all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
         for (var i = 0; i < all.length; i++) { var x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_playerOF') of++; }
+        window._rb2p_flowVerdict = realV5;
         return { of: of, toggles: toggles, shown: w ? w.style.display : null };
     }, off.role === 'a' ? 'b' : 'a');
     console.log('  T5: ' + JSON.stringify(t5));
@@ -191,7 +195,11 @@ const census = page => page.evaluate(() => {
     await reset(def.page);
     const t7 = await def.page.evaluate(async (opp) => {
         window._rb2p_turnRec = { owner: null, at: 0 };
+        // V422: the flow guard refuses a drive on the phone without the ball — this setup only BUILDS the
+        // leftover scene the test is about, so the guard is opened for that one call
+        var realG = window._rb2p_flowStageAllowed; window._rb2p_flowStageAllowed = function () { return true; };
         if (typeof window._rb2p_forceUserOffenseDrive === 'function') window._rb2p_forceUserOffenseDrive(-25);
+        window._rb2p_flowStageAllowed = realG;
         await new Promise(r => setTimeout(r, 800));
         window._rb2p_turnRec = { owner: opp, at: Date.now() };                     // PAT_RESULT declared the thrower
         window._rb2p_userIsWaitingForOpponent = true;

@@ -23,11 +23,11 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     const off = aWait ? g.b : g.a, def = aWait ? g.a : g.b;
 
     // ---- F1 ----
-    const f1 = await def.page.evaluate(() => {
+    // V422: a drive can only be forced on the phone the flow chain gives the ball to (the offense here)
+    const f1 = await off.page.evaluate(() => {
         window._rb2p_userOutcomeSendInProgress = true;
         const ok = window._rb2p_forceUserOffenseDrive(-20, true);
         const cleared = window._rb2p_userOutcomeSendInProgress === false;
-        window._rb2p_userIsWaitingForOpponent = true;
         return { ok, cleared };
     });
     check('F1 a forced drive clears the hand-off-in-progress guard', f1.cleared === true, JSON.stringify(f1));
@@ -94,6 +94,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     const f56 = await def.page.evaluate((role) => {
         const other = role === 'a' ? 'b' : 'a', now = Date.now(), room = sessionStorage.getItem('rb_room');
         const calls = []; const realF = window._rb2p_forceUserOffenseDrive, realT = window._rb2p_declareTurnOwner;
+        // V422: with a trusted flow record the recovery authority decides; F5/F6 exercise the field check's own
+        // judgement, which stays for a partner on an older build (no trusted record)
+        const realV = window._rb2p_flowVerdict; window._rb2p_flowVerdict = () => ({ facts: false, fresh: false, who: null, why: 'test: an old-build partner' });
         window._rb2p_forceUserOffenseDrive = (y, f, dd) => { calls.push(y); return true; };
         window._rb2p_declareTurnOwner = () => {};
         window._rb2p_userIsWaitingForOpponent = true; window._rb2p_lastSentOutcomeMs = 0; window._rb2p_lastOpponentOutcomeApplyMs = 0; window._rb2p_p6ScorerOwes = false;
@@ -108,7 +111,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_userIsWaitingForOpponent = true;
         window._rb2p_turnRec = { owner: role, at: Date.now() - 3000, why: 'send-OTHER' };
         const inflight = window._rb2p_fieldCheck();
-        window._rb2p_forceUserOffenseDrive = realF; window._rb2p_declareTurnOwner = realT; window._rb2p_userIsWaitingForOpponent = true; window._rb2p_lastGood = null;
+        window._rb2p_forceUserOffenseDrive = realF; window._rb2p_declareTurnOwner = realT; window._rb2p_flowVerdict = realV; window._rb2p_userIsWaitingForOpponent = true; window._rb2p_lastGood = null;
         return { burst, afterBurst, later, calls: calls.length, inflight };
     }, def.role);
     check('F5 three checks in a burst do nothing; 10 real seconds later the rightful owner is restored', f56.afterBurst === 0 && /restored/.test(f56.later) && f56.calls === 1, JSON.stringify(f56));

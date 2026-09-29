@@ -61,8 +61,14 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_quarterChangedToMs = Date.now() - 1000;
         window._rb2p_patPlayPending = true;               // the duty has not retired yet — the old code waited here
         window._rb2p_userIsWaitingForOpponent = false; window._rb2p_userOutcomeSendInProgress = false; window._rb2p_kickoffGraceUntil = 0;
-        em.enginePossessingTeamIdx = em.engineUserTeamIdx; em.engineYardLineSigned = 48; em.engineDownNumber = 1;
-        const t0 = Date.now(); while (Date.now() - t0 < 6000 && !sent.length) await new Promise(r => setTimeout(r, 100));
+        // V422 (a flake on V421 too, 1 in 3): six seconds into a game the opening play can still be live, and the
+        // watcher rightly waits for a dead ball — hold the scenario steady: the ball at rest, the drive at the 2
+        const hold = () => {
+            em.enginePossessingTeamIdx = em.engineUserTeamIdx; em.engineYardLineSigned = 48; em.engineDownNumber = 1;
+            const all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || []; for (const x of all) if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') x._kp = 0;
+        };
+        hold();
+        const t0 = Date.now(); while (Date.now() - t0 < 6000 && !sent.length) { await new Promise(r => setTimeout(r, 100)); if (!sent.length) hold(); }
         window._twoPlayer.send = real;
         const d = String(window._rb2p_readDiagLog()); const tail = d.slice(d.lastIndexOf('T6-START'));
         window._rb2p_lastConvModalMs = 0; window._rb2p_patPlayPending = false;

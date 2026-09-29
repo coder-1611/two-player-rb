@@ -136,20 +136,11 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     // FSM keeps landing on a dead stage (a stray kickoff button did that on
     // device), and the between-quarters resume fires every ~1.3s. Here the
     // test plays the stray button: after each keep it kills the stage again.
-    // Wait for whichever phone ends up with a real drive after T5's punt.
-    let kp = null;
-    for (let i = 0; i < 40 && !kp; i++) {
-        await sleep(300);
-        for (const pg of [off, def]) {
-            const live = await pg.page.evaluate(() => window._rb2p_userIsWaitingForOpponent === false && window._rb2p_realDriveRunning());
-            if (live) { kp = pg; break; }
-        }
-    }
-    if (!kp) {   // nobody staged a drive: stage one on off, the way a handoff would
-        kp = off;
-        await off.page.evaluate(() => { window._rb2p_userIsWaitingForOpponent = false; window._rb2p_forceUserOffenseDrive(-20, true); });
-        await sleep(800);
-    }
+    // V422: T6 runs in its own fresh game. T1-T5 build their shapes from synthetic hand-offs that neither phone
+    // applied; the flow chain's answer in that residue is arbitrary, and the recovery authority acts on it.
+    const g6 = await TP.startTwoPlayerGame({});
+    await sleep(8000);
+    const kp = (await g6.a.page.evaluate(() => window._rb2p_userIsWaitingForOpponent !== true)) ? g6.a : g6.b;
     const t6 = await kp.page.evaluate(async () => {
         const em = RB.engineState();
         const q = Number(em.engineQuarter) || 1;
@@ -178,7 +169,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     check('T6 the keep-drive heals before it spawns, spawns FRESH on its third firing (V403) and refuses the fourth',
           t6.seen.includes(2) && t6.seen.includes(3) && t6.fresh && (t6.ball === true || t6.loop) && t6.healed >= 2, JSON.stringify(t6));   // V403: the fresh spawn usually produces the real drive (ball) — then no fourth keep is ever needed
 
-    await g.cleanup();
+    await g.cleanup(); await g6.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('FATAL', e); process.exit(2); });

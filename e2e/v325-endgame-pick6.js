@@ -20,6 +20,9 @@
 // T3  mid-game PICK6 (Q2, time left) -> PAT set up as before, game NOT over
 // T4  a PICK6 that arrives AFTER the game is already over -> NO PAT
 // T5  a TIE at end of regulation still plays the PAT (walk-off does not fire)
+// T6  V422 (the v2 review #9): the scorer TRAILING BY 1 after the +6 is not a walk-off — the try can win
+// T7  ...trailing by 2 (a two-point try ties)
+// T8  ...trailing by 3 IS a walk-off (no try can change the result)
 const H = require('./harness');
 const fs = require('fs');
 const path = require('path');
@@ -128,6 +131,19 @@ async function resetOver(page) {
         else console.log('  [obs] T5 KNOWN-OPEN: tie-PAT auto-resolved as miss at the 0:00 boundary — ' + JSON.stringify(t5));
         check('T5 a tie at end of regulation does NOT declare the game over',
               t5.over === false, JSON.stringify(t5));
+
+        // ---- T6-T8 (V422): the conversion is played whenever it can still change the result ----
+        const endCase = async (ourScore, oppScore) => {
+            await resetOver(page);
+            await page.evaluate(o => { window._rb2p_applyOpponentOutcome(o); }, PICK6({ scoreUser: oppScore, scoreOpp: ourScore }));
+            await sleep(400);
+            return readState(page);
+        };
+        const t6 = await endCase(14, 15), t7 = await endCase(13, 15), t8 = await endCase(12, 15);
+        console.log('  T6-T8 state: ' + JSON.stringify({ t6, t7, t8 }));
+        check('T6 trailing by 1 after the +6 (the try can win): the game is NOT declared over', t6.over === false, JSON.stringify(t6));
+        check('T7 trailing by 2 after the +6 (a two-point try ties): the game is NOT declared over', t7.over === false, JSON.stringify(t7));
+        check('T8 trailing by 3 after the +6 (no try changes the result): the walk-off FINAL', t8.over === true && t8.patPending === false, JSON.stringify(t8));
     } finally {
         await browser.close();
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');

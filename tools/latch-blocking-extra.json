@@ -1,0 +1,740 @@
+{
+ "window._rb2p_diagFps": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "15523, from the rAF counter every 1s",
+  "clear": "never; it is overwritten each second.",
+  "max": "- Re-sampled every 1s, so it clears as soon as frames return. - The held record drains past the 25s screen-on wall: `17695: if (blocked && heldMs < 25000) return blocked;`.",
+  "expiry": "as the bound says (holds up: (2) applying a hand-off; (1) the empty-field re-stage.)",
+  "open": null
+ },
+ "window._rb2p_diagFpsSeen": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "15524, `true` after the first 1s sample",
+  "clear": "never.",
+  "max": "stays set for the life of the page. The hold itself lasts only while fps is 0 (see above).",
+  "expiry": "as the bound says (holds up: (2), (1), as above.)",
+  "open": "no time bound today: stays set for the life of the page. The hold itself lasts only while fps is 0 (see above)."
+ },
+ "window._rb2p_anyPlayRun": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "true at 4591 (ball kp 4/5)",
+  "clear": "19406 (startMatch).",
+  "max": "none within a match. It is a one-way latch by design (V320), reset only by startMatch.",
+  "expiry": "as the bound says (holds up: (1) staging the drive (the GET READY / Kick Off freeze healer).)",
+  "open": "no time bound today: none within a match. It is a one-way latch by design (V320), reset only by startMatch."
+ },
+ "window._rb2p_convAuthMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "11263 (PICK6 apply, just before its `_wm` pop) and 13619 (OT touchdown conversion offer)",
+  "clear": "never; it ages out.",
+  "max": "3s window.",
+  "expiry": "as the bound says (holds up: (3) the conversion modal is refused and never constructed.)",
+  "open": null
+ },
+ "window._rb2p_convScorePrev": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "9508 (null), 9512 (null outside the match), 9520 (every 40ms)",
+  "clear": "9512.",
+  "max": "resampled every 40ms.",
+  "expiry": "as the bound says (holds up: (3) the conversion licence (R2 refusal at 9606).)",
+  "open": null
+ },
+ "window._rb2p_lastTd6Ms": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "9509 (0) and 9516",
+  "clear": "9509.",
+  "max": "3s.",
+  "expiry": "as the bound says (holds up: (3) the conversion licence.)",
+  "open": null
+ },
+ "window._rb2p_scoreAtLastSnap": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "4681, on every snap edge",
+  "clear": "never; it is overwritten.",
+  "max": "counts only within 30s of the last snap.",
+  "expiry": "as the bound says (holds up: (3) the conversion licence.)",
+  "open": null
+ },
+ "window._rb2p_lastSnapMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "4681, every snap edge",
+  "clear": "never; it is overwritten.",
+  "max": "- Overwritten every snap. - The purge needs a record at least 20s old. - The post-conversion watcher gives up 90s after the offer (2951).",
+  "expiry": "as the bound says (holds up: - (2) a queued hand-off is dropped; - (2) the post-conversion TD-kickoff hand-off waits on the conversion duty; - (3) th)",
+  "open": null
+ },
+ "window._rb2p_lastSnapDown": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "4681",
+  "clear": "never; it is overwritten.",
+  "max": "overwritten each snap; the watcher's 90s offer window.",
+  "expiry": "as the bound says (holds up: (2) the post-conversion hand-off (TD kickoff).)",
+  "open": null
+ },
+ "window._rb2p_quarterChangedToMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "7878 (0 at load) and 8132 (each quarter increment)",
+  "clear": "7878.",
+  "max": "each window is 1.5\u201310s after the stamp. The stamp is overwritten at every quarter change.",
+  "expiry": "as the bound says (holds up: - (1) sweeper re-force and keep counting; - (2) the post-conversion and 35s-wall hand-offs; - (4) the regulation FINAL m)",
+  "open": null
+ },
+ "window._rb2p_matchStartMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "16567 (resume anchor) and 19425 (startMatch)",
+  "clear": "never.",
+  "max": "fixed per match with no expiry. A wrong anchor persists for the page life.",
+  "expiry": "as the bound says (holds up: (2) a REST-delivered hand-off; (4) the partner's FINAL; (1) OT kickoff routing.)",
+  "open": "no time bound today: fixed per match with no expiry. A wrong anchor persists for the page life."
+ },
+ "storage:rb2p_matchStartMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "19430 (startMatch)",
+  "clear": "never; the next startMatch overwrites it.",
+  "max": "tab lifetime.",
+  "expiry": "as the bound says (holds up: same as `_rb2p_matchStartMs`, after a reload.)",
+  "open": null
+ },
+ "window._rb2p_lastVisibleMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "18355 (visibilitychange \u2192 visible); 18354 (test seam that ages it)",
+  "clear": "never.",
+  "max": "8s.",
+  "expiry": "as the bound says (holds up: (1) the field check's restore of a drive, and its park, stand down.)",
+  "open": null
+ },
+ "window._rb2p_lastGood": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "18230 (every 1s while the field is healthy) and 18238 (loaded from sessionStorage)",
+  "clear": "18197 (null at load).",
+  "max": "- Superseded by any later send, apply or turn record (18242\u201318248). - The 30s disagreement fallback (18340\u201318343).",
+  "expiry": "as the bound says (holds up: (1) staging a drive, and possession.)",
+  "open": null
+ },
+ "storage:rb2p_lastGood": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "18231, at most every 5s",
+  "clear": "never.",
+  "max": "as above. After a reload, the re-read turn record usually supersedes it.",
+  "expiry": "as the bound says (holds up: (1), as above.)",
+  "open": null
+ },
+ "window._rb2p_resumeState": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "16199, then edited at 16223, 16232\u201316235 and 16243",
+  "clear": "5418 (consumed once).",
+  "max": "consumed once. The resume force retries every 50ms while in the match (`5475: if (!resumeForceOk) return;`).",
+  "expiry": "as the bound says (holds up: - (1) after a reload the phone parks in WAIT when `iHaveBall` is false; - (3) it routes to the conversion re-pop.)",
+  "open": null
+ },
+ "window._rb2p_resumePatDuty": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "16429 and 16435",
+  "clear": "5494 (consumed) and 19445 (startMatch).",
+  "max": "consumed once.",
+  "expiry": "as the bound says (holds up: (1) forces WAIT on resume; (3) the conversion re-pop.)",
+  "open": null
+ },
+ "room:live": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "see LATCH-BLOCKING.md",
+  "clear": "recomputed every call / tick",
+  "max": "3\u20135s freshness windows at the readers; 25s on resume.",
+  "expiry": "as the bound says (holds up: (1) and (2) possession, the rescuers, and whether and how a reload resumes.)",
+  "open": null
+ },
+ "room:snap": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "see LATCH-BLOCKING.md",
+  "clear": "recomputed every call / tick",
+  "max": "25s freshness.",
+  "expiry": "as the bound says (holds up: (1) resume possession (WAIT or drive).)",
+  "open": null
+ },
+ "window._rb2p_myFirebaseRole": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "5329 (startTwoPlayerMatch)",
+  "clear": "never.",
+  "max": "set once per match; no expiry.",
+  "expiry": "as the bound says (holds up: (1) second-half staging and OT kickoff routing.)",
+  "open": "no time bound today: set once per match; no expiry."
+ },
+ "window._rb2p_wireQuarter": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "5445, 8448, 11086, 11438 and 19346\u201319347 (all take the max); clamped at 6867",
+  "clear": "13081 and 19413.",
+  "max": "monotonic within a match; reset at match start.",
+  "expiry": "as the bound says (holds up: (1) the Q3 law refuses, so there is no second-half staging.)",
+  "open": null
+ },
+ "window._rb2p_lastStableQuarter": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8097\u20138098 (clock running while driving)",
+  "clear": "7876, 13084 and 19411 (reset to 1).",
+  "max": "monotonic per match.",
+  "expiry": "as the bound says (holds up: (1) the Q3 law.)",
+  "open": null
+ },
+ "window._rb2p_qGovToppedQ": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "6920",
+  "clear": "7611, 7630, 7891, 13083 and 13312.",
+  "max": "consumed by the keep, by a settled play (7891) or by the Q3 law.",
+  "expiry": "as the bound says (holds up: (1) restaging the drive at a quarter boundary.)",
+  "open": null
+ },
+ "window._rb2p_otFlipSeenPeriod": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "17226",
+  "clear": "13096.",
+  "max": "per period; reset at a fresh match.",
+  "expiry": "as the bound says (holds up: (4) the regulation FINAL; (1) the OT epoch and routing.)",
+  "open": null
+ },
+ "window._rb2p_otKickoffAppliedPeriod": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "13543",
+  "clear": "13095.",
+  "max": "per match.",
+  "expiry": "as the bound says (holds up: (1) OT kickoff routing; (4) through OT arming.)",
+  "open": null
+ },
+ "window._rb2p_p6ResultAppliedMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8477",
+  "clear": "6653 (pick-six cascade entry).",
+  "max": "until the next cascade entry. It only matters while the thrower's cascade flag is up (489).",
+  "expiry": "as the bound says (holds up: (2) applying the PAT_RESULT hand-off; this watchdog stands down.)",
+  "open": null
+ },
+ "window._rb2p_patResolvedMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8734, 8784, 8820, 9376, 9399, 18291 and 19134",
+  "clear": "never; it is overwritten.",
+  "max": "5s.",
+  "expiry": "as the bound says (holds up: (2) and (3). The synthetic PAT_RESULT waits 5s after resolution.)",
+  "open": null
+ },
+ "window._rb2p_patUserScoreAtStart": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "11230 (PICK6 apply)",
+  "clear": "never.",
+  "max": "the 35s wall (`9336`) and the loop breaker.",
+  "expiry": "as the bound says (holds up: (3) resolving the pick-six try; (2) sending the PAT_RESULT.)",
+  "open": null
+ },
+ "window._rb2p_patOppScoreAtStart": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "11231",
+  "clear": "never.",
+  "max": "the 35s wall.",
+  "expiry": "as the bound says (holds up: (3).)",
+  "open": null
+ },
+ "window._rb2p_patClobberCount": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8801 (++) and 11229 (0)",
+  "clear": "11229.",
+  "max": "the 35s wall.",
+  "expiry": "as the bound says (holds up: (3).)",
+  "open": null
+ },
+ "window._rb2p_patPlayStartMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "11226",
+  "clear": "never.",
+  "max": "8s minimum; the 35s wall.",
+  "expiry": "as the bound says (holds up: (3).)",
+  "open": null
+ },
+ "window._rb2p_patResultSentMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "6380 and 8631",
+  "clear": "never.",
+  "max": "8s.",
+  "expiry": "as the bound says (holds up: (2) applying a queued hand-off while a double offense is not demoted.)",
+  "open": null
+ },
+ "window._rb2p_opponentScoreAtDriveStart": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "2494, 8382 and 8396",
+  "clear": "never.",
+  "max": "the 8s send deadline (`6671: var sendDeadline = Date.now() + 8000;`).",
+  "expiry": "as the bound says (holds up: (2) the PICK6 hand-off is delayed; the normal hand-off is replaced by the cascade.)",
+  "open": null
+ },
+ "window._rb2p_lastTdReplayMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "6129 (`_Ak1` hook)",
+  "clear": "6635 (cascade entry) and 7534 (quarter keep).",
+  "max": "12s from hold start. 6496 does not age the stamp itself: any non-zero value extends every hold up to 12s until it is consumed.",
+  "expiry": "as the bound says (holds up: (2) sending the drive-end hand-off.)",
+  "open": null
+ },
+ "window._rb2p_lastTdScoringTeamIdx": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "6130",
+  "clear": "6636 and 7535 (undefined).",
+  "max": "12s per hold.",
+  "expiry": "as the bound says (holds up: (2), as above.)",
+  "open": null
+ },
+ "window._rb2p_lastTdUserTeamIdx": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "6131",
+  "clear": "never.",
+  "max": "12s per hold.",
+  "expiry": "as the bound says (holds up: (2).)",
+  "open": null
+ },
+ "window._rb2p_quarterChangedTo": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8136",
+  "clear": "7880 (0).",
+  "max": "overwritten each quarter.",
+  "expiry": "as the bound says (holds up: (1) the dead-Vy quarter-keep resume.)",
+  "open": null
+ },
+ "window._rb2p_preRolloverScore": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8034",
+  "clear": "6457, 7900, 7958, 11202, 11394 and 13340.",
+  "max": "refreshed while driving; voided at any hand-off.",
+  "expiry": "as the bound says (holds up: (1) the quarter keep is voided.)",
+  "open": null
+ },
+ "window._rb2p_preRolloverMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8035",
+  "clear": "7901 (0).",
+  "max": "as above.",
+  "expiry": "as the bound says (holds up: (1), as above.)",
+  "open": null
+ },
+ "window._rb2p_qEndLatchScore": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8078",
+  "clear": "7909 and 7960.",
+  "max": "latched once per quarter; voided with the captures.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_qEndLatchMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8079",
+  "clear": "7910 (0).",
+  "max": "once per quarter.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_vyTdSeenMs": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8125 (Vy 9/14 sighting)",
+  "clear": "7911 (0).",
+  "max": "only compared against the current capture time.",
+  "expiry": "as the bound says (holds up: (1) the quarter keep is voided.)",
+  "open": null
+ },
+ "window._rb2p_qEndLatchQ": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8074",
+  "clear": "7631, 7766, 7891, 7905, 7959 and 13098.",
+  "max": "consumed by the keep or a settled play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_qEndLatchYard": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "8075",
+  "clear": "7906.",
+  "max": "once per quarter.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "var:fOwed": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "2382, on each forceUserOffenseDrive call",
+  "clear": "local.",
+  "max": "synchronous. It is an alias of `derived:patOwed`, bounded by the 35s screen-on wall.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "var:v352Owed": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "11365",
+  "clear": "local.",
+  "max": "synchronous; the `patOwed` wall.",
+  "expiry": "as the bound says (holds up: (2) a generic hand-off is consumed and dropped while a conversion is owed.)",
+  "open": null
+ },
+ "var:v346PatHold": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "12995",
+  "clear": "local.",
+  "max": "400 ticks \u00d7 300ms = 120s.",
+  "expiry": "as the bound says (holds up: (4) the FINAL.)",
+  "open": null
+ },
+ "var:patPending": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "7220",
+  "clear": "local.",
+  "max": "synchronous; the 35s wall on `patPlayPending`.",
+  "expiry": "as the bound says (holds up: (1) `s_set_up_play` is blocked on the pick-six scorer unless its try is pending. That includes the try's own goal-line s)",
+  "open": null
+ },
+ "var:applyBlocked": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "17519",
+  "clear": "local.",
+  "max": "the 25s screen-on drain wall (17695).",
+  "expiry": "as the bound says (holds up: (2) the hand-off is held, not consumed or acked.)",
+  "open": null
+ },
+ "var:handoffInFlight": {
+  "kind": "guard",
+  "owner": "Direct gates and holds (LATCH-BLOCKING.md)",
+  "set": "19073",
+  "clear": "local.",
+  "max": "90s. The delivery watchdog clears `_rb2p_lastSentOutcome` on ack (17665). ---",
+  "expiry": "as the bound says (holds up: (1) the both-parked rescue of a drive.)",
+  "open": null
+ },
+ "window._rb2p_q3KickoffPendingMs": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "7463",
+  "clear": "never.",
+  "max": "20s from the stamp.",
+  "expiry": "as the bound says (holds up: (1) and (2) the stuck-drive hand-off at halftime.)",
+  "open": null
+ },
+ "window._rb2p_pickSixPatCascadeRaisedMs": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "6645 (thrower), 11169 (scorer) and 10517 (console self-test only)",
+  "clear": "never; it is re-stamped.",
+  "max": "30s for the popup killer; 3s minimum and 60s maximum for the completion watcher. Re-stamping extends both.",
+  "expiry": "as the bound says (holds up: (1), (2) and (3), through the cascade flag it bounds.)",
+  "open": null
+ },
+ "var:elapsedSinceFlagRaised": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "8354\u20138355 (local).",
+  "clear": "recomputed every call / tick",
+  "max": "see LATCH-BLOCKING.md",
+  "expiry": "as the bound says (holds up: ?)",
+  "open": null
+ },
+ "window._rb2p_keepQ": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "9186",
+  "clear": "7879 (null).",
+  "max": "resets at every quarter-change stamp.",
+  "expiry": "as the bound says (holds up: (1) the quarter keep is refused.)",
+  "open": null
+ },
+ "window._rb2p_keepEpoch": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "9186",
+  "clear": "never; it is overwritten.",
+  "max": "as above.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_oppEndDeferTimer": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "14136",
+  "clear": "14137.",
+  "max": "400ms per timer; the deferral itself is at most 30s.",
+  "expiry": "as the bound says (holds up: (4) applying the partner's FINAL while this phone owes a conversion (`14122`).)",
+  "open": null
+ },
+ "var:liveSince": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "18647",
+  "clear": "18649 and 18653.",
+  "max": "20s.",
+  "expiry": "as the bound says (holds up: (2). My drive-ends are swallowed until it expires.)",
+  "open": null
+ },
+ "var:outcomePollSince": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "17635",
+  "clear": "never; it is overwritten.",
+  "max": "10s.",
+  "expiry": "as the bound says (holds up: (2) the REST receive poll for a hand-off.)",
+  "open": null
+ },
+ "var:pConvSince": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "18504",
+  "clear": "18503.",
+  "max": "120s from first sight.",
+  "expiry": "as the bound says (holds up: (4) the FINAL.)",
+  "open": null
+ },
+ "var:onsideSeenSinceMs": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "7307",
+  "clear": "7297 (init).",
+  "max": "3s.",
+  "expiry": "as the bound says (holds up: (1) the kickoff and drive.)",
+  "open": null
+ },
+ "var:stuckMs": {
+  "kind": "guard",
+  "owner": "Deadline clocks and companions of registered latches (LATCH-BLOCKING.md)",
+  "set": "15305",
+  "clear": "local.",
+  "max": "1.5s. The >6s branch only logs now (reload disabled in V279). --- The feed family below decides when a play \"settles\" on the offense phone. A settle does three things: 1. It calls `_rb2p_noteQuarterPlayed` (4922 / 4927).",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedWasLive": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "true at 4756",
+  "clear": "4663 and 4719.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1) through the keep refusal and the RESTAGE spot.)",
+  "open": null
+ },
+ "window._rb2p_feedEmitted": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "true at 4856, 4868, 4959, 4963 and 4992",
+  "clear": "4664 and 4720.",
+  "max": "one play. If it sticks true, settles stop until the next dead ball or snap.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedDown0": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4660 and 4726",
+  "clear": "never; it is overwritten.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedYard0": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4658 and 4724",
+  "clear": "never; it is overwritten.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedIsKick": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4659 and 4725",
+  "clear": "never; it is overwritten.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedSawSack": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "true at 4740",
+  "clear": "4662 and 4722.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedThrew": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "true at 4738",
+  "clear": "4661 and 4721.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_feedStat0": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4671 and 4727 (per-player box baseline)",
+  "clear": "never; it is rebuilt.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_offFumbleTotal": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4997",
+  "clear": "never.",
+  "max": "one play.",
+  "expiry": "as the bound says (holds up: (1).)",
+  "open": null
+ },
+ "window._rb2p_driveIntBase": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4487",
+  "clear": "never.",
+  "max": "re-baselined at every WAIT\u2192LIVE edge.",
+  "expiry": "as the bound says (holds up: (2) it routes a drive-end into the cascade and the INT obligation, both registered.)",
+  "open": null
+ },
+ "window._rb2p_driveFumBase": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4488",
+  "clear": "never.",
+  "max": "as above.",
+  "expiry": "as the bound says (holds up: (2).)",
+  "open": null
+ },
+ "window._rb2p_driveBasePrevWait": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "4490",
+  "clear": "never.",
+  "max": "every 16ms tick.",
+  "expiry": "as the bound says (holds up: (2), indirect.)",
+  "open": null
+ },
+ "var:rb2pIntLatch": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "true at 5140",
+  "clear": "5104 and 5118.",
+  "max": "one play. It resets whenever the play is not live.",
+  "expiry": "as the bound says (holds up: (2).)",
+  "open": "no time bound today: one play. It resets whenever the play is not live."
+ },
+ "window._rb2p_lastAppliedOutcomeTs": {
+  "kind": "guard",
+  "owner": "Upstream inputs (LATCH-BLOCKING.md)",
+  "set": "17544, 17582 and 17699",
+  "clear": "never.",
+  "max": "it is the partner's own clock, so every push sent after that hand-off passes. ---",
+  "expiry": "as the bound says (holds up: (2).)",
+  "open": null
+ },
+ "window._rb2p_quarterMins": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "14370, 14382 and 19487",
+  "clear": "never.",
+  "max": "constant within a match unless `rooms/{code}/config/quarterMins` changes mid-match.",
+  "expiry": "as the bound says (holds up: (1), only if it desyncs from the clock it is compared with.)",
+  "open": null
+ },
+ "room:config": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "see LATCH-BLOCKING.md",
+  "clear": "recomputed every call / tick",
+  "max": "none.",
+  "expiry": "as the bound says (holds up: (1), as for `_rb2p_quarterMins`.)",
+  "open": "no time bound today: none."
+ },
+ "storage:fbAnonTok:realretrobowl2p": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "38 (`_fbSaveTok`, called at 75 and 88). **Loaded:** 35",
+  "clear": "never.",
+  "max": "the token's `e`, at most about 55 minutes.",
+  "expiry": "as the bound says (holds up: (2) hand-off delivery when the SDK socket is also dead.)",
+  "open": null
+ },
+ "var:rearmPending": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "true at 15842",
+  "clear": "15844 (in its own setTimeout).",
+  "max": "300ms; it clears itself.",
+  "expiry": "as the bound says (holds up: (1). The engine frame loop plays every snap.)",
+  "open": null
+ },
+ "window._rb2p_liveRestMs": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "17998",
+  "clear": "never.",
+  "max": "2s.",
+  "expiry": "as the bound says (holds up: (1) and (2), through the partner's freshness-gated rescuers.)",
+  "open": null
+ },
+ "window._rb2p_qAnchor": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "2766 (`_rb2p_armBallAnchor`, called from 8152)",
+  "clear": "retired at 2792 (7892, 8221, 8233); never deleted.",
+  "max": "15s window (2801); retired at the first snap of the quarter.",
+  "expiry": "as the bound says (holds up: (3), in principle.)",
+  "open": null
+ },
+ "window._rb2p_convPlacementMs": {
+  "kind": "guard",
+  "owner": "Weak (LATCH-BLOCKING.md)",
+  "set": "9626 and 9875, immediately before each conversion pin write",
+  "clear": "never.",
+  "max": "1.5s.",
+  "expiry": "as the bound says (holds up: (3), in principle.)",
+  "open": null
+ }
+}

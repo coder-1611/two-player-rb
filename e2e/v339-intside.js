@@ -20,6 +20,7 @@
 // T5  a turnover-window settle emits NO feed line; a real play after it does
 const H = require('./harness');
 const TP = require('./two-player');
+const D = require('./scenario');
 const sleep = H.sleep;
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
@@ -41,15 +42,15 @@ const OUTCOME = extra => Object.assign({
     const picker  = aWait ? g.a : g.b;   // waiting: about to intercept
     console.log('  thrower = ' + thrower.role + ', interceptor = ' + picker.role);
 
-    // ---- the INT, exactly as the device runs it ----
-    await thrower.page.evaluate((other) => {
+    // ---- the INT: a REAL drive end through the engine's own _1c1 (V422: a turnover is a hand-off the
+    // flow chain records — the old setup parked the thrower and applied an outcome on the interceptor with
+    // no hand-off at all, a state no real game produces, which the recovery authority rightly undid) ----
+    await thrower.page.evaluate(() => {
         window._rb2p_lastTurnoverVy8Ms = Date.now();        // V317 sender stamp
-        window._rb2p_userIsWaitingForOpponent = true;       // the INT handoff parks the thrower
-        window._rb2p_declareTurnOwner(other, 'int');        // V336 yield
         var b = document.getElementById('rb-wait-blast'); if (b) b.style.display = 'none';
-    }, picker.role);
-    // The interceptor takes the ball; its live pushes now claim iHaveBall.
-    await picker.page.evaluate((o) => { window._rb2p_applyOpponentOutcome(o); }, OUTCOME({ turnover: true }));
+    });
+    await D.forceDriveEnd(thrower.page, 'INT');
+    for (let i = 0; i < 30; i++) { await sleep(500); if (await picker.page.evaluate(() => window._rb2p_userIsWaitingForOpponent !== true)) break; }
     await sleep(1800);
 
     // ---- T1/T2: the DEQC reflection — a turnover outcome reaches the THROWER ----

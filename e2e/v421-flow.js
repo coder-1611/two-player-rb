@@ -72,7 +72,7 @@ const ownOn = page => page.evaluate(() => { const s = window._rb2p_flowState(); 
     // ---- F5: the rule on fixtures ----
     const F5 = await A.page.evaluate(() => {
         const R = window._rb2p_flowOwner, gid = 'g1';
-        const rec = (o) => Object.assign({ gid, ep: 'K0', epRx: 'a', held: null }, o);
+        const rec = (o) => Object.assign({ gid, ep: 'K0', epRx: 'a', held: null, trust: true }, o);
         const cases = {
             kickoff:   R(rec({ sent: null, staged: 'E:K0' }), rec({ sent: { ts: 'E:K0', after: null }, staged: null })),
             unapplied: R(rec({ sent: { ts: 100, after: 'E:K0' }, staged: 'E:K0' }), rec({ sent: { ts: 'E:K0', after: null }, staged: null })),
@@ -81,12 +81,19 @@ const ownOn = page => page.evaluate(() => { const s = window._rb2p_flowState(); 
             hold:      R(rec({ sent: { ts: 100, after: 'E:K0' }, staged: 200, held: { since: 1, type: 'PUNT' } }), rec({ sent: { ts: 200, after: 100 }, staged: 100 })),
             halftime:  R(rec({ ep: 'H', epRx: 'b', sent: { ts: 'E:H', after: null }, staged: null }), rec({ sent: { ts: 200, after: 100 }, staged: 100 })),   // b still in K0: normalised to the H start
             otherGame: R(rec({ gid: 'g2', sent: null, staged: 'E:K0' }), rec({ sent: { ts: 'E:K0', after: null }, staged: null })),
+            // V422 (the v2 review): a hand-off decided in the first half and shipped after the halftime law is void
+            lateHalf:  R(rec({ ep: 'H', epRx: 'b', sent: { ts: 'E:H', after: null }, staged: 555 }), rec({ ep: 'H', epRx: 'b', staged: 'E:H', sent: { ts: 555, after: 'E:H', ep: 'K0' } })),
+            // a hand-off its receiver rejected (V208: an engine-AI score) never happened: the sender keeps the ball
+            rejected:  R(rec({ sent: { ts: 700, after: 600 }, staged: 600 }), rec({ sent: { ts: 600, after: 'E:K0' }, staged: 'E:K0', rej: 700 })),
+            // a record not born at this game's start (a page that joined mid-game) has no chain
+            untrusted: R(rec({ sent: null, staged: 'E:K0', trust: false }), rec({ sent: { ts: 'E:K0', after: null }, staged: null })),
         };
         return cases;
     });
     const w = k => F5[k] && F5[k].who;
-    check('F5 the rule on fixtures: kickoff→a, unapplied→b (apply), applied→b, back→a, hold→none, halftime→b, other game→none',
-          w('kickoff') === 'a' && w('unapplied') === 'b' && F5.unapplied.apply === 'b' && w('applied') === 'b' && w('back') === 'a' && w('hold') === null && w('halftime') === 'b' && w('otherGame') === null,
+    check('F5 the rule on fixtures: kickoff→a, unapplied→b (apply), applied→b, back→a, hold→none, halftime→b, other game→none, a first-half hand-off shipped after the law→b (void), a rejected phantom→its sender, untrusted→none',
+          w('kickoff') === 'a' && w('unapplied') === 'b' && F5.unapplied.apply === 'b' && w('applied') === 'b' && w('back') === 'a' && w('hold') === null && w('halftime') === 'b' && w('otherGame') === null &&
+          w('lateHalf') === 'b' && w('rejected') === 'a' && w('untrusted') === null,
           JSON.stringify(F5));
 
     await g.cleanup();

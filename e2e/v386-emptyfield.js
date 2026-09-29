@@ -1,5 +1,6 @@
 // e2e/v386-emptyfield.js — room FEED: a live phone whose field emptied while its page was
-// hidden gets its drive staged again (T1); a kick scene / a dialog is left alone (T2).
+// hidden gets its drive staged again (T1); a kick scene / a dialog is left alone (T2); V422: the drive
+// comes back at its down and distance, not a fresh 1st & 10 (T3 — the restore rule).
 const H = require('./harness');
 const sleep = H.sleep;
 let pass = 0, fail = 0;
@@ -32,6 +33,21 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         });
         console.log('  T2: ' + JSON.stringify(t2));
         check('T2 in a kick scene the law stands down', t2.fired === false, JSON.stringify(t2));
+        const t3 = await page.evaluate(async () => {
+            window._rb2p_userIsWaitingForOpponent = false;
+            window._rb2p_forceUserOffenseDrive(-12, false, { down: 3, toGo: 4 });           // 3rd & 4 on the 38
+            await new Promise(r => setTimeout(r, 1500));
+            const inst = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || []; for (const x of inst) { if (x && !x._HL2 && x._eE2 && /^obj_ball$|^obj_playerOF$|^obj_playerDF$/.test(x._eE2._fE2 || '')) { try { _cr(x); } catch (e) { x._HL2 = true; } } }
+            const t0 = Date.now(); let back = null;
+            while (Date.now() - t0 < 9000) {
+                await new Promise(r => setTimeout(r, 100));
+                const all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || []; let b = 0; for (const x of all) if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') b++;
+                if (b > 0) { const em = RB.engineState(); back = { y: Number(em.engineYardLineSigned), d: Number(em.engineDownNumber), tg: Number(em.engineYardsToGo) }; break; }
+            }
+            return back;
+        });
+        console.log('  T3: ' + JSON.stringify(t3));
+        check('T3 the re-staged drive keeps its down and distance (3rd & 4 stays 3rd & 4)', !!t3 && t3.d === 3 && Math.abs(t3.tg - 4) < 0.6 && Math.abs(t3.y + 12) < 0.6, JSON.stringify(t3));
     } finally { await browser.close(); }
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);

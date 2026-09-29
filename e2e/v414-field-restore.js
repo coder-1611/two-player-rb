@@ -8,6 +8,8 @@
 //   R6  SQHJ: the thrower's pick-six watchdog retires when a new conversion is mine (no modal killed)
 //   R7  JUQX: the native-end final uses the last in-match board, not the empty engine's 0-0 (shipped)
 //   R8  a real game parked with nobody on the field puts the rightful owner back on
+//   (V422: R1-R5 run as if the partner were on an older build — no flow record — because with a fresh
+//    one the recovery authority decides instead of this check; v422-authority.js covers that path)
 const H = require('./harness');
 const TP = require('./two-player');
 const sleep = H.sleep;
@@ -25,6 +27,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         const me = role, other = role === 'a' ? 'b' : 'a', now = Date.now(), room = sessionStorage.getItem('rb_room');
         const calls = [], parks = [];
         const realF = window._rb2p_forceUserOffenseDrive, realT = window._rb2p_declareTurnOwner;
+        // V422: with a fresh flow record the recovery authority decides; R1-R5 exercise this check's own
+        // judgement, which stays for a partner on an older build (no flow record)
+        const realV = window._rb2p_flowVerdict; window._rb2p_flowVerdict = () => ({ fresh: false, who: null, why: 'test: an old-build partner' });
         window._rb2p_forceUserOffenseDrive = (y, fresh, dd) => { calls.push({ y, fresh, dd: dd || null }); return true; };
         window._rb2p_declareTurnOwner = () => {};
         const base = () => { window._rb2p_lastSentOutcomeMs = 0; window._rb2p_lastOpponentOutcomeApplyMs = 0; window._rb2p_deferredOutcome = null;
@@ -65,7 +70,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_p6ScorerOwes = true; window._rb2p_pickSixThisDeviceIsThrower = false; window._rb2p_patPlayPending = false; window._rb2p_lastConvModalMs = now - 30000;
         out.r5 = two().concat(shipped.length);
         window._rb2p_shipSyntheticPatResult = realShip; window._rb2p_patModalUp = realUp; window._rb2p_patOwed = realOwed; window._rb2p_p6ScorerOwes = false;
-        window._rb2p_forceUserOffenseDrive = realF; window._rb2p_declareTurnOwner = realT;
+        window._rb2p_forceUserOffenseDrive = realF; window._rb2p_declareTurnOwner = realT; window._rb2p_flowVerdict = realV;
         window._rb2p_userIsWaitingForOpponent = true; window._rb2p_lastGood = null;
         return out;
     }, def.role);
