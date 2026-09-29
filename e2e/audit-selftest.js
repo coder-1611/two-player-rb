@@ -84,7 +84,8 @@ function synthetic() {
     check('T18 the same problem seven times is ONE line marked x7 (not seven)', rr.flags.length === 1 && rr.flags[0].count === 7 && /7 times/.test(rr.flags[0].plain) && rr.rawFlags.length === 7, JSON.stringify(rr.flags.map(f => f.plain)));
     check('T18b a connection stall the backup covered is NOT NOTICEABLE (impact 0)', rr.flags[0].impact === 0 && rr.impact.worstName === 'invisible', JSON.stringify(rr.impact));
     runs.deadlock = [mk('a', 0, 'bind', { ver: 'V390' }), mk('b', 0, 'bind', { ver: 'V390' }), mk('a', 500, 'wait', { on: true, why: 'L1' }), mk('b', 500, 'wait', { on: true, why: 'L1' })];
-    for (let i = 0; i <= 14; i++) runs.deadlock.push(mk('a', 1000 + i * 1000, 'stage', { of: 0, df: 0, ball: 0, wait: true, ovl: true, fps: 60 }));
+    // a true deadlock: BOTH phones on screen, both still reporting (V419: a phone with nothing for 12s is SILENT)
+    for (let i = 0; i <= 14; i++) runs.deadlock.push(mk('a', 1000 + i * 1000, 'stage', { of: 0, df: 0, ball: 0, wait: true, ovl: true, fps: 60 }), mk('b', 1500 + i * 1000, 'stage', { of: 0, df: 0, ball: 0, wait: true, ovl: true, fps: 60 }));
     const rc = A(runs.clock), rk = A(runs.keep), rh = A(runs.hidden), rs = A(runs.stale), rd = A(runs.deadlock);
     check('T19 impact: a refused clock write = invisible; a keep loop = ball moved; a late handoff = score/clock; a screen off = invisible; a true deadlock = game frozen',
           rc.flags[0].impact === 0 && rk.flags[0].impact === 1 && rs.flags[0].impact === 2 && rh.flags.some(f => f.rule === 'R-POSS' && f.impact === 0) && rd.flags.some(f => /DEADLOCK/.test(f.msg) && f.impact === 3),
@@ -234,6 +235,59 @@ function synthetic() {
           has(res, 'R-CONT', /LINE MOVED BETWEEN PLAYS/) && has(res, 'R-CLOCK', /between plays/), '');
 
     await g.cleanup();
+    // ===== V419 (NEVER-FREEZE Phase 1) =====
+    const T0 = 1700000000000;
+    const mk = (role, dt, k, f) => Object.assign({ t: T0 + dt, role: role, k: k }, f || {});
+    const A = tl => audit(tl.slice().sort((x, y) => x.t - y.t), {});
+    const R = { toTimeline };
+    const base = () => [mk('a', 0, 'bind', { ver: 'V419' }), mk('b', 0, 'bind', { ver: 'V419' }),
+                        mk('a', 100, 'act', { must: true, can: true, why: '', soft: false }), mk('b', 100, 'act', { must: false, can: true, why: '', soft: false })];
+    const covered = base().concat([mk('a', 2000, 'act', { must: true, can: false, why: 'covered by #rb-waiting', soft: false }), mk('a', 17000, 'act', { must: true, can: true, why: '', soft: false }), mk('a', 18000, 'snap', { y: -20, d: 1 })]);
+    const rcv = A(covered);
+    check('T31 a must-act phone covered for 15s on screen is FROZEN (impact 3) and counted as frozen seconds',
+          rcv.flags.some(f => f.rule === 'R-FREEZE' && /^FROZEN: a could not act \(covered by #rb-waiting\) for 15s/.test(f.msg) && f.impact === 3) && rcv.frozen && rcv.frozen.sec === 15,
+          JSON.stringify({ flags: rcv.flags.map(f => f.msg + ' i' + f.impact), frozen: rcv.frozen }));
+    const nearMiss = base().concat([mk('a', 2000, 'act', { must: true, can: false, why: 'empty field 9s', soft: false }), mk('a', 7000, 'act', { must: true, can: true, why: '', soft: false })]);
+    const rnm = A(nearMiss);
+    check('T32 a 5s stall that clears by itself is a near miss (impact 0), not a freeze',
+          rnm.flags.some(f => f.rule === 'R-FREEZE' && /^near miss/.test(f.msg) && f.impact === 0) && !rnm.flags.some(f => /^FROZEN/.test(f.msg)) && rnm.frozen.sec === 0, JSON.stringify(rnm.flags.map(f => f.msg)));
+    const softHidden = base().concat([mk('a', 2000, 'act', { must: true, can: true, why: 'taps unanswered', soft: true }), mk('a', 25000, 'act', { must: true, can: false, why: 'hidden', soft: false }), mk('a', 60000, 'act', { must: true, can: true, why: '', soft: false })]);
+    const rsh = A(softHidden);
+    check('T33 unanswered taps (soft) and a hidden screen (the player\'s doing) never count as frozen', !rsh.flags.some(f => f.rule === 'R-FREEZE') && rsh.frozen.sec === 0, JSON.stringify(rsh.flags.map(f => f.msg)));
+    const bothWait = [mk('a', 0, 'bind', { ver: 'V419' }), mk('b', 0, 'bind', { ver: 'V419' }),
+                      mk('a', 100, 'act', { must: false, can: true, why: '', soft: false }), mk('b', 100, 'act', { must: false, can: true, why: '', soft: false }),
+                      mk('b', 16000, 'act', { must: true, can: true, why: '', soft: false })];
+    const inFlight = bothWait.slice(0, 4).concat([mk('a', 200, 'send', { type: 'TD', ts: T0 + 150 }), mk('b', 9000, 'recv', { type: 'TD', ts: T0 + 150 }), mk('b', 9100, 'act', { must: true, can: true, why: '', soft: false })]);
+    const rbw = A(bothWait), rif = A(inFlight);
+    check('T34 both phones on screen waiting for each other 16s is FROZEN; a hand-off in flight is not',
+          rbw.flags.some(f => /^FROZEN: both waiting for 16s/.test(f.msg) && f.impact === 3) && !rif.flags.some(f => /^FROZEN/.test(f.msg)),
+          JSON.stringify({ bw: rbw.flags.map(f => f.msg), inflight: rif.flags.map(f => f.msg) }));
+    const hang = [mk('a', 0, 'bind', { ver: 'V419' }), mk('a', 5000, 'stall', { ms: 9000, vis: 'V' }), mk('b', 0, 'bind', { ver: 'V419' }), mk('b', 5000, 'stall', { ms: 7000, vis: 'H' })];
+    const rhg = A(hang);
+    check('T35 a hung page on screen is R-HANG impact 3; a parked hidden page is impact 0',
+          rhg.flags.some(f => f.rule === 'R-HANG' && /^HANG: a's page stopped responding for 9s/.test(f.msg) && f.impact === 3) &&
+          rhg.flags.some(f => f.rule === 'R-HANG' && /hidden page parked 7s on b/.test(f.msg) && f.impact === 0), JSON.stringify(rhg.flags.map(f => f.msg + ' i' + f.impact)));
+    const goneBefore = [mk('a', 0, 'bind', { ver: 'V419' }), mk('b', 0, 'bind', { ver: 'V419' }), mk('a', 1000, 'snap', { y: -10, d: 1 }), mk('a', 3000, 'vis', { h: true, why: 'pagehide' }),
+                        mk('b', 40000, 'p6', { step: 'detected' }), mk('b', 40100, 'p6', { step: 'sent' })];
+    const rgb = A(goneBefore);
+    check('T36 a pick-six sent to a phone that had already closed the game is LEFT (impact 0), not a broken chain',
+          rgb.flags.some(f => f.rule === 'R-P6' && /^LEFT: a had already closed the game/.test(f.msg) && f.impact === 0) && !rgb.flags.some(f => /chain broke/.test(f.msg)), JSON.stringify(rgb.flags.map(f => f.msg)));
+    const stats15 = base().concat([mk('a', 2000, 'act', { must: true, can: false, why: 'stats screen missing 0s', soft: false }), mk('a', 17000, 'act', { must: true, can: true, why: 'game over', soft: false })]);
+    const stats25 = base().concat([mk('a', 2000, 'act', { must: true, can: false, why: 'stats screen missing 0s', soft: false }), mk('a', 27000, 'act', { must: true, can: true, why: 'game over', soft: false })]);
+    const rs15 = A(stats15), rs25 = A(stats25);
+    check('T38 a stats screen 15s late is inside the 20s bar (near miss); 25s late is FROZEN',
+          !rs15.flags.some(f => /^FROZEN/.test(f.msg)) && rs25.flags.some(f => /^FROZEN: a could not act \(stats screen missing\) for 25s/.test(f.msg) && f.impact === 3),
+          JSON.stringify({ s15: rs15.flags.map(f => f.msg), s25: rs25.flags.map(f => f.msg) }));
+    // server time: b's clock 17s fast; both phones report sync entries
+    const streams = { a: {}, b: {} };
+    const put = (role, t, e) => { streams[role][t + '_' + Object.keys(streams[role]).length] = Object.assign({ t }, e); };
+    put('a', T0 + 1000, { k: 'sync', srv: T0 + 1200 }); put('a', T0 + 20000, { k: 'sync', srv: T0 + 20200 });
+    put('b', T0 + 18000, { k: 'sync', srv: T0 + 1300 }); put('b', T0 + 37000, { k: 'sync', srv: T0 + 20250 });
+    put('a', T0 + 5000, { k: 'send', type: 'TD', ts: T0 + 5000 }); put('b', T0 + 22300, { k: 'recv', type: 'TD', ts: T0 + 5000 });
+    const tlS = R.toTimeline(streams);
+    const sendE = tlS.find(e => e.k === 'send'), recvE = tlS.find(e => e.k === 'recv');
+    check('T37 a phone 17s fast is put back on server time from its sync entries (send before receive, ~0.3s apart)',
+          tlS.clockSource === 'server' && recvE.t > sendE.t && recvE.t - sendE.t < 1000, JSON.stringify({ src: tlS.clockSource, gap: recvE.t - sendE.t }));
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('FATAL', e); process.exit(2); });

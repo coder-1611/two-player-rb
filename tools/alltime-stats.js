@@ -20,6 +20,8 @@ const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 const GK = new Set(['snap', 'settle', 'score', 'q', 'send', 'recv', 'conv', 'p6', 'final']);
 const GAP_MS = 5 * 60 * 1000;
 const dry = process.argv.includes('--dry');
+// the archive is gitignored and lives in the main tree; a worktree reads that one
+const AUDITS = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
 
 async function ownerToken() {
     const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/configstore/firebase-tools.json'), 'utf8'));
@@ -32,7 +34,7 @@ async function ownerToken() {
 const isTest = r => !!r && (r.src === 'local' || /localhost|127\.0\.0\.1/.test(String(r.host || '')) || /HeadlessChrome/.test(String(r.ua || '')));
 
 function fromArchives() {
-    const dir = path.resolve(__dirname, '..', 'audits');
+    const dir = AUDITS;
     let games = 0, complete = 0, engagedMs = 0, phones = 0, first = Infinity, last = 0;
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
@@ -82,6 +84,34 @@ async function fromDb() {
              solo: { visits: out.solo.visits, devices: out.solo.devices.size, sessions: out.solo.sessions, played: out.solo.played, hours: out.solo.hours, matchHours: out.solo.matchHours, matches: out.solo.matches } };
 }
 
+// V419 (NEVER-FREEZE): the freeze counter. Every recorded game since the can-act monitor
+// shipped (its 'act' entries) is scored by the checker's R-FREEZE: the seconds a phone that
+// had to act, on screen and online, could not. Harness rooms are left out.
+function freezeCounter() {
+    const R = require('./audit-rules.js');
+    const dir = AUDITS;
+    const now = Date.now(), dayMs = 86400000;
+    const out = { measuredGames: 0, frozenGames: 0, frozenSec: 0, today: { games: 0, frozen: 0, sec: 0 }, week: { games: 0, frozen: 0, sec: 0 }, since: null, recent: [] };
+    const todayKey = localDay(now);
+    for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
+        let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
+        const tl = (j.timeline || []).slice().sort((a, b) => a.t - b.t);
+        const binds = tl.filter(e => e.k === 'bind');
+        if (!tl.length || !tl.some(e => e.k === 'act') || (binds.length && binds.every(b => isTest(b)))) continue;
+        let res; try { res = R.audit(tl, {}); } catch (e) { continue; }
+        if (!res.frozen || !res.frozen.measured) continue;
+        const games = Math.max(1, res.games || 1), sec = res.frozen.sec || 0, t = tl[0].t;
+        out.measuredGames += games; if (sec > 0) { out.frozenGames++; out.frozenSec += sec; }
+        if (!out.since || t < out.since) out.since = t;
+        const bucket = b => { b.games += games; if (sec > 0) { b.frozen++; b.sec += sec; } };
+        if (localDay(t) === todayKey) bucket(out.today);
+        if (now - t < 7 * dayMs) bucket(out.week);
+        if (sec > 0) out.recent.push({ room: f.replace(/\.json$/, ''), t, sec, why: (res.frozen.intervals.find(iv => iv.ms > 10000) || {}).why || '' });
+    }
+    out.recent = out.recent.sort((a, b) => b.t - a.t).slice(0, 10);
+    return out;
+}
+
 // V412: the weekly check — weekday traffic this week vs the same weekdays last week, and every door up
 const localDay = ms => { const d = new Date(ms); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
 async function weekly() {
@@ -94,7 +124,7 @@ async function weekly() {
         for (const id in v) { const r = v[id]; if (!r || !r.ts || isTest(r) || r.src === 'solo') continue; const d = localDay(r.ts); (perDay[d] = perDay[d] || { visits: 0, devices: new Set() }).visits++; if (r.uid) perDay[d].devices.add(r.uid); }
     }
     // games per local day from the archives
-    const dir = path.resolve(__dirname, '..', 'audits'), gamesDay = {};
+    const dir = AUDITS, gamesDay = {};
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
         const tl = j.timeline || []; if (tl.filter(e => e.k === 'snap').length < 3) continue;
@@ -127,6 +157,7 @@ async function weekly() {
                visits: d.visits, devices: d.devices, visitsSince: d.firstVisit },
         solo: { visits: d.solo.visits, devices: d.solo.devices, sessions: d.solo.sessions, played: d.solo.played, hours: Math.round(d.solo.hours * 10) / 10, matchHours: Math.round(d.solo.matchHours * 10) / 10, matches: d.solo.matches, since: Date.parse('2026-09-21T13:55:00Z') },
         weekly: await weekly(),
+        freeze: freezeCounter(),
         notes: 'two-player games and hours from the audit archives (recorded games since 2026-09-02, idle gaps over 5 min excluded); visits/devices since the visit beacon (2026-09-14); solo since 2026-09-21' };
     console.log(JSON.stringify(stats, null, 1));
     if (dry) return;

@@ -14,6 +14,7 @@
 const http = require('http');
 const { spawn, execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 let puppeteer;
 try {
@@ -67,11 +68,36 @@ function stopServer() {
     try { execSync("pkill -f 'http.server " + PORT + "'"); } catch (e) {}
 }
 
+// V419: persistent browser profiles, one per parallel slot. Every fresh profile signed up
+// new anonymous Firebase accounts (REST + SDK), and a day of test runs exhausted the
+// per-IP sign-up quota (TOO_MANY_ATTEMPTS_TRY_LATER) — hosts then failed on BOTH builds.
+// A kept profile reuses its accounts. RB_E2E_FRESH=1 restores the old throwaway profile.
+const os = require('os');
+const PROFILE_ROOT = path.join(os.homedir(), '.cache', 'two-player-rb-e2e', 'profiles');
+function claimProfileSlot() {
+    fs.mkdirSync(PROFILE_ROOT, { recursive: true });
+    for (let i = 0; i < 32; i++) {
+        const dir = path.join(PROFILE_ROOT, 'slot-' + i), lock = dir + '.lock';
+        try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); }
+        catch (e) {
+            let alive = false;
+            try { process.kill(Number(fs.readFileSync(lock, 'utf8')), 0); alive = true; } catch (e2) {}
+            if (alive) continue;
+            try { fs.writeFileSync(lock, String(process.pid)); } catch (e3) { continue; }
+        }
+        fs.mkdirSync(dir, { recursive: true });
+        for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) {} }
+        return { dir, lock };
+    }
+    return null;
+}
 async function launchBrowser() {
     // HEADFUL=1: a visible window (to watch the bots play); otherwise headless.
     const headful = process.env.HEADFUL === '1';
-    return puppeteer.launch({
+    const slot = process.env.RB_E2E_FRESH === '1' ? null : claimProfileSlot();
+    const browser = await puppeteer.launch({
         executablePath: CHROME,
+        userDataDir: slot ? slot.dir : undefined,
         headless: headful ? false : 'new',
         defaultViewport: headful ? null : undefined,
         // headless: software GL so it runs anywhere; headful: the REAL GPU (swiftshader on screen = lag)
@@ -86,6 +112,20 @@ async function launchBrowser() {
                '--disable-backgrounding-occluded-windows',
                '--disable-renderer-backgrounding'])
     });
+    if (slot) {
+        const release = () => { try { fs.unlinkSync(slot.lock); } catch (e) {} };
+        browser.on('disconnected', release); process.on('exit', release);
+        // a kept profile keeps the game's localStorage too: clear everything but the sign-in
+        // token, so every run starts from default settings (the SDK's account lives in IndexedDB)
+        try {
+            await ensureServer();
+            const p = await browser.newPage();
+            await p.goto('http://127.0.0.1:' + PORT + '/robots.txt', { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await p.evaluate(() => { for (const k of Object.keys(localStorage)) if (k !== 'fbAnonTok:realretrobowl2p') localStorage.removeItem(k); });
+            await p.close();
+        } catch (e) {}
+    }
+    return browser;
 }
 
 // Open a page, load the engine + bridge, and (optionally) drive into a live

@@ -222,6 +222,19 @@
         }
       } catch (e) { allHtml = ''; }
       // V412: this week vs last week, and the three doors
+      // V419: the freeze counter (NEVER-FREEZE-PROMPT.md) — published with stats/alltime
+      let freezeHtml = '';
+      try {
+        const stF = await stAllP; const fz = stF && stF.freeze;
+        if (fz) {
+          const fzCell = (n, label, bad) => '<div style="text-align:center;min-width:86px"><div style="font-family:Anton,sans-serif;font-size:26px;line-height:1;' + (bad ? 'color:var(--red)' : '') + '">' + n + '</div><div class="when" style="margin-top:4px">' + esc(label) + '</div></div>';
+          const recent = (fz.recent || []).map(x => '<a href="?room=' + esc(x.room) + '">' + esc(x.room) + '</a> ' + x.sec + 's' + (x.why ? ' (' + esc(x.why) + ')' : '')).join(' · ');
+          freezeHtml = '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>Freezes</b> <span class="when">(seconds a phone that had to play, on screen and online, could not — measured since ' + (fz.since ? new Date(fz.since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'the next game') + ')</span></div>' +
+            '<div style="display:flex;gap:14px;flex-wrap:wrap">' + fzCell(fz.today.frozen, 'games frozen today', fz.today.frozen > 0) + fzCell(fz.today.games, 'games measured today') +
+            fzCell(fz.week.frozen, 'frozen, last 7 days', fz.week.frozen > 0) + fzCell(fz.week.games, 'measured, last 7 days') + fzCell(fz.frozenSec + 's', 'frozen seconds, all', fz.frozenSec > 0) + '</div>' +
+            (recent ? '<p class="when" style="margin:8px 0 0">Latest: ' + recent + '</p>' : '<p class="when" style="margin:6px 0 0">No freezes on record.</p>') + '</div>';
+        }
+      } catch (e) { freezeHtml = ''; }
       let weekHtml = '';
       try {
         const st2 = await stAllP; const w = st2 && st2.weekly;
@@ -237,13 +250,15 @@
         }
       } catch (e) { weekHtml = ''; }
       allHtml = weekHtml + allHtml;
-      playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' + allHtml +
+      playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' + freezeHtml + allHtml +
         '<p class="when" style="margin:10px 0 0">Days are your local calendar days (' + esc((Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time')) + '). Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
     } catch (e) { playersHtml = ''; }
     app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
       const done = r.audited && typeof r.audited.complete === 'boolean' ? (r.audited.complete ? '<span class="pill clean">COMPLETE</span> ' : (r.audited.horn ? '<span class="pill i1">INCOMPLETE</span> ' : '<span class="pill i0">UNFINISHED</span> ')) : '';
-      const pill = done + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
+      // V419: frozen seconds, measured by the can-act monitor (games from V419 on)
+      const froze = r.audited && r.audited.frozenMeasured ? (Number(r.audited.frozenSec) > 0 ? '<span class="pill i3">FROZE ' + Number(r.audited.frozenSec) + 's</span> ' : '<span class="pill clean">NO FREEZE</span> ') : '';
+      const pill = done + froze + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }

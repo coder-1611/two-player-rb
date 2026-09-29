@@ -76358,8 +76358,9 @@ function _0p2(_) {
             default:
                 return
         }
-        if (i = a.pageX,
-            e = a.pageY,
+        if (window.__rbRotNow = document.documentElement.classList.contains("rb-rot90"),
+            i = window.__rbRotNow ? a.pageX : a.clientX,
+            e = window.__rbRotNow ? a.pageY : a.clientY,
             window.__rbT = window.__rbRemapPointer && window.__rbRemapPointer(i, e),
             window.__rbT && (i = window.__rbT[0], e = window.__rbT[1]),
             0 == n)
@@ -76439,8 +76440,9 @@ function _hp2(_) {
                 i = "end"
     }
     if (t >= 0) {
-        var e = _.pageX
-            , a = _.pageY;
+        var _rbRot = document.documentElement.classList.contains("rb-rot90");
+        var e = _rbRot ? _.pageX : _.clientX
+            , a = _rbRot ? _.pageY : _.clientY;
         var _rbP = window.__rbRemapPointer && window.__rbRemapPointer(e, a);
         if (_rbP) { e = _rbP[0]; a = _rbP[1]; }
         if (0 == t)
@@ -121277,8 +121279,8 @@ function _BN4(_) {
         !1
 }
 function _HN4(_) {
-    _9p2 = _.pageX,
-        _ap2 = _.pageY,
+    _9p2 = document.documentElement.classList.contains("rb-rot90") ? _.pageX : _.clientX,
+        _ap2 = document.documentElement.classList.contains("rb-rot90") ? _.pageY : _.clientY,
         _cp2[_.button].x = _9p2,
         _cp2[_.button].y = _ap2
 }
@@ -121292,8 +121294,8 @@ function _JN4(_) {
         _kp2 = _ip2,
         _bp2 |= 1 << _ip2,
         _cp2[_.button]._dp2 = _ep2 | _fp2 | _gp2,
-        _cp2[_.button].x = _.pageX,
-        _cp2[_.button].y = _.pageY,
+        _cp2[_.button].x = document.documentElement.classList.contains("rb-rot90") ? _.pageX : _.clientX,
+        _cp2[_.button].y = document.documentElement.classList.contains("rb-rot90") ? _.pageY : _.clientY,
         _
 }
 function _EN4(_) {
@@ -135525,7 +135527,12 @@ function _xi5() {
 function _No2(_, t) {
     t.left = 0,
         t.top = 0;
+    // V419 (F1): the canvas is measured by its OWN viewport rect. Summing the
+    // viewport rects of its offsetParent chain counted a page scroll once per
+    // ancestor (desktop clicks drifted by the scroll); at scroll 0 the ancestors
+    // sit at 0,0, so this is identical there.
     for (var i = _; null != i;) {
+        if (i !== _ && _ === canvas) break;
         var e = i.getBoundingClientRect();
         t.left += e.left,
             t.top += e.top,

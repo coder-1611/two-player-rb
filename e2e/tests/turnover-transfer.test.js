@@ -1,9 +1,11 @@
 // V121: a turnover routed through a BARE internal _1c1 call (as the engine does
 // for interceptions) must fire the bridge's possession-change logic — park the
-// thrower (WAIT) and send the INT outcome — so possession actually transfers.
-// Regression guard for "interceptions kept the ball with the thrower."
+// thrower (WAIT) and send the outcome — so possession actually transfers.
+// V350 (room PILP) since: Vy=8 is typed INT only with a licence — the offense's
+// stat_int/stat_fumbles moved this drive; a stale Vy=8 with no takeaway ships OTHER.
+// V419: the test gives the takeaway its licence (the turnover-delta seam) and checks both.
 module.exports = {
-    name: 'turnover via bare _1c1 sends INT + parks thrower (V121)',
+    name: 'turnover via bare _1c1 with a real takeaway sends INT + parks thrower (V121/V350)',
     browser: true,
     match: true,
     async run({ page, H }) {
@@ -20,11 +22,14 @@ module.exports = {
             window._rb2p_userIsWaitingForOpponent = false;
             window._rb2p_lastOpponentOutcomeApplyMs = 0;          // bypass the 2s post-receive cooldown
             const hooked = !!(window._1c1 && window._1c1._p2p_hooked);
+            // a REAL takeaway: the thrower's interception stat moved this drive (the V350 licence)
+            window.__v419deltas = window._rb2p_driveTurnoverDeltas;
+            window._rb2p_driveTurnoverDeltas = () => ({ known: true, intDelta: 1, fumDelta: 0 });
             try { _1c1(em.rawEngineMatch, _Sc2); } catch (e) { return { err: e.message, hooked }; }
             return { hooked, waiting: window._rb2p_userIsWaitingForOpponent };
         });
         await H.sleep(4500);   // the INT send is held ~4s for the pick-6 window
-        const after = await page.evaluate(() => ({ sent: window.__sent, waiting: window._rb2p_userIsWaitingForOpponent }));
+        const after = await page.evaluate(() => { window._rb2p_driveTurnoverDeltas = window.__v419deltas; return { sent: window.__sent, waiting: window._rb2p_userIsWaitingForOpponent }; });
         const pass = setup.hooked && setup.waiting === true && after.sent.indexOf('INT') >= 0;
         return { pass, detail: 'hooked=' + setup.hooked + ' parked=' + setup.waiting + ' sent=' + JSON.stringify(after.sent) };
     }

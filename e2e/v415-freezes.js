@@ -117,6 +117,10 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     // ---- F7: overtime touchdown ----
     const f7 = await off.page.evaluate(async () => {
         window._rb2p_diagLog('F7-START');
+        // V419: capture every diag line of this test — the diag ring holds ~11 lines and
+        // rotated the detection line out when the hand-off logged ten more (flaky by design)
+        const lines = []; const realDL = window._rb2p_diagLog;
+        window._rb2p_diagLog = function (m) { lines.push(String(m)); return realDL.apply(this, arguments); };
         const em = RB.engineState(); const sU = em.userScore;
         const sent = []; const real = window._twoPlayer.send; window._twoPlayer.send = o => { sent.push(o.type); return real.call(window._twoPlayer, o); };
         window._rb2p_userIsWaitingForOpponent = false; window._rb2p_userOutcomeSendInProgress = false; window._rb2p_lastSentOutcomeMs = 0; window._rb2p_kickoffGraceUntil = 0;
@@ -137,7 +141,8 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         em.setUserScore((Number(em.userScore) || 0) + 2); em.engineDownNumber = 1;
         const t1 = Date.now(); while (Date.now() - t1 < 6000 && !sent.length) await new Promise(r => setTimeout(r, 150));
         window._twoPlayer.send = real;
-        const d = String(window._rb2p_readDiagLog()); const tail = d;
+        window._rb2p_diagLog = realDL;
+        const tail = lines.join('\n');   // V419: every line this test logged (the ring holds ~11)
         window._rb2p_gameOverReported = true;   // keep the final detector out while we rewind
         window._rb2p_inOvertime = false; em.setUserScore(sU); em.setOpponentScore(sO); em.engineQuarter = sQ; window._rb2p_lastStableQuarter = sStable; window._rb2p_wireQuarter = sWire;
         window._rb2p_patDutyMine = null; try { window._rb2p_setPatDuty(null); } catch (e) {}

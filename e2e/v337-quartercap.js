@@ -11,7 +11,7 @@
 //
 // T1  engineQuarter shoved to 40 is clamped back within ~1s (never > 5)
 // T2  a poisoned wireQuarter (123) is clamped too and cannot re-inflate
-// T3  DEAD-OPPONENT END: Q4, clock ~0, non-tied, waiting, opponent silent
+// T3  (V419) a decided Q4 game with a silent opponent WAITS — no one-sided FINAL (was: DEAD-OPPONENT END)
 //     >45s  ->  this device declares the FINAL on its own
 // T4  a LIVE opponent in the same spot does NOT trigger the dead-opponent end
 const H = require('./harness');
@@ -95,8 +95,11 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
                  clock: Number(RB.engineState().engineMinutesLeft) + ':' + Number(RB.engineState().engineSecondsLeft) };
     });
     console.log('  dead-opponent end: ' + JSON.stringify(t3));
-    check('T3 a decided Q4 game with a 60s-silent opponent declares the FINAL',
-          t3.reported === true, JSON.stringify(t3));
+    // V419 (F8, room KELX): this used to END the game from this side. KELX's opponent was only
+    // hidden (184s) with 56s left; it came back 19s later to a stats screen and never played its
+    // last drive. The owner's rule: an away partner gets the honest status and the game waits.
+    check('T3 a decided Q4 game with a 60s-silent opponent is WAITED for (no one-sided FINAL; the cover says why)',
+          t3.reported === false && t3.waiting === true, JSON.stringify(t3));
 
     // ---- T4: a LIVE opponent in the same spot does NOT end the game ----
     const t4 = await def.page.evaluate(async () => {

@@ -27,6 +27,23 @@ function toTimeline(streams) {
     // to one direction and subtracts from the other, so half the difference
     // is the skew, independent of the latency itself. Shift b onto a's clock.
     let skew = 0, pairs = 0;
+    // V419: since V419 every phone's 'sync' entries carry the server's clock (srv) beside its own
+    // (t). When both phones have them, put each onto server time directly (median srv - t per
+    // phone; the upload latency is in both, so the phones line up within a few hundred ms).
+    try {
+        const roles = [...new Set(out.map(e => e.role))];
+        const off = {};
+        for (const r of roles) {
+            const d = out.filter(e => e.role === r && e.k === 'sync' && typeof e.srv === 'number').map(e => e.srv - e.t).sort((x, y) => x - y);
+            if (d.length) off[r] = d[Math.floor(d.length / 2)];
+        }
+        if (roles.length && roles.every(r => typeof off[r] === 'number')) {
+            for (const e of out) e.t += off[e.role];
+            out.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
+            out.clockSkewMs = Math.round((off.a || 0) - (off.b || 0)); out.clockSkewPairs = 0; out.clockSource = 'server';
+            return out;
+        }
+    } catch (e) {}
     try {
         const sends = out.filter(e => e.k === 'send' && typeof e.ts === 'number');
         const recvs = out.filter(e => e.k === 'recv' && typeof e.ts === 'number');
@@ -138,7 +155,8 @@ function audit(tl, extra) {
             const p0 = parts[0].impact;
             const impact = { worst, worstName: worst >= 0 ? p0.names[worst] : 'clean', worstText: worst >= 0 ? p0.texts[worst] : 'nothing wrong', counts, names: p0.names, texts: p0.texts, games: parts.length,
                              raw: raw.length, folded: folded.length, chains: chainBase };
-            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, complete: parts[parts.length - 1].complete };
+            const frozenAll = { measured: parts.some(p => p.frozen && p.frozen.measured), sec: parts.reduce((a, p) => a + ((p.frozen && p.frozen.sec) || 0), 0), intervals: [].concat(...parts.map(p => (p.frozen && p.frozen.intervals) || [])) };
+            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, complete: parts[parts.length - 1].complete, frozen: frozenAll };
         }
     }
     const flags = [];
@@ -345,7 +363,9 @@ function audit(tl, extra) {
                                       `${T(hid)}'s screen was off (or the app was in the background) for ${secs} seconds while ${T(other(hid))} waited for it.`);
                         else {
                             // V406 (LVVB): a phone that stopped writing anything at all did not deadlock — it closed or crashed
-                            const silent = roles.find(r => r !== e.role && !byRole[r].some(x => x.t > e.t - 30000 && x.t <= e.t));
+                            // V419: a visible phone samples 'stage' every 5s — 12s of nothing is two missed
+                            // samples (BOHG: a went quiet 23s before the flag and was mislabelled DEADLOCK)
+                            const silent = roles.find(r => !byRole[r].some(x => x.t > e.t - 12000 && x.t <= e.t));
                             if (silent) flag('R-POSS', `SILENT: ${silent}'s phone stopped reporting while ${other(silent)} waited ${secs}s`, [e],
                                              `${T(silent)}'s phone went silent (closed, crashed or lost its connection) while ${T(other(silent))} waited ${secs} seconds.`);
                             else flag('R-POSS', `DEADLOCK: both devices waiting for ${secs}s` + (cascade ? ' (inside a pick-6 cascade)' : ''), [e],
@@ -451,6 +471,11 @@ function audit(tl, extra) {
                     // a phone that CLOSED the page (pagehide) within 20s of the step and never played again left the game
                     const leaver = roles.find(r => byRole[r].some(x => x.k === 'vis' && x.h === true && !x.opp && x.why === 'pagehide' && x.t >= stepT - 2000 && x.t <= stepT + 20000) &&
                                                    !byRole[r].some(x => GAMEKINDS.has(x.k) && x.t > stepT + 22000));
+                    // V419 (FEBE): the phone had ALREADY closed the game before this step and never came back
+                    const goneBefore = roles.find(r => { const ph = byRole[r].filter(x => x.k === 'vis' && x.h === true && !x.opp && x.why === 'pagehide' && x.t < stepT - 2000).pop();
+                                                         return !!ph && !byRole[r].some(x => GAMEKINDS.has(x.k) && x.t > ph.t + 3000); });
+                    if (!leaver && goneBefore) { flag('R-P6', `LEFT: ${goneBefore} had already closed the game before the pick-six (${from} at +${((stepT - t0) / 1000).toFixed(1)}s, no ${to})`, [chain[from]],
+                                       `${T(goneBefore)} had already closed the game before the pick-six — nothing froze; the game was left unfinished.`); continue; }
                     if (leaver) { flag('R-P6', `LEFT: ${leaver} closed the game during the pick-six (${from} at +${((stepT - t0) / 1000).toFixed(1)}s, no ${to})`, [chain[from]],
                                        `${T(leaver)} closed the game during the pick-six — nothing froze; the game was left unfinished.`); continue; }
                 }
@@ -622,12 +647,84 @@ function audit(tl, extra) {
     // covered, a refused write, a cosmetic flicker), 1 yardline (the ball, the
     // down or a play moved), 2 scoreclock (points or game time changed),
     // 3 gameover (the game froze, deadlocked or ended when it shouldn't).
+    // V419 R-FREEZE: the can-act monitor (act {must, can, why, soft}, V419+) — the seconds a
+    // must-act phone that was on screen and online could NOT act (NEVER-FREEZE-PROMPT.md §3):
+    // (a) one phone stuck; (b) both phones waiting, or both claiming the ball, while both are
+    // on screen. Soft reasons (a tap in the wrong spot, a panel the player opened) and a hidden
+    // or offline phone (the player's doing) never count. Over T_FREEZE (10s) is a freeze.
+    const T_FREEZE = 10000;
+    const frozen = { measured: false, sec: 0, intervals: [] };
+    {
+        const acts = tl.filter(e => e.k === 'act');
+        if (acts.length) {
+            frozen.measured = true;
+            const st = {};            // role -> {must, can, why, soft, since}
+            const endAt = tl.length ? tl[tl.length - 1].t : t0;
+            const open = {};          // key -> {from, why, role}
+            const closeIv = (key, t) => {
+                const o = open[key]; if (!o) return; delete open[key];
+                const ms = t - o.from;
+                if (ms >= 3000) frozen.intervals.push({ role: o.role, from: o.from, ms, why: o.why });
+            };
+            const evalAt = (t) => {
+                const roles2 = Object.keys(st);
+                for (const r of roles2) {
+                    const x = st[r];
+                    const stuck = x.must && !x.can && !x.soft && !/^(hidden|offline)$/.test(x.why || '');
+                    if (stuck && !open['one' + r]) open['one' + r] = { from: t, why: x.why, role: r };
+                    if (!stuck) closeIv('one' + r, t);
+                }
+                if (roles2.length === 2) {
+                    const [p, q] = roles2.map(r => st[r]);
+                    const onScreen = y => !(/^(hidden|offline)$/.test(y.why || '')) && y.why !== 'not in a match' && y.why !== 'game over';
+                    const bothWait = !p.must && !q.must && onScreen(p) && onScreen(q) && p.why !== 'game over' && q.why !== 'game over';
+                    const bothLive = p.must && q.must && p.can && q.can;
+                    if (bothWait && !open.bw) open.bw = { from: t, why: 'both waiting', role: 'ab' };
+                    if (!bothWait) closeIv('bw', t);
+                    if (bothLive && !open.bl) open.bl = { from: t, why: 'both have the ball', role: 'ab' };
+                    if (!bothLive) closeIv('bl', t);
+                }
+            };
+            // a hand-off in flight is not "both waiting": from a send until the other side applies it
+            for (const e of tl) {
+                if (e.k === 'act') { st[e.role] = { must: !!e.must, can: e.can !== false, why: e.why || '', soft: !!e.soft }; evalAt(e.t); }
+                else if (e.k === 'send') { if (open.bw) { delete open.bw; } }
+                else if (e.k === 'vis' && !e.opp && e.h === true && st[e.role]) { st[e.role].why = 'hidden'; st[e.role].can = false; evalAt(e.t); }
+            }
+            for (const k of Object.keys(open)) closeIv(k, endAt);
+            // §3(d): a decided game gets 20s to show its stats screen; everything else 10s
+            const limitOf = iv => /^stats screen missing/.test(iv.why || '') ? 20000 : T_FREEZE;
+            for (const iv of frozen.intervals) {
+                iv.why = String(iv.why || '').replace(/ \d+s$/, '');
+                if (iv.ms > limitOf(iv)) {
+                    frozen.sec += Math.round((iv.ms) / 1000);
+                    const who = iv.role === 'ab' ? 'both phones' : T(iv.role);
+                    flag('R-FREEZE', `FROZEN: ${iv.role === 'ab' ? iv.why : iv.role + ' could not act (' + iv.why + ')'} for ${(iv.ms / 1000).toFixed(0)}s`, [tl.find(e => e.t >= iv.from) || tl[0]],
+                         `${who === 'both phones' ? 'Both phones' : who} ${iv.role === 'ab' ? (iv.why === 'both waiting' ? 'sat waiting for each other' : 'both thought they had the ball') : 'could not play (' + iv.why + ')'} for ${(iv.ms / 1000).toFixed(0)} seconds while on screen.`);
+                } else if (iv.role !== 'ab') {
+                    flag('R-FREEZE', `near miss: ${iv.role} could not act (${iv.why}) for ${(iv.ms / 1000).toFixed(0)}s, then could again`, [tl.find(e => e.t >= iv.from) || tl[0]],
+                         `${T(iv.role)} was briefly unable to play (${iv.why}) for ${(iv.ms / 1000).toFixed(0)} seconds, then the game carried on.`);
+                }
+            }
+        }
+    }
+    // V419 R-HANG: the off-thread watchdog saw this page stop answering (a long task, a loop,
+    // a wedged engine). On a VISIBLE page that is a freeze the player saw; a hidden page's
+    // main thread can be parked by the browser, so that one is noted, not blamed.
+    for (const e of tl) {
+        if (e.k !== 'stall') continue;
+        const secs = ((Number(e.ms) || 0) / 1000).toFixed(0);
+        if (e.vis === 'V') flag('R-HANG', `HANG: ${e.role}'s page stopped responding for ${secs}s while on screen`, [e], `${T(e.role)}'s game stopped responding for ${secs} seconds while the screen was on — the page itself hung.`);
+        else flag('R-HANG', `hidden page parked ${secs}s on ${e.role} (screen off)`, [e], `${T(e.role)}'s page was paused for ${secs} seconds while the screen was off.`);
+    }
     const IMPACT_NAME = ['invisible', 'yardline', 'scoreclock', 'gameover'];
     const IMPACT_TEXT = ['the player would not have noticed', 'the ball or the down moved', 'the score or the clock changed', 'the game froze, stalled or ended wrongly'];
     const impactOf = f => {
         const m = f.msg || '';
         switch (f.rule) {
             case 'R-XPORT': return /never received|dropped/.test(m) ? 3 : 0;
+            case 'R-HANG': return /^HANG:/.test(m) ? 3 : 0;
+            case 'R-FREEZE': return /^FROZEN:/.test(m) ? 3 : 0;
             case 'R-OVL': return 0;
             case 'R-GATE': return 1;
             case 'R-YARD': case 'R-DOWN': case 'R-CONT': case 'R-KEEP': return 1;
@@ -683,7 +780,7 @@ function audit(tl, extra) {
     const worst = folded.length ? Math.max(...folded.map(x => Math.max(x.impact, x.chainImpact || 0))) : -1;
     const counts = [0, 0, 0, 0]; folded.forEach(x => counts[x.impact]++);
     const impact = { worst, worstName: worst >= 0 ? IMPACT_NAME[worst] : 'clean', worstText: worst >= 0 ? IMPACT_TEXT[worst] : 'nothing wrong', counts, names: IMPACT_NAME, texts: IMPACT_TEXT, raw: flags.length, folded: folded.length, chains: chainId };
-    return { flags: folded, rawFlags: flags, impact, t0, entries: tl.length, complete };
+    return { flags: folded, rawFlags: flags, impact, t0, entries: tl.length, complete, frozen };
 }
 
 

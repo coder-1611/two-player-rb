@@ -41,15 +41,28 @@ async function fbPut(path, val) {
 async function fbDelete(path) { return fetch(await fbUrl(path), { method: 'DELETE' }); }
 
 function randomCode() {
-    // 4 chars; 'Z' prefix marks it a test room and avoids colliding with the
-    // short codes humans actually type.
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let c = 'Z';
-    for (let i = 0; i < 3; i++) c += chars[Math.floor(Math.random() * chars.length)];
+    // 4 chars: 'Z' + a DIGIT + 2 more. Real codes are four letters
+    // (generateRoomCode in index.html), so a harness code can never name a
+    // player's room — the pre-clean below would otherwise delete it.
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', digits = '23456789';
+    let c = 'Z' + digits[Math.floor(Math.random() * digits.length)];
+    for (let i = 0; i < 2; i++) c += chars[Math.floor(Math.random() * chars.length)];
     return c;
+}
+// A room the harness may delete: its code carries a digit (never a real code),
+// or it has no names at all, or every name is a bot's.
+async function isHarnessRoom(code) {
+    if (/\d/.test(code)) return true;
+    try {
+        const names = await fbGet('rooms/' + code + '/names');
+        if (!names) { const any = await fbGet('rooms/' + code + '/players'); return !any; }
+        return Object.values(names).every(n => /^(Bot [AB]|Harness|Phone [AB])$/i.test(String(n)));
+    } catch (e) { return false; }
 }
 
 async function deleteRoom(code) {
+    // never a real player's room (NEVER-FREEZE-PROMPT.md §4)
+    if (!(await isHarnessRoom(code))) { console.warn('[harness] refusing to delete ' + code + ' — not a harness room'); return; }
     try { await fbDelete('rooms/' + code); }
     catch (e) { /* best-effort cleanup */ }
 }
@@ -81,7 +94,13 @@ async function openLobbyPage(browser, label, opts) {
         page = await target.page();
     } else {
         page = await browser.newPage();
-        await page.setViewport({ width: 900, height: 560 });
+        // V419 (NEVER-FREEZE Phase 3): opts.mobile = 'portrait' | 'landscape' makes this a
+        // touch PHONE (html.rb-mobile; portrait = the forced-landscape rotation) and flags the
+        // page for the bot's touch pointer (qb-bot.js pointer()).
+        if (opts.mobile === 'portrait') await page.setViewport({ width: 402, height: 874, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+        else if (opts.mobile === 'landscape') await page.setViewport({ width: 874, height: 402, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+        else await page.setViewport({ width: 900, height: 560 });
+        if (opts.mobile) page.__rbTouch = true;
     }
     // CRITICAL for two tabs in one browser: the GameMaker engine advances on
     // requestAnimationFrame, which Chrome PAUSES for any hidden/backgrounded
@@ -221,6 +240,6 @@ async function startTwoPlayerGame(opts) {
 
 module.exports = {
     FB_DB, FB_API_KEY, fbToken, fbGet, fbPut, fbDelete,
-    randomCode, deleteRoom, waitFor, openLobbyPage,
+    randomCode, deleteRoom, isHarnessRoom, waitFor, openLobbyPage,
     joinRoom, hostRoom, readyUp, waitForMatch, snapshot, startTwoPlayerGame
 };

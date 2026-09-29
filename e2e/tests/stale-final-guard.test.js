@@ -3,9 +3,11 @@
 // Regression guard for "FINAL popped 3-0 mid-Q4 while the engine played on to 9-0."
 const TP = require('../two-player');
 
+// V419: signed in — since V297 the rules refuse unauthenticated writes, so the old bare
+// fetch never landed a single final (the "ignored" half passed on nothing, the "fresh"
+// half could never pass).
 function putFinal(code, role, body) {
-    return fetch(TP.FB_DB + '/rooms/' + code + '/final/' + role + '.json',
-                 { method: 'PUT', body: JSON.stringify(body) });
+    return TP.fbPut('rooms/' + code + '/final/' + role, body);
 }
 const readA = (page) => page.evaluate(() => {
     const fin = document.getElementById('rb-final');

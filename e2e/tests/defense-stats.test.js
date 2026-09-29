@@ -18,22 +18,42 @@ module.exports = {
             }
             return { df, starred, with7j, collect: typeof window._rb2p_collectOppDefStats };
         });
-        // Put a starred defender on the ball, then drive the play-resolution edge.
+        // A tackle: the ball CARRIER (an offensive player) sits on the ball and the starred
+        // defender makes the stop 20px away. (V419: this test used to put the defender ON the
+        // ball — since the INT-return guard a defender nearest the ball is a turnover returner
+        // being downed, which is credited to nobody, so the old setup could never pass.)
         const setup = await page.evaluate(() => {
             const all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
-            let ball = null, starDf = null;
+            let ball = null, starDf = null, carrier = null;
             for (let i = 0; i < all.length; i++) {
                 const x = all[i]; if (!x || x._HL2 || !x._eE2) continue;
                 if (x._eE2._fE2 === 'obj_ball' && !ball) ball = x;
                 if (x._eE2._fE2 === 'obj_playerDF' && x._rb2pStar && !starDf) starDf = x;
+                if (x._eE2._fE2 === 'obj_playerOF' && !carrier) carrier = x;
             }
-            if (!ball || !starDf) return { err: 'ball=' + !!ball + ' starDf=' + !!starDf };
-            starDf.x = ball.x; starDf.y = ball.y;
+            if (!ball || !starDf || !carrier) return { err: 'ball=' + !!ball + ' starDf=' + !!starDf + ' carrier=' + !!carrier };
+            carrier.x = ball.x; carrier.y = ball.y;
+            starDf.x = ball.x + 20; starDf.y = ball.y;
             return { ok: true, star: starDf._rb2pStar.ln };
         });
-        await page.evaluate(() => { RB.engineState().engineControllerState = 2; });
-        await H.sleep(80);
-        await page.evaluate(() => { RB.engineState().engineControllerState = 4; }); // carrier downed
+        // The credit keys on the BALL's own state (_kp) changing to 4 = BALL_DOWN (the engine's
+        // controller state is a different field). Hold each value across several frames so the
+        // 16ms observer sees live (2) and then down (4) even if the engine rewrites it per frame.
+        // (the engine re-places its players every frame, so the carrier and the tackler are pinned
+        //  beside the ball for the whole edge — as they are at a real tackle)
+        const holdBallKp = (kp, ms) => page.evaluate((kp, ms) => new Promise(res => {
+            const all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+            const ball = all.find(x => x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball');
+            const star = all.find(x => x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_playerDF' && x._rb2pStar);
+            const car = all.find(x => x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_playerOF');
+            const t0 = performance.now();
+            (function tick() {
+                if (ball) { ball._kp = kp; if (car) { car.x = ball.x; car.y = ball.y; } if (star) { star.x = ball.x + 20; star.y = ball.y; } }
+                if (performance.now() - t0 < ms) requestAnimationFrame(tick); else res();
+            })();
+        }), kp, ms);
+        await holdBallKp(2, 120);
+        await holdBallKp(4, 150);                               // carrier downed
         await H.sleep(120);
         const res = await page.evaluate(() => {
             const ods = window._rb2p_collectOppDefStats();

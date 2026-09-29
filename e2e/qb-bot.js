@@ -16,6 +16,41 @@
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const GUI_PER_CSS_DEFAULT = 480 / 900;
 
+// V419 (NEVER-FREEZE Phase 3): ONE pointer for the bot — the mouse on a desktop page, or real
+// touches (CDP Input.dispatchTouchEvent, trusted) on a page flagged page.__rbTouch = true, so
+// the same play code drives the phone layout (html.rb-mobile), where the freezes live. A
+// finger has no position until it touches: move() while lifted only remembers the point.
+function pointer(page) {
+    if (page.__rbPointer) return page.__rbPointer;
+    const touch = !!page.__rbTouch;
+    let cur = { x: 0, y: 0 }, isDown = false, cdp = null;
+    const session = async () => cdp || (cdp = await page.target().createCDPSession());
+    const P = {
+        touch,
+        async move(x, y, o) {
+            if (!touch) return page.mouse.move(x, y, o);
+            const from = cur; cur = { x, y };
+            if (!isDown) return;
+            const steps = Math.max(1, (o && o.steps) || 1), c = await session();
+            for (let i = 1; i <= steps; i++)
+                await c.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + (x - from.x) * i / steps, y: from.y + (y - from.y) * i / steps }] });
+        },
+        async down() {
+            if (!touch) return page.mouse.down();
+            const c = await session(); isDown = true;
+            await c.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cur.x, y: cur.y }] });
+        },
+        async up() {
+            if (!touch) return page.mouse.up();
+            if (!isDown) return;
+            const c = await session(); isDown = false;
+            await c.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        },
+    };
+    page.__rbPointer = P;
+    return P;
+}
+
 const IN = {
     calib: () => { const c = document.getElementById('canvas'); const r = c.getBoundingClientRect(); return { left: r.left, top: r.top, w: r.width, h: r.height }; },
     mouseRead: () => ({ rx: _ft._w01(), ry: _ft._x01(), gx: _m01(0), gy: _o01(0) }),
@@ -123,11 +158,46 @@ function predictAlongRoute(o, poly, speed, frames) {
     return { x, y, done: i >= poly.length };
 }
 
+// V419: touch calibration WITHOUT touching. A finger has no position until it presses, and a
+// press is never harmless (a tap during the kick meter IS the kick), so the touch bot feeds the
+// engine's pointer variables directly: each canvas point goes through exactly the mapping a real
+// touch gets (client coords un-rotated; page coords through __rbRemapPointer on the rotated
+// body), the engine reports where that lands, and three points fit the full affine map — the
+// rotated layout included, where the per-axis mouse fit cannot work.
+async function calibrateTouch(page) {
+    const pts = [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7]];
+    const s = await page.evaluate(pts => {
+        const c = document.getElementById('canvas').getBoundingClientRect();
+        const rot = document.documentElement.classList.contains('rb-rot90');
+        const save = [_9p2, _ap2], out = [];
+        for (const [fx, fy] of pts) {
+            const cx = c.left + c.width * fx, cy = c.top + c.height * fy;
+            let ex = cx, ey = cy;
+            if (rot && window.__rbRemapPointer) { const m = window.__rbRemapPointer(cx + window.scrollX, cy + window.scrollY); if (m) { ex = m[0]; ey = m[1]; } }
+            _9p2 = ex; _ap2 = ey;
+            out.push({ cx, cy, rx: _ft._w01(), ry: _ft._x01(), gx: _m01(0), gy: _o01(0) });
+        }
+        _9p2 = save[0]; _ap2 = save[1];
+        return { out, cal: { left: c.left, top: c.top, w: c.width, h: c.height } };
+    }, pts);
+    const [p0, p1, p2] = s.out;
+    // room = A * css + b, from three points
+    const d1x = p1.cx - p0.cx, d1y = p1.cy - p0.cy, d2x = p2.cx - p0.cx, d2y = p2.cy - p0.cy;
+    const det = d1x * d2y - d2x * d1y;
+    const a11 = ((p1.rx - p0.rx) * d2y - (p2.rx - p0.rx) * d1y) / det, a12 = ((p2.rx - p0.rx) * d1x - (p1.rx - p0.rx) * d2x) / det;
+    const a21 = ((p1.ry - p0.ry) * d2y - (p2.ry - p0.ry) * d1y) / det, a22 = ((p2.ry - p0.ry) * d1x - (p1.ry - p0.ry) * d2x) / det;
+    const b1 = p0.rx - a11 * p0.cx - a12 * p0.cy, b2 = p0.ry - a21 * p0.cx - a22 * p0.cy;
+    const inv = a11 * a22 - a12 * a21;
+    const gs = Math.hypot(p1.gx - p0.gx, p1.gy - p0.gy) / Math.hypot(d1x, d1y);
+    return { cal: s.cal, rsx: a11 || a12, rsy: a22 || a21, rox: b1, roy: b2, gs, affine: [a11, a12, a21, a22, b1, b2],
+             toCss: (rx, ry) => { const u = rx - b1, v = ry - b2; return { x: (a22 * u - a12 * v) / inv, y: (-a21 * u + a11 * v) / inv }; } };
+}
 async function calibrate(page) {
+    if (pointer(page).touch) return calibrateTouch(page);
     const cal = await page.evaluate(IN.calib);
     const p1 = { x: cal.left + cal.w * 0.3, y: cal.top + cal.h * 0.3 }, p2 = { x: cal.left + cal.w * 0.7, y: cal.top + cal.h * 0.7 };
-    await page.mouse.move(p1.x, p1.y); await sleep(60); const m1 = await page.evaluate(IN.mouseRead);
-    await page.mouse.move(p2.x, p2.y); await sleep(60); const m2 = await page.evaluate(IN.mouseRead);
+    await pointer(page).move(p1.x, p1.y); await sleep(60); const m1 = await page.evaluate(IN.mouseRead);
+    await pointer(page).move(p2.x, p2.y); await sleep(60); const m2 = await page.evaluate(IN.mouseRead);
     const rsx = (m2.rx - m1.rx) / (p2.x - p1.x) || 1.07, rsy = (m2.ry - m1.ry) / (p2.y - p1.y) || 1.07;
     const gs = (m2.gx - m1.gx) / (p2.x - p1.x) || GUI_PER_CSS_DEFAULT;
     return { cal, rsx, rsy, rox: m1.rx - rsx * p1.x, roy: m1.ry - rsy * p1.y, gs,
@@ -181,14 +251,14 @@ async function playOne(page, cal, opts) {
     // press on the QB and SNAP with a small pull straight back (opposite the drive)
     const gs = cal.gs;                                   // gui px per css px
     const pullBack = (guiLen) => ({ x: qbCss.x + (-dir) * guiLen / gs, y: qbCss.y });
-    await page.mouse.move(qbCss.x, qbCss.y); await sleep(40); await page.mouse.down();
+    await pointer(page).move(qbCss.x, qbCss.y); await sleep(40); await pointer(page).down();
     // the engine registers the press at STEP time: give it two frames so the drag
     // origin is the QB (moving at once made the origin wherever the pointer was
     // when it first came within 40 px of the QB — and the throw angle went wild)
     let pressed = false;
     for (let i = 0; i < 8; i++) { await sleep(20); const c = await page.evaluate(IN.snap); if (c.ctrl && c.ctrl.kp === 1) { pressed = true; break; } }
-    if (!pressed) { await page.mouse.up(); return { result: 'none', why: 'press not registered' }; }
-    const p0 = pullBack(26); await page.mouse.move(p0.x, p0.y, { steps: 2 });
+    if (!pressed) { await pointer(page).up(); return { result: 'none', why: 'press not registered' }; }
+    const p0 = pullBack(26); await pointer(page).move(p0.x, p0.y, { steps: 2 });
     await page.evaluate(IN.startTrace);
     const tSnap = Date.now();
     let prev = null, prevT = 0, best = null, thrown = false, decided = null, samples = 0;
@@ -263,7 +333,7 @@ async function playOne(page, cal, opts) {
             const R01 = Math.min(74, Math.max(24, top.e0 / tp));
             const ux = (top.P.x - q.x), uy = (top.P.y - q.y), L = Math.hypot(ux, uy) || 1;
             const aim = { x: qbCss.x - ux / L * R01 / gs, y: qbCss.y - uy / L * R01 / gs };
-            if (Math.hypot(aim.x - lastAim.x, aim.y - lastAim.y) > 2) { await page.mouse.move(aim.x, aim.y, { steps: 2 }); lastAim = aim; }
+            if (Math.hypot(aim.x - lastAim.x, aim.y - lastAim.y) > 2) { await pointer(page).move(aim.x, aim.y, { steps: 2 }); lastAim = aim; }
             // closed loop: the ball's shadow projects the landing point for the CURRENT drag (the dotted line a player sees)
             for (let it = 0; it < 3; it++) {
                 await sleep(18);
@@ -291,7 +361,7 @@ async function playOne(page, cal, opts) {
                 const nl = Math.hypot(nx, ny), maxL = 74 / gs, minL = 24 / gs;
                 const k = nl > maxL ? maxL / nl : nl < minL ? minL / nl : 1;
                 lastAim = { x: qbCss.x + nx * k, y: qbCss.y + ny * k };
-                await page.mouse.move(lastAim.x, lastAim.y, { steps: 2 });
+                await pointer(page).move(lastAim.x, lastAim.y, { steps: 2 });
             }
             best = top;
             const minHold = opts.minHoldMs || 900, forceAt = opts.forceMs || 1900;
@@ -302,20 +372,20 @@ async function playOne(page, cal, opts) {
                 const ux = dir, uy = (q.y < 300) ? -1 : 1, L = Math.hypot(ux, uy);
                 const R01 = 60;
                 const away = { x: qbCss.x - ux / L * R01 / gs, y: qbCss.y - uy / L * R01 / gs };
-                await page.mouse.move(away.x, away.y, { steps: 2 }); await sleep(30);
+                await pointer(page).move(away.x, away.y, { steps: 2 }); await sleep(30);
                 decided = { top, held, R01, forced, thrownAway: true, qb: { x: q.x, y: q.y } };
-                await page.mouse.up(); thrown = true; break;
+                await pointer(page).up(); thrown = true; break;
             }
             if (ready || forced) {
                 // let the pointer settle one frame, read back the engine's own landing projection if it has one
                 await sleep(30);
                 const chk = await page.evaluate(IN.snap);
                 decided = { top, held, R01, forced, ctrl: chk.ctrl, shadow: chk.shadow, qb: { x: q.x, y: q.y } };
-                await page.mouse.up(); thrown = true; break;
+                await pointer(page).up(); thrown = true; break;
             }
         }
     }
-    if (!thrown) { await page.mouse.up(); }               // pointer released anyway (run/throw whatever the aim was)
+    if (!thrown) { await pointer(page).up(); }               // pointer released anyway (run/throw whatever the aim was)
     // watch the play to its end
     let tr = null, end = null, shotAir = false, steer = null;
     for (let w = 0; w < 120; w++) {
@@ -392,8 +462,8 @@ async function playUntil(page, opts) {
 
 // ---- the ball carrier: a swipe (press, move > 20 room px, release) gives him a nudge that way ----
 async function swipeAt(page, x, y, dx, dy) {
-    await page.mouse.move(x, y); await page.mouse.down(); await sleep(35);
-    await page.mouse.move(x + dx, y + dy, { steps: 2 }); await sleep(35); await page.mouse.up();
+    await pointer(page).move(x, y); await pointer(page).down(); await sleep(35);
+    await pointer(page).move(x + dx, y + dy, { steps: 2 }); await sleep(35); await pointer(page).up();
 }
 // keep swiping the runner upfield, away from the nearest defender, until he is down
 async function steerCarrier(page, cal, s0, opts) {
@@ -466,7 +536,7 @@ const T = {
 // press a GUI button given its top-left + size (engine hit-test x..x+w, y..y+h)
 async function pressGui(page, cal, b) {
     const x = cal.cal.left + (b.x + (b.w || 40) / 2) / 480 * cal.cal.w, y = cal.cal.top + (b.y + (b.h || 16) / 2) / 270 * cal.cal.h;
-    await page.mouse.move(x, y); await sleep(50); await page.mouse.down(); await sleep(80); await page.mouse.up(); await sleep(250);
+    await pointer(page).move(x, y); await sleep(50); await pointer(page).down(); await sleep(80); await pointer(page).up(); await sleep(250);
 }
 
 // a RUN: the handoff is a press within 20 room px of the running back
@@ -478,12 +548,12 @@ async function runOne(page, cal, opts) {
     try { const c2 = await calibrate(page); if (isFinite(c2.rsx) && Math.abs(c2.rsx) > 0.1) cal = c2; } catch (e) {}
     const c = cal.toCss(rb.x, rb.y);
     if (!isFinite(c.x)) return { result: 'none', why: 'bad calibration' };
-    await page.mouse.move(c.x, c.y); await sleep(40);
+    await pointer(page).move(c.x, c.y); await sleep(40);
     const mr = await page.evaluate(IN.mouseRead); const missPx = Math.hypot(mr.rx - rb.x, mr.ry - rb.y);
-    await page.mouse.down();
+    await pointer(page).down();
     let handed = false;
     for (let i = 0; i < 10; i++) { await sleep(20); const k = await page.evaluate(IN.snap); if (k.ctrl && k.ctrl.kp === 19) { handed = true; break; } }
-    await sleep(60); await page.mouse.up();
+    await sleep(60); await pointer(page).up();
     if (!handed) return { result: 'none', why: 'handoff not taken (press ' + Math.round(missPx) + ' px from the RB, ctrl kp ' + (await page.evaluate(IN.snap)).ctrl.kp + ')' };
     await sleep(250);
     const steer = await steerCarrier(page, cal, s0, opts);
@@ -502,14 +572,14 @@ async function kickOne(page, cal, opts) {
     const t0 = Date.now();
     const c0 = await page.evaluate(IN.calib);
     const cx = c0.left + c0.w * 0.5, cy = c0.top + c0.h * 0.55;
-    await page.mouse.move(cx, cy); await sleep(40);
+    await pointer(page).move(cx, cy); await sleep(40);
     let phase = 'power', meterAt = null, arrowAt = null;
     while (Date.now() - t0 < 12000) {
         const s = await page.evaluate(IN.snap);
         if (!s.kick || !s.ctrl) return { result: 'none', why: 'not kicking' };
         const k = s.ctrl.kp;
         if (phase === 'power' && k === 0) {
-            if (s.ctrl.meter >= 44 && s.ctrl.meterDir === 1) { await page.mouse.down(); await sleep(60); await page.mouse.up(); meterAt = s.ctrl.meter; phase = 'runup'; }
+            if (s.ctrl.meter >= 44 && s.ctrl.meterDir === 1) { await pointer(page).down(); await sleep(60); await pointer(page).up(); meterAt = s.ctrl.meter; phase = 'runup'; }
             await sleep(12); continue;
         }
         if (phase === 'runup') { if (k === 2) phase = 'aim'; else if (k > 2) phase = 'flight'; await sleep(20); continue; }
@@ -522,7 +592,7 @@ async function kickOne(page, cal, opts) {
             const v = kickOne.v || 6;
             const toGo = (300 - s.ctrl.arrow) * (s.ctrl.meterDir || 1);       // + = approaching the middle
             const lead = v * 1.5;
-            if (toGo >= -2 && toGo <= lead + 1) { await page.mouse.down(); await sleep(60); await page.mouse.up(); arrowAt = s.ctrl.arrow; kickOne.lead = { v: Math.round(v * 10) / 10, toGo: Math.round(toGo) }; phase = 'flight'; }
+            if (toGo >= -2 && toGo <= lead + 1) { await pointer(page).down(); await sleep(60); await pointer(page).up(); arrowAt = s.ctrl.arrow; kickOne.lead = { v: Math.round(v * 10) / 10, toGo: Math.round(toGo) }; phase = 'flight'; }
             await sleep(6); continue;
         }
         if (phase === 'flight') { if (k !== 2 && k !== 1 && k !== 0) break; if (Date.now() - t0 > 6000) break; await sleep(60); continue; }
@@ -601,7 +671,7 @@ async function playGame(pages, opts) {
           } catch (e) {
             anyLive = true;
             log('  [' + p.role + '] page hiccup (' + String(e && e.message).slice(0, 60) + ') — the phone probably reloaded; waiting for it');
-            try { await p.page.mouse.up(); } catch (e2) {}
+            try { await pointer(p.page).up(); } catch (e2) {}
             await sleep(2500);
             try { cals[p.role] = await calibrate(p.page); await p.page.evaluate('window.__snap = ' + IN.snap.toString() + '; window.__lite = ' + IN.lite.toString()); } catch (e3) {}
           }
@@ -614,7 +684,7 @@ async function playGame(pages, opts) {
     return { plays, attempts, completions, results, finals, ms: Date.now() - t0 };
 }
 
-module.exports = { IN, T, simThrow, rangeFor, e0ForRange, routePolyline, predictAlongRoute, calibrate, playOne, runOne, playUntil, playGame, kickOne, clickButtons, pressGui, steerCarrier, swipeAt };
+module.exports = { pointer, calibrateTouch, IN, T, simThrow, rangeFor, e0ForRange, routePolyline, predictAlongRoute, calibrate, playOne, runOne, playUntil, playGame, kickOne, clickButtons, pressGui, steerCarrier, swipeAt };
 
 if (require.main === module) {
     // standalone: vs the KC AI in the single-page harness

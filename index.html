@@ -37,13 +37,34 @@
         function _fbSaveTok() {
             try { localStorage.setItem('fbAnonTok:realretrobowl2p', JSON.stringify(_fbTok)); } catch (e) {}
         }
-        async function fbEnsureTok() {
+        // V419 (F18): ONE sign-in at a time. At boot the visit beacon, the heartbeat, the audit
+        // flush and the room code all asked for a token at once, and on a new device each call
+        // that found no token created its OWN anonymous account (only the last was kept) —
+        // multiplying sign-ups against Firebase's per-IP quota (TOO_MANY_ATTEMPTS_TRY_LATER).
+        var _fbTokInFlight = null;
+        function fbEnsureTok() {
+            if (!_fbTokInFlight) _fbTokInFlight = fbEnsureTokOnce().then(function (t) { _fbTokInFlight = null; return t; }, function () { _fbTokInFlight = null; return null; });
+            return _fbTokInFlight;
+        }
+        // V419 (latch inventory #3): one shared sign-in means one hung request would stall EVERY
+        // REST path (sends, re-sends, polls, acks, heartbeats) — each request now gives up after 10s.
+        function fetchT(url, opts, ms) {
+            try {
+                if (typeof AbortController === 'undefined') return fetch(url, opts);
+                var ctl = new AbortController(), tm = setTimeout(function () { try { ctl.abort(); } catch (e) {} }, ms || 10000);
+                opts = Object.assign({}, opts || {}, { signal: ctl.signal });
+                return fetch(url, opts).then(function (r) { clearTimeout(tm); return r; }, function (e) { clearTimeout(tm); throw e; });
+            } catch (e) { return fetch(url, opts); }
+        }
+        async function fbEnsureTokOnce() {
             if (!_fbTok) _fbLoadTok();
             var now = Date.now();
             if (_fbTok && _fbTok.t && now < _fbTok.e - 300000) return _fbTok.t;
+            // a refresh that fails on a blip must not strand a token that is still valid
+            var stillValid = (_fbTok && _fbTok.t && now < _fbTok.e - 10000) ? _fbTok.t : null;
             try {
                 if (_fbTok && _fbTok.r) {
-                    var r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + FB_API_KEY, {
+                    var r = await fetchT('https://securetoken.googleapis.com/v1/token?key=' + FB_API_KEY, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(_fbTok.r)
@@ -55,7 +76,8 @@
                         return _fbTok.t;
                     }
                 }
-                var r2 = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY, {
+                if (stillValid) return stillValid;   // the refresh was refused — keep the valid one; never mint a new account while it lasts
+                var r2 = await fetchT('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + FB_API_KEY, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: '{"returnSecureToken":true}'
@@ -66,7 +88,7 @@
                     _fbSaveTok();
                     return _fbTok.t;
                 }
-            } catch (e) {}
+            } catch (e) { if (stillValid) return stillValid; }
             return null;
         }
         window._fbTokPeek = function () { try { return (_fbTok && _fbTok.t) || null; } catch (e) { return null; } };
@@ -176,21 +198,95 @@
                 auditBuf.push(e);
             } catch (err) {}
         };
-        window._rb2p_auditBind = function (room, role) { auditRoom = room; auditRole = role; };
+        // V419 (NEVER-FREEZE Phase 1): an OUTBOX. A failed or refused PATCH used to lose its
+        // entries silently, so an outage left no trace — exactly the moments a freeze check needs.
+        // Entries now wait in the outbox until the server accepts them (retried every flush,
+        // kept in sessionStorage across a reload of the same tab, same keys = idempotent). A
+        // 'sync' entry carries the server's clock ({".sv":"timestamp"}) at most every 15s so
+        // the checker can correct each phone's clock offset (ELTR: 17s apart), and 'lost'
+        // counts anything the capped outbox had to drop.
+        var auditOutbox = [], auditLost = 0, auditFlushing = false, auditFlushStartMs = 0, auditLastSyncMs = 0;
+        var AUDIT_OUTBOX_MAX = 3000;
+        function auditOutboxKey() { return 'rb2p_auditOutbox_' + auditRoom + '_' + auditRole; }
+        function auditSaveOutbox() {
+            try { if (auditRoom && auditRole) sessionStorage.setItem(auditOutboxKey(), JSON.stringify({ o: auditOutbox, lost: auditLost })); } catch (e) {}
+        }
+        window._rb2p_auditBind = function (room, role) {
+            auditRoom = room; auditRole = role;
+            try {
+                var sv = JSON.parse(sessionStorage.getItem(auditOutboxKey()) || 'null');
+                if (sv && Array.isArray(sv.o) && sv.o.length) { auditOutbox = sv.o.concat(auditOutbox); auditLost += Number(sv.lost) || 0; }
+            } catch (e) {}
+        };
         window._rb2p_auditFlushNow = function () { auditFlush(false); };
+        window._rb2p_auditOutboxSize = function () { return auditOutbox.length; };   // test seam
         function auditFlush(keepalive) {
-            if (!auditRoom || !auditRole || !auditBuf.length) return;
-            var batch = {}; var taken = auditBuf; auditBuf = [];
-            if (auditDropped) { taken.push({ t: Date.now(), k: 'dropped', n: auditDropped, s: auditSeq++ }); auditDropped = 0; }
-            for (var i = 0; i < taken.length; i++) {
-                var e = taken[i];
+            if (!auditRoom || !auditRole) return;
+            if (auditBuf.length || auditDropped) {
+                var taken = auditBuf; auditBuf = [];
+                if (auditDropped) { taken.push({ t: Date.now(), k: 'dropped', n: auditDropped, s: auditSeq++ }); auditDropped = 0; }
+                auditOutbox = auditOutbox.concat(taken);
+                if (auditOutbox.length > AUDIT_OUTBOX_MAX) { auditLost += auditOutbox.length - AUDIT_OUTBOX_MAX; auditOutbox = auditOutbox.slice(-AUDIT_OUTBOX_MAX); }
+            }
+            if (!auditOutbox.length) return;
+            // one request in flight at a time — but a request that never answers (a half-open
+            // socket on school Wi-Fi) must not hold the outbox: after 10s it counts as failed
+            if (auditFlushing && !keepalive && Date.now() - auditFlushStartMs < 10000) return;
+            var send = auditOutbox.slice(0, keepalive ? 120 : 600);   // keepalive bodies are capped at 64KB
+            var batch = {};
+            for (var i = 0; i < send.length; i++) {
+                var e = send[i];
                 batch[String(e.t) + '_' + ('00000' + e.s).slice(-6)] = e;
             }
+            var now = Date.now(), lostNow = auditLost;
+            if (now - auditLastSyncMs > 15000 || lostNow || keepalive) {
+                var sq = auditSeq++;
+                var sync = { t: now, k: 'sync', s: sq, srv: { '.sv': 'timestamp' }, q: auditOutbox.length };
+                if (lostNow) sync.lost = lostNow;
+                batch[String(now) + '_' + ('00000' + sq).slice(-6)] = sync;
+            }
+            auditFlushing = true; auditFlushStartMs = Date.now();
+            var ctl = null; try { if (!keepalive && typeof AbortController !== 'undefined') { ctl = new AbortController(); setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 10000); } } catch (e) { ctl = null; }
             fbAuthUrl(FB_REST_BASE + 'rooms/' + auditRoom + '/audit/' + auditRole + '.json')
                 .then(function (u) {
-                    return fetch(u, { method: 'PATCH', body: JSON.stringify(batch), keepalive: !!keepalive });
-                }).catch(function () { /* telemetry is best-effort */ });
+                    return fetch(u, { method: 'PATCH', body: JSON.stringify(batch), keepalive: !!keepalive, signal: ctl ? ctl.signal : undefined });
+                }).then(function (r) {
+                    auditFlushing = false;
+                    if (r && r.ok) {
+                        // remove exactly what this batch carried (a keepalive flush can overlap a normal one)
+                        for (var j = 0; j < send.length; j++) send[j].__ok = 1;
+                        auditOutbox = auditOutbox.filter(function (x) { return !x.__ok; });
+                        auditLost -= lostNow;
+                        auditLastSyncMs = now;
+                    }
+                    auditSaveOutbox();
+                }).catch(function () { auditFlushing = false; auditSaveOutbox(); });
         }
+        // V419 (F2, BOHG/XNQN: a VISIBLE phone went silent — asleep or hung? the telemetry
+        // could not tell): a watchdog that lives OFF the main thread. It pings the page every
+        // 2s; a page that stops answering while the worker keeps running is HUNG (a long
+        // task, a loop, a wedged engine) and the worker writes a 'stall' entry straight to the
+        // audit stream, with the page's last visibility. A sleeping device suspends the worker
+        // too, so silence from both = asleep, not hung.
+        (function () {
+            try {
+                if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') return;
+                var src = "var url=null,lastPong=Date.now(),vis='V',n=0,reported=0;" +
+                    "onmessage=function(e){var d=e.data||{};if(d.url)url=d.url;if(d.pong){lastPong=Date.now();vis=d.vis||vis;}};" +
+                    "setInterval(function(){postMessage({ping:1});var gap=Date.now()-lastPong;" +
+                    "if(url&&gap>6000&&Date.now()-reported>10000){reported=Date.now();var t=Date.now();var b={};" +
+                    "b[t+'_w'+(n++)]={t:t,k:'stall',ms:gap,vis:vis,srv:{'.sv':'timestamp'}};" +
+                    "fetch(url,{method:'PATCH',body:JSON.stringify(b)}).catch(function(){});}},2000);";
+                var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+                w.onmessage = function (e) { try { if (e.data && e.data.ping) w.postMessage({ pong: 1, vis: document.hidden ? 'H' : 'V' }); } catch (e2) {} };
+                window._rb2p_stallWorker = w;
+                var feedUrl = function () {
+                    try { if (auditRoom && auditRole) fbAuthUrl(FB_REST_BASE + 'rooms/' + auditRoom + '/audit/' + auditRole + '.json').then(function (u) { w.postMessage({ url: u }); }).catch(function () {}); } catch (e) {}
+                };
+                setInterval(feedUrl, 20000); setTimeout(feedUrl, 3000);
+                window._rb2p_stallWorkerFeed = feedUrl;   // test seam
+            } catch (e) {}
+        })();
         setInterval(function () { auditFlush(false); }, 1500);
         try {
             window.addEventListener('pagehide', function () { window._rb2p_audit('vis', { h: true, why: 'pagehide' }); auditFlush(true);
@@ -1418,7 +1514,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V418<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V419<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1500,7 +1596,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V418</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V419</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4397,6 +4493,21 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
+                    // V419 (F5, BHZJ): a run starts by pressing near the back (ball kp 19) and never
+                    // passes through 1/2, so it left no snap on record — the play settled with
+                    // nothing before it and looked like a stuck player. Recorded for the audit
+                    // ONLY: no game state reads this (the feed's cSNAP and lastSnapMs are unchanged).
+                    try {
+                        if (bkp === 19 && prev !== 19 && prev !== 1 && prev !== 2 && window._rb2p_audit) {
+                            var emRS = RB.engineState();
+                            if (emRS && Number(emRS.engineDownNumber) !== 6)
+                                window._rb2p_audit('snap', {
+                                    q: Number(emRS.engineQuarter), clk: Number(emRS.engineMinutesLeft) * 60 + Number(emRS.engineSecondsLeft),
+                                    y: Number(emRS.engineYardLineSigned), d: Number(emRS.engineDownNumber), tg: Number(emRS.engineYardsToGo),
+                                    poss: emRS.enginePossessingTeamIdx === emRS.engineUserTeamIdx ? 1 : 0, dir: Number(emRS.engineDriveDirection),
+                                    via: (emRS.rawEngineMatch && emRS.rawEngineMatch._T11 === 1) ? 'kick' : 'run' });
+                        }
+                    } catch (eRS) {}
                     // V378 (room GVCG): the conversion play's own life, recorded. Once
                     // it is SNAPPED the play owns the ball (the invariant stands down);
                     // once it has DIED scoreless the guardian may call it a miss.
@@ -5360,9 +5471,18 @@
                                         // moment the user answers (popups went present →
                                         // gone, or the PAT resolved).
                                         (function (rsq) {
-                                            var patTries = 0, prevLive = -1;
+                                            var patTries = 0, prevLive = -1, loopStartMs = Date.now();
                                             var patIv = setInterval(function () {
                                                 try {
+                                                    // V419 (F16, DXCU): a try that has STARTED is the answer —
+                                                    // re-popping over it re-applied the PICK6 every 1.6s and the
+                                                    // conversion could never resolve (6 re-pops, then the player left).
+                                                    if (Number(window._rb2p_convTrySnappedMs) > loopStartMs ||
+                                                        Number(window._rb2p_patPlaySnappedMs) > loopStartMs) {
+                                                        clearInterval(patIv);
+                                                        if (window._rb2p_diagLog) window._rb2p_diagLog('PAT try started — re-pop loop done');
+                                                        return;
+                                                    }
                                                     if (window._rb2p_patPlayResolved === true ||
                                                         (patTries > 0 && window._rb2p_patPlayPending !== true)) {
                                                         clearInterval(patIv);
@@ -5423,6 +5543,15 @@
                                                     if (window._rb2p_diagLog) window._rb2p_diagLog(
                                                         'PAT re-pop attempt ' + patTries);
                                                     console.log('[2P RESUME] pick-6 PAT re-pop attempt ' + patTries);
+                                                    // V419 (F16): count the modal this attempt just created, so an
+                                                    // answer inside one tick reads as present -> gone (answered).
+                                                    // prevLive used to be sampled BEFORE the re-pop (always 0).
+                                                    try {
+                                                        var plN = (window._rb2p_enumeratePopupInstances && window._rb2p_enumeratePopupInstances()) || [];
+                                                        var nowLive = 0;
+                                                        for (var k2 = 0; k2 < plN.length; k2++) if (plN[k2] && !plN[k2]._HL2) nowLive++;
+                                                        prevLive = nowLive;
+                                                    } catch (eNL) {}
                                                 } catch (eP) {
                                                     console.log('[2P RESUME patDuty err]', eP);
                                                     if (window._rb2p_diagLog) window._rb2p_diagLog(
@@ -6382,6 +6511,7 @@
                             }
                             return wrapped.call(this, _, t);
                         };
+                        window._1c1._p2p_hooked = true;   // V419: the router is the hook (the V121 test looks for the marker)
                     } catch (eG) {}
                     hookedEngineChangePossession = true;
                     hookedChangePossessionScriptIdx = idx;
@@ -7374,7 +7504,7 @@
                                     if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP refused — the quarter has already been played');
                                     return;
                                 }
-                                if (typeof window._rb2p_keepGate === 'function' && !window._rb2p_keepGate(Number(engineMatch.engineQuarter), yard, down)) return;   // V380
+                                if (typeof window._rb2p_keepGate === 'function' && !window._rb2p_keepGate(Number(engineMatch.engineQuarter), yard, down, toGo)) return;   // V380 (V419: + toGo)
                                 if (window._rb2p_clockLicence) window._rb2p_clockLicence('quarter keep');
                                 engineMatch.engineMinutesLeft   = qmin;
                                 engineMatch.engineSecondsLeft   = qrem;
@@ -7566,7 +7696,7 @@
                             // clean snap, the clock stays frozen and it loops) is visible
                             // in the readable rooms/{code}/dbg trace, not just console.
                             // V380 (room XEDG): this inline keep is the one that fired 13 times.
-                            if (typeof window._rb2p_keepGate === 'function' && !window._rb2p_keepGate(Number(qTo), keepYard, keepDown)) {
+                            if (typeof window._rb2p_keepGate === 'function' && !window._rb2p_keepGate(Number(qTo), keepYard, keepDown, keepToGo)) {
                                 stuckEngineFsmStage = null; engineFsmStageStuckSinceMs = Date.now();
                                 return;
                             }
@@ -9004,7 +9134,7 @@
             // Heal the staging scene BEFORE spawning — a stray kickoff button at
             // the rollover is what kept the drive dead — count keeps per quarter,
             // and refuse the third. The loop cannot exist.
-            window._rb2p_keepGate = function (q, yard, down) {
+            window._rb2p_keepGate = function (q, yard, down, toGo) {
                 try {
                     // One count per quarter CHANGE (the tracker's stamp), not per quarter
                     // number — a rematch's Q2 is a new Q2.
@@ -9022,8 +9152,11 @@
                     if (window._rb2p_keepN === 3) {
                         if (window._rb2p_diagLog) window._rb2p_diagLog('QTR-KEEP #3 — the parked scene keeps coming back; fresh spawn at ' + Math.round(Number(yard)) + ' instead of healing it');
                         var freshOk = false;
-                        try { freshOk = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(Number(yard), true) : false; } catch (eFS) {}
-                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'keep-fresh', q: q, y: Math.round(Number(yard)), d: down, ok: freshOk !== false });
+                        // V419 (F6, YXKI/QROS/SILR: 23 of 47 keep-fresh spawns started a
+                        // free 1st & 10): the fresh spawn keeps the kept down and distance.
+                        var keepDD = (Number(down) >= 1 && Number(down) <= 4 && Number(toGo) > 0) ? { down: Number(down), toGo: Number(toGo) } : null;
+                        try { freshOk = (typeof window._rb2p_forceUserOffenseDrive === 'function') ? window._rb2p_forceUserOffenseDrive(Number(yard), true, keepDD) : false; } catch (eFS) {}
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'keep-fresh', q: q, y: Math.round(Number(yard)), d: down, tg: keepDD ? keepDD.toGo : null, ok: freshOk !== false });
                         return false;
                     }
                     if (window._rb2p_keepN >= 3) {
@@ -11595,10 +11728,16 @@
                 try {
                     var st = document.getElementById('rb-wait-status');
                     if (!st) return;
-                    var hid = (typeof window._rb2p_oppHidden === 'function') && window._rb2p_oppHidden();
+                    // V419 (F3, BOHG): the cover said WAITING FOR OPPONENT for 12-90s after
+                    // the partner's screen went off (the hidden flag expires at 12s, the
+                    // silence clock waits 90s for a hidden tab). The last thing the partner
+                    // said was "my screen is off" — keep saying that until they say more.
+                    var hbL = window._rb2p_oppHb;
+                    var hidLast = !!(hbL && hbL.vis === 'H');
+                    var hid = hidLast || ((typeof window._rb2p_oppHidden === 'function') && window._rb2p_oppHidden());
                     var left = (typeof window._rb2p_oppLeft === 'function') && window._rb2p_oppLeft();
                     var silentMs = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
-                    var silent = !left && silentMs > 20000;
+                    var silent = !left && !hidLast && silentMs > 12000;   // two missed heartbeats (was 20s)
                     var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (silent ? "OPPONENT'S PHONE STOPPED RESPONDING" : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT'));
                     if (st.textContent !== want) st.textContent = want;
                 } catch (e) {}
@@ -12698,7 +12837,19 @@
                     // V405: a game is complete only when the stats screen has appeared.
                     // 20s past a decided horn with this page visible, nothing may hold
                     // the FINAL any longer — not a play in progress, not a PAT hold.
-                    if (q >= 5 && u !== o && !window._rb2p_inOvertime && !document.hidden &&
+                    // V419: never over a conversion still being played — a TD at the horn
+                    // that leaves the scorer one point down is "decided" by u !== o, and
+                    // the try can still win it. Bounded: 120s from the offer (the wall
+                    // resolves an abandoned try well inside that).
+                    var convLiveF = ((typeof window._rb2p_patOwed === 'function' && !!window._rb2p_patOwed()) ||
+                                     Number(em.engineDownNumber) === 6 ||
+                                     (typeof window._rb2p_patModalUp === 'function' && !!window._rb2p_patModalUp())) &&
+                                    Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 120000;
+                    if (convLiveF && q >= 5 && Date.now() - (window._rb2p_finalConvWaitLogMs || 0) > 10000) {
+                        window._rb2p_finalConvWaitLogMs = Date.now();
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('FINAL waits — a conversion is still being played');
+                    }
+                    if (q >= 5 && u !== o && !window._rb2p_inOvertime && !document.hidden && !convLiveF &&
                         Date.now() - Number(window._rb2p_pastRegSeenMs) > 20000 &&
                         (typeof window._rb2p_canGameEnd !== 'function' || window._rb2p_canGameEnd())) {
                         window._rb2p_gameOverReported = true;
@@ -12739,12 +12890,15 @@
                                      window._rb2p_userIsWaitingForOpponent === true &&
                                      (mn * 60 + sc) <= 60 &&
                                      oppRx337 > 0 && (Date.now() - oppRx337) > 45000;
-                    if (deadOppEnd && Date.now() - (window._rb2p_deadOppLogMs || 0) > 10000) {
+                    // V419 (F8, KELX): this used to DECLARE the FINAL from this side —
+                    // KELX's opponent was only hidden (184s) with 56s left, came back
+                    // 19s later to a stats screen and never played its last drive.
+                    // The owner's rule: a partner who is away gets the honest status
+                    // (the cover says so) and the game waits; nothing ends it early.
+                    if (deadOppEnd && Date.now() - (window._rb2p_deadOppLogMs || 0) > 60000) {
                         window._rb2p_deadOppLogMs = Date.now();
-                        console.warn('[2P FINAL] opponent silent ' +
-                                     Math.round((Date.now() - oppRx337) / 1000) + 's in a decided Q' +
-                                     q + ' endgame — declaring the FINAL from this side');
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('DEAD-OPP END');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('DEAD-OPP WAIT — opponent silent ' +
+                            Math.round((Date.now() - oppRx337) / 1000) + 's in the Q' + q + ' endgame; waiting for them (no one-sided FINAL)');
                     }
                     // V179: also gate through the shared canGameEnd() (Q4+/OT only)
                     // and require the end signal to be SUSTAINED. The Q3->Q4 boundary
@@ -12754,7 +12908,7 @@
                     // that moment, defeating the Vy!=13 guard). A real end stays at
                     // 0:00 / q>=5; the boundary blip clears within ~1s. Require the
                     // signal to hold ~1.2s (4 × 300ms) before declaring FINAL.
-                    var endSignal = (pastRegulation || regulationOver || deadOppEnd) &&
+                    var endSignal = (pastRegulation || regulationOver) &&
                                     (typeof window._rb2p_canGameEnd !== 'function' ||
                                      window._rb2p_canGameEnd());
                     if (!endSignal) { gameOverConfirmTicks = 0; gameOverPlayWaitTicks = 0; return; }
@@ -12772,8 +12926,11 @@
                     // marker — OKAG's conversion never carried down 6 at all.
                     var v346PatHold = Number(em.engineDownNumber) === 6 ||
                         (typeof window._rb2p_patOwed === 'function' && !!window._rb2p_patOwed());
+                    // V419: an owed conversion holds up to 120s (400 ticks), matching the
+                    // forced path and the V415 wall (the choice may take 90s + a 20s try);
+                    // the 30s cap used to end a game before a slow 1 PT / 2 PT choice.
                     if ((rb2pPlayInProgress() || v346PatHold) &&
-                        ++gameOverPlayWaitTicks < (v346PatHold ? 100 : 40)) {
+                        ++gameOverPlayWaitTicks < (v346PatHold ? 400 : 40)) {
                         if (gameOverPlayWaitTicks === 1)
                             console.log('[2P FINAL] clock 0:00 — holding FINAL until the final play completes');
                         return;
@@ -13754,8 +13911,21 @@
             // V131: stamp the report so the other device can tell a real,
             // current game-over from a stale leftover in a reused room.
             localFinalReport.ts = Date.now();
-            if (myDefStats) mergeMyDefStats(myDefStats);   // V89: fold in my D's synced stats
-            renderFinal();
+            try { if (myDefStats) mergeMyDefStats(myDefStats); } catch (eMD) {}   // V89: fold in my D's synced stats
+            // V419 (latch inventory: gameOverReported is latched BEFORE the stats render, and
+            // the latch stops every end detector): a render that throws must not leave the
+            // player on a finished game with no stats screen — log it and try again, bounded.
+            (function renderFinalSafely(attempt) {
+                try {
+                    if (Number(window._rb2p_testRenderFaults) > 0) { window._rb2p_testRenderFaults--; throw new Error('test render fault'); }   // test seam
+                    renderFinal();
+                }
+                catch (eRF) {
+                    try { if (window._rb2p_diagLog) window._rb2p_diagLog('FINAL render threw (' + String(eRF && eRF.message).slice(0, 60) + ') — retry ' + (attempt + 1)); } catch (e2) {}
+                    try { if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'final-render-retry', n: attempt + 1, err: String(eRF && eRF.message).slice(0, 80) }); } catch (e3) {}
+                    if (attempt < 5) setTimeout(function () { renderFinalSafely(attempt + 1); }, 700);
+                }
+            })(0);
             // Publish our half so the opponent can show our players too.
             if (myRoom && myRole) {
                 FB.set(FB.ref(db, 'rooms/' + myRoom + '/final/' + myRole), localFinalReport)
@@ -14305,6 +14475,12 @@
             }
             // screen(page coords) -> engine GUI coords, honoring the forced
             // rotation. Inverse of the harness-verified GUI->screen map.
+            // V419 (F1): the event point in the same space the engine now reads —
+            // viewport coordinates un-rotated, page coordinates on the rotated body.
+            function evPoint(e) {
+                var rot = document.documentElement.classList.contains('rb-rot90');
+                return rot ? [e.pageX, e.pageY] : [e.clientX, e.clientY];
+            }
             function pageToGui(px, py) {
                 var iw = window.innerWidth, ih = window.innerHeight;
                 if (!document.documentElement.classList.contains('rb-rot90'))
@@ -14396,6 +14572,24 @@
                 if (typeof _Ky === 'function' && !_Ky.__rb2pWrapped) {
                     var __origKy = _Ky;
                     _Ky = function (_, t) {
+                        // V419 (F19, NFGF/UNNI): after a DECIDED horn (or once the final is up) a
+                        // leftover kickoff button started the engine's next scene — it left the
+                        // match and NFGF's page hung 22s before the stats screen. The game is over:
+                        // refuse (overtime — a tied score — is untouched).
+                        try {
+                            var emK = RB.engineState();
+                            var qK = Number(emK && emK.engineQuarter) || 0, uK = Number(emK && emK.userScore), oK = Number(emK && emK.opponentScore);
+                            var overK = window._rb2p_gameOverReported === true ||
+                                        (qK >= 5 && uK !== oK && window._rb2p_inOvertime !== true && !(typeof window._rb2p_otIsReal === 'function' && window._rb2p_otIsReal()));
+                            if (overK) {
+                                if (Date.now() - (window._rb2p_kyRefusedLogMs || 0) > 5000) {
+                                    window._rb2p_kyRefusedLogMs = Date.now();
+                                    diagLog('KY refused — the game is over (Q' + qK + ' ' + uK + '-' + oK + '); no kickoff after the horn');
+                                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'ky-refused', q: qK, su: uK, so: oK });
+                                }
+                                return;
+                            }
+                        } catch (eKG) {}
                         diagLog('KY fired (kickoff button clicked)');
                         return __origKy(_, t);
                     };
@@ -14432,7 +14626,7 @@
                     // gated on button existence.
                     if (Date.now() - lastTapLogMs > 1000) {
                         lastTapLogMs = Date.now();
-                        var gAll = pageToGui(e.pageX, e.pageY);
+                        var gAll = pageToGui(evPoint(e)[0], evPoint(e)[1]);
                         var scrT = (window.scrollX | 0) || (window.scrollY | 0)
                             ? ' scr' + (window.scrollX | 0) + ',' + (window.scrollY | 0) : '';
                         diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
@@ -14461,7 +14655,7 @@
                                 ppT._8l1 > 0 && ppT.x > -1000 && ppT._g2 !== 0) pbtns.push(ppT);
                         }
                         if (pbtns.length) {
-                            var gT = pageToGui(e.pageX, e.pageY);
+                            var gT = pageToGui(evPoint(e)[0], evPoint(e)[1]);
                             var gx480 = gT.gx * 480 / 853, gy270 = gT.gy * 270 / 480;
                             var bestB = null, bestD = 1e9;
                             for (var pcI = 0; pcI < pbtns.length; pcI++) {
@@ -14551,7 +14745,7 @@
                         }
                         return;
                     }
-                    var g = pageToGui(e.pageX, e.pageY);
+                    var g = pageToGui(evPoint(e)[0], evPoint(e)[1]);
                     var b = btns[0], PAD = 16;
                     var hit = g.gx >= b.x - PAD && g.gx <= b.x + (b._8l1 || 96) + PAD &&
                               g.gy >= b.y - PAD && g.gy <= b.y + (b._VI || 32) + PAD;
@@ -15816,33 +16010,14 @@
             })(obj);
             return max;
         }
-        async function sweepStaleRooms() {
-            try {
-                var snap = await FB.get(FB.ref(db, 'rooms'));
-                var all = snap.val() || {};
-                var now = Date.now();
-                Object.keys(all).forEach(function (code) {
-                    if (code === myRoom) return;             // never nuke the room we're in
-                    // V365: a game the auditor flagged is evidence — it is deleted by
-                    // hand only. A game with an audit stream the auditor has not
-                    // visited yet is kept until it has (tools/audit-watch.js writes
-                    // `audited`), so the evidence exists when the report comes in.
-                    var rm = all[code] || {};
-                    // V396: a room that was PLAYED is never deleted — its audit
-                    // stream and final are the record (user: "stop deleting
-                    // games"). Only lobbies that never produced a game expire.
-                    if (rm.audit || rm.final || rm.audited || rm.flag) return;
-                    if (rm.names && now - newestTsIn(all[code]) < 48 * 60 * 60 * 1000) return;   // V410: a lobby people sat in is kept 2 days
-                    // newest === 0 for a legacy room with no ts anywhere → treated
-                    // as stale and removed.
-                    if (now - newestTsIn(all[code]) > ROOM_TTL_MS) {
-                        FB.remove(FB.ref(db, 'rooms/' + code)).catch(function () {});
-                    }
-                });
-            } catch (e) {}
-        }
-        sweepStaleRooms();
-        setInterval(sweepStaleRooms, 20 * 60 * 1000);
+        // V419 (NEVER-FREEZE, F22): the client-side sweep is gone. It ran FB.get('rooms') — the
+        // WHOLE rooms tree, every room's audit streams included (58.7 MB on 2026-09-28 and
+        // growing, since V396 keeps every played room) — on every page load and every 20
+        // minutes DURING PLAY, over the same socket the hand-offs use. On school Wi-Fi that is
+        // tens of seconds of a saturated socket and a large JSON parse on a phone. All it still
+        // did was delete stale unplayed lobbies (tiny, harmless to keep; claimNewRoom already
+        // retries past a taken code). Clients delete nothing now.
+        function sweepStaleRooms() {}
 
         showView('entry');
 
@@ -17280,11 +17455,14 @@
             // kept working in MSZT. Guarded by the match start so a prior
             // game's record in a reused room can never be applied.
             if (window._rb2p_outcomePollIv) { try { clearInterval(window._rb2p_outcomePollIv); } catch (eCI) {} }
-            var outcomePollBusy = false;
+            var outcomePollBusy = false, outcomePollSince = 0;
             function pollOutcomeOnce(force) {
                 if (!force && window._rb2p_userIsWaitingForOpponent !== true) return;
-                if (outcomePollBusy) return;
-                outcomePollBusy = true;
+                // V419 (latch inventory #2): busy was cleared only inside the callbacks of a fetch
+                // with no timeout — one request that never answered switched off the REST fallback
+                // for receiving hand-offs for the rest of the game. A poll older than 10s is dead.
+                if (outcomePollBusy && Date.now() - outcomePollSince < 10000) return;
+                outcomePollBusy = true; outcomePollSince = Date.now();
                 fbRestGet('rooms/' + myRoom + '/outcomes/' + otherRole).then(function (val) {
                     outcomePollBusy = false;
                     if (!val || !val.ts) return;
@@ -18001,6 +18179,164 @@
             window._rb2p_fieldAge = function (ms) { if (fieldEmptyChecks) fieldEmptyChecks -= ms; if (fieldDoubleChecks) fieldDoubleChecks -= ms; if (fieldOweChecks) fieldOweChecks -= ms; window._rb2p_lastVisibleMs = (Number(window._rb2p_lastVisibleMs) || 0) - ms; };
             try { document.addEventListener('visibilitychange', function () { if (!document.hidden) window._rb2p_lastVisibleMs = Date.now(); }); } catch (eLV) {}
             setInterval(function () { try { window._rb2p_fieldCheck(); } catch (e) {} }, 5000);
+
+            // ===== V419 (latch inventory: the VJGW flag) =====
+            // _rb2p_userOutcomeSendInProgress is set at MY drive end together with WAIT, and it
+            // legitimately stays set through the opponent's whole drive (it keeps the parked engine's
+            // stray possession flips from being sent as hand-offs); it clears when my next drive is
+            // staged. The failure (VJGW) is the other shape: the flag still set while I HAVE THE BALL —
+            // then every drive-end of mine is swallowed. That, and only that, expires after 20s.
+            (function () {
+                var liveSince = 0;
+                setInterval(function () {
+                    try {
+                        if (window._rb2p_userOutcomeSendInProgress === true && window._rb2p_userIsWaitingForOpponent !== true) {
+                            if (!liveSince) liveSince = Date.now();
+                            else if (Date.now() - liveSince > 20000) {
+                                window._rb2p_userOutcomeSendInProgress = false; liveSince = 0;
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('SEND guard expired — set for 20s while this phone had the ball (its drive-ends were being swallowed)');
+                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'latch-expired', name: 'userOutcomeSendInProgress', ms: 20000 });
+                            }
+                        } else liveSince = 0;
+                    } catch (e) {}
+                }, 1000);
+            })();
+
+            // ===== V419 (NEVER-FREEZE Phase 1): the CAN-ACT monitor =====
+            // Is THIS phone the one that has to act, and could a finger move the game right
+            // now? Measured the way a finger experiences it — never from the engine's say-so
+            // (FREEZE-ANATOMY §5: counters read "healthy" on a dead screen). Every second;
+            // audited only when the answer changes: act {must, can, why, soft}. The checker's
+            // R-FREEZE counts the seconds a visible, online must-act phone could not act; the
+            // recovery authority keys on it. 'soft' reasons (taps unanswered) are logged but
+            // never trigger anything — a kid tapping the wrong spot is not a freeze.
+            (function () {
+                var touchesDown = 0, activePtr = {}, lastTouchMs = 0, taps = [], emptySince = 0, wedgeSince = 0, statsSince = 0, outSince = 0, lastSig = '', lastProgSig = '', lastProgMs = Date.now();
+                try {
+                    document.addEventListener('touchstart', function (e) { touchesDown = (e.touches && e.touches.length) || 1; lastTouchMs = Date.now(); }, { passive: true, capture: true });
+                    document.addEventListener('touchend', function (e) { touchesDown = (e.touches && e.touches.length) || 0; lastTouchMs = Date.now(); }, { passive: true, capture: true });
+                    document.addEventListener('touchcancel', function (e) { touchesDown = (e.touches && e.touches.length) || 0; lastTouchMs = Date.now(); }, { passive: true, capture: true });
+                    // the engine takes pointer slot 0 for a MOUSE or trackpad press too (a Chromebook QB
+                    // drag) — a held mouse button is a finger on the glass, not a wedge
+                    // each pointer by id and when it last did anything: a pointer silent for 10s counts as
+                    // gone — a LOST pointer-up (the very wedge being looked for) must not disable detection
+                    document.addEventListener('pointerdown', function (e) { activePtr[e.pointerId] = Date.now(); lastTouchMs = Date.now(); }, { passive: true, capture: true });
+                    document.addEventListener('pointermove', function (e) { if (activePtr[e.pointerId]) activePtr[e.pointerId] = Date.now(); }, { passive: true, capture: true });
+                    document.addEventListener('pointerup', function (e) { delete activePtr[e.pointerId]; lastTouchMs = Date.now(); }, { passive: true, capture: true });
+                    document.addEventListener('pointercancel', function (e) { delete activePtr[e.pointerId]; lastTouchMs = Date.now(); }, { passive: true, capture: true });
+                    var cvT = document.getElementById('canvas');
+                    if (cvT) cvT.addEventListener('pointerdown', function () { taps.push(Date.now()); if (taps.length > 20) taps.shift(); }, { passive: true, capture: true });
+                } catch (eL) {}
+                function census() {
+                    var c = { of: 0, ball: 0, kp: null, btn: 0 };
+                    try {
+                        var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                        for (var i = 0; i < all.length; i++) {
+                            var x = all[i]; if (!x || x._HL2 || !x._eE2) continue;
+                            var nm = x._eE2._fE2;
+                            if (nm === 'obj_playerOF') c.of++;
+                            else if (nm === 'obj_ball') { c.ball++; c.kp = Number(x._kp); }
+                            else if (/^obj_button|^obj_btn_/.test(nm) && nm !== 'obj_btn_audible' && nm !== 'obj_btn_timeout') c.btn++;
+                        }
+                    } catch (e) {}
+                    return c;
+                }
+                window._rb2p_canActState = function () {
+                    var out = { must: false, can: true, why: '', soft: false };
+                    try {
+                        var inMatch = document.documentElement.classList.contains('rb-in-match') && !!(RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom());
+                        // (c) a reload whose resume never re-enters the match: the page should be in one
+                        var shouldBeLive = false; try { shouldBeLive = sessionStorage.getItem('rb2p_matchLive') === '1'; } catch (eSL) {}
+                        if (!inMatch) {
+                            if (shouldBeLive && window._rb2p_gameOverReported !== true && !document.hidden) {
+                                if (!outSince) outSince = Date.now();
+                                if (Date.now() - outSince > 8000) { out.must = true; out.can = false; out.why = 'resume did not re-enter the match'; return out; }
+                            } else outSince = 0;
+                            out.why = 'not in a match'; return out;
+                        }
+                        outSince = 0;
+                        // (d) a decided game must SHOW its stats screen (the 20s bar is the checker's)
+                        var emF = RB.engineState() || {};
+                        var decided = window._rb2p_gameOverReported === true ||
+                            (Number(emF.engineQuarter) >= 5 && Number(emF.userScore) !== Number(emF.opponentScore) && window._rb2p_inOvertime !== true &&
+                             !(typeof window._rb2p_otIsReal === 'function' && window._rb2p_otIsReal()));
+                        if (decided) {
+                            var convLiveM = (typeof window._rb2p_patOwed === 'function' && !!window._rb2p_patOwed()) || Number(emF.engineDownNumber) === 6;
+                            var fin = document.getElementById('rb-final');
+                            var shown = !!(fin && getComputedStyle(fin).display !== 'none');
+                            if (convLiveM && !shown) { statsSince = 0; }   // the conversion is still being played: the play rules below apply
+                            else {
+                                out.must = true; emptySince = 0; wedgeSince = 0;
+                                if (shown) { statsSince = 0; out.why = 'game over'; return out; }
+                                if (!statsSince) statsSince = Date.now();
+                                if (document.hidden) { out.can = false; out.why = 'hidden'; return out; }
+                                out.can = false; out.why = 'stats screen missing ' + Math.round((Date.now() - statsSince) / 1000) + 's';
+                                return out;
+                            }
+                        } else statsSince = 0;
+                        var waiting = window._rb2p_userIsWaitingForOpponent === true;
+                        // the pick-six scorer plays its conversion while flagged waiting (V247/V280) — with or
+                        // without the cascade flag (SQHJ: the scorer still owed its result after it cleared)
+                        var scorerConv = waiting && window._rb2p_pickSixThisDeviceIsThrower !== true &&
+                            ((typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp()) || window._rb2p_patPlayPending === true || window._rb2p_p6ScorerOwes === true);
+                        // (b) a hand-off addressed to me is here (held or queued): applying it is my move
+                        var inbound = waiting && (!!(window._rb2p_deferredOutcome && window._rb2p_deferredOutcome.ts) ||
+                            !!(window._twoPlayer && window._twoPlayer.pending && window._twoPlayer.pending.length));
+                        out.must = !waiting || !!scorerConv || inbound;
+                        if (!out.must) { emptySince = 0; wedgeSince = 0; return out; }
+                        if (inbound && !scorerConv) {
+                            if (document.hidden) { out.can = false; out.why = 'hidden'; return out; }
+                            var engI = (typeof window._rb2p_engPerSec === 'function') ? Number(window._rb2p_engPerSec()) : -1;
+                            if (engI === 0 || (window._rb2p_diagFpsSeen === true && Number(window._rb2p_diagFps) === 0)) { out.can = false; out.why = 'hand-off waiting, no frames'; return out; }
+                            out.why = 'hand-off arriving'; return out;   // can = true: the apply is under way
+                        }
+                        if (document.hidden) { out.can = false; out.why = 'hidden'; return out; }
+                        if (navigator.onLine === false) { out.can = false; out.why = 'offline'; return out; }
+                        var eng = (typeof window._rb2p_engPerSec === 'function') ? Number(window._rb2p_engPerSec()) : -1;
+                        if (eng === 0) { out.can = false; out.why = 'engine not stepping'; return out; }
+                        if (window._rb2p_diagFpsSeen === true && Number(window._rb2p_diagFps) === 0) { out.can = false; out.why = 'no frames drawn'; return out; }
+                        var cv = document.getElementById('canvas');
+                        if (cv) {
+                            var r = cv.getBoundingClientRect();
+                            var el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                            if (el && el !== cv && !(cv.contains && cv.contains(el))) {
+                                var coverName = el.id ? '#' + el.id : String(el.tagName || '').toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : '');
+                                // a panel the PLAYER opened (the "!" box, the roster, the version jump) is their choice, not a freeze
+                                var playerPanel = !!(el.closest && el.closest('#rb-complain-panel, #rb-complain, #rb-roster-overlay, #rb-verjump'));
+                                if (playerPanel) { out.why = 'player panel ' + coverName; out.soft = true; return out; }
+                                out.can = false; out.why = 'covered by ' + coverName;
+                                return out;
+                            }
+                        }
+                        var c = census();
+                        // an empty field (no ball, no offense, no engine dialog) past the transition allowance
+                        if (!c.ball && !c.of && !c.btn) { if (!emptySince) emptySince = Date.now(); }
+                        else emptySince = 0;
+                        if (emptySince && Date.now() - emptySince > 8000) { out.can = false; out.why = 'empty field ' + Math.round((Date.now() - emptySince) / 1000) + 's'; return out; }
+                        // the engine holds a touch slot with no finger on the glass
+                        var held = false; try { held = typeof _Bo2 !== 'undefined' && _Bo2 && _Bo2[0] !== undefined && _Bo2[0] !== -1; } catch (eB) {}
+                        var freshPtr = false; for (var pid in activePtr) { if (Date.now() - activePtr[pid] < 10000) freshPtr = true; else delete activePtr[pid]; }
+                        if (held && touchesDown === 0 && !freshPtr && Date.now() - lastTouchMs > 1500) { if (!wedgeSince) wedgeSince = Date.now(); } else wedgeSince = 0;
+                        if (wedgeSince && Date.now() - wedgeSince > 2000) { out.can = false; out.why = 'pointer wedged'; return out; }
+                        // soft: 4+ taps in 10s and nothing moved (logged, never acted on)
+                        var progSig = [c.ball, c.of, c.kp, c.btn, window._rb2p_lastSnapMs || 0, (RB.engineState() || {}).engineDriveFsmStage].join('/');
+                        if (progSig !== lastProgSig) { lastProgSig = progSig; lastProgMs = Date.now(); }
+                        var recentTaps = taps.filter(function (t) { return Date.now() - t < 10000; }).length;
+                        if (recentTaps >= 4 && Date.now() - lastProgMs > 10000) { out.why = 'taps unanswered'; out.soft = true; }
+                    } catch (e) {}
+                    return out;
+                };
+                setInterval(function () {
+                    try {
+                        var st = window._rb2p_canActState();
+                        var sig = st.must + '/' + st.can + '/' + (st.why || '').replace(/ \d+s$/, '') + '/' + st.soft;
+                        if (sig !== lastSig) {
+                            lastSig = sig;
+                            if (window._rb2p_audit) window._rb2p_audit('act', { must: st.must, can: st.can, why: st.why, soft: st.soft });
+                        }
+                    } catch (e) {}
+                }, 1000);
+            })();
             window._rb2p_declareTurnOwner = function (owner, why) {
                 try {
                     if (!myRoom || !myRole) return;
@@ -18107,12 +18443,34 @@
                             if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'rescue', ok: false, why: 'opponent hidden' });
                         }
                         if (!oppHiddenR) window._rb2p_rescueHiddenLogged = false;
+                        // V419 (F9, XNQN/CACG/YSYB): the rescue fired on a phone that was
+                        // HOLDING the real hand-off (hidden, "a drive cannot be staged"),
+                        // staged a drive at a guessed spot, and the hand-off drained 0.3s
+                        // later was never applied — XNQN started at its own 13 instead of
+                        // the opponent's 4. A hidden page never rescues (it can't stage a
+                        // drive), the count restarts after the screen comes back, and a
+                        // held hand-off is applied instead of guessed.
+                        if (document.hidden) { turnRescueTicks = 0; window._rb2p_rescueWokeMs = -1; return; }
+                        if (window._rb2p_rescueWokeMs === -1) window._rb2p_rescueWokeMs = Date.now();   // just came back on screen
+                        var heldR = window._rb2p_deferredOutcome;
                         var bothParked = !handoffInFlight && !oppHiddenR && tR && tR.owner === myRole &&
                             olR && Date.now() - (Number(olR.at) || 0) < 4000 &&
                             olR.iHaveBall !== true &&
                             window._rb2p_pickSixPatCascadeActive !== true &&
                             window._rb2p_patPlayPending !== true &&
                             window._rb2p_gameOverReported !== true;
+                        if (bothParked && heldR && heldR.ts) {
+                            turnRescueTicks = 0;
+                            if (Date.now() - (window._rb2p_rescueHeldLogMs || 0) > 5000) {
+                                window._rb2p_rescueHeldLogMs = Date.now();
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE -> applying the held ' + heldR.type + ' instead of guessing a drive');
+                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'rescue', ok: true, why: 'held hand-off applied', type: heldR.type, ts: heldR.ts });
+                            }
+                            if (typeof window._rb2p_drainDeferredOutcome === 'function') window._rb2p_drainDeferredOutcome('rescue');
+                            return;
+                        }
+                        // only right after a WAKE: frames and the held drain need a moment (not on every standoff)
+                        if (bothParked && Number(window._rb2p_rescueWokeMs) > 0 && Date.now() - window._rb2p_rescueWokeMs < 8000) bothParked = false;
                         if (bothParked) {
                             if (++turnRescueTicks >= 16) {
                                 turnRescueTicks = 0;
