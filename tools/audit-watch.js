@@ -60,10 +60,18 @@ function refreshStats() {
     try { execFileSync(process.execPath, [path.join(__dirname, 'alltime-stats.js')], { encoding: 'utf8', timeout: 120000 }); log('stats/alltime refreshed'); }
     catch (e) { log('stats refresh failed: ' + String((e && e.message) || e).slice(0, 120)); }
 }
+// V419+: keep the per-IP sign-up quota raised (Firebase only raises it for 7 days at a time)
+let quotaAt = 0;
+function keepSignupQuota() {
+    if (Date.now() - quotaAt < 6 * 60 * 60 * 1000) return;
+    quotaAt = Date.now();
+    try { const out = execFileSync(process.execPath, [path.join(__dirname, 'signup-quota.js')], { encoding: 'utf8', timeout: 60000 }); log(out.trim().split('\n').join(' | ')); }
+    catch (e) { log('sign-up quota check failed: ' + String((e && e.message) || e).slice(0, 120)); }
+}
 (async () => {
     log('audit-watch started');
     for (;;) {
-        try { const before = statsAt; await tick(); refreshStats(); } catch (e) { log('tick error: ' + (e && e.message)); }
+        try { const before = statsAt; await tick(); refreshStats(); keepSignupQuota(); } catch (e) { log('tick error: ' + (e && e.message)); }
         await new Promise(r => setTimeout(r, POLL_MS));
     }
 })();
