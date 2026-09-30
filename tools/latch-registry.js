@@ -86,6 +86,8 @@ const blocking = {
     // ---------------------------------------------------------------- quarters, halftime, overtime
     'window._rb2p_q3LawApplied': e('guard', 'halftime law', 'the law ran', 'a new match', 'the half', 'V422: a failed staging re-arms it (100 x 200ms, the same stored draw)'),
     'window._rb2p_q3ForceTries': e('guard', 'halftime law', 'a failed staging', 'a successful one', '20s', 'the law stops retrying'),
+    'window._rb2p_serverLook': e('guard', 'rescuers (V425)', 'a server look for an untaken partner hand-off, before TURN-RESCUE or the field check guesses a drive', 'the look finishes (applied or not)',
+        '4s (the read\'s own timeout) + the next tick', 'the guess proceeds'),
     'var:q3HoldSince': e('guard', 'halftime law', 'the partner is playing a first-half conversion (its flow record says one is owed, or this phone threw the pick-six)', 'neither holds any more',
         '120s with the partner\'s record (its own cap), 20s without it', 'the law takes the second-half kickoff (V424, UVXN)'),
     'var:q3HoldSawConv': e('guard', 'halftime law', 'with q3HoldSince: the partner\'s record showed the try', 'with q3HoldSince', 'with q3HoldSince', 'the try is over once the record stops showing it (V424)'),

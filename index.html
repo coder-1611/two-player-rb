@@ -397,17 +397,10 @@
                     ol && Date.now() - (Number(ol.at) || 0) < 4000 && ol.iHaveBall === true &&
                     Date.now() - (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) > 3000 &&
                     Date.now() - (Number(window._rb2p_matchStartMs) || 0) > 15000) {
-                    // V424 (DPWZ): presence is not the fact. The turn record and the live push both
-                    // arrive over the socket, and a reconnect delivers the partner's minutes-old copies
-                    // as new. When the flow chain (both phones' hand-offs, V421/V422) is settled and
-                    // names ME, that stale presence does not veto my possession.
-                    try {
-                        var vF = (typeof window._rb2p_flowVerdict === 'function') ? window._rb2p_flowVerdict() : null;
-                        if (vF && vF.who === me && vF.partnerTrusted && typeof window._rb2p_flowEngaged === 'function' && window._rb2p_flowEngaged(vF)) {
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('POSS gate: the chain names me (' + vF.why + ') — a stale "they are live" does not refuse');
-                            return '';
-                        }
-                    } catch (eFV) {}
+                    // V425: V424's "the flow chain names me" override is gone — in real games it fired once, and
+                    // wrongly (FGXJ: A went live on a stale answer while the OT flip had given B the ball). The chain
+                    // is wrong at the halftime/OT boundaries and around reloads (tools audit, 2026-09-30); DPWZ's real
+                    // fix is the apply stamped before going live (applyOpponentOutcome).
                     return 'the turn is the opponent\'s and they are live';
                 }
             } catch (e) {}
@@ -496,8 +489,8 @@
                                        (typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp());
                         // V422 (F28; a detector, not an actor): with a trusted chain that gives the ball to the
                         // partner, the drive this timer waits for is not mine — retire; and at most 8 forces (32s)
-                        var fvP = (typeof window._rb2p_flowVerdict === 'function') ? window._rb2p_flowVerdict() : null;
-                        var chainTheirsP = !!(fvP && fvP.facts && fvP.who && fvP.who !== auditRole);
+                        // V425: the flow chain decides nothing (shadow) — only the cap and the game's own signals retire it
+                        var fvP = null, chainTheirsP = false;
                         window._rb2p_p6ForceN = (Number(window._rb2p_p6ForceN) || 0) + 1;
                         var p6CapP = window._rb2p_p6ForceN > 8;
                         if (oppLiveP || newConvP || chainTheirsP || p6CapP) {
@@ -1560,7 +1553,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V424<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V425<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1642,7 +1635,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V424</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V425</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2435,17 +2428,14 @@
                     // the causal chain of hand-offs says the PARTNER has the ball (on screen or not), no
                     // caller — rescue, resume, field check, fallback — may stage a drive of mine.
                     if (typeof window._rb2p_flowStageAllowed === 'function') {
+                        // V425: SHADOW. In real games every refusal that mattered was wrong (AWCI, FGXJ, YUHQ, VVLQ:
+                        // the chain did not know the OT law, a stale hand-off, a resume) — it now says what it would
+                        // refuse and stages the drive.
                         var fsa = window._rb2p_flowStageAllowed();
-                        if (fsa !== true) {
-                            window._rb2p_lastForceRefusal = { why: 'flow', ms: Date.now() };
-                            // callers retry (some every 50ms): say it once per 5s
-                            if (Date.now() - (Number(window._rb2p_flowRefusalLogMs) || 0) > 5000) {
-                                window._rb2p_flowRefusalLogMs = Date.now();
-                                console.warn('[2P FLOW] refused forceUserOffenseDrive(' + yardLine + ') — ' + fsa);
-                                if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW refused force-drive at ' + Math.round(Number(yardLine)) + ' — ' + fsa);
-                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'force-drive', why: 'flow: ' + fsa, y: yardLine });
-                            }
-                            return false;
+                        if (fsa !== true && Date.now() - (Number(window._rb2p_flowRefusalLogMs) || 0) > 5000) {
+                            window._rb2p_flowRefusalLogMs = Date.now();
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW (shadow) would refuse force-drive at ' + Math.round(Number(yardLine)) + ' — ' + fsa);
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'flow-shadow', act: 'refuse-drive', why: fsa, y: yardLine });
                         }
                     }
                     var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
@@ -5376,7 +5366,9 @@
                 // the single-offense reconciler has its ground truth from snap
                 // one (this overwrite is also what retires a stale record from
                 // a previous match in a reused room).
-                if (role === 'a' && typeof window._rb2p_declareTurnOwner === 'function')
+                // V425 (VVLQ): a RESUME is not a match start — a reload mid-overtime wrote "the turn is a's" over a
+                // game whose ball the chain gave to b (the resume sets _rb2p_resumeState before this launch)
+                if (role === 'a' && typeof window._rb2p_declareTurnOwner === 'function' && !window._rb2p_resumeState)
                     window._rb2p_declareTurnOwner('a', 'match-start');
                 try {
                     var anyInst = null;
@@ -6257,6 +6249,12 @@
                         // Local user must have just lost possession this call.
                         if (!(pre.enginePossessingTeamIdx === pre.engineUserTeamIdx &&
                               post.enginePossessingTeamIdx !== post.engineUserTeamIdx)) return;
+                        // V425 (FGXJ): after the final nothing is handed off. The engine played on under the stats screen
+                        // (a punt 3s after the overtime final); it was held, kept in the tab and shipped into the next game.
+                        if (window._rb2p_gameOverReported === true) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('SEND refused — the game is over (a drive end after the final)');
+                            return;
+                        }
                         // One-shot guard: ignore re-entries within the same drive.
                         if (window._rb2p_userOutcomeSendInProgress) return;
                         // Cooldown after applyOpponentOutcome — kickoff transitions can
@@ -17474,6 +17472,19 @@
                                            Number(String(key).replace(/^p/, '')) || 0;
                         if (otPeriodSeen >= 5) window._rb2p_otFlipSeenPeriod = otPeriodSeen;
                         if (otAppliedPeriods[key]) return;
+                        // V425 (VVLQ): a reload re-reads every flip in the room — the period being played was applied
+                        // again and staged this phone as its receiver mid-period. A flip whose epoch my flow record has
+                        // already entered (this game) belongs to the past: the chain decides from here.
+                        try {
+                            var fsOt = (typeof window._rb2p_flowState === 'function') ? window._rb2p_flowState() : null;
+                            var epOt = fsOt && fsOt.me && fsOt.me.ep, mOt = /^OT(\d+)$/.exec(String(epOt || ''));
+                            if (fsOt && fsOt.me && fsOt.me.trust === true && mOt && Number(mOt[1]) >= otPeriodSeen && otPeriodSeen >= 5) {
+                                otAppliedPeriods[key] = true;
+                                window._rb2p_otKickoffAppliedPeriod = otPeriodSeen; window._rb2p_otKickoffPending = false;
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('OT flip ' + key + ' already played before the reload (epoch ' + epOt + ') — not applied again');
+                                return;
+                            }
+                        } catch (eOtS) {}
                         otAppliedPeriods[key] = true;
                         console.log('[2P OT] applying ' + key + ' — receiver=' + entry.receiver + (via === 'rest' ? ' (via REST)' : ''));
                         if (via === 'rest' && window._rb2p_diagLog) window._rb2p_diagLog('OT flip ' + key + ' via REST');
@@ -18591,8 +18602,7 @@
                     // V422 (NEVER-FREEZE Phase 2): a detector now, not an actor. With a trusted flow record the
                     // recovery authority decides from the causal chain; this check's own judgement (lastGood
                     // and the turn record) stays for a partner on an older build.
-                    var fvC = (typeof window._rb2p_flowVerdict === 'function') ? window._rb2p_flowVerdict() : null;
-                    if (fvC && typeof window._rb2p_flowEngaged === 'function' && window._rb2p_flowEngaged(fvC) && window._rb2p_inOvertime !== true) { fieldEmptyChecks = fieldDoubleChecks = fieldDisagreeChecks = 0; return state + ' — the recovery authority decides (' + fvC.why + ')'; }
+                    // V425: the recovery authority is a detector again (shadow) — the field check no longer defers to it
                     if (!iLive && typeof window._rb2p_oppHidden === 'function' && window._rb2p_oppHidden()) { fieldEmptyChecks = 0; return 'opponent screen off (their hand-off is held)'; }
                     // counters hold the time the state was first seen: 10 REAL seconds, not two ticks
                     if (iLive) { fieldEmptyChecks = 0; if (!fieldDoubleChecks) fieldDoubleChecks = now; }
@@ -18602,6 +18612,11 @@
                     var ro = window._rb2p_rightfulOwner();
                     if (ro.owner === myRole) {
                         if (iLive) { fieldDoubleChecks = 0; return state + ' — the ball is mine (' + ro.why + '); their check parks them'; }
+                        // V425: look before guessing — a partner hand-off on the server never taken here is applied instead
+                        if (typeof window._rb2p_serverLookedRecently === 'function' && !window._rb2p_serverLookedRecently()) {
+                            window._rb2p_applyServerHandoff('field check');
+                            return state + ' — looking at the server before restoring';
+                        }
                         fieldEmptyChecks = 0; fieldDisagreeChecks = 0;
                         return fieldRestoreMine(ro, state);
                     }
@@ -18684,12 +18699,20 @@
                 } catch (eTR) {}
                 try {
                     var hk = (myRoom && myRole) ? JSON.parse(sessionStorage.getItem(heldKey()) || 'null') : null;
-                    if (hk && hk.o && restored && hk.gid === F.gid && !/^(INT|PICK6)$/.test(String(hk.o.type)) &&
+                    if (hk && hk.o && restored && hk.gid === F.gid && F.final !== true && !/^(INT|PICK6)$/.test(String(hk.o.type)) &&
                         !(F.sent && String(F.sent.ts) === String(hk.o.ts)) && window._twoPlayer && typeof window._twoPlayer.send === 'function') {
                         sessionStorage.removeItem(heldKey());
                         var ho = hk.o;
                         setTimeout(function () {
                             try {
+                                // V425 (FGXJ): the ship waits one tick — a NEW game starting in this launch (startMatch installs
+                                // this module, then declares the game) has replaced the record by now; a hand-off held in the
+                                // previous game (FGXJ: a punt after the overtime final) never ships into the next one
+                                if (F.gid !== hk.gid || window._rb2p_gameOverReported === true) {
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW dropped the ' + ho.type + ' held in the previous game (' + hk.gid + ')');
+                                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'held-dropped', type: ho.type, ts: ho.ts, why: 'another game' });
+                                    return;
+                                }
                                 if (typeof window._rb2p_restampOutcome === 'function') window._rb2p_restampOutcome(ho);
                                 window._rb2p_userIsWaitingForOpponent = true;
                                 window._twoPlayer.send(ho);
@@ -18708,7 +18731,7 @@
                         if (kind === 'game') {                   // a new game: A names it; B adopts A's name
                             restored = true; preNotes = [];
                             var gidN = myRole === 'a' ? ('g' + String(d.ms || Date.now())) : 'pending';
-                            F = { gid: gidN, seq: F.seq, v: F.v, plays: 0, spot: null, held: null, final: false, gameSrv: 0, trust: true, boot: BOOT, rej: null, draw: null };
+                            F = { gid: gidN, seq: F.seq, v: F.v, plays: 0, spot: null, held: null, final: false, gameSrv: 0, trust: true, boot: BOOT, rej: null, draw: null, gl: Date.now() };
                             Object.assign(F, epochStart('K0', 'a', gidN));
                             P.lastRx = null;
                         } else if (kind === 'held') {
@@ -18739,7 +18762,7 @@
                         else if (kind === 'snap') F.plays++;
                         else if (kind === 'ep') {                // only the laws declare an epoch (the halftime law, the OT flip)
                             if (RANK(d.id) > RANK(F.ep)) {
-                                var kept = { gid: F.gid, seq: F.seq, v: F.v, plays: F.plays, spot: F.spot, final: F.final, gameSrv: F.gameSrv, trust: F.trust, boot: F.boot, rej: F.rej, draw: null };
+                                var kept = { gid: F.gid, seq: F.seq, v: F.v, plays: F.plays, spot: F.spot, final: F.final, gameSrv: F.gameSrv, trust: F.trust, boot: F.boot, rej: F.rej, draw: null, gl: F.gl };
                                 F = Object.assign(kept, epochStart(d.id, d.receiver, F.gid)); F.held = null;
                             }
                         } else if (kind === 'final') F.final = true;
@@ -18797,6 +18820,11 @@
                         return f;
                     };
                     var A = norm(fa, 'a'), B = norm(fb, 'b');
+                    // V425: a HEALED send is only a copy of what the partner staged; within one game and epoch the partner's
+                    // staged never goes back, so a HEALED send it does not hold is stale (a previous game's) — it counts as
+                    // the epoch's start, never as a hand-off the partner owes
+                    if (A.sent && A.sent.type === 'HEALED' && String(B.staged) !== String(A.sent.ts)) A = Object.assign({}, A, { sent: start('a') });
+                    if (B.sent && B.sent.type === 'HEALED' && String(A.staged) !== String(B.sent.ts)) B = Object.assign({}, B, { sent: start('b') });
                     if (A.held) return { who: null, why: 'a hold in flight', inFlight: 'a' };
                     if (B.held) return { who: null, why: 'b hold in flight', inFlight: 'b' };
                     // a hand-off its receiver rejected (V208: an engine-AI score) never happened: its sender still has the ball
@@ -18862,14 +18890,9 @@
                 window._rb2p_flowVerdict = function () {
                     var present = !!(P.rec && Date.now() - P.rxMs < 15000);
                     var mine = JSON.parse(JSON.stringify(F)), part = partnerFacts();
-                    // (the code review #1c) the partner can only have staged a send of MINE: if it staged a newer one than
-                    // my record knows (a reload lost the note), my record is healed from it (same epoch, my clock)
-                    if (part && part.ep === F.ep && isFinite(Number(part.staged)) &&
-                        (!F.sent || !isFinite(Number(F.sent.ts)) || Number(part.staged) > Number(F.sent.ts))) {
-                        F.sent = { ts: part.staged, type: 'HEALED', after: F.staged, ep: F.ep }; F.held = null; keep();
-                        mine = JSON.parse(JSON.stringify(F));
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW healed my last send from the partner\'s record (' + part.staged + ')');
-                    }
+                    // V425: the heal ("the partner can only have staged a send of mine") is gone. In real games it fired
+                    // 14 times: 0 helped, 10 harmed — at every rematch it copied the previous game's hand-off into the new
+                    // one (NPJD, ZJCF, NGKD, WNPB, JKYT died), and at the Q2 horn it fed stale applies (KHIX, YUHQ).
                     var o = part ? window._rb2p_flowOwner(myRole === 'a' ? mine : part, myRole === 'a' ? part : mine) : { who: null, why: 'no partner record' };
                     if (part && part.sent && lostSends[String(part.sent.ts)] && o.apply === myRole) o = { who: null, why: 'the partner\'s hand-off never reached the server' };
                     o.facts = !!part; o.fresh = present; o.me = myRole; o.partnerRole = partnerRole;
@@ -19096,8 +19119,8 @@
                         try {
                             if (waiting && !scorerConv && !inbound && typeof window._rb2p_flowVerdict === 'function' &&
                                 !(typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed())) {
-                                var fv = window._rb2p_flowVerdict();
-                                if (fv.facts && !fv.epochSplit && fv.epoch.ok && fv.who === myRole && !fv.mine.held && window._rb2p_inOvertime !== true) flowMine = fv;
+                                // V425: the chain's "the ball is mine" no longer makes a parked phone must-act — the chain is wrong
+                                // at the halftime/OT boundaries and around reloads, and a wrong "must act" is a false freeze
                             }
                         } catch (eFV) {}
                         if (flowMine) { if (!flowMineSince) flowMineSince = Date.now(); } else flowMineSince = 0;
@@ -19107,9 +19130,9 @@
                         try {
                             if (waiting && !scorerConv && !inbound && !flowMine && typeof window._rb2p_flowVerdict === 'function') {
                                 var fvB = window._rb2p_flowVerdict(), pb = fvB.partner;
+                                // V425: both phones parked is a fact whoever the chain names (the authority acts no more)
                                 bothStuck = !!(fvB.facts && fvB.fresh && fvB.partnerTrusted && pb && pb.live !== true && pb.vis === 'V' && !pb.held &&
-                                               !(fvB.mine && fvB.mine.held) && !(pb.conv && pb.conv.owed) &&
-                                               !(typeof window._rb2p_flowEngaged === 'function' && window._rb2p_flowEngaged(fvB)));
+                                               !(fvB.mine && fvB.mine.held) && !(pb.conv && pb.conv.owed));
                             }
                         } catch (eBS) {}
                         if (bothStuck) { if (!bothStuckSince) bothStuckSince = Date.now(); } else bothStuckSince = 0;
@@ -19118,7 +19141,7 @@
                         if (!out.must) { emptySince = 0; wedgeSince = 0; return out; }
                         if (bothStuckLong && !flowMine) {
                             if (document.hidden) { out.can = false; out.why = 'hidden'; return out; }
-                            out.can = false; out.why = 'both parked, no decision'; return out;
+                            out.can = false; out.why = 'both parked'; return out;
                         }
                         if (flowMine) {
                             if (document.hidden) { out.can = false; out.why = 'hidden'; return out; }
@@ -19280,11 +19303,62 @@
                 function cooled(action) { return Date.now() - (Number(lastAt[action]) || 0) > COOL_MS; }
 
                 // APPLY: the partner's newest hand-off, whichever copy exists
+                // V425: APPLY stays an actor only for a hand-off that is provably NEW and of THIS half. In real games it
+                // helped once (DCPF: a reload missed a kickoff) and re-applied stale ones three times — a Q2 kickoff in
+                // Q3 (KHIX: the wrong team started the half), a Q1 kickoff in Q3 (YUHQ: a clock back to Q1 0:16), a
+                // pick-six two minutes old (AWCI). These checks read the hand-off itself, not the chain.
+                function halfOf(q) { q = Number(q) || 0; return q <= 2 ? 1 : (q <= 4 ? 2 : q); }
+                function unsafeApply(o) {
+                    if (!o) return 'no hand-off';
+                    if (o.type === 'PICK6') return 'a pick-six is never re-applied by a recovery';
+                    // (not OLDER than the last one taken off the wire here — the F23 loss is that very one, consumed and never applied)
+                    if (Number(o.ts) < (Number(window._rb2p_lastAppliedOutcomeTs) || 0)) return 'older than the last hand-off taken here';
+                    var qMine = 0; try { qMine = Number(RB.engineState().engineQuarter) || 0; } catch (eQ) {}
+                    if (o.quarter != null && qMine && halfOf(o.quarter) !== halfOf(qMine)) return 'it belongs to another half (Q' + o.quarter + ', here Q' + qMine + ')';
+                    if (typeof window._rb2p_flowIsMoot === 'function' && window._rb2p_flowIsMoot(o)) return 'its drive ended in an older epoch';
+                    return '';
+                }
+                // V425: the rescuers LOOK BEFORE THEY GUESS (F9's rule, which helped in 48 real firings, extended to the server):
+                // the partner's newest hand-off on the server, if this phone never took it (its own staged record — not the
+                // chain), is of this game and passes unsafeApply, is applied instead of a guessed drive. At most every 8s.
+                var serverLookMs = 0;
+                window._rb2p_serverLook = null;                                  // { doneAt, applied } — the last look's result
+                window._rb2p_serverLookedRecently = function () { var l = window._rb2p_serverLook; return !!(l && Date.now() - l.doneAt < 8000); };   // the field check ticks every 5s
+                window._rb2p_applyServerHandoff = function (why) {
+                    if (busy || Date.now() - serverLookMs < 2000 || !myRoom || typeof window._rb2p_fbRestGetX !== 'function') return false;
+                    serverLookMs = Date.now(); busy = true;
+                    var done = function (applied) { busy = false; window._rb2p_serverLook = { doneAt: Date.now(), applied: !!applied }; };
+                    window._rb2p_fbRestGetX('rooms/' + myRoom + '/outcomes/' + otherRole, 4000).then(function (r) {
+                        var val = r && r.ok ? r.val : null;
+                        if (!val || val.rej || val.ts == null || window._rb2p_userIsWaitingForOpponent !== true) return done(false);
+                        var stNow = (window._rb2p_flowState && window._rb2p_flowState().me.staged);
+                        if (String(stNow) === String(val.ts)) return done(false);                        // taken here already
+                        var gs = (typeof window._rb2p_flowGameSrv === 'function') ? Number(window._rb2p_flowGameSrv()) || 0 : 0;
+                        if (gs && typeof val.srv === 'number' && val.srv < gs - 15000) return done(false);   // a previous game's record
+                        if (((window._twoPlayer && window._twoPlayer.pending) || []).some(function (q) { return q && String(q.ts) === String(val.ts); }) ||
+                            (window._rb2p_deferredOutcome && String(window._rb2p_deferredOutcome.ts) === String(val.ts))) return done(false);   // queued or held: the drain has it
+                        var u = unsafeApply(val);
+                        if (u) { if (window._rb2p_diagLog) window._rb2p_diagLog('RESCUE looked: the partner\'s ' + val.type + ' on the server is not for now — ' + u); return done(false); }
+                        if (Number(val.ts) <= Number(lastTs)) lastTs = Number(val.ts) - 1;              // consumed once and lost (F23)
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('RESCUE applies the partner\'s ' + val.type + ' from the server — never taken here (' + why + ')');
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'rescue-server-apply', type: val.type, ts: val.ts, why: why });
+                        applyIncomingOutcome(val, 'rescue');
+                        done(true);
+                    }, function () { done(false); });
+                    return true;
+                };
                 function doApply(v) {
                     var ts = v.partner && v.partner.sent && v.partner.sent.ts;
                     if (ts == null) return;
                     var before = state(), why = 'the partner\'s ' + (v.partner.sent.type || 'hand-off') + ' was not applied here';
+                    var refuse = function (o, where) {
+                        var u = unsafeApply(o); if (!u) return false;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('RECOVER apply refused (' + where + ') — ' + u);
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'recover-shadow', action: 'apply-refused', why: u, ts: o && o.ts });
+                        lastAt.apply = Date.now(); return true;
+                    };
                     var dfo = window._rb2p_deferredOutcome;
+                    if (dfo && String(dfo.ts) === String(ts) && refuse(dfo, 'held')) return;
                     if (dfo && String(dfo.ts) === String(ts) && typeof window._rb2p_drainDeferredOutcome === 'function') {
                         window._rb2p_drainDeferredOutcome('authority');
                         record('apply', why + ' (the held copy)', before, { ts: ts });
@@ -19293,6 +19367,7 @@
                     var pq = (window._twoPlayer && window._twoPlayer.pending) || [];
                     for (var i = 0; i < pq.length; i++) {
                         if (pq[i] && String(pq[i].ts) === String(ts)) {
+                            if (refuse(pq[i], 'queued')) return;
                             var o = pq.splice(i, 1)[0];
                             if (window._rb2p_audit) window._rb2p_audit('apply', { type: o.type, ts: o.ts, lagMs: Date.now() - (Number(o._rxMs) || Date.now()), via: 'authority' });
                             var okQ = false; try { okQ = !!window._rb2p_applyOpponentOutcome(o); } catch (eQ) {}
@@ -19323,6 +19398,7 @@
                         var queuedNow = ((window._twoPlayer && window._twoPlayer.pending) || []).some(function (q) { return q && String(q.ts) === String(val.ts); }) ||
                                         !!(window._rb2p_deferredOutcome && String(window._rb2p_deferredOutcome.ts) === String(val.ts));
                         if (window._rb2p_userIsWaitingForOpponent !== true || String(stNow) === String(val.ts) || queuedNow) return;
+                        if (refuse(val, 'server copy')) return;
                         if (Number(val.ts) <= Number(lastTs)) lastTs = Number(val.ts) - 1;    // it was consumed once and lost (F23)
                         applyIncomingOutcome(val, 'authority');
                         record('apply', why + ' (the server copy, over REST)', before, { ts: ts });
@@ -19376,6 +19452,12 @@
                     record('unwedge', 'the engine held a touch no finger was making for 4s — released like a touchend (' + n + ' slot' + (n === 1 ? '' : 's') + ')', before);
                 }
 
+                function shadowSay(action, v) {
+                    try {
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('RECOVER (shadow) would ' + action + ' — ' + v.why);
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'recover-shadow', action: action, why: v.why, owner: v.who });
+                    } catch (e) {}
+                }
                 function doPark(v) {
                     var before = state();
                     window._rb2p_userIsWaitingForOpponent = true;
@@ -19404,11 +19486,19 @@
                     var tApply = dur('apply', v.apply === myRole && waiting && !cb);
                     // the partner's "live" only counts while it is present (its record is being written)
                     var tRestage = dur('restage', !inOT && v.who === myRole && !v.apply && waiting && !cb && !(p.present && p.live === true) && !(p.conv && p.conv.owed));
-                    var tPark = dur('park', !inOT && v.who === otherRole && !waiting && !cb && !playLive);
+                    // V425: not while the partner still has to APPLY the hand-off — it has not taken the ball yet, and a
+                    // park then leaves nobody with it; if that hand-off never existed (the rematch phantom: NPJD, ZJCF,
+                    // NGKD, WNPB) the game died with both phones parked. Once the partner holds it, the park follows.
+                    var tPark = dur('park', !inOT && v.who === otherRole && v.apply !== otherRole && !waiting && !cb && !playLive);
                     // a phone live on the partner's ball can snap a phantom play at any moment: park it faster (2s)
+                    // V425: in real games (2026-09-29/30) park was wrong 8 times of 8, apply 3 of 4 (stale hand-offs
+                    // re-applied across the Q2/Q3 horn, a pick-six replayed), restage once, unmeasurable. The chain is not
+                    // reliable at the boundaries: restage and park only say what they would do (shadow); the rescuers
+                    // that worked in real games (TURN-RESCUE with the held hand-off, the field check, TURN-HEAL) decide.
+                    // APPLY acts, for a provably new hand-off of this half only (unsafeApply); restage and park are shadow
                     if (tApply > T_ACT && cooled('apply')) { since.apply = 0; doApply(v); return 'apply'; }
-                    if (tRestage > T_ACT && cooled('restage')) { since.restage = 0; doRestage(v); return 'restage'; }
-                    if (tPark > T_PARK && cooled('park')) { since.park = 0; doPark(v); return 'park'; }
+                    var would = (tRestage > T_ACT && cooled('restage')) ? 'restage' : (tPark > T_PARK && cooled('park')) ? 'park' : '';
+                    if (would) { since[would] = 0; lastAt[would] = Date.now(); shadowSay(would, v); return 'would ' + would; }
                     return 'watching';
                 };
                 setInterval(function () { try { window._rb2p_recoverTick(); } catch (e) { busy = false; } }, 500);
@@ -19552,16 +19642,12 @@
                         // trusted flow record, the recovery authority decides from the causal chain of hand-offs
                         // (and restores the down and distance this guess never had). This rescue keeps its own
                         // judgement only for a partner on an older build (no trusted record) and in overtime.
+                        // V425: no deferral to the recovery authority (shadow) — it kept 4 real deadlocks alive (NGKD, WNPB, ZJCF, NPJD)
                         if (bothParked) {
-                            var fvR = (typeof window._rb2p_flowVerdict === 'function') ? window._rb2p_flowVerdict() : null;
-                            if (fvR && typeof window._rb2p_flowEngaged === 'function' && window._rb2p_flowEngaged(fvR) && window._rb2p_inOvertime !== true) {
-                                if (turnRescueTicks === 15 && window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE deferred to the recovery authority (' + fvR.why + ')');
-                                if (++turnRescueTicks >= 16) turnRescueTicks = 0;
-                                return;
-                            }
-                        }
-                        if (bothParked) {
-                            if (++turnRescueTicks >= 16) {
+                            // V425: look before guessing — a partner hand-off on the server this phone never took is applied;
+                            // the guess waits until a look has finished in the last 5s (and found nothing to take)
+                            if (++turnRescueTicks >= 16 && !(typeof window._rb2p_serverLookedRecently === 'function' && !window._rb2p_serverLookedRecently() &&
+                                                             (window._rb2p_applyServerHandoff('turn-rescue') || true) && (turnRescueTicks = 12))) {
                                 turnRescueTicks = 0;
                                 console.warn('[2P TURN] both sides parked and the turn is OURS — rescuing the drive');
                                 if (window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE -> offense');
@@ -19581,8 +19667,17 @@
                                     try { yR = Number(RB.engineState().engineYardLineSigned); } catch (eY) {}
                                     if (!isFinite(yR) || Math.abs(yR) > 49 || yR === 0) yR = -25;
                                     var okR = null;
+                                    // V425: my own last spot keeps its down and distance when it is this yard line (the restore
+                                    // rule — as EMPTY-FIELD does since V422); otherwise the engine's own down if it is sane
+                                    var ddR = null;
+                                    try {
+                                        var spR = (typeof window._rb2p_flowSpot === 'function') ? window._rb2p_flowSpot() : null;
+                                        var emR = RB.engineState();
+                                        if (spR && Math.abs(Number(spR.y) - yR) < 1 && Number(spR.d) >= 1 && Number(spR.d) <= 4) ddR = { down: Number(spR.d), toGo: Number(spR.tg) };
+                                        else if (emR && Number(emR.engineDownNumber) >= 1 && Number(emR.engineDownNumber) <= 4 && Number(emR.engineYardsToGo) > 0) ddR = { down: Number(emR.engineDownNumber), toGo: Number(emR.engineYardsToGo) };
+                                    } catch (eDR) {}
                                     if (typeof window._rb2p_forceUserOffenseDrive === 'function')
-                                        okR = window._rb2p_forceUserOffenseDrive(yR);
+                                        okR = window._rb2p_forceUserOffenseDrive(yR, false, ddR);
                                     if (okR === false && window._rb2p_diagLog) window._rb2p_diagLog('TURN-RESCUE force-drive FAILED');
                                     // V378 (room GVCG): the force staged the drive but the
                                     // flag stayed WAIT — five rescues, five formations under
@@ -19620,8 +19715,7 @@
                     // V422: with a trusted flow record, TURN-HEAL never parks a phone the chain says HAS the ball
                     // (the two ownership truths must not fight — the v2 review #5); when the chain agrees that the
                     // partner has it, this heal stays the fast path (real game BTVK: a stale drive parked in 0.4s)
-                    var fvH = (typeof window._rb2p_flowVerdict === 'function') ? window._rb2p_flowVerdict() : null;
-                    if (fvH && fvH.who === myRole && typeof window._rb2p_flowEngaged === 'function' && window._rb2p_flowEngaged(fvH) && window._rb2p_inOvertime !== true) { turnConflictTicks = 0; return; }
+                    // V425: TURN-HEAL no longer defers to the chain (the authority is a detector again)
                     if (++turnConflictTicks < 3) return;
                     turnConflictTicks = 0;
                     window._rb2p_userIsWaitingForOpponent = true;

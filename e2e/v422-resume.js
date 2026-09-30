@@ -54,8 +54,9 @@ const inMatch = page => page.evaluate(() => document.documentElement.classList.c
     const r2b = { aWait: await waiting(A.page), bWait: await waiting(B.page), claimed: await A.page.evaluate(() => window.__rbResumeClaimed === true).catch(() => null) };
     const refusals = consA.filter(t => /FLOW refused/.test(t)).length;
     const parkedLine = consA.some(t => /RESUME the chain says the partner has the ball/.test(t));
-    check('R2 a resume whose snapshot claims the ball while the chain gives it to the partner comes back parked; the partner keeps the ball; the refusal is not retried every 50ms',
-          r2.ms !== null && r2b.claimed === true && r2b.aWait === true && r2b.bWait === false && refusals >= 1 && refusals <= 5 && parkedLine,
+    // V425: the flow guard is shadow — the stale claim is resolved by the older rescuers (TURN-HEAL parks the stale phone)
+    check('R2 (V425) a resume whose snapshot claims the ball while the partner has it ends with the partner keeping the ball and the resumed phone parked',
+          r2.ms !== null && r2b.claimed === true && r2b.aWait === true && r2b.bWait === false,
           JSON.stringify({ r2, r2b, refusals, parkedLine }));
 
     // ---- R1: a reload while the database is unreachable keeps the room and resumes ----
@@ -113,8 +114,9 @@ const inMatch = page => page.evaluate(() => document.documentElement.classList.c
         await sleep(3000);
         const vA = await A3.page.evaluate(() => { const v = window._rb2p_flowVerdict(); return { who: v.who, why: v.why }; });
         const vB = await B3.page.evaluate(() => { const v = window._rb2p_flowVerdict(); return { who: v.who, why: v.why }; });
-        check('R3 a reload inside an interception\'s hold: the re-sent INT gives B the ball, B hands back, A takes it — both chains agree (no divergent deadlock)',
-              bGot.ms !== null && aBack.ms !== null && vA.who === 'a' && vB.who === 'a', JSON.stringify({ bGot: bGot.ms, aBack: aBack.ms, vA, vB }));
+        // V425: the chain is shadow (a reload can leave a record stale — that is why) — the GAME is what must be right
+        check('R3 (V425) a reload inside an interception\'s hold: the re-sent INT gives B the ball, B hands back, A takes it (no deadlock)',
+              bGot.ms !== null && aBack.ms !== null, JSON.stringify({ bGot: bGot.ms, aBack: aBack.ms, vA, vB }));
         await g3.cleanup();
     }
 
@@ -143,8 +145,11 @@ const inMatch = page => page.evaluate(() => document.documentElement.classList.c
         await until(async () => { const v = await Am.page.evaluate(() => { const v = window._rb2p_flowVerdict(); return { fresh: v.fresh, who: v.who }; }); return { ok: v.fresh && v.who === 'a', v }; }, 40000, 1000);
         // A parks and its epoch moves ahead of B's: the authority stands down on both (an epoch change)
         await Am.page.evaluate(() => { window._rb2p_flowNote('ep', { id: 'H', receiver: 'b' }); window._rb2p_userIsWaitingForOpponent = true; });
-        const m1 = await until(async () => { const st = await Am.page.evaluate(() => window._rb2p_canActState()); return { ok: st.must === true && st.can === false && st.why === 'both parked, no decision', st }; }, 20000, 500);
-        check('M1 both phones parked while the authority cannot decide: the monitor reports it (must act, cannot: "both parked, no decision")', m1.ms !== null, JSON.stringify(m1));
+        // V425: "both parked" is a fact (the authority acts no more); the rescuers act on it too — either the monitor
+        // reports it or a rescuer has already put A back on, and 25s later A is on (never both parked for good)
+        const m1 = await until(async () => { const st = await Am.page.evaluate(() => ({ c: window._rb2p_canActState(), w: window._rb2p_userIsWaitingForOpponent === true })); return { ok: (st.c.must === true && st.c.can === false && st.c.why === 'both parked') || !st.w, st }; }, 20000, 500);
+        const m1b = await until(async () => ({ ok: (await Am.page.evaluate(() => window._rb2p_userIsWaitingForOpponent === true)) === false }), 25000, 1000);
+        check('M1 (V425) both phones parked: the monitor reports "both parked" (or a rescuer already acted), and A is back on within 25s', m1.ms !== null && m1b.ms !== null, JSON.stringify({ m1, m1b: m1b.ms }));
         await gm.cleanup();
     }
 

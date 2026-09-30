@@ -41,8 +41,9 @@ const staleOff = page => page.evaluate(() => { clearInterval(window.__staleIv); 
         await staleOn(def.page, off.role);
         await D.forceDriveEnd(off.page, 'PUNT');
         const live = await until(async () => ({ ok: (await waiting(def.page)) === false }), 6000, 200);
+        // (a punt ships after its 4s hold: "at once" = within 8s of the drive end, with no refusal)
         check('D1 a hand-off applied beside a stale "they are live": the phone goes live at once (no refusal)',
-              live.ms !== null && live.ms < 5000 && !cons.some(t => /POSS-REFUSED/.test(t)), JSON.stringify({ ms: live.ms, cons: cons.slice(0, 4) }));
+              live.ms !== null && live.ms < 8000 && !cons.some(t => /POSS-REFUSED/.test(t)), JSON.stringify({ ms: live.ms, cons: cons.slice(0, 4) }));
         // D2: parked again with the chain naming this phone; the stale presence stays in hand
         await sleep(4000);
         const d2 = await def.page.evaluate(async (other) => {
@@ -58,8 +59,10 @@ const staleOff = page => page.evaluate(() => { clearInterval(window.__staleIv); 
             return { who: v.who, me: v.me, engaged: window._rb2p_flowEngaged(v), live: window._rb2p_userIsWaitingForOpponent === false };
         }, off.role);
         await staleOff(def.page);
-        check('D2 the chain settled and naming this phone: a stale "they are live" does not refuse its LIVE write',
-              d2.who === d2.me && d2.engaged === true && d2.live === true && cons.some(t => /POSS gate: the chain names me/.test(t)), JSON.stringify({ d2, cons: cons.slice(-3) }));
+        // V425: V424's chain override is gone (it fired once in real games, wrongly) — V366 rule 2 stands: a plain LIVE write
+        // (not a hand-off being applied) under a fresh "they are live" is refused, whatever the chain says
+        check('D2 (V425) a plain LIVE write under a stale "they are live" is still refused — the chain does not override the gate',
+              d2.live === false && cons.some(t => /POSS-REFUSED LIVE/.test(t)) && !cons.some(t => /POSS gate: the chain names me/.test(t)), JSON.stringify({ d2, cons: cons.slice(-3) }));
         await g.cleanup();
     }
 

@@ -182,7 +182,7 @@ const census = page => page.evaluate(() => {
         await new Promise(r => setTimeout(r, 2600));                                // one watchdog tick
         var running = window._rb2p_realDriveRunning();
         return { running: running, waiting: window._rb2p_userIsWaitingForOpponent === true,
-                 diag: String(window._rb2p_readDiagLog()).slice(-200) };
+                 diag: String(window._rb2p_readDiagLog()).slice(-900) };   // V425: the whole tail (a background line pushed it out of 200)
     });
     console.log('  T6: ' + JSON.stringify(t6));
     check('T6 the watchdog forces a real drive when PAT_RESULT applied but nothing was running',

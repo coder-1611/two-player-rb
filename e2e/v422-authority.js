@@ -1,5 +1,10 @@
 // e2e/v422-authority.js — NEVER-FREEZE Phase 2: the recovery authority, acting from the flow records.
 //
+// V425: in real games (2026-09-29/30) the authority's park was wrong 8 times of 8, its apply 3 of 4 (stale
+// hand-offs), the force-drive guard 4 of 4 — the chain is not reliable at the halftime/OT boundaries and around
+// reloads. Restage, park and the guard are SHADOW now (they say what they would do); APPLY acts only for a hand-off
+// that is provably new and of this half; the older rescuers decide again. A1/A3/A6 are rewritten to that.
+//
 //   A1  the force-drive guard: the parked phone (the chain gives the ball to the other one) cannot stage a
 //       drive of its own; the phone with the ball can
 //   A2  a random draw is made once per possession start: the kickoff return spot is the same on every call
@@ -39,11 +44,20 @@ async function until(fn, ms, every) { const t0 = Date.now(); let v; while (Date.
     const ready = await until(async () => { const va = await verdict(A.page), vb = await verdict(B.page); return { ok: va.fresh && vb.fresh && va.who === 'a' && vb.who === 'a', va, vb }; }, 40000, 1000);
     check('setup: both phones read fresh flow records and agree the ball is A\'s', ready.ok, JSON.stringify(ready));
 
-    // ---- A1: the guard ----
-    const a1b = await B.page.evaluate(() => { const r = window._rb2p_forceUserOffenseDrive(-20); return { r, wait: window._rb2p_userIsWaitingForOpponent === true }; });
+    // ---- A1: the guard (V425: shadow) ----
+    const a1b = await B.page.evaluate(() => {
+        const lines = []; const realDL = window._rb2p_diagLog; window._rb2p_diagLog = function (m) { lines.push(String(m)); return realDL.apply(this, arguments); };
+        window._rb2p_flowRefusalLogMs = 0;
+        const guard = window._rb2p_flowStageAllowed();
+        const r = window._rb2p_forceUserOffenseDrive(-20);
+        window._rb2p_diagLog = realDL;
+        window._rb2p_userIsWaitingForOpponent = true;          // B back to its seat for the rest of the test
+        return { guard, r, said: lines.some(l => /FLOW \(shadow\) would refuse force-drive/.test(l)) };
+    });
     const a1a = await A.page.evaluate(() => { const em = RB.engineState(); return window._rb2p_forceUserOffenseDrive(Number(em.engineYardLineSigned), false); });
-    check('A1 the parked phone cannot stage a drive while the chain gives the ball to the other; the phone with the ball can',
-          a1b.r === false && a1b.wait === true && a1a === true, JSON.stringify({ a1b, a1a }));
+    check('A1 (V425) the guard is shadow: the chain gives the ball to A, B\'s drive is not refused, the guard says it would have; A\'s is staged',
+          a1b.guard !== true && a1b.r !== false && a1b.said && a1a === true, JSON.stringify({ a1b, a1a }));
+    await sleep(3000);
 
     // ---- A2: one draw per possession start ----
     const a2 = await A.page.evaluate(() => { const y1 = window._rb2p_kickoffReturnYard(), y2 = window._rb2p_kickoffReturnYard(), y3 = window._rb2p_kickoffReturnYard(); return { y1, y2, y3, draw: window._rb2p_flowState().me.draw }; });
@@ -54,16 +68,15 @@ async function until(fn, ms, every) { const t0 = Date.now(); let v; while (Date.
     await A.page.evaluate(() => { window._rb2p_forceUserOffenseDrive(-12, false, { down: 3, toGo: 4 }); });
     const spot = await A.page.evaluate(() => window._rb2p_flowSpot());
     const rec0 = (await st(A.page)).rec.restage || 0;
+    const shadowA = []; A.page.on('console', m => { const t = m.text(); if (/RECOVER \(shadow\)|TURN-RESCUE|field/.test(t)) shadowA.push(t.slice(0, 120)); });
     await A.page.evaluate(() => { window._rb2p_userIsWaitingForOpponent = true; });
-    await sleep(3000);
-    const mon = await A.page.evaluate(() => window._rb2p_canActState());
-    const a3 = await until(async () => { const s = await st(A.page); return { ok: !s.wait && (s.rec.restage || 0) > rec0, s }; }, 12000, 500);
+    const mon = await until(async () => { const m = await A.page.evaluate(() => window._rb2p_canActState()); return { ok: m.must === true && m.can === false && m.why === 'both parked', m }; }, 12000, 500);
+    const a3 = await until(async () => { const s = await st(A.page); return { ok: !s.wait, s }; }, 25000, 500);
     const b3 = await st(B.page);
-    check('A3a parked on its own ball, the monitor says so (must act, cannot: "parked, the ball is mine")',
-          mon.must === true && mon.can === false && mon.why === 'parked, the ball is mine', JSON.stringify(mon));
-    check('A3 both parked with the ball A\'s: A comes back on at its last spot WITH its down and distance, within 10s; B stays parked',
-          spot && spot.d === 3 && Math.abs(spot.tg - 4) < 0.01 && a3.ms !== null && a3.ms <= 10000 && Math.abs(a3.s.y - (-12)) < 0.6 && a3.s.d === 3 && Math.abs(a3.s.tg - 4) < 0.6 && b3.wait === true,
-          JSON.stringify({ spot, a3, b3 }));
+    check('A3a (V425) both phones parked: the monitor says "both parked" (a fact, whoever the chain names)', mon.ms !== null, JSON.stringify(mon));
+    check('A3 (V425) both parked with the ball A\'s: the authority only says it would restage; the older rescuers bring A back on at its last spot WITH its down and distance, within 25s; B stays parked',
+          spot && spot.d === 3 && Math.abs(spot.tg - 4) < 0.01 && a3.ms !== null && Math.abs(a3.s.y - (-12)) < 0.6 && a3.s.d === 3 && Math.abs(a3.s.tg - 4) < 0.6 && b3.wait === true &&
+          ((await st(A.page)).rec.restage || 0) === rec0, JSON.stringify({ spot, a3, b3, shadowA: shadowA.slice(0, 6) }));
 
     // ---- A4: both live, the ball is A's ----
     const pk0 = (await st(B.page)).rec.park || 0;
@@ -84,12 +97,14 @@ async function until(fn, ms, every) { const t0 = Date.now(); let v; while (Date.
     await B.page.evaluate(() => { window._twoPlayer.receive = window.__realRecv; });
     const sentTs = await A.page.evaluate(() => { const s = window._rb2p_flowState().me.sent; return s && s.ts; });
     const ap0 = (await st(B.page)).rec.apply || 0;
+    // V425: the authority's APPLY (4s) or a rescuer's look at the server (TURN-RESCUE 3s in) takes the real punt —
+    // either way it is the hand-off itself that is staged, never a guessed drive
     const a5 = await until(async () => {
         const s = await st(B.page); const staged = await B.page.evaluate(() => window._rb2p_flowState().me.staged);
-        return { ok: !s.wait && String(staged) === String(sentTs) && (s.rec.apply || 0) > ap0, s, staged };
+        return { ok: !s.wait && String(staged) === String(sentTs), s, staged };
     }, 20000, 500);
     const a5v = await verdict(A.page);
-    check('A5 a hand-off consumed but lost on the receiver is applied from the server\'s copy (REST); the receiver comes on with the ball',
+    check('A5 a hand-off consumed but lost on the receiver is applied from the server\'s copy (REST) — the authority\'s apply or the rescue\'s look, never a guess; the receiver comes on with the ball',
           lost.ok && a5.ms !== null && a5v.who === 'b', JSON.stringify({ lost: lost.d, sentTs, a5, a5v }));
 
     // ---- A6: the partner stops writing; its facts still decide ----
@@ -97,10 +112,10 @@ async function until(fn, ms, every) { const t0 = Date.now(); let v; while (Date.
     const stale = await until(async () => { const v = await B.page.evaluate(() => { const v = window._rb2p_flowVerdict(); return { fresh: v.fresh, who: v.who, facts: v.facts }; }); return { ok: !v.fresh && v.facts && v.who === 'b', v }; }, 30000, 1000);
     const rs0 = (await st(B.page)).rec.restage || 0;
     await B.page.evaluate(() => { window._rb2p_userIsWaitingForOpponent = true; });
-    const a6 = await until(async () => { const s = await st(B.page); return { ok: !s.wait && (s.rec.restage || 0) > rs0, s }; }, 12000, 500);
+    const a6 = await until(async () => { const s = await st(B.page); return { ok: !s.wait, s }; }, 25000, 500);
     await A.page.evaluate(() => { window._rb2p_fbRestPut = window.__realPutA; });
-    check('A6 the partner stopped writing (not present), yet its facts say the ball is B\'s: parked B is restored within 10s',
-          stale.ok && a6.ms !== null && a6.ms <= 10000, JSON.stringify({ stale, a6 }));
+    check('A6 (V425) the partner stopped writing its record: parked B (whose ball it is) is back on within 25s by the older rescuers — the authority does not restage',
+          stale.ok && a6.ms !== null && ((await st(B.page)).rec.restage || 0) === rs0, JSON.stringify({ stale, a6 }));
 
     // ---- A6b: an untrusted partner record (an older build: no chain from the game's start) ----
     await A.page.evaluate(() => { window.__realPutA2 = window._rb2p_fbRestPut; window._rb2p_fbRestPut = (p, b) => (/\/flow\//.test(p) ? window.__realPutA2(p, Object.assign({}, b, { trust: false })) : window.__realPutA2(p, b)); });
@@ -142,7 +157,9 @@ async function until(fn, ms, every) { const t0 = Date.now(); let v; while (Date.
     const aud = [ ...Object.values((await TP.fbGet('rooms/' + g.code + '/audit/a')) || {}), ...Object.values((await TP.fbGet('rooms/' + g.code + '/audit/b')) || {}) ];
     const recs = aud.filter(e => e && e.k === 'guard' && e.what === 'recover');
     check('A8 every recovery is audited (guard recover, with before/after) and none moved the score or the clock',
-          recs.length >= 3 && recs.every(e => e.before && e.after && !e.bad) && bad.length === 0, JSON.stringify({ n: recs.length, actions: recs.map(e => e.action), bad: recs.filter(e => e.bad).map(e => e.bad).concat(bad) }));
+          // V425: only APPLY acts (restage and park are shadow) — at least the A5 apply, or the rescue's server look
+          (recs.length >= 1 || aud.some(e => e && e.k === 'guard' && e.what === 'rescue-server-apply')) && recs.every(e => e.before && e.after && !e.bad) && bad.length === 0,
+          JSON.stringify({ n: recs.length, actions: recs.map(e => e.action), bad: recs.filter(e => e.bad).map(e => e.bad).concat(bad) }));
 
     await g.cleanup();
 

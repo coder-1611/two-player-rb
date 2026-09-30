@@ -55939,9 +55939,13 @@ function _hB(_, t, i) {
             switch (0 == yyCompareVal(o, 1, g_GMLMathEpsilon, !1) ? s = 0 : 0 == yyCompareVal(o, 2, g_GMLMathEpsilon, !1) ? s = 1 : 0 == yyCompareVal(o, 3, g_GMLMathEpsilon, !1) || 0 == yyCompareVal(o, 4, g_GMLMathEpsilon, !1) ? s = 2 : 0 == yyCompareVal(o, 5, g_GMLMathEpsilon, !1) ? s = 3 : 0 == yyCompareVal(o, 6, g_GMLMathEpsilon, !1) ? s = 4 : 0 == yyCompareVal(o, 7, g_GMLMathEpsilon, !1) ? s = 5 : 0 == yyCompareVal(o, 8, g_GMLMathEpsilon, !1) ? s = 6 : 0 == yyCompareVal(o, 9, g_GMLMathEpsilon, !1) && (s = 7),
             s) {
                 case 0:
+                    // V425 (2P): a TRY (down 6) that reaches the end zone is the conversion, overtime or not. A made
+                    // 2-point try comes here (_Ak1(1) -> _Ik1 -> _hB(1)), not to case 1 as V424 assumed: in the engine's
+                    // own order the sudden-death branch scored it +6 and the bridge offered another try — 14-20-26-32-38
+                    // in one possession (rooms FTYF, VVLQ, EXYT, KHIX). Only a real touchdown takes the overtime branch.
                     if (_1j(n, _, yyfplus("quarter=", _Ri(_9p(n._Wy)))),
                         _1j(n, _, yyfplus("drives", _Ri(_9p(n._Nb1)))),
-                        yyfequal(n._Wy, 5))
+                        yyfequal(n._Wy, 5) && !yyfgreaterequal(n._t11, 6))
                         _Dt(30378501),
                             n._Sb1 = _Ft(n._Sb1, 968186802),
                             n._Sb1[_Gt(n._UD)] = yyfplus(n._Sb1[_Gt(n._UD)], 6),

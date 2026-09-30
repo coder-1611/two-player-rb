@@ -106,6 +106,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         const burst = [window._rb2p_fieldCheck(), window._rb2p_fieldCheck(), window._rb2p_fieldCheck()];
         const afterBurst = calls.length;
         window._rb2p_fieldAge(10000);
+        window._rb2p_serverLook = { doneAt: Date.now(), applied: false };   // V425: the server look finished, nothing to take
         const later = window._rb2p_fieldCheck();
         // F6: the turn moved 3s ago -> wait for the hand-off
         window._rb2p_userIsWaitingForOpponent = true;

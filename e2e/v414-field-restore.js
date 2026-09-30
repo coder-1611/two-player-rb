@@ -34,7 +34,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_declareTurnOwner = () => {};
         const base = () => { window._rb2p_lastSentOutcomeMs = 0; window._rb2p_lastOpponentOutcomeApplyMs = 0; window._rb2p_deferredOutcome = null;
                              if (window._twoPlayer && window._twoPlayer.pending) window._twoPlayer.pending.length = 0; window._rb2p_p6ScorerOwes = false; };
-        const two = () => { const a = window._rb2p_fieldCheck(); window._rb2p_fieldAge(10000); return [a, window._rb2p_fieldCheck()]; };   // V415: 10 real seconds
+        // V425: the check looks at the server before it restores (v422-authority A5 tests the look); here the look has
+        // just finished and found nothing for this phone — this is the check's own judgement after it
+        const two = () => { window._rb2p_serverLook = { doneAt: Date.now(), applied: false }; const a = window._rb2p_fieldCheck(); window._rb2p_fieldAge(10000); return [a, window._rb2p_fieldCheck()]; };   // V415: 10 real seconds
         const out = {};
         // R1
         base(); window._rb2p_userIsWaitingForOpponent = true;

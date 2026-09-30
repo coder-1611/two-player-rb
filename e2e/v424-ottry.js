@@ -84,11 +84,15 @@ const engineTdAndTapKickoff = page => page.evaluate(async () => {
           lined.ms !== null && !net && lined.f.of === 11, JSON.stringify({ beforeTap, after: lined.f, ms: lined.ms, net }));
 
     // ---- T3 ----
-    // the try reaches the end zone: the engine's own "touchdown on this play" result
-    const made = await off.page.evaluate(() => { const em = RB.engineState(); _hB(em.rawEngineMatch, _Sc2, 2); return { su: Number(em.userScore), so: Number(em.opponentScore), mine: em.enginePossessingTeamIdx === em.engineUserTeamIdx }; });
+    // the try reaches the end zone. V425: through the engine's REAL path — the ball carrier is the offense, so its
+    // play result calls _Ak1(1) (the touchdown replay) -> _Ik1 -> _hB(1), the touchdown branch. V424 called _hB(2)
+    // (the DEFENCE-scores branch) here and passed while real games scored every made try +6 (FTYF 14-20-26-32-38).
+    const tdSeen0 = logs[off.role].filter(t => /OT-TD touchdown in overtime/.test(t)).length;
+    const made = await off.page.evaluate(() => { const em = RB.engineState(); _Ak1(em.rawEngineMatch, _Sc2, 1); return { su: Number(em.userScore), so: Number(em.opponentScore), mine: em.enginePossessingTeamIdx === em.engineUserTeamIdx }; });
     const handed = await until(async () => { const fd = await field(def.page), fo = await field(off.page); return { ok: !fd.wait && fo.wait && fd.su === 14 && fd.so === 22 && fo.su === 22 && fo.so === 14, fd, fo }; }, 20000, 500);
-    check('T3 the made 2-point try is +2 to the scorer (22-14, no possession flip), then the other phone gets the ball with the same score',
-          made.su === 22 && made.so === 14 && made.mine === true && handed.ms !== null, JSON.stringify({ made, def: handed.fd, off: handed.fo }));
+    const tdSeen1 = logs[off.role].filter(t => /OT-TD touchdown in overtime/.test(t)).length;
+    check('T3 the made 2-point try (the engine\'s own touchdown path) is +2 to the scorer (22-14), no new touchdown or try, then the other phone gets the ball with the same score',
+          made.su === 22 && made.so === 14 && handed.ms !== null && tdSeen1 === tdSeen0, JSON.stringify({ made, tdSeen0, tdSeen1, def: handed.fd, off: handed.fo }));
 
     // ---- T4: the answering possession — a touchdown and 1 PT ----
     await sleep(3000);
@@ -98,7 +102,7 @@ const engineTdAndTapKickoff = page => page.evaluate(async () => {
     const before1 = await field(def.page);
     await tapChoice(def.page, 100367);
     const kick = await until(async () => { const f = await field(def.page); return { ok: f.of >= 11 && f.kick === 1, f }; }, 3000, 200);
-    const kicked = await def.page.evaluate(() => { const em = RB.engineState(); em.rawEngineMatch._Z21 = 1; _hB(em.rawEngineMatch, _Sc2, 6); return { su: Number(em.userScore), so: Number(em.opponentScore) }; });
+    const kicked = await def.page.evaluate(() => { const em = RB.engineState(); em.rawEngineMatch._Z21 = 1; _Ak1(em.rawEngineMatch, _Sc2, 6); return { su: Number(em.userScore), so: Number(em.opponentScore) }; });   // V425: the kick-good path (_Ak1(6) -> _hB(6))
     check('T4 1 PT in overtime: the kick replaces what was lined up (one formation), and a made kick is +1 to the kicker (21-22)',
           off2.ms !== null && kick.ms !== null && kick.f.of === 11 && kicked.su === 21 && kicked.so === 22, JSON.stringify({ offered: off2.f, before1, kick: kick.f, kicked }));
 
