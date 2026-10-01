@@ -508,3 +508,41 @@ real completions.
   completion showed as **2/4** with 2 catches; on V429 it shows **1/3** with 1.
 - `v333-boxscore` and `v334-boxpersist` are rewritten to the measured rule (the QB keeps his own 3/5; nothing moves)
   and added to the gate.
+
+## V430 (2026-10-01): every frozen game of the day read on its timeline — three game fixes, the 0:01 glitch, the detector
+
+**21 frozen games** (17 today on V427 plus 4 older) were read on their timelines, five of them by investigators in
+parallel. Most were not the game's fault (the detector's), and three roots were ours:
+
+| what happened | rooms | verdict | V430 |
+|---|---|---|---|
+| a phone reloaded 2–10 s after TAKING the ball; its own live record (a throttled tab's) still said "no ball", so the resume parked it; both parked until TURN-RESCUE guessed ~9 s later — at the wrong spot (own 25 after a punt to the 36) | VWWK, BXDZ, NICE, AOGO | ours | the resume takes back a hand-off it ACKed when its live record is older than the ACK and it sent nothing since (the V266 drain; same spot, the draw reused) |
+| overtime: the receiver's LIVE was refused once while the partner was still playing its try (the turn named it), and nothing came back to it (13 s); with the flip just after the horn, V368's 8 s exemption let it through instead — two offenses | ZQMT | ours | the OT receiver waits (500 ms, ≤ 20 s) while the partner's fresh live push says it is playing |
+| the partner had left or slept; "both parked" was my stale view of a partner already playing; a phone clock corrected mid-game; no frames drawn while nobody touched the screen; a laptop with no network at all | OHGZ, JDZQ, ZMCM, DNSX, ZNSO, CZFL, NERM | the detector | partner away / partner's own progress / clock stretches / frames need a tap / no network / any sleep signature |
+| overtime started while a pick-six try was owed; a reload during an OT try ended the game early; the 4 s hold strands a hand-off on a sleeping laptop; the engine threw every frame from the lobby | FGXJ, DAXK, NERM, IEID | real, open | OPEN.md #1–#4 (V430 logs the engine's full error for #4) |
+
+**The owner's 0:01 glitch** ("one second left, interception, the clock goes down to zero, the ball is turned over and
+the clock goes back up to one second"): 53 archived hand-offs. The drive-end record was stamped 0:00, then the 4 s hold
+parked the sender, whose engine V293 floors at 0:01, and the send re-stamp (V354) read that floor as time left. Now
+the same quarter plus 0:00 at the drive end keeps 0:00. The receiver's engine (live) ends the quarter itself — halftime,
+the final, overtime, or the next quarter with its ball — exactly as after the extra play, without the play.
+
+**Telemetry:**
+- A visible page writes a clock sample every 15 s. Since V419 any successful upload had restarted the timer: DNSX had
+  none in 13 minutes.
+- The outcome poll's failures are logged, and coming back online polls at once.
+- The engine's full error goes into the audit (`engerr`).
+- The monitor says "the match never started (engine error)" when no resume ran.
+
+**Whole archive (1,018 rooms):** 1,006 identical. These changed:
+- 0 s: CZFL, JDZQ, NERM, ZMCM, ZNSO (artifacts); VVLQ (the partner left at its end).
+- Counted once instead of twice: BXDZ, NICE, OHGZ (reload stalls).
+- Now measured to the moment the partner went live, under 10 s: AOGO, ZQMT. Both causes are fixed above.
+- KHIX lost a 12 s possession-deadlock flag to the finer clock alignment.
+
+**Tests (each fails on V429 and passes on V430):**
+- `v430-reload-ball`: back with the ball in 4 s at the punt's spot; V429 took about 9 s and put it at its own 25.
+- `v430-ot-wait`: V429 had two offenses.
+- `v430-expired`: V429 sent 0:01 and gave the receiver a play in Q1, Q2 and Q4.
+- `v430-checker`: 8 checks.
+- `v430-sync`: V429 wrote 0 samples in 50 s.

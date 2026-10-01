@@ -255,7 +255,12 @@
                 auditOutbox = auditOutbox.concat(taken);
                 if (auditOutbox.length > AUDIT_OUTBOX_MAX) { auditLost += auditOutbox.length - AUDIT_OUTBOX_MAX; auditOutbox = auditOutbox.slice(-AUDIT_OUTBOX_MAX); }
             }
-            if (!auditOutbox.length) return;
+            // V430 (DNSX, ZMCM, OPEN.md #5): a page on screen writes a clock sample every 15 s even when it has
+            // nothing else to say — the checker lines the two phones up with them (a phone's clock can be corrected
+            // mid-game), and a sample is the heartbeat that tells a quiet page from a gone one. ~100 bytes.
+            var syncDue = auditRoom && auditRole && !keepalive && Date.now() - auditLastSyncMs > 15000 &&
+                          (typeof document === 'undefined' || !document.hidden);
+            if (!auditOutbox.length && !syncDue) return;
             // one request in flight at a time — but a request that never answers (a half-open
             // socket on school Wi-Fi) must not hold the outbox: after 10s it counts as failed
             if (auditFlushing && !keepalive && Date.now() - auditFlushStartMs < 10000) return;
@@ -265,8 +270,9 @@
                 var e = send[i];
                 batch[String(e.t) + '_' + ('00000' + e.s).slice(-6)] = e;
             }
-            var now = Date.now(), lostNow = auditLost;
+            var now = Date.now(), lostNow = auditLost, hadSync = false;
             if (now - auditLastSyncMs > 15000 || lostNow || keepalive) {
+                hadSync = true;
                 var sq = auditSeq++;
                 var sync = { t: now, k: 'sync', s: sq, srv: { '.sv': 'timestamp' }, q: auditOutbox.length };
                 if (lostNow) sync.lost = lostNow;
@@ -284,7 +290,10 @@
                         for (var j = 0; j < send.length; j++) send[j].__ok = 1;
                         auditOutbox = auditOutbox.filter(function (x) { return !x.__ok; });
                         auditLost -= lostNow;
-                        auditLastSyncMs = now;
+                        // V430 (DNSX, ZMCM): only an upload that CARRIED a sync restarts the 15 s — every successful
+                        // upload did, so a phone uploading every 1.5 s wrote almost no samples (DNSX: none in 13 min)
+                        // and the checker could not see its clock jump 26 s
+                        if (hadSync) auditLastSyncMs = now;
                     }
                     auditSaveOutbox();
                 }).catch(function () { auditFlushing = false; auditSaveOutbox(); });
@@ -1557,7 +1566,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V429<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V430<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1639,7 +1648,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V429</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V430</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3137,6 +3146,19 @@
                     o.quarter     = Number(em.engineQuarter);
                     o.minutesLeft = Number(em.engineMinutesLeft);
                     o.secondsLeft = Number(em.engineSecondsLeft);
+                    // V430 (the owner: "one second left, interception, the clock goes down to zero, the ball is turned
+                    // over and the clock goes back up to one second"; 53 real hand-offs): the play ran out the clock — the
+                    // record was stamped 0:00 when it ended — and the 4 s hold parked this engine, which V293 floors at
+                    // 0:01 (a parked engine must never see 0:00). Re-stamping read that floor as time left and gave the
+                    // receiver a whole play at 0:01. Same quarter + 0:00 at the drive end = the quarter is over: keep
+                    // 0:00 — the receiver's engine (live now) ends the quarter itself (halftime, the final, overtime,
+                    // or the next quarter with its ball), exactly as it did after the extra play, without the play.
+                    if (typeof wasM === 'number' && typeof wasS === 'number' && Number(wasQ) === o.quarter &&
+                        o.quarter <= 4 && window._rb2p_inOvertime !== true &&
+                        wasM * 60 + wasS <= 0 && o.minutesLeft * 60 + o.secondsLeft <= 1) {
+                        o.minutesLeft = 0; o.secondsLeft = 0; o.expired = true;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('SEND keeps 0:00 — the play ran out the clock (the parked 0:01 floor is not time left)');
+                    }
                     if (em.engineScoreboard) {
                         o.scoreUser = em.engineScoreboard[em.engineUserTeamIdx];
                         o.scoreOpp  = em.engineScoreboard[em.engineUserTeamIdx ? 0 : 1];
@@ -13566,6 +13588,28 @@
                     window._rb2p_pickSixPatCascadeActive = false;
                     window._rb2p_pickSixThisDeviceIsThrower = false;
                     if (myRole === receiverRole) {
+                        // V430 (ZQMT, a real 13 s freeze): the partner was still playing its conversion across the horn
+                        // (live, and the turn record still named it), so V366 rule 2 REFUSED this LIVE — and nothing came
+                        // back: the flip was applied, the drive staged behind the waiting cover, until TURN-RESCUE's guess.
+                        // Wait for the partner to finish (it parks; its live push says so within 0.5 s), then go live —
+                        // the same 500 ms retry the conversion-owed deferral above uses; 40 tries, then today's path.
+                        // (the partner's fresh live push is the fact: it says it is still playing until its own kickoff
+                        // apply parks it. V366's rule 2 alone is not enough here: within 8 s of a quarter change V368
+                        // lets any LIVE through, so a flip that lands just after the horn put BOTH phones on offense.)
+                        var otRefuse = '';
+                        try {
+                            var olW = window._rb2p_oppLiveRx;
+                            if (olW && Date.now() - (Number(olW.at) || 0) < 4000 && olW.iHaveBall === true) otRefuse = 'the partner is still playing';
+                            else otRefuse = (typeof window._rb2p_possRefuseLive === 'function') ? window._rb2p_possRefuseLive() : '';
+                        } catch (eRf) {}
+                        if (otRefuse && (Number(window._rb2p_otRefuseTries) || 0) < 40) {
+                            window._rb2p_otRefuseTries = (Number(window._rb2p_otRefuseTries) || 0) + 1;
+                            if (window._rb2p_otRefuseTries === 1 && window._rb2p_diagLog) window._rb2p_diagLog('OT kickoff waits — ' + otRefuse);
+                            setTimeout(function () { try { window._rb2p_applyOtKickoff(receiverRole, myFirebaseRole); } catch (eOt2) {} }, 500);
+                            return;
+                        }
+                        if (Number(window._rb2p_otRefuseTries) > 0 && window._rb2p_diagLog) window._rb2p_diagLog('OT kickoff goes ahead after ' + window._rb2p_otRefuseTries + ' waits' + (otRefuse ? ' (still refused: ' + otRefuse + ')' : ''));
+                        window._rb2p_otRefuseTries = 0;
                         // I receive the OT kickoff → I'm on offense.
                         window._rb2p_userIsWaitingForOpponent = false;
                         // V336: the shared coin flip is deterministic on both
@@ -16040,6 +16084,19 @@
                                     var st = '';
                                     try { st = String(eF.stack || '').split('\n').slice(0, 2).join('|').slice(0, 140); } catch (eS) {}
                                     try { diagLog('FRAME THREW: ' + String((eF && eF.message) || eF).slice(0, 90) + (st ? ' @' + st : '')); } catch (eL2) {}
+                                    // V430 (IEID): the engine's error is an object whose text starts "{ message : …" — the 90
+                                    // characters above never reached WHERE it failed. Its own fields, once per distinct error.
+                                    try {
+                                        window._rb2p_lastFrameThrewMs = Date.now();
+                                        var ek = String((eF && (eF.longMessage || eF.message)) || eF).slice(0, 200);
+                                        var seenE = window._rb2p_engErrSeen || (window._rb2p_engErrSeen = {});
+                                        if (!seenE[ek] && window._rb2p_audit) {
+                                            seenE[ek] = 1;
+                                            var cut = function (v, n) { try { return v == null ? '' : String(typeof v === 'object' ? JSON.stringify(v) : v).slice(0, n); } catch (eC) { return '?'; } };
+                                            window._rb2p_audit('engerr', { msg: cut(eF && eF.message, 300), long: cut(eF && eF.longMessage, 400), script: cut(eF && eF.script, 120),
+                                                line: cut(eF && eF.line, 20), trace: cut(eF && (eF.stacktrace || eF.stack), 600), room: cut(typeof room !== 'undefined' ? room : '', 40) });
+                                        }
+                                    } catch (eE) {}
                                 }
                                 // A throw MAY mean the engine never re-armed
                                 // (throw before _Gi5's top reschedule). But if it
@@ -16376,6 +16433,7 @@
         // restarting from 0-0. Field position is unrecoverable (a fresh drive
         // is spawned / WAIT shown), but the game state carries over.
         function resumeMatch(role, oppLive, myLive, turnover) {
+            window._rb2p_resumedMs = Date.now();   // V430: the can-act monitor tells a resume from a match start
             gameStarted = true;   // block the players-subscription from restarting
             window._rb2p_gameOverReported = false;
             oppLive = oppLive || {};
@@ -16700,11 +16758,33 @@
                     var loSnap = await fbGetT(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' +
                                                      (savedRole === 'a' ? 'b' : 'a')));
                     var lo = loSnap.val();
+                    // V430 (VWWK, BXDZ, NICE, AOGO — 4 of 2026-10-01's 11 "both parked" stalls): a phone that reloads
+                    // seconds AFTER taking the partner's hand-off. The ACK says it was applied, but my own live record
+                    // — what the resume reads — is OLDER than that ACK (the tab was throttled: the 500 ms push never
+                    // caught the new possession), so the resume parked me in WAIT; both phones sat parked until
+                    // TURN-RESCUE guessed a drive ~9 s later, at the wrong spot (own 25 after a punt to the 36). The
+                    // facts on the server say the ball is mine: my ACK is newer than my live record, my live record
+                    // does not say I had the ball, and I have sent nothing since that hand-off. Take it again — the
+                    // same apply as a lost one: a punt's spot from the record, a kickoff's return from the draw the
+                    // flow record kept for this possession (nothing is drawn twice).
+                    var ackedUnseen = false;
+                    if (lo && lo.ts && lo.ack === savedRole && (Date.now() - Number(lo.ts) < 120000) &&
+                        Number(lo.ackTs) > (Number(myLive && myLive.ts) || 0) &&
+                        !(myLive && myLive.iHaveBall === true)) {
+                        try {
+                            var myOutU = (await fbGetT(FB.ref(db, 'rooms/' + savedRoom + '/outcomes/' + savedRole))).val();
+                            ackedUnseen = !(myOutU && Number(myOutU.ts) >= Number(lo.ts));
+                        } catch (eMO) { ackedUnseen = false; }
+                        if (ackedUnseen) {
+                            console.log('[2P RESUME] the ' + lo.type + ' I took before the reload is newer than my live record — taking it again');
+                            try { if (window._rb2p_diagLog) window._rb2p_diagLog('RESUME the ' + lo.type + ' I took before the reload is newer than my live record — taking it again'); } catch (eDL) {}
+                        }
+                    }
                     if (lo && lo.ts && (Date.now() - Number(lo.ts) < 120000) &&
-                        lo.ack !== savedRole &&
+                        (lo.ack !== savedRole || ackedUnseen) &&
                         (lo.type === 'TD' || lo.type === 'FG' ||
                          lo.type === 'PUNT' || lo.type === 'OTHER' ||
-                         lo.type === 'PAT_RESULT') &&
+                         lo.type === 'PAT_RESULT' || (ackedUnseen && lo.type === 'KICKOFF')) &&
                         !patDutyMine && !pick6ForMe && !turnoverForMe &&
                         !(myLive && myLive.iHaveBall === true &&
                           (Number(myLive.ts) || 0) >= Number(lo.ts))) {
@@ -16733,7 +16813,7 @@
                         } catch (ePh) {}
                         if (!phantomLo) {
                             lostOutcome = lo;
-                            console.log('[2P RESUME] un-ACKed ' + lo.type +
+                            console.log('[2P RESUME] ' + (ackedUnseen ? 'ACKed-but-unseen ' : 'un-ACKed ') + lo.type +
                                         ' outcome addressed to me — will drain after resume');
                         }
                     }
@@ -17941,6 +18021,8 @@
             // game's record in a reused room can never be applied.
             if (window._rb2p_outcomePollIv) { try { clearInterval(window._rb2p_outcomePollIv); } catch (eCI) {} }
             var outcomePollBusy = false, outcomePollSince = 0;
+            // V430 (CZFL): the network coming back is the moment to ask — not the next 3 s tick after a dead request
+            try { window.addEventListener('online', function () { try { outcomePollBusy = false; if (window._rb2p_diagLog) window._rb2p_diagLog('NET online — polling the hand-off now'); pollOutcomeOnce(false); } catch (eOn) {} }); } catch (eOE) {}
             function pollOutcomeOnce(force) {
                 if (!force && window._rb2p_userIsWaitingForOpponent !== true) return;
                 // V419 (latch inventory #2): busy was cleared only inside the callbacks of a fetch
@@ -17969,7 +18051,17 @@
                     console.warn('[2P OUTCOME] the SDK never delivered a ' + val.type +
                                  ' addressed to me — applying it from the REST poll');
                     applyIncomingOutcome(val, 'rest-poll');
-                }).catch(function () { outcomePollBusy = false; });
+                }).catch(function (ePoll) {
+                    outcomePollBusy = false;
+                    // V430 (CZFL): the poll's failures were silent — a receiver with no network at all looked like a
+                    // code freeze. Say it, at most every 15 s.
+                    try {
+                        if (Date.now() - (Number(window._rb2p_pollFailLogMs) || 0) > 15000) {
+                            window._rb2p_pollFailLogMs = Date.now();
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('OUTCOME-POLL failed (' + String((ePoll && (ePoll.message || ePoll.name)) || ePoll || '?').slice(0, 40) + ') online=' + (typeof navigator !== 'undefined' ? navigator.onLine : '?'));
+                        }
+                    } catch (eL) {}
+                });
             }
             window._rb2p_pollOutcomeNow = pollOutcomeOnce;   // V366: the pick-6 watchdog's hand
             window._rb2p_outcomePollIv = setInterval(function () { pollOutcomeOnce(false); }, 3000);
@@ -19112,7 +19204,9 @@
                         if (!inMatch) {
                             if (shouldBeLive && window._rb2p_gameOverReported !== true && !document.hidden) {
                                 if (!outSince) outSince = Date.now();
-                                if (Date.now() - outSince > 8000) { out.must = true; out.can = false; out.why = 'resume did not re-enter the match'; return out; }
+                                // V430 (IEID): no resume ran there — the page's OWN match start never reached the match (the engine
+                                // threw on every frame); say which it was
+                                if (Date.now() - outSince > 8000) { out.must = true; out.can = false; out.why = window._rb2p_resumedMs ? 'resume did not re-enter the match' : (Date.now() - (Number(window._rb2p_lastFrameThrewMs) || 0) < 10000 ? 'the match never started (engine error)' : 'the match start never reached the match'); return out; }
                             } else outSince = 0;
                             out.why = 'not in a match'; return out;
                         }

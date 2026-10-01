@@ -6,58 +6,52 @@ run finds a new root it cannot fix today, it adds it here with the rooms that sh
 
 Order = what to take first when the brief has no new freeze to work on.
 
-## 2. Unanswered taps are not a freeze yet
-- Since V426 taps are logged on every device (`tap … p=mouse` on Chromebooks and desktops). Before that, 128 of 154
-  V424 games had no taps at all.
-- The `act` monitor's "taps unanswered" is soft: never counted and never acted on. It fired only 17 times in 291
-  games.
-- **Next:**
-  1. Measure on V426+ games first: ≥4 taps in 10 s on a phone that must act, is on screen, and makes no progress.
-  2. Compare with `stuck-scan.js`.
-  3. Only then make it count in `tools/audit-rules.js`, as a new interval kind, with a whole-archive diff.
-- Also count a **reload escape**: a reload while must-act and unable to act.
-  - Grace backdating (V426) already counts DAXK's 15 s.
-  - A reload at 5–9 s still counts as nothing.
+## 1. FGXJ: overtime starts while a pick-six try is still owed (V424, still in the code)
+- A pick-six at Q4 0:00 tied the game 12-12 before its try; the engine rolled into Q5 during that temporary tie, so the
+  OT code armed and seeded the coin flip (`coin flip only from a tie`). The try made it 13-12 — the game was decided at
+  the horn — but OT counted as legitimate because the flip was seen; `_rb2p_p6ScorerOwes` was never cleared (the
+  PAT guardian stood down, POST-CONV returns for Q≥5), so B's OT kickoff was refused 40 times ("the scorer owes a
+  PAT_RESULT"), then FIELD-CHECK shipped a synthetic result and A went live against the coin flip.
+- Fix (both): don't arm OT / seed the flip while a try is owed on either phone (reuse the halftime law's
+  `q3PartnerTryPending()` + my own `patOwed()`, capped), so 13-12 ends at the horn; and in `_rb2p_applyOtKickoff`
+  clear `_rb2p_p6ScorerOwes` (the flip decides possession). Test through a REAL pick-six at Q4 0:01 (the receiver
+  six behind), both a made and a missed try. (Investigator's full chain: the V430 session notes.)
 
-## 3. CZFL: a hand-off the REST poll never delivered
-- **What happened** (V424, g1, +1982 to 2050 s):
-  1. B punted while A was hidden.
-  2. A came back with its SDK socket OFFLINE, running on REST.
-  3. A's flow record said "b has the ball (a sent after b)", but the REST poll never fetched B's hand-off.
-  4. Both phones waited on screen for 31 s, permanent.
-- **Also:** the monitor's `both parked` check needs `fvB.fresh && partnerTrusted`, so a stale partner record (a
-  dead socket) blinds it in exactly this case.
-- **Test:** use the `_rb2p_FB` seam (memory: rb-firebase-dual-transport). Kill the receiver's socket while the
-  sender ships OTHER, and expect `OUTCOME OTHER via rest-poll` within 6 s.
+## 2. DAXK: a reload during an overtime try ends the game early (still in the code)
+- The try's duty record survives the reload; the resume replays it as a synthetic `type:'PICK6'` outcome, and in OT a
+  pick-six is a walk-off win (`_rb2p_otWalkoffDefensiveTd`) — the game ended 30-24 with A's answering possession
+  unplayed. Fix: mark the replayed outcome (`resumeRepop: true`) and skip the OT walk-off for it. Test: B scores an OT
+  touchdown by real play, reloads before choosing; no FINAL, the choice re-shown, a real 2 PT tap, A then plays.
 
-## 4. NERM: a turnover-on-downs hand-off that stayed "in flight"
-- **What happened** (V424, +283 s):
-  1. A turned the ball over on downs (`SEND OTHER`).
-  2. B's flow said "a hold in flight", live=false.
-  3. Both phones waited 21 s, then B left. Permanent.
-- **Next:** read it with CZFL; it may be the same root.
+## 3. NERM: the hand-off lives only in the sender's memory for the 4 s pick-six hold
+- A laptop that sleeps inside the hold strands the partner (the hand-off reached the server 15 minutes later). Fix:
+  skip the hold when no pick-six can follow (`_rb2p_driveTurnoverDeltas()` known with intDelta + fumDelta === 0, no
+  turnover stamp this drive, no opponent TD replay < 15 s). Risk: a turnover whose stat lands late would ship as OTHER
+  first (the OKAG double record; V352's duplicate drop is the backstop). Test with CDP `Debugger.pause` on the sender.
 
-## 5. A real heartbeat
-- `stage` and `act` are written on change only, so a quiet page and a dead page look alike in the stream.
-- V426 judges a silence by how it ends. That is a workaround, not a measurement.
-- **Options:**
-  - a 2-field `hb` entry every 15 s while on screen. That is about 20 KB per phone per game, so mind the storage
-    item below.
-  - Or stamp the existing `rooms/CODE/hb` heartbeat into the stream only when the page is stuck.
+## 4. IEID / WVLK: the engine throws on every frame from the lobby (2 rooms of ~2,500; one pair of new players)
+- "undefined is not a valid map reference" every frame, from before the match start on both phones: the match never
+  started, the players left (twice). V430 logs the engine's full error (`engerr` audit entries) — read them on the next
+  occurrence to find the trigger. Optional guard: disable READY while the engine throws every frame (never start a
+  game on a broken phone; the partner is not dragged in) — a lobby change, needs its own test.
 
-## 6. The stall report is lost when the PATCH fails
-- The watchdog's `stall` PATCH is fire-and-forget; a phone that is offline at that moment loses the evidence.
-- **Fix:** retry it, and `postMessage` the record to the page so the audit outbox carries it after a resume.
-- Then consider counting a `kind:'hang'` stall on a must-act visible phone as freeze seconds in R-FREEZE.
+## 5. Unanswered taps are not a freeze yet
+- Since V426 taps are logged on every device (`tap … p=mouse` on Chromebooks), and since V430 a visible page writes a
+  clock sample every 15 s (a heartbeat). The `act` monitor's "taps unanswered" is still soft (never counted).
+- Next: measure on V430+ games — ≥4 taps in 10 s on a must-act, on-screen phone with no progress — against stuck-scan;
+  only then count it (a new interval kind, with a whole-archive diff). Also count a reload while must-act and unable.
 
-## 7. "offline" in the act monitor
-- The monitor reports `why: 'offline'` when the socket is down, which hides the real state (CZMX played 9 snaps
-  while flagged `can:false offline`).
-- Since V364 a phone keeps playing over REST. Check offline last, or make it soft.
+## 6. The detector under-measures a refusal stall
+- ZQMT's real freeze was ~13 s on B (refused LIVE → behind the waiting cover) but the act monitor only reported "both
+  parked" on A (9-11 s). A `wait refused` audit entry followed by both phones parked is the stuck state; count it from
+  the refusal. (V430 fixed ZQMT's cause — the OT kickoff waits for the partner.)
 
-## 8. Low frame rate
-- A separate "degraded" measure: a phone that owes the move at <10 fps for >10 s (XAMX, ZZZX, LMUM). It is not a
-  freeze; report it in the daily sweep.
+## 7. Low frame rate
+- A separate "degraded" measure: a phone that owes the move at <10 fps for >10 s (XAMX, ZZZX, LMUM). Not a freeze.
+
+## 8. The page reloads itself on a lost graphics context
+- `glLostRecover` reloads the page when the WebGL context is lost (once per 45 s) — against the owner's "no
+  auto-reload". It never fired in the cases read; a lost GL context cannot draw again otherwise. Decide with the owner.
 
 ## Owner decisions (do not act on these without the owner)
 - **Database storage:** the free plan allows 1 GB, and the database is at about 293 MB and grows 30–50 MB a day,
@@ -67,6 +61,12 @@ Order = what to take first when the brief has no new freeze to work on.
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V430 — the 2026-10-01 freezes:** a phone that reloads seconds after taking the ball comes back with it, at the
+  same spot (VWWK, BXDZ, NICE, AOGO — and TURN-RESCUE had put it at its own 25); the OT receiver waits for the partner
+  still playing its try (ZQMT; and never two offenses when the flip lands just after the horn); a play that runs out
+  the clock ends the quarter — no extra play at 0:01 (53 archived hand-offs). Detector: partner away / partner's own
+  progress / clock stretches / frames without taps / no network / any sleep signature; a clock sample every 15 s; the
+  outcome poll's failures logged; the engine's full error logged. (Old items CZFL, NERM-detector: explained.)
 - **V428 — R-REOPEN, the root:** a phone that reloaded after the final was put into a match alone.
   - **Why:** the READY flags on the server were never reset. The reloaded page saw both seats still READY from the
     finished game and called startMatch.

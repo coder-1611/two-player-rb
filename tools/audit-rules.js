@@ -54,13 +54,46 @@ function toTimeline(streams) {
             // smallest when none is that close; one device on both seats keeps one sample list for both.
             const same = !!out.sameDevice, samples = {};
             for (const r of roles) samples[r] = out.filter(e => (same || e.role === r) && e.k === 'sync' && typeof e.srv === 'number').map(e => ({ t: e.t, d: e.srv - e.t })).sort((x, y) => x.t - y.t);
-            const WIN = 60 * 60 * 1000;
+            // V430 (DNSX, ZMCM): a phone's clock can be corrected mid-game (DNSX: 26 s, a Chromebook) — an hour's
+            // window then took a sample from before the correction. The smallest sample within 10 minutes when there
+            // are at least 3 there; an hour's when samples are sparse (their uploads' delays slid WNPB 1-3 s).
+            const WIN = 60 * 60 * 1000, NEAR = 10 * 60 * 1000;
+            const minIn = (sm, t, w) => {
+                let lo = 0, hi = sm.length;
+                while (lo < hi) { const mid = (lo + hi) >> 1; if (sm[mid].t < t - w) lo = mid + 1; else hi = mid; }
+                let best = null, n = 0;
+                for (let i = lo; i < sm.length && sm[i].t <= t + w; i++) { n++; if (best === null || sm[i].d < best) best = sm[i].d; }
+                return { best, n };
+            };
+            // ...and a correction inside a window would still reach back across it: split each phone's samples where
+            // the FLOOR moves by more than 3 s (the smallest of 3 samples before vs the 3 after — one upload's delay
+            // only ever adds, so it cannot fake a jump), and align each entry with its own stretch only.
+            const stretches = {};
+            for (const r of roles) {
+                const sm = samples[r], cuts = [];
+                for (let i = 1; i < sm.length; i++) {
+                    // only neighbours within 10 minutes on each side (a sample from the next day is not "after" a game moment)
+                    const prev = sm.slice(0, i).filter(x => sm[i].t - x.t <= NEAR).slice(-3), next = sm.slice(i).filter(x => x.t - sm[i].t <= NEAR).slice(0, 3);
+                    // a correction shows in SEVERAL samples; one upload's delay is one sample (FQHW: 27 s late) — need 2 before, 3 after
+                    if (prev.length < 2 || next.length < 3) continue;
+                    const before = Math.min(...prev.map(x => x.d)), after = Math.min(...next.map(x => x.d));
+                    if (Math.abs(after - before) > 3000 && (!cuts.length || i - cuts[cuts.length - 1] >= 3)) cuts.push(i);
+                }
+                const st = []; let s0 = 0;
+                for (const c of cuts) { st.push(sm.slice(s0, c)); s0 = c; }
+                st.push(sm.slice(s0));
+                stretches[r] = st.filter(x => x.length);
+            }
             const offAt = (r, t) => {
-                const sm = samples[r]; let lo = 0, hi = sm.length;
-                while (lo < hi) { const mid = (lo + hi) >> 1; if (sm[mid].t < t - WIN) lo = mid + 1; else hi = mid; }
-                let best = null;
-                for (let i = lo; i < sm.length && sm[i].t <= t + WIN; i++) if (best === null || sm[i].d < best) best = sm[i].d;
-                return best === null ? off[r] : best;
+                const st = stretches[r] || [];
+                let mine = st.find(x => x[0].t <= t && t <= x[x.length - 1].t);
+                if (!mine && st.length) mine = st.reduce((b, x) => { const dist = t < x[0].t ? x[0].t - t : t - x[x.length - 1].t; return (!b || dist < b.dist) ? { x, dist } : b; }, null).x;
+                const sm = mine || samples[r];
+                const near = minIn(sm, t, NEAR);
+                if (near.n >= 3) return near.best;
+                const far = minIn(sm, t, WIN);
+                if (far.best !== null) return far.best;
+                return sm.length ? Math.min(...sm.map(x => x.d)) : off[r];
             };
             for (const e of out) e.t += offAt(e.role, e.t);
             out.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
@@ -168,7 +201,7 @@ function audit(tl, extra) {
             for (const c of starts.slice(1).map(t => t - 3000)) { segs.push(tl.filter(e => e.t >= from && e.t < c)); from = c; }
             segs.push(tl.filter(e => e.t >= from));
             const segsK = segs.filter(x => x.length);
-            const parts = segsK.map((x, i) => audit(x, Object.assign({}, extra || {}, { _seg: i + 1 })));
+            const parts = segsK.map((x, i) => audit(x, Object.assign({}, extra || {}, { _seg: i + 1, _full: tl })));   // V430: _full for facts past a game's end
             // V426 (the detector audit, EQXQ, SJTR): after a game's stats screen, a phone that reloads is put back into
             // a match ALONE — only it starts the "game", the other phone never plays in it (EQXQ: a reloaded 11s after
             // the final, snapped once by itself, then reopened the tab 18 hours later). Its "freezes" are not a frozen
@@ -739,12 +772,22 @@ function audit(tl, extra) {
             // "both parked" after 5s) — the interval starts when the state began, not at the report (a player who
             // reloads to escape at 10-15s was never counted: DAXK, KHIX). Never before the phone's previous report.
             const graceOf = why => { const m = /(\d+)s$/.exec(why || ''); return m ? Number(m[1]) * 1000 : (why === 'both parked' ? 5000 : 0); };
-            const prevActT = {}, visT = {};
+            const prevActT = {}, visT = {}, partnerProgress = {};
             const evalAt = (t) => {
                 const roles2 = Object.keys(st);
                 for (const r of roles2) {
                     const x = eff(r);
-                    const stuck = x.must && !x.can && !x.soft && !/^(hidden|offline)$/.test(x.why || '');
+                    // V430 (OHGZ, JDZQ, ZMCM): a phone "both parked" while its partner is AWAY (screen off, or gone
+                    // silent) is waiting for a player who left — the rule is never to take the ball from an away player
+                    // — not a freeze. (A partner that reloads is back on screen at its boot, so a stall our own resume
+                    // makes after a reload still counts.)
+                    const pr = r === 'a' ? 'b' : 'a';
+                    // V430 (ZMCM): "both parked" is my view of the partner — from its record, which can be stale (an
+                    // 11.5 s REST backlog). The partner's own stream is the fact: once it went live or snapped after my
+                    // report, it was not parked.
+                    const partnerMoved = /^both parked/.test(x.why || '') && st[r] && (partnerProgress[pr] || 0) > (st[r].t || 0);
+                    const partnerAway = /^both parked/.test(x.why || '') && (visHid[pr] || silent[pr] || partnerMoved);
+                    const stuck = x.must && !x.can && !x.soft && !/^(hidden|offline)$/.test(x.why || '') && !partnerAway;
                     // (the grace only on the phone's own report, and never back past its screen coming on or a reload)
                     const own = st[r] && st[r].t === t;
                     if (stuck && !open['one' + r]) open['one' + r] = { from: own ? Math.max(t - graceOf(st[r].why0), prevActT[r] || -Infinity, visT[r] || -Infinity) : t, why: x.why, role: r };
@@ -778,7 +821,7 @@ function audit(tl, extra) {
                     if (!gone) for (let j = i + 1; j < ev.length && ev[j].t <= nextT + 2000; j++) {
                         const x = ev[j];
                         if (x.k === 'bind' || (x.k === 'diag' && x.m === 'boot') ||
-                            (x.k === 'diag' && /ENGINE LOOP DEAD.*kicks=1\)/.test(x.m || '')) ||
+                            (x.k === 'diag' && /ENGINE LOOP DEAD/.test(x.m || '')) ||   // V430 (NERM): any kick count — kicks=7 after a 15-minute sleep
                             (x.k === 'stall' && Number(x.ms) >= gap - 3000)) { gone = true; break; }
                     }
                     if (gone) marks.push({ t: ev[i].t + GONE_AFTER_MS, role: r, k: '_silent' });
@@ -789,6 +832,9 @@ function audit(tl, extra) {
             for (const e of evs) {
                 if (e.k === '_silent') { silent[e.role] = true; evalAt(e.t); continue; }
                 if (silent[e.role]) { silent[e.role] = false; if (st[e.role]) evalAt(e.t); }
+                // V430: a phone's own progress — it went live or snapped (its monitor's "I can act" is not enough: ZQMT's
+                // B said so while its offense sat behind the waiting cover)
+                if (e.k === 'snap' || (e.k === 'wait' && e.on === false)) { partnerProgress[e.role] = e.t; evalAt(e.t); }
                 if (e.k === 'act') { const before = st[e.role] ? st[e.role].t : undefined; st[e.role] = { must: !!e.must, can: e.can !== false, why: e.why || '', why0: e.why || '', soft: !!e.soft, t: e.t }; prevActT[e.role] = before; evalAt(e.t); }
                 else if (e.k === 'send') { if (open.bw) { delete open.bw; } }
                 else if (e.k === 'vis' && !e.opp) { visHid[e.role] = e.h === true; visT[e.role] = e.t; if (st[e.role]) evalAt(e.t); }
@@ -803,8 +849,25 @@ function audit(tl, extra) {
             // play was snapped, or the stats screen came up — and permanent when nothing did: the
             // players left or the recording ended with the game still stuck.
             frozen.temporary = { n: 0, sec: 0 }; frozen.permanent = { n: 0, sec: 0 };
+            // V430 (ZNSO): "no frames drawn" with no tap from that player is a screen nobody was looking at (an
+            // overlay, the app switcher) — counted only when the player tried to play. Taps are logged on every
+            // device from V426; older builds keep the old count.
+            const verOf = r => Math.max(0, ...tl.filter(e => e.role === r && e.k === 'bind').map(e => Number(String(e.ver || '').replace(/\D/g, '')) || 0));
+            const tappedIn = (r, a, b) => tl.some(e => e.role === r && e.k === 'diag' && /^tap /.test(e.m || '') && e.t >= a && e.t <= b);
+            // V430 (CZFL): a hand-off wait while a phone had NO network at all (no upload landed in the window and its
+            // next one carried a backlog of 20+) is a phone offline, not the game — the transports had nothing to
+            // carry it over.
+            const fullTl = (extra && extra._full) || tl;   // the phone's next upload can land after this game's end (CZFL: after the reload)
+            const offlineIn = (r, a, b) => {
+                if (fullTl.some(e => e.role === r && e.k === 'sync' && e.t >= a && e.t <= b)) return false;
+                const nx = fullTl.find(e => e.role === r && e.k === 'sync' && e.t > b);
+                return !!(nx && Number(nx.q) >= 20);
+            };
             for (const iv of frozen.intervals) {
                 iv.why = String(iv.why || '').replace(/ \d+s$/, '');
+                const ivEnd = iv.from + iv.ms;
+                if (/^no frames drawn/.test(iv.why) && iv.role !== 'ab' && verOf(iv.role) >= 426 && !tappedIn(iv.role, iv.from, ivEnd)) { iv.notPlay = 'no tap: nobody was trying to play'; continue; }
+                if (/both waiting|both parked|hand-off/.test(iv.why) && ['a', 'b'].some(r => offlineIn(r, iv.from, ivEnd))) { iv.notPlay = 'a phone had no network'; continue; }
                 if (iv.ms > limitOf(iv)) {
                     frozen.sec += Math.round((iv.ms) / 1000);
                     const endT = iv.from + iv.ms;

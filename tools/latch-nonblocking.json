@@ -148,5 +148,9 @@
  "var:bothStuckSince": "when the monitor first saw both phones parked with no decision — the start of its 5s grace, telemetry only",
  "room:clock": "a scratch server-time probe the resume writes and reads once ({.sv} then GET) to judge 'game in progress' on the server's clock; nothing waits on it",
  "storage:rb2p_auditOutbox_": "the audit outbox (V419): telemetry entries waiting to upload; nothing in the game waits on them",
- "window._rb2p_convChoice": "the last 1 PT / 2 PT choice {pts, at}, stamped where the engine dispatches the button (V424); the overtime try's set-up net acts only on a choice newer than the touchdown — it enables a set-up, it never holds one up"
+ "window._rb2p_convChoice": "the last 1 PT / 2 PT choice {pts, at}, stamped where the engine dispatches the button (V424); the overtime try's set-up net acts only on a choice newer than the touchdown — it enables a set-up, it never holds one up",
+ "window._rb2p_engErrSeen": "V430 telemetry: the engine errors already written to the audit stream (one 'engerr' entry per distinct error); only decides whether to log, never read by game logic",
+ "window._rb2p_lastFrameThrewMs": "V430 telemetry: when a frame last threw; read only to word the can-act monitor's label ('the match never started (engine error)'), never gates play",
+ "window._rb2p_pollFailLogMs": "V430 log throttle: the outcome poll's failure line at most every 15 s; never gates the poll",
+ "window._rb2p_resumedMs": "V430: set when resumeMatch runs; read only to word the monitor's label (a resume vs this page's own match start), never gates play"
 }

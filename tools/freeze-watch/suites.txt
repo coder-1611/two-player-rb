@@ -1,5 +1,10 @@
 # the full regression: every suite here must pass (=== N passed, 0 failed ===) before a build ships.
 # A fix adds its own test here (the one that fails on the live build and passes on the fix).
+v430-reload-ball
+v430-ot-wait
+v430-expired
+v430-checker
+v430-sync
 v429-passline
 v333-boxscore
 v334-boxpersist

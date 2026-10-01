@@ -101,6 +101,7 @@ const blocking = {
     'window._rb2p_otKickoffPending': e('guard', 'overtime', 'OT init', 'the flip applied', '20s', 'released'),
     'window._rb2p_otKickoffPendingMs': e('guard', 'overtime', 'with it', 'with it', '20s', 'released'),
     'window._rb2p_otForceTries': e('guard', 'overtime', 'a failed OT staging', 'a successful one', '20s', 'stops retrying'),
+    'window._rb2p_otRefuseTries': e('guard', 'overtime', 'the OT receiver waiting for the partner still playing (V430)', 'going ahead', '20s (40 x 500 ms)', 'goes ahead (today\'s path)'),
     'var:otInitedPeriod': e('obligation', 'overtime flip', 'OT init requests the flip', 'a new match', 'the period', 'the flip is drawn once and written over both transports until the server has it; read over REST while pending (V422, F24)'),
     'var:otAppliedPeriods': e('guard', 'overtime flip', 'the flip is applied', 'a new match', 'the period', 'V422: a failed staging retries (40 x 500ms)'),
     'room:ot': e('obligation', 'overtime flip', 'the host seeds the flip (one draw per game and period, both transports, retried ~60s)', 'purged at match start', 'the period', 'read over REST while pending (V422, F24)'),

@@ -123,8 +123,12 @@ console.log('=== V426 CHECKER ===');
         }
         const ivs = c => got[c].frozen.intervals.filter(x => x.kind);
         const has = (c, why, minS, kind) => ivs(c).some(x => x.why === why && x.ms >= minS * 1000 && (!kind || x.kind === kind));
-        check('K7a CZFL: both phones waited 23s (the offline rule had zeroed it)', has('CZFL', 'both waiting', 23));
-        check('K7b NERM: b never got the turnover-on-downs hand-off — both waiting 21s until b left, permanent', has('NERM', 'both waiting', 20, 'permanent'));
+        // V430: CZFL and NERM were read on their timelines (the 2026-10-01 investigation) — CZFL's receiver had NO
+        // network at all (a laptop just out of a 22-minute sleep: both transports dead), NERM's sender slept inside the
+        // 4 s hand-off hold (ENGINE LOOP DEAD kicks=7 after 15 minutes). Neither is the game freezing a present player:
+        // V430's checker no longer counts them (e2e/v430-checker.js C5, C6, C7a). The expectations follow.
+        check('K7a CZFL: the receiver had no network (V430) — not counted', got.CZFL.frozen.sec === 0, JSON.stringify(ivs('CZFL')));
+        check('K7b NERM: the sender slept inside the hold (V430) — not counted', got.NERM.frozen.sec === 0, JSON.stringify(ivs('NERM')));
         check('K7c NGKD: both parked with no decision ~55s (silences that ended in plain writes no longer cut it to 24s)', has('NGKD', 'both parked, no decision', 50));
         check('K7d WNPB: b parked with no decision 62s on screen, one freeze (not 20s + 22s)', has('WNPB', 'both parked, no decision', 60));
         check('K7e DAXK: b\'s empty field from when it began (14.5s), counted once', has('DAXK', 'empty field', 14) && ivs('DAXK').filter(x => x.why === 'empty field').length === 1);
