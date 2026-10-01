@@ -63,19 +63,39 @@ function fromArchives() {
     return { games, complete, phones, personHours: engagedMs / 3600000, gameHours: engagedMs / 7200000, since: isFinite(first) ? first : null, until: last || null };
 }
 
-async function fromDb() {
+// V426 (infra): this ran every 10 minutes and downloaded the whole visits and solo trees TWICE per run (once for
+// the day list, once per day) — ~4.6 MB a run, ~0.66 GB a day on a free plan allowed 10 GB a month. Days before
+// yesterday (UTC keys) never change: they are kept on this Mac and read from the database once.
+const DAY_CACHE = path.join(os.homedir(), 'rb2p', 'stats-day-cache.json');
+let dayCache = null;
+async function dayReader() {
     const tok = await require('./fb-auth.js').token();
-    const get = async p => { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+    if (!dayCache) { try { dayCache = JSON.parse(fs.readFileSync(DAY_CACHE, 'utf8')); } catch (e) { dayCache = {}; } }
+    const settled = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);   // this day and earlier are final
+    const getQ = async (p, q) => { const r = await fetch(DB + p + '.json?' + (q ? q + '&' : '') + 'auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+    return {
+        days: async tree => Object.keys(await getQ(tree, 'shallow=true') || {}).sort(),
+        day: async (tree, d) => {
+            const c = (dayCache[tree] = dayCache[tree] || {});
+            if (d <= settled && c[d]) return c[d];
+            const v = await getQ(tree + '/' + d) || {};
+            if (d <= settled) { c[d] = v; try { fs.writeFileSync(DAY_CACHE, JSON.stringify(dayCache)); } catch (e) {} }
+            return v;
+        }
+    };
+}
+async function fromDb() {
+    const rd = await dayReader();
     const out = { visits: 0, devices: new Set(), firstVisit: null, solo: { visits: 0, devices: new Set(), sessions: 0, played: 0, hours: 0, matchHours: 0, matches: 0 } };
-    const days = Object.keys(await get('visits') || {}).sort();
+    const days = await rd.days('visits');
     for (const d of days) {
-        const v = await get('visits/' + d) || {};
+        const v = await rd.day('visits', d);
         for (const k in v) { const r = v[k]; if (!r || isTest(r)) continue;
             if (r.src === 'solo') { out.solo.visits++; if (r.uid) out.solo.devices.add(r.uid); }
             else { out.visits++; if (r.uid) out.devices.add(r.uid); if (!out.firstVisit || r.ts < out.firstVisit) out.firstVisit = r.ts; } }
     }
-    for (const d of Object.keys(await get('solo') || {}).sort()) {
-        const s = await get('solo/' + d) || {};
+    for (const d of await rd.days('solo')) {
+        const s = await rd.day('solo', d);
         for (const k in s) { const r = s[k]; if (!r || isTest(r)) continue;
             out.solo.sessions++; out.solo.hours += (Number(r.dur) || 0) / 3600; out.solo.matchHours += (Number(r.inMatchSec) || 0) / 3600;
             if (r.played === true || Number(r.inMatchSec) >= 20) out.solo.played++; out.solo.matches += Number(r.matches) || 0; }
@@ -125,10 +145,11 @@ const localDay = ms => { const d = new Date(ms); return d.getFullYear() + '-' + 
 async function weekly() {
     const tok = await require('./fb-auth.js').token();
     const get = async p => { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+    const rd = await dayReader();
     const now = new Date(), perDay = {};
     for (let i = 16; i >= -1; i--) {
         const k = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10);
-        const v = await get('visits/' + k) || {};
+        const v = await rd.day('visits', k);
         for (const id in v) { const r = v[id]; if (!r || !r.ts || isTest(r) || r.src === 'solo') continue; const d = localDay(r.ts); (perDay[d] = perDay[d] || { visits: 0, devices: new Set() }).visits++; if (r.uid) perDay[d].devices.add(r.uid); }
     }
     // games per local day from the archives

@@ -295,14 +295,18 @@
         // task, a loop, a wedged engine) and the worker writes a 'stall' entry straight to the
         // audit stream, with the page's last visibility. A sleeping device suspends the worker
         // too, so silence from both = asleep, not hung.
+        // V426 (the detector audit, gap 6): ...but the worker reported the wake-up itself as a stall:
+        // 18 of 20 "HANG" flags were devices that had slept. The worker now times its OWN ticks: when
+        // it was itself away for (nearly) the whole gap, the device slept ('sleep'); when it kept
+        // ticking while the page did not answer, the page hung ('hang'). wk = its longest own tick gap.
         (function () {
             try {
                 if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') return;
-                var src = "var url=null,lastPong=Date.now(),vis='V',n=0,reported=0;" +
-                    "onmessage=function(e){var d=e.data||{};if(d.url)url=d.url;if(d.pong){lastPong=Date.now();vis=d.vis||vis;}};" +
-                    "setInterval(function(){postMessage({ping:1});var gap=Date.now()-lastPong;" +
-                    "if(url&&gap>6000&&Date.now()-reported>10000){reported=Date.now();var t=Date.now();var b={};" +
-                    "b[t+'_w'+(n++)]={t:t,k:'stall',ms:gap,vis:vis,srv:{'.sv':'timestamp'}};" +
+                var src = "var url=null,lastPong=Date.now(),vis='V',n=0,reported=0,lastTick=Date.now(),wk=0;" +
+                    "onmessage=function(e){var d=e.data||{};if(d.url)url=d.url;if(d.pong){lastPong=Date.now();vis=d.vis||vis;wk=0;}};" +
+                    "setInterval(function(){var now=Date.now(),tg=now-lastTick;lastTick=now;if(tg>wk)wk=tg;postMessage({ping:1});var gap=now-lastPong;" +
+                    "if(url&&gap>6000&&now-reported>10000){reported=now;var t=now;var b={};" +
+                    "b[t+'_w'+(n++)]={t:t,k:'stall',ms:gap,vis:vis,kind:(wk>=gap-3000?'sleep':'hang'),wk:wk,srv:{'.sv':'timestamp'}};" +
                     "fetch(url,{method:'PATCH',body:JSON.stringify(b)}).catch(function(){});}},2000);";
                 var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
                 w.onmessage = function (e) { try { if (e.data && e.data.ping) w.postMessage({ pong: 1, vis: document.hidden ? 'H' : 'V' }); } catch (e2) {} };
@@ -1553,7 +1557,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V425<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V426<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1635,7 +1639,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V425</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V426</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -14945,26 +14949,32 @@
             if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
-                    // V266: the tap-bridge exists for touch phones (V233). On
-                    // desktop it made mouse behavior non-identical: a click up
-                    // to 16 GUI units OUTSIDE a button — which the engine
-                    // correctly ignores — was converted into a direct _Ky fire.
-                    if (!document.documentElement.classList.contains('rb-mobile')) return;
+                    var mobileTap = document.documentElement.classList.contains('rb-mobile');
                     // V239: log EVERY in-match tap (throttled 1/s) — during the
                     // on-device stall taps were invisible because logging was
                     // gated on button existence.
+                    // V426 (the detector audit, gap 2): on EVERY device — the log sat behind the
+                    // touch-phone check below, so a Chromebook's clicks (most players) were never
+                    // seen: 128 of 154 V424 games had no taps at all, and a player pressing a dead
+                    // screen was invisible to the freeze detector. Non-touch taps say what they were.
                     if (Date.now() - lastTapLogMs > 1000) {
                         lastTapLogMs = Date.now();
                         var gAll = pageToGui(evPoint(e)[0], evPoint(e)[1]);
                         var scrT = (window.scrollX | 0) || (window.scrollY | 0)
                             ? ' scr' + (window.scrollX | 0) + ',' + (window.scrollY | 0) : '';
                         diagLog('tap ' + Math.round(e.pageX) + ',' + Math.round(e.pageY) +
-                                '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy) + scrT);
+                                '->gui ' + Math.round(gAll.gx) + ',' + Math.round(gAll.gy) + scrT +
+                                (e.pointerType && e.pointerType !== 'touch' ? ' p=' + e.pointerType : ''));
                         // V277: screenshot burst — capture the real screen at the
                         // tap + 700ms after, so the click response is visible.
-                        try { window._rb2p_tapBurst({ px: Math.round(e.pageX), py: Math.round(e.pageY),
+                        if (mobileTap) try { window._rb2p_tapBurst({ px: Math.round(e.pageX), py: Math.round(e.pageY),
                             gx: Math.round(gAll.gx), gy: Math.round(gAll.gy) }); } catch (eTB) {}
                     }
+                    // V266: the tap-bridge exists for touch phones (V233). On
+                    // desktop it made mouse behavior non-identical: a click up
+                    // to 16 GUI units OUTSIDE a button — which the engine
+                    // correctly ignores — was converted into a direct _Ky fire.
+                    if (!mobileTap) return;
                     // V260: engine-MODAL buttons (PAT 1PT/2PT, staging Kick Off,
                     // any popup button) get the same insurance kickoff buttons
                     // have had since V233. QWHY device session: five straight

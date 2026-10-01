@@ -47,7 +47,22 @@ function toTimeline(streams) {
             if ([...u0].some(u => u1.has(u))) { const one = Math.min(off[roles[0]], off[roles[1]]); off[roles[0]] = one; off[roles[1]] = one; out.sameDevice = true; }
         }
         if (roles.length && roles.every(r => typeof off[r] === 'number')) {
-            for (const e of out) e.t += off[e.role];
+            // V426 (the detector audit, UVXN): one offset for the whole room let a sample from the NEXT DAY (a tab
+            // reopened) move every entry of the game — UVXN's counted 11s flipped to 0. Each entry now takes the
+            // smallest srv - t among its own phone's samples within an hour of it (a game's worth — a 10-minute window
+            // has too few samples, each with its upload's delay: it slid whole games 1-3s, WNPB), the whole-room
+            // smallest when none is that close; one device on both seats keeps one sample list for both.
+            const same = !!out.sameDevice, samples = {};
+            for (const r of roles) samples[r] = out.filter(e => (same || e.role === r) && e.k === 'sync' && typeof e.srv === 'number').map(e => ({ t: e.t, d: e.srv - e.t })).sort((x, y) => x.t - y.t);
+            const WIN = 60 * 60 * 1000;
+            const offAt = (r, t) => {
+                const sm = samples[r]; let lo = 0, hi = sm.length;
+                while (lo < hi) { const mid = (lo + hi) >> 1; if (sm[mid].t < t - WIN) lo = mid + 1; else hi = mid; }
+                let best = null;
+                for (let i = lo; i < sm.length && sm[i].t <= t + WIN; i++) if (best === null || sm[i].d < best) best = sm[i].d;
+                return best === null ? off[r] : best;
+            };
+            for (const e of out) e.t += offAt(e.role, e.t);
             out.sort((a, b) => a.t - b.t || (a.role < b.role ? -1 : 1) || (a.s || 0) - (b.s || 0));
             out.clockSkewMs = Math.round((off.a || 0) - (off.b || 0)); out.clockSkewPairs = 0; out.clockSource = 'server';
             return out;
@@ -152,7 +167,26 @@ function audit(tl, extra) {
             const segs = []; let from = -Infinity;
             for (const c of starts.slice(1).map(t => t - 3000)) { segs.push(tl.filter(e => e.t >= from && e.t < c)); from = c; }
             segs.push(tl.filter(e => e.t >= from));
-            const parts = segs.filter(x => x.length).map((x, i) => audit(x, Object.assign({}, extra || {}, { _seg: i + 1 })));
+            const segsK = segs.filter(x => x.length);
+            const parts = segsK.map((x, i) => audit(x, Object.assign({}, extra || {}, { _seg: i + 1 })));
+            // V426 (the detector audit, EQXQ, SJTR): after a game's stats screen, a phone that reloads is put back into
+            // a match ALONE — only it starts the "game", the other phone never plays in it (EQXQ: a reloaded 11s after
+            // the final, snapped once by itself, then reopened the tab 18 hours later). Its "freezes" are not a frozen
+            // game between two players; the reopen itself is the bug (R-REOPEN, tools/freeze-watch/OPEN.md).
+            for (let i = 1; i < parts.length; i++) {
+                const sg = segsK[i], afterFinal = segsK.slice(0, i).some(s => s.some(e => e.k === 'final'));
+                const starters = new Set(sg.filter(e => e.k === 'game' || (e.k === 'diag' && /^TURN-> [ab] \(match-start\)$/.test(String(e.m || '')))).map(e => e.role));
+                const players = new Set(sg.filter(e => e.k === 'snap').map(e => e.role));
+                const alone = starters.size === 1 && [...players].every(r => starters.has(r));
+                if (!(afterFinal && alone && parts[i].frozen)) continue;
+                const fz = parts[i].flags.filter(f => f.rule === 'R-FREEZE' && f.impact >= 1);
+                parts[i].frozen = { measured: parts[i].frozen.measured, sec: 0, intervals: [], temporary: { n: 0, sec: 0 }, permanent: { n: 0, sec: 0 }, ghost: true };
+                parts[i].flags = parts[i].flags.filter(f => f.rule !== 'R-FREEZE');
+                const who = [...starters][0], first = sg.find(e => e.role === who) || sg[0];
+                parts[i].flags.push({ rule: 'R-REOPEN', msg: `${who} reopened the room after the game ended and was put back into a match alone` + (fz.length ? ` (stuck there ${fz.length}x — not counted as a frozen game)` : ''),
+                                      plain: `After the game ended, Phone ${who.toUpperCase()} came back to the room and was put into a game by itself instead of the finished game's results.`,
+                                      cites: [], t: first.t, impact: 1, impactName: 'yardline', impactText: 'the ball or the down moved', count: 1 });
+            }
             let chainBase = 0; const folded = [], raw = [];
             parts.forEach((p, i) => {
                 for (const f of p.flags) { f.game = i + 1; f.plain = 'Game ' + (i + 1) + ' of ' + parts.length + ' in this room — ' + f.plain; if (f.chain) f.chain += chainBase; folded.push(f); }
@@ -693,12 +727,19 @@ function audit(tl, extra) {
             // Offline too: a phone whose connection dropped (FB-CONN OFFLINE) is not reachable until it is back.
             const visHid = {}, silent = {}, offline = {};
             const eff = r => { const x = st[r]; return (visHid[r] || silent[r] || offline[r]) ? Object.assign({}, x, { why: visHid[r] ? 'hidden' : 'offline', can: false }) : x; };
+            // V426: the monitor reports a stuck state only after its own grace ("empty field 9s" = 9s already;
+            // "both parked" after 5s) — the interval starts when the state began, not at the report (a player who
+            // reloads to escape at 10-15s was never counted: DAXK, KHIX). Never before the phone's previous report.
+            const graceOf = why => { const m = /(\d+)s$/.exec(why || ''); return m ? Number(m[1]) * 1000 : (why === 'both parked' ? 5000 : 0); };
+            const prevActT = {}, visT = {};
             const evalAt = (t) => {
                 const roles2 = Object.keys(st);
                 for (const r of roles2) {
                     const x = eff(r);
                     const stuck = x.must && !x.can && !x.soft && !/^(hidden|offline)$/.test(x.why || '');
-                    if (stuck && !open['one' + r]) open['one' + r] = { from: t, why: x.why, role: r };
+                    // (the grace only on the phone's own report, and never back past its screen coming on or a reload)
+                    const own = st[r] && st[r].t === t;
+                    if (stuck && !open['one' + r]) open['one' + r] = { from: own ? Math.max(t - graceOf(st[r].why0), prevActT[r] || -Infinity, visT[r] || -Infinity) : t, why: x.why, role: r };
                     if (!stuck) closeIv('one' + r, t);
                 }
                 if (roles2.length === 2) {
@@ -712,17 +753,27 @@ function audit(tl, extra) {
                     if (!bothLive) closeIv('bl', t);
                 }
             };
-            // the silences: after each phone's entry, the next one of its own more than 20s later (or none) —
-            // gone from 5s after that entry (a page on screen writes at least every 5s: its stage line)
-            // (only for a phone whose build writes that 5s stage line — V419+ pages; an older build's stream
-            // has no such heartbeat and its gaps mean nothing)
+            // the silences: after each phone's entry, the next one of its own more than 20s later (or none).
+            // V426 (the detector audit, 2026-09-30): a page on screen does NOT write every 5s — `stage` and `act` are
+            // written on change, and 1,051 silences over 20s were healthy pages that simply wrote again. So a silence
+            // is judged by how it ENDS: the phone was gone (from 5s after its last entry) only if its stream never
+            // comes back, or comes back with a reload (boot / bind) or with the suspend signature (the engine loop
+            // kicked once, or the hang watchdog's stall covering the gap); a page that just writes again was there.
             const SILENT_MS = 20000, GONE_AFTER_MS = 5000, marks = [];
             for (const r of roles) {
                 const ev = byRole[r];
-                if (!ev.some(x => x.k === 'stage')) continue;
                 for (let i = 0; i < ev.length; i++) {
                     const nextT = i + 1 < ev.length ? ev[i + 1].t : null;
-                    if ((nextT == null ? endAt : nextT) - ev[i].t > SILENT_MS) marks.push({ t: ev[i].t + GONE_AFTER_MS, role: r, k: '_silent' });
+                    const gap = (nextT == null ? endAt : nextT) - ev[i].t;
+                    if (gap <= SILENT_MS) continue;
+                    let gone = nextT == null;
+                    if (!gone) for (let j = i + 1; j < ev.length && ev[j].t <= nextT + 2000; j++) {
+                        const x = ev[j];
+                        if (x.k === 'bind' || (x.k === 'diag' && x.m === 'boot') ||
+                            (x.k === 'diag' && /ENGINE LOOP DEAD.*kicks=1\)/.test(x.m || '')) ||
+                            (x.k === 'stall' && Number(x.ms) >= gap - 3000)) { gone = true; break; }
+                    }
+                    if (gone) marks.push({ t: ev[i].t + GONE_AFTER_MS, role: r, k: '_silent' });
                 }
             }
             const evs = tl.concat(marks).sort((x, y) => x.t - y.t);
@@ -730,11 +781,12 @@ function audit(tl, extra) {
             for (const e of evs) {
                 if (e.k === '_silent') { silent[e.role] = true; evalAt(e.t); continue; }
                 if (silent[e.role]) { silent[e.role] = false; if (st[e.role]) evalAt(e.t); }
-                if (e.k === 'act') { st[e.role] = { must: !!e.must, can: e.can !== false, why: e.why || '', soft: !!e.soft }; evalAt(e.t); }
+                if (e.k === 'act') { const before = st[e.role] ? st[e.role].t : undefined; st[e.role] = { must: !!e.must, can: e.can !== false, why: e.why || '', why0: e.why || '', soft: !!e.soft, t: e.t }; prevActT[e.role] = before; evalAt(e.t); }
                 else if (e.k === 'send') { if (open.bw) { delete open.bw; } }
-                else if (e.k === 'vis' && !e.opp) { visHid[e.role] = e.h === true; if (st[e.role]) evalAt(e.t); }
-                else if (e.k === 'bind' || (e.k === 'diag' && e.m === 'boot')) { if (visHid[e.role] || offline[e.role]) { visHid[e.role] = false; offline[e.role] = false; if (st[e.role]) evalAt(e.t); } }   // a reloaded page starts on screen
-                else if (e.k === 'diag' && /^FB-CONN (OFFLINE|online)$/.test(e.m || '')) { offline[e.role] = /OFFLINE/.test(e.m); if (st[e.role]) evalAt(e.t); }
+                else if (e.k === 'vis' && !e.opp) { visHid[e.role] = e.h === true; visT[e.role] = e.t; if (st[e.role]) evalAt(e.t); }
+                else if (e.k === 'bind' || (e.k === 'diag' && e.m === 'boot')) { visT[e.role] = e.t; if (visHid[e.role] || offline[e.role]) { visHid[e.role] = false; offline[e.role] = false; if (st[e.role]) evalAt(e.t); } }   // a reloaded page starts on screen
+                // V426: no "offline" from FB-CONN — since V364 a phone whose socket is down keeps playing over REST
+                // (CZFL: a real 31s both-waiting freeze was zeroed by that rule)
             }
             for (const k of Object.keys(open)) closeIv(k, endAt);
             // §3(d): a decided game gets 20s to show its stats screen; everything else 10s
@@ -769,7 +821,9 @@ function audit(tl, extra) {
     for (const e of tl) {
         if (e.k !== 'stall') continue;
         const secs = ((Number(e.ms) || 0) / 1000).toFixed(0);
-        if (e.vis === 'V') flag('R-HANG', `HANG: ${e.role}'s page stopped responding for ${secs}s while on screen`, [e], `${T(e.role)}'s game stopped responding for ${secs} seconds while the screen was on — the page itself hung.`);
+        // V426: the watchdog now says whether IT was asleep too (kind 'sleep': the device slept — not a hang)
+        if (e.kind === 'sleep') flag('R-HANG', `device asleep ${secs}s on ${e.role} (the watchdog slept too)`, [e], `${T(e.role)}'s device went to sleep for ${secs} seconds.`);
+        else if (e.vis === 'V') flag('R-HANG', `HANG: ${e.role}'s page stopped responding for ${secs}s while on screen`, [e], `${T(e.role)}'s game stopped responding for ${secs} seconds while the screen was on — the page itself hung.`);
         else flag('R-HANG', `hidden page parked ${secs}s on ${e.role} (screen off)`, [e], `${T(e.role)}'s page was paused for ${secs} seconds while the screen was off.`);
     }
     const IMPACT_NAME = ['invisible', 'yardline', 'scoreclock', 'gameover'];

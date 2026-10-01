@@ -389,3 +389,45 @@ While the counter was being rebuilt, a fifth room appeared as "402 s, permanent"
 - **Rematches:** a drive end after the final is never handed off (`SEND refused — the game is over`); a held hand-off ships only into the game it was held in (`FLOW dropped the X held in the previous game`); a resume no longer writes "TURN-> a (match-start)"; a reload mid-overtime does not re-apply a coin flip the game already played (`OT flip pN already played before the reload`); the rule treats a stale HEALED send as the epoch's start.
 - **Overtime:** `_hB` case 0 — a TRY (down 6) that reaches the end zone is the conversion (+2), overtime or not.
 - **Tests:** `e2e/v425-rematch.js` R1–R3 and `e2e/v425-ot-resume.js` V1–V4 (each fails on V424, passes on V425); `v424-ottry` T3/T4 drive the engine's real scoring path (T3 fails on V424); `v422-authority` A1/A3/A5/A6/A8, `v422-resume` R2/R3/M1, `v424-freezes` D1/D2, `v366` T6 (a 200-character diag window), `v414` R2/R3 and `v415` F5 (the field check looks at the server before restoring — the tests mark the look done) rewritten to V425's rules (each says why). Full regression (40 suites) and `run.js` 15/15 green.
+
+## V426 (2026-09-30): the freeze detector, re-checked — and a job that asks "why?" four times a day
+
+**Why:** the owner asked "why did games freeze?" day after day, and the problem was often deeper — including in how
+freezes are found. An independent read of every V421–V425 game against the raw streams (not the checker's verdicts)
+found the checker counted about 2 of every 3 real freezes (V424: 7 counted, 10–11 real), and that the archive itself
+was missing games.
+
+**What was wrong, and the fix:**
+
+| gap | what it did | fix |
+|---|---|---|
+| the watcher audited a room once | a rematch, an overtime or a reload after the first audit was never archived: 76 of 220 rooms, OUFQ lost 106 of 118 plays | re-audit when entries newer than `audited` have gone quiet 3 min (never during play; ≤ once per 30 min per room; the backlog drains 10 a minute) |
+| "offline" hid freezes | FB-CONN OFFLINE made a phone "unreachable" — since V364 it plays on over REST. CZFL: 31 s both waiting, permanent, counted 0 | the rule is gone |
+| silence = gone after 20 s | assumed a page writes every 5 s; it writes on change — 1,051 healthy silences over 20 s. NGKD 55 s counted as 24 s, WNPB 62 s as 20 + 22 | a silence is judged by how it ends: gone only if the stream never resumes, or resumes with a reload or the suspend signature |
+| timed from the report | the monitor reports after its grace ("empty field 9s"); a player who reloaded at 10–15 s was never counted (DAXK 15 s) | the interval starts when the state began (once; never before the phone's previous report, its screen coming on or a reload) |
+| one clock offset per room | a sample from the next day moved the whole game (UVXN 11 s → 0) | the smallest offset among the phone's samples within an hour of each entry |
+| lone reopens counted as freezes | a phone that reloads after the final is put into a match alone (EQXQ: 151 s "frozen", 18 hours after its game) | not a frozen game: **R-REOPEN** (a real bug — 31 archived rooms; EXYT played a whole drive alone; OPEN.md item 1) |
+| sleeps called hangs | the watchdog reported a device's wake-up as a hang: 18 of 20 HANG flags | the worker times its own ticks: `kind: 'sleep'` when it was away too, `'hang'` when it kept ticking |
+| clicks invisible | taps were logged on touch phones only — 128 of 154 V424 games (Chromebooks) had none | every in-match tap is logged (`p=mouse` for a click); behaviour unchanged |
+
+**The whole archive, before and after (878 rooms):** 845 identical. More freeze time in 7, each read on its timeline
+and real: CZFL +34 s (the REST poll never delivered a punt, OPEN.md 3), NERM +21 s (a turnover-on-downs hand-off
+"in flight" until B left, OPEN.md 4), NGKD +31 s, WNPB +20 s (one 62 s stall, not two), DAXK +15 s, QJFB +9 s, FGXJ
++11 s (an overtime kickoff behind "the scorer owes a PAT"). R-REOPEN in 31 rooms. Nothing else changed — no freeze
+removed except EQXQ's reopen, no other rule's flags moved.
+
+**Infra (not a game change):** the audit watcher downloaded the whole `rooms` tree (94 MB) every minute — 70–105 GB a
+day against the free plan's 10 GB a month (Google's monitoring; the project has no billing). It now reads the room
+list (shallow) and small reads for active rooms (~35 KB a minute), and writes `~/rb2p/live-rooms.json` ("is anyone
+playing?"); `alltime-stats.js` caches settled days. Storage is 293 MB of 1 GB and grows 30–50 MB a day (rooms are
+never deleted) — the owner's decision (OPEN.md).
+
+**freeze-watch (tools/freeze-watch/):** a LaunchAgent at 9:00, 12:00, 15:00 and 18:00 runs a precheck (no model) and,
+when there is work, Claude Opus 5.5 at xhigh effort on `PROMPT.md`: audit the last release against real games first,
+check the detector, five whys per freeze, fix the root in its own worktree, prove it (fails on the live build, passes
+on the fix, `gate.sh` green, latch check), push only when `quiet.js` says no real game is live, verify every door,
+report. The 6 pm run adds the day's noticeable non-freeze problems and the open items (`OPEN.md`).
+
+**Tests:** `e2e/v426-checker.js` K1–K7 (15 checks; 13 fail on V425's checker), `e2e/v426-telemetry.js` W1–W3 (all 3
+fail on V425). v424-checker, audit-selftest, v424-freezes, v419-canact, v398-games, v406-today, v415-freezes,
+v403-endings, v405-complete unchanged and green.
