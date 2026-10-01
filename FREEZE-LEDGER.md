@@ -483,3 +483,28 @@ from unfinished to complete. PBBW (V394) goes to unfinished: its last two-player
 **Still true (OPEN.md Done):**
 - The lobby drops the partner's `final` report as a leftover (V296), which is harmless to the records.
 - The transcripts never show the stats-screen box score.
+
+## V429 (2026-10-01): the stats screen's passing line counted every catch as another pass
+
+**What the owner saw:** UZGV's stats screen showed Purdy **30/45**. The play-by-play shows **19/23** (19 completions,
+3 incompletions, 1 interception), for 324 yards, which the stats screen had right.
+
+**Why — measured, not guessed:** `e2e/probe-stats.js` plays real passes through the QB bot with the bridge's own
+correction switched off.
+- The engine credits the QB exactly: a completion is +1/+1 and the yards; an incompletion is +1 attempt.
+- When the engine records a catch, it ALSO gives the receiver an attempt, and on some catches a completion.
+- A kicker's completions/attempts are his kicks.
+
+V333 (DEQC, "a WR carried an impossible 2/1") read those as the QB's passes "leaked" to the wrong player and MOVED
+them onto the QB. So every catch added another attempt, and some another completion, on top of the engine's
+correct line. Yards were never moved, which is why 324 was right.
+
+**Fix:** the QB's line is his own engine credit. A receiver's completions/attempts are cleared (they are not passes and
+are never shown), nothing is added to the QB, and K/P keep their kicks. V352's catch reconcile now reconciles to the
+real completions.
+
+**Tests:**
+- `e2e/v429-passline.js`, real passes, the bridge as shipped, against the phone's own play-by-play. On V427/V428 one
+  completion showed as **2/4** with 2 catches; on V429 it shows **1/3** with 1.
+- `v333-boxscore` and `v334-boxpersist` are rewritten to the measured rule (the QB keeps his own 3/5; nothing moves)
+  and added to the gate.

@@ -1557,7 +1557,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V428<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V429<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1639,7 +1639,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V428</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V429</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -12477,44 +12477,33 @@
                 // some stats (e.g. yards) as fractional accumulators.
                 try { return Math.round(Number(_Ai(s, key)) || 0); } catch (e) { return 0; }
             }
-            // ===== V333 (DEQC Bug 4): passing stats NEVER live on a non-QB =====
-            // stat_complete / stat_attempts are PASSER stats (field map below),
-            // but the engine credits a play's passing line to an "active player"
-            // index that is sometimes a non-QB — room DEQC: PURDY showed 3/5
-            // while a WR carried an impossible 2/1 (and the other team leaked
-            // identically), so the FINAL undercounted the QB. There are no
-            // non-QB passes in Retro Bowl, so any completion/attempt found on a
-            // non-QB roster player is moved back to the starting QB (position 1)
-            // and zeroed on the leaker. stat_yards is NOT moved: on a non-QB it
-            // is his RECEIVING yardage (real production) and a leaked passing-
-            // yard credit cannot be split back out of it. Idempotent (the
-            // source is zeroed), so every collect/publish can run it.
+            // ===== V333 (DEQC Bug 4) -> V429: the QB's passing line is the engine's OWN credit =====
+            // V333 took completions/attempts found on a non-QB for the QB's passes "leaked" to the wrong player
+            // (DEQC: PURDY 3/5, a WR "2/1") and MOVED them onto the QB. Measured on real plays (V429,
+            // e2e/probe-stats.js, the bridge's own fix switched off): the engine credits the QB exactly — a
+            // completion is +1/+1 and the yards, an incompletion +1 attempt — and ALSO gives the receiver an
+            // attempt (and on some catches a completion) as part of recording the catch; a kicker's c/a are his
+            // kicks. Moving them made every catch another attempt for the QB: UZGV, Purdy 19/23 for 324 yards,
+            // showed 30/45 (the yards were right — they were never moved). Now a receiver's c/a are cleared (they
+            // are not passes and are never shown), nothing is added to the QB, and K/P keep their own.
             window._rb2p_reattributePassingStats = function () {
-                var moved = 0;
+                var cleared = 0;
                 try {
                     var roster = rb2pOffRoster(); if (!roster) return 0;
-                    var n = _wi(roster), qb = null, i, s;
+                    var n = _wi(roster), i, s, pos;
                     for (i = 0; i < n; i++) {
-                        s = _zi(roster, i);
-                        if (s && Number(_Ai(s, 'position')) === 1) { qb = s; break; }
-                    }
-                    if (!qb) return 0;
-                    for (i = 0; i < n; i++) {
-                        s = _zi(roster, i); if (!s || s === qb) continue;
-                        if (Number(_Ai(s, 'position')) === 1) continue;   // a backup QB keeps his own line
-                        var c = Number(_Ai(s, 'stat_complete')) || 0;
-                        var a = Number(_Ai(s, 'stat_attempts')) || 0;
-                        if (c <= 0 && a <= 0) continue;
-                        _Yi(qb, 'stat_complete', (Number(_Ai(qb, 'stat_complete')) || 0) + c);
-                        _Yi(qb, 'stat_attempts', (Number(_Ai(qb, 'stat_attempts')) || 0) + a);
+                        s = _zi(roster, i); if (!s) continue;
+                        pos = Number(_Ai(s, 'position')) || 0;
+                        if (pos < 2 || pos > 5) continue;   // QB: his own line; K/P: their kicks; defense: measured elsewhere
+                        if ((Number(_Ai(s, 'stat_complete')) || 0) <= 0 && (Number(_Ai(s, 'stat_attempts')) || 0) <= 0) continue;
                         _Yi(s, 'stat_complete', 0);
                         _Yi(s, 'stat_attempts', 0);
-                        moved++;
+                        cleared++;
                     }
-                    if (moved && window._rb2p_diagLog)
-                        window._rb2p_diagLog('QB-REATTR c/a moved from ' + moved + ' non-QB');
+                    if (cleared && window._rb2p_diagLog)
+                        window._rb2p_diagLog('PASS-LINE cleared catch c/a on ' + cleared + ' receiver(s) — the QB keeps his own');
                 } catch (e) {}
-                return moved;
+                return cleared;
             };
             // ===== V352: CATCHES RECONCILE TO COMPLETIONS =====
             // Room OKAG's FINAL: Purdy 12/21 while his receivers totalled 8

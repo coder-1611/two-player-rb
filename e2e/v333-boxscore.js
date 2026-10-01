@@ -1,4 +1,10 @@
-// e2e/v333-boxscore.js — DEQC Bug 4: QB pass completions leaked onto a receiver.
+// e2e/v333-boxscore.js — DEQC Bug 4, and V429's correction of it.
+//
+// V429 (UZGV: Purdy 19/23 showed 30/45): measured on real plays (e2e/probe-stats.js), the engine credits the QB
+// exactly and ALSO gives the receiver an attempt (sometimes a completion) when it records a catch — the "leak"
+// below is the receiver's own catch bookkeeping, not the QB's passes. V333 moved it onto the QB and inflated every
+// QB line. The expectations below are V429's: the QB keeps his own 3/5, the WR's c/a are cleared, nothing moves.
+// (The original V333 text follows for the history.)
 //
 // Room DEQC (V332) final box: team A showed PURDY 3/5 passing while a WR
 // carried an impossible 2/1 (2 completions on 1 attempt); team B's QB had the
@@ -8,10 +14,10 @@
 // (field map, index.html ~9238) and there are no non-QB passes in Retro Bowl,
 // so ANY completion/attempt found on a non-QB roster player belongs to the QB.
 //
-// T1  seeding QB 3/5 + WR 2/1 -> the FINAL QB line renders 5/6
+// T1  seeding QB 3/5 + WR 2/1 -> the FINAL QB line renders 3/5 (V429: his own; was 5/6)
 // T2  after collect, the WR retains NO raw pass completions/attempts
-// T3  the WR's receiving line is untouched (REC count + REC YDS intact)
-// T4  collect is idempotent — a second collect still renders 5/6 (not 7/7)
+// T3  the WR's receiving line is untouched (REC YDS intact; his catches match the QB's 3 completions)
+// T4  collect is idempotent — a second collect still renders 3/5
 // T5  the raw box publish (collectRawOffStats) carries no non-QB completions
 const H = require('./harness');
 const TP = require('./two-player');
@@ -76,8 +82,8 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     });
     console.log('  result: ' + JSON.stringify(res));
 
-    check('T1 the FINAL QB line renders 5/6 (leaked completions re-attributed)',
-          res && !res.err && res.qbLine1 && res.qbLine1.indexOf('5/6') === 0,
+    check('T1 the FINAL QB line renders his own 3/5 (a receiver\'s catch credits are not passes — V429)',
+          res && !res.err && res.qbLine1 && res.qbLine1.indexOf('3/5') === 0,
           'qbLine="' + (res && res.qbLine1) + '"');
     check('T2 the WR retains no raw pass completions/attempts',
           res && res.wrRawC === 0 && res.wrRawA === 0,
@@ -89,10 +95,10 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
     // re-attribution, and the receiving line must still be his.
     check('T3 the WR keeps his receiving yards, and his catches match the completions',
           res && res.wrRawY === 45 && res.wrLine1 &&
-          res.wrLine1.indexOf('5 REC') >= 0 && res.wrLine1.indexOf('45 REC YDS') >= 0,
+          res.wrLine1.indexOf('3 REC') >= 0 && res.wrLine1.indexOf('45 REC YDS') >= 0,
           'wrLine="' + (res && res.wrLine1) + '" wrRawY=' + (res && res.wrRawY));
-    check('T4 a second collect still renders 5/6 (idempotent, not 7/7)',
-          res && res.qbLine2 && res.qbLine2.indexOf('5/6') === 0,
+    check('T4 a second collect still renders 3/5 (idempotent)',
+          res && res.qbLine2 && res.qbLine2.indexOf('3/5') === 0,
           'qbLine2="' + (res && res.qbLine2) + '"');
     check('T5 the raw box publish carries no non-QB completions',
           res && (!res.rawWr || ((Number(res.rawWr.stat_complete) || 0) === 0 &&

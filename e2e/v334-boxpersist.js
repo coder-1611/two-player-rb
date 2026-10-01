@@ -107,7 +107,8 @@ function entry(box, idx) {
           rb3 && Number(rb3.stat_rush_attempts) >= 1 && Number(rb3.stat_rush_yards) >= 7,
           JSON.stringify(rb3));
 
-    // ---- T4: the publish is Bug-4 clean (no non-QB completions ever ship) ----
+    // ---- T4: the publish is Bug-4 clean (no non-QB completions ever ship) — V429: and the QB's line is his own ----
+    const qbBefore4 = await off.page.evaluate((qbIdx) => { var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })(); return Number(_Ai(_zi(to._Ln, qbIdx), 'stat_complete')) || 0; }, p2.qbIdx);
     await off.page.evaluate((wrIdx) => {
         var to = (function () { var c = _si(64); for (var k in c) if (c.hasOwnProperty(k)) return c[k]; })();
         var p = _zi(to._Ln, wrIdx);
@@ -118,10 +119,10 @@ function entry(box, idx) {
     const box4 = await TP.fbGet('rooms/' + g.code + '/box/' + off.role);
     const wr4 = entry(box4, p2.wrIdx), qb4 = entry(box4, p2.qbIdx);
     console.log('  box after leak+publish: wr=' + JSON.stringify(wr4) + ' qb=' + JSON.stringify(qb4));
-    check('T4 no non-QB completions in the published record; QB got them',
+    check('T4 no non-QB completions in the published record, and none added to the QB (V429: a catch credit is not a pass)',
           (!wr4 || ((Number(wr4.stat_complete) || 0) === 0 && (Number(wr4.stat_attempts) || 0) === 0)) &&
-          qb4 && Number(qb4.stat_complete) >= 2,
-          'wr=' + JSON.stringify(wr4) + ' qb=' + JSON.stringify(qb4));
+          (!qb4 || Number(qb4.stat_complete || 0) === qbBefore4),
+          'wr=' + JSON.stringify(wr4) + ' qb=' + JSON.stringify(qb4) + ' qbBefore=' + qbBefore4);
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
