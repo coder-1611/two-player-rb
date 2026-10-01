@@ -8,7 +8,10 @@
 #   run.sh --dry      precheck only: write the brief, start nothing
 #
 # Runtime files (not in the repo): ~/rb2p/freeze-watch/{state.json, logs/, runs/<id>/, reports/, lock}
-export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# V428: ~/.local/bin first — the native, self-updating Claude Code. /usr/local/bin held an old npm copy (2.1.247) that
+# the API refused for this model on 2026-10-01 ("version 2.1.280 or newer is required"): the 9:00 and 12:00 runs died.
+export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+CLAUDE="${FW_CLAUDE:-$HOME/.local/bin/claude}"; [ -x "$CLAUDE" ] || CLAUDE="$(command -v claude)"   # FW_CLAUDE: a test seam
 FW="$HOME/rb2p/freeze-watch"; WT="$HOME/rb2p/wt-auto"; MAIN="$HOME/rb2p/two-player-rb"
 MODEL="claude-opus-5-5"; EFFORT="xhigh"
 mkdir -p "$FW/logs" "$FW/runs" "$FW/reports"
@@ -60,7 +63,7 @@ ask() {   # ask <n> <prompt> [session] — one claude turn, killed at END
   local n=$1 p=$2 sid=$3
   local args=(-p "$p" --model "$MODEL" --effort "$EFFORT" --permission-mode bypassPermissions --add-dir "$HOME/rb2p" --output-format json)
   [ -n "$sid" ] && args=(--resume "$sid" "${args[@]}")
-  (cd "$HOME/Projects" && claude "${args[@]}" > "$RUN_DIR/result-$n.json" 2> "$RUN_DIR/stderr-$n.txt") &
+  (cd "$HOME/Projects" && "$CLAUDE" "${args[@]}" > "$RUN_DIR/result-$n.json" 2> "$RUN_DIR/stderr-$n.txt") &
   local pid=$!
   while kill -0 $pid 2>/dev/null; do
     sleep 20
@@ -69,10 +72,20 @@ ask() {   # ask <n> <prompt> [session] — one claude turn, killed at END
   wait $pid 2>/dev/null
   node -e "try{const j=JSON.parse(require('fs').readFileSync('$RUN_DIR/result-$n.json','utf8'));console.log('turn $n: '+(j.subtype||j.stop_reason||'?')+' cost \$'+(j.total_cost_usd||0).toFixed(2)+' session '+j.session_id)}catch(e){console.log('turn $n: no result')}"
 }
+# V428: an error from the model itself (API refusal, auth, quota) ends the run at once, with the reason — resuming the
+# session cannot fix it, and a run that quietly did nothing looks like a quiet day
+err_of() { node -e "try{const j=JSON.parse(require('fs').readFileSync('$RUN_DIR/result-$1.json','utf8'));if(j.is_error)console.log(String(j.result||j.subtype||'error').slice(0,300))}catch(e){console.log('no result from the model (see stderr-$1.txt)')}"; }
+fail_run() {
+  echo "MODEL ERROR: $1"
+  printf '# Freeze-watch %s — the run could not work\n\nThe model call failed: %s\n\nNothing was analysed or changed. CLI: %s (%s).\n' "$RUN_ID" "$1" "$CLAUDE" "$("$CLAUDE" --version 2>/dev/null)" > "$FW/reports/$RUN_ID.md"
+  osascript -e "display notification \"$(echo "$1" | cut -c1-150 | sed 's/"/\\"/g')\" with title \"Retro Bowl freeze-watch FAILED $RUN_ID\"" 2>/dev/null
+  echo "=== end $(date) ==="; exit 1
+}
 sid_of() { node -e "try{console.log(JSON.parse(require('fs').readFileSync('$RUN_DIR/result-$1.json','utf8')).session_id||'')}catch(e){console.log('')}"; }
 done_of() { node -e "try{const s=JSON.parse(require('fs').readFileSync('$RUN_DIR/status.json','utf8'));console.log(s.done===true?'yes':'no: '+(s.why||''))}catch(e){console.log('no: no status.json written')}"; }
 
 ask 1 "$PROMPT" ""
+E=$(err_of 1); [ -n "$E" ] && [ "$(date +%s)" -lt "$END" ] && fail_run "$E"
 # the /goal loop: until the run's own completion condition holds (status.json done), or time is up, or 4 turns
 for n in 2 3 4; do
   D=$(done_of); [ "$D" = "yes" ] && break
@@ -80,6 +93,7 @@ for n in 2 3 4; do
   SID=$(sid_of $((n - 1))); [ -z "$SID" ] && { echo "no session to resume"; break; }
   echo "not done ($D) — resuming the session (turn $n)"
   ask $n "The run's completion condition is not met yet (status: $D). Re-read the 'Done when' section of $WT/tools/freeze-watch/PROMPT.md and continue from where you are. Remember the gates and quiet.js before any push. Write the report, state.json and status.json by $(date -r $END +%H:%M)." "$SID"
+  E=$(err_of $n); [ -n "$E" ] && [ "$(date +%s)" -lt "$END" ] && fail_run "$E"
 done
 
 REPORT="$FW/reports/$RUN_ID.md"

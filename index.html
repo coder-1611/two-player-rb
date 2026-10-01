@@ -1557,7 +1557,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V427<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V428<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1639,7 +1639,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V427</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V428</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -14122,6 +14122,7 @@
             finalOverlay.style.display = 'block';
             try { if (window._rb2p_hideFinalSoon) window._rb2p_hideFinalSoon(); } catch (eFS) {}   // V403
             try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
+            try { if (window._rb2p_spendReady) window._rb2p_spendReady(); } catch (eSR) {}   // V428: this game's READY is spent
             if (typeof showLeaveGameBtn === 'function') showLeaveGameBtn(false);
             try { localStorage.setItem('rb2p_bookmarkHint', '1'); } catch (eBH) {}   // V412: the tip shows once
             var shb = document.getElementById('rb-final-share');
@@ -16313,6 +16314,24 @@
         var myRoom = null;
         var myRole = null;
         var myReady = false;
+        // V428 (UZGV, 2026-10-01 — Shivom vs soham, a complete 30-0 game missing from the records): a READY
+        // belongs to the page that pressed it, and to ONE game. The server's ready flags were never reset, so a
+        // phone that reloaded 16s after the final saw both seats still READY from the finished game and started a
+        // new game alone — and that start wiped the finished game's final, outcomes and audit marker (R-REOPEN:
+        // 31 archived rooms). Now a match starts only when THIS page pressed READY (maybeStartMatch), showing the
+        // final spends my READY, and entering a room clears a READY my seat kept from an earlier page.
+        var lastPlayers = null;
+        function clearMySeatReady(why) {
+            try {
+                if (!myRoom || !myRole) return;
+                FB.runTransaction(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole), function (cur) {
+                    return (cur && cur.ready === true) ? Object.assign({}, cur, { ready: false }) : undefined;
+                }).then(function (r) {
+                    if (r && r.committed && window._rb2p_diagLog) window._rb2p_diagLog('READY cleared (' + why + ')');
+                }).catch(function () {});
+            } catch (e) {}
+        }
+        window._rb2p_spendReady = function () { myReady = false; clearMySeatReady('the game is over'); };
         var unsubscribePlayers = null;
         var unsubscribeOutcomes = null;
         var unsubscribeConfig = null;
@@ -17160,12 +17179,56 @@
             } catch (e) {}
         }, 4000);
 
+        // V428: the one place a match starts — both seats READY on the server AND this page pressed READY
+        // (myReady). A READY the server kept from an earlier page or an earlier game never starts anything.
+        function maybeStartMatch(players, code) {
+            if (players.a && players.b && players.a.ready && players.b.ready && myReady && !gameStarted) {
+                gameStarted = true;
+                // V266: stale-ready guard. ready flags are never reset
+                // during a match, so a fresh-tab rejoiner tapping READY
+                // sees the opponent's leftover ready=true and would fire
+                // a SECOND startMatch() under the live match — wiping
+                // turnover/patDuty and splitting the phones into two
+                // universes. If the opponent's in-match heartbeat is
+                // fresh and there is no fresh FINAL (rematch context),
+                // resume into their match instead of starting a new one.
+                (async function () {
+                    try {
+                        if (!document.documentElement.classList.contains('rb-in-match')) {
+                            var oRsg = myRole === 'a' ? 'b' : 'a';
+                            var hbSg = await FB.get(FB.ref(db, 'rooms/' + code + '/hb/' + oRsg));
+                            // hb became {ts,fps,vis} at V268 (was a bare
+                            // number). Number(object) is NaN, which
+                            // silently disabled this guard against V268+
+                            // opponents — accept both shapes.
+                            var hbRawG = hbSg.val();
+                            var hbVg = typeof hbRawG === 'number'
+                                ? hbRawG : Number(hbRawG && hbRawG.ts) || 0;
+                            if (hbVg && Date.now() - hbVg < 15000) {
+                                var fSg = await FB.get(FB.ref(db, 'rooms/' + code + '/final/' + oRsg));
+                                var fVg = fSg.val();
+                                if (!(fVg && fVg.ts && Date.now() - fVg.ts < 60000)) {
+                                    console.log('[2P GUARD] READY while opponent mid-match — resuming, not restarting');
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                        'READY blocked — opponent mid-match; resuming');
+                                    try { location.reload(); } catch (eRl) {}
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (eSG) {}
+                    startMatch();
+                })();
+            }
+        }
+
         function enterRoom(code, role, restoring) {
             myRoom = code;
             myRole = role;
             try { FB.set(FB.ref(db, 'rooms/' + code + '/names/' + role), rb2pName() || '?').catch(function () {}); } catch (eNm) {}   // V387
             myReady = false;
             gameStarted = false;
+            clearMySeatReady(restoring ? 'kept from an earlier page' : 'entering the room');   // V428
             sessionStorage.setItem('rb_room', code);
             sessionStorage.setItem('rb_role_' + code, role);
 
@@ -17221,45 +17284,9 @@
                 FB.ref(db, 'rooms/' + code + '/players'),
                 function (snap) {
                     var players = snap.val() || {};
+                    lastPlayers = players;
                     renderPlayers(players);
-                    if (players.a && players.b && players.a.ready && players.b.ready && !gameStarted) {
-                        gameStarted = true;
-                        // V266: stale-ready guard. ready flags are never reset
-                        // during a match, so a fresh-tab rejoiner tapping READY
-                        // sees the opponent's leftover ready=true and would fire
-                        // a SECOND startMatch() under the live match — wiping
-                        // turnover/patDuty and splitting the phones into two
-                        // universes. If the opponent's in-match heartbeat is
-                        // fresh and there is no fresh FINAL (rematch context),
-                        // resume into their match instead of starting a new one.
-                        (async function () {
-                            try {
-                                if (!document.documentElement.classList.contains('rb-in-match')) {
-                                    var oRsg = myRole === 'a' ? 'b' : 'a';
-                                    var hbSg = await FB.get(FB.ref(db, 'rooms/' + code + '/hb/' + oRsg));
-                                    // hb became {ts,fps,vis} at V268 (was a bare
-                                    // number). Number(object) is NaN, which
-                                    // silently disabled this guard against V268+
-                                    // opponents — accept both shapes.
-                                    var hbRawG = hbSg.val();
-                                    var hbVg = typeof hbRawG === 'number'
-                                        ? hbRawG : Number(hbRawG && hbRawG.ts) || 0;
-                                    if (hbVg && Date.now() - hbVg < 15000) {
-                                        var fSg = await FB.get(FB.ref(db, 'rooms/' + code + '/final/' + oRsg));
-                                        var fVg = fSg.val();
-                                        if (!(fVg && fVg.ts && Date.now() - fVg.ts < 60000)) {
-                                            console.log('[2P GUARD] READY while opponent mid-match — resuming, not restarting');
-                                            if (window._rb2p_diagLog) window._rb2p_diagLog(
-                                                'READY blocked — opponent mid-match; resuming');
-                                            try { location.reload(); } catch (eRl) {}
-                                            return;
-                                        }
-                                    }
-                                }
-                            } catch (eSG) {}
-                            startMatch();
-                        })();
-                    }
+                    maybeStartMatch(players, code);
                 }
             );
 
@@ -17570,6 +17597,12 @@
                 );
                 $ready.textContent = myReady ? 'CANCEL' : 'READY';
                 $ready.dataset.state = myReady ? 'ready' : 'not-ready';
+                // V428: the server may already have shown my seat READY (no change, no event) — check now
+                if (myReady && lastPlayers && myRoom) {
+                    var plNow = JSON.parse(JSON.stringify(lastPlayers));
+                    plNow[myRole] = Object.assign({}, plNow[myRole] || {}, { ready: true });
+                    maybeStartMatch(plNow, myRoom);
+                }
             } catch (e) {
                 console.log('[lobby ready err]', e);
                 myReady = !myReady;

@@ -101,6 +101,7 @@ const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.g
     if (daily) {
         say('\n## Daily sweep — today\'s noticeable problems (impact >= 1, not R-FREEZE)');
         const byRule = {};
+        const reopens = [];   // V428: R-REOPEN is impact 0 (the game record is untouched) but must never come back
         for (const f of fs.readdirSync(AUDITS).filter(x => x.endsWith('.json'))) {
             const p = path.join(AUDITS, f); if (fs.statSync(p).mtimeMs < today0) continue;
             let j; try { j = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { continue; }
@@ -110,6 +111,7 @@ const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.g
             if (!tl.length || isHarness(code, tl) || tl[tl.length - 1].t < today0) continue;
             let res; try { res = R.audit(tl, {}); } catch (e) { continue; }
             for (const fl of res.flags) {
+                if (fl.rule === 'R-REOPEN' && fl.t >= today0) reopens.push(code + ' (' + [...new Set(tl.filter(e => e.k === 'bind').map(e => e.ver))].join('/') + '): ' + fl.msg.slice(0, 120));
                 if (!(fl.impact >= 1) || fl.rule === 'R-FREEZE' || fl.t < today0) continue;
                 const k = fl.rule + ' [' + fl.impactName + ']';
                 const b = (byRule[k] = byRule[k] || { n: 0, rooms: new Set(), ex: [] });
@@ -118,6 +120,7 @@ const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.g
         }
         const ks = Object.keys(byRule).sort((a, b) => byRule[b].rooms.size - byRule[a].rooms.size);
         if (!ks.length) say('None.');
+        if (reopens.length) { say('- **R-REOPEN** (a phone put into a match alone after the final — V428 should have ended this; on a V428+ build it is a regression, find out why): ' + reopens.length); for (const r of reopens.slice(0, 6)) say('  - ' + r); work++; }
         for (const k of ks) { say('- **' + k + '**: ' + byRule[k].n + ' in ' + byRule[k].rooms.size + ' games'); for (const e of byRule[k].ex) say('  - ' + e); }
         work += ks.length;
         // the known roots not fixed yet: the 6 pm run works the top one when the day brought nothing new

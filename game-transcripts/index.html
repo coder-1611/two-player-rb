@@ -123,7 +123,12 @@
     return { a: n.a || 'Phone A', b: n.b || 'Phone B' };
   };
   // V387: who was holding the phone — rooms/{code}/names/{a|b}
-  const withWho = (nm, who) => ({ a: (who && who.a && who.a !== '?') ? who.a + ' · ' + nm.a : nm.a, b: (who && who.b && who.b !== '?') ? who.b + ' · ' + nm.b : nm.b });
+  // V428: a room whose outcomes were wiped (UZGV: a phone reopened after the final) still has its players' names
+  const withWho = (nm, who) => { const one = r => { const w = who && who[r] && who[r] !== '?' ? who[r] : ''; const t = nm[r] === 'Phone ' + r.toUpperCase() ? '' : nm[r]; return w && t ? w + ' · ' + t : (w || nm[r]); }; return { a: one('a'), b: one('b') }; };
+  // V428: what makes a room a test-harness room — its code (harness codes carry a digit; real codes are four letters,
+  // generateRoomCode) or harness players' names. "No team names in outcomes" hid a real, complete game (UZGV).
+  const realName = n => !!n && n !== '?' && !/^(Harness|Bot [AB])$/.test(n);
+  const isTestRoom = r => /\d/.test(r.code) || (r.team.a === 'Phone A' && r.team.b === 'Phone B' && !(r.who && (realName(r.who.a) || realName(r.who.b))));
   const complaintCard = c => '<div class="card" style="padding:10px 14px"><div class="row"><div class="grow"><div class="teams"><b>' + esc(c.name || '?') + '</b>' +
       (c.room ? ' · <a href="?room=' + esc(c.room) + '">' + esc(c.room) + '</a>' : '') + (c.role ? ' (phone ' + esc(String(c.role).toUpperCase()) + ')' : '') + ' · ' + esc(c.ver || '') + '</div>' +
       (Array.isArray(c.choices) && c.choices.length ? '<div style="margin:6px 0">' + c.choices.map(x => '<span class="pill flag" style="margin:0 6px 4px 0">' + esc(x) + '</span>').join('') + '</div>' : '') +
@@ -153,7 +158,8 @@
       // V391: a backgrounded tab pings forever — 'in progress' needs a VISIBLE phone that pinged in the last 3 minutes
       const visibleNow = hb && Object.values(hb).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000);
       const abandoned = !visibleNow && Date.now() - lastT < 24 * 3600 * 1000 && hb && Object.values(hb).some(h => h && Date.now() - Number(h.ts) < 3 * 60 * 1000);
-      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned, games: gamesRec ? Object.keys(gamesRec).length : 0 });
+      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), who, lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned,
+                 games: auditedRec && typeof auditedRec.games === 'number' ? auditedRec.games : (gamesRec ? Object.keys(gamesRec).length : 0) });   // V428: the checker's count of real games
     }
     async function worker() {
       while (next < codes.length) {
@@ -165,7 +171,7 @@
     await Promise.all(Array.from({ length: Math.min(read ? 64 : 8, codes.length) }, worker));
     rows.sort((x, y) => y.lastT - x.lastT);
     const showTests = new URLSearchParams(location.search).get('tests') === '1';
-    const real = rows.filter(r => r.team.a !== 'Phone A' || r.team.b !== 'Phone B');
+    const real = rows.filter(r => !isTestRoom(r));
     const shown = showTests ? rows : real;
     if (!shown.length) { app.innerHTML = '<div class="empty">No recorded games yet. Play one on V365 or later and it will appear here.' + (rows.length ? ' <a href="?tests=1">Show ' + rows.length + ' test-harness games</a>' : '') + '</div>'; return; }
     const foot = (!showTests && rows.length > real.length) ? '<p class="when" style="text-align:center;margin-top:18px">' + (rows.length - real.length) + ' test-harness game' + (rows.length - real.length === 1 ? '' : 's') + ' hidden · <a href="?tests=1">show them</a></p>' : (showTests ? '<p class="when" style="text-align:center;margin-top:18px"><a href="./">hide test-harness games</a></p>' : '');

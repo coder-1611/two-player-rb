@@ -178,14 +178,19 @@ function audit(tl, extra) {
                 const starters = new Set(sg.filter(e => e.k === 'game' || (e.k === 'diag' && /^TURN-> [ab] \(match-start\)$/.test(String(e.m || '')))).map(e => e.role));
                 const players = new Set(sg.filter(e => e.k === 'snap').map(e => e.role));
                 const alone = starters.size === 1 && [...players].every(r => starters.has(r));
-                if (!(afterFinal && alone && parts[i].frozen)) continue;
+                if (!(afterFinal && alone)) continue;
+                parts[i].reopen = true;   // V428: not a game — the room's record (complete, the transcripts) is its last REAL game
+                if (!parts[i].frozen) parts[i].frozen = { measured: false, sec: 0, intervals: [], temporary: { n: 0, sec: 0 }, permanent: { n: 0, sec: 0 } };
                 const fz = parts[i].flags.filter(f => f.rule === 'R-FREEZE' && f.impact >= 1);
                 parts[i].frozen = { measured: parts[i].frozen.measured, sec: 0, intervals: [], temporary: { n: 0, sec: 0 }, permanent: { n: 0, sec: 0 }, ghost: true };
                 parts[i].flags = parts[i].flags.filter(f => f.rule !== 'R-FREEZE');
                 const who = [...starters][0], first = sg.find(e => e.role === who) || sg[0];
                 parts[i].flags.push({ rule: 'R-REOPEN', msg: `${who} reopened the room after the game ended and was put back into a match alone` + (fz.length ? ` (stuck there ${fz.length}x — not counted as a frozen game)` : ''),
                                       plain: `After the game ended, Phone ${who.toUpperCase()} came back to the room and was put into a game by itself instead of the finished game's results.`,
-                                      cites: [], t: first.t, impact: 1, impactName: 'yardline', impactText: 'the ball or the down moved', count: 1 });
+                                      // V428: impact 0 — the game record is untouched (the reopen is not a game; V428 stops it from
+                                      // happening); "the ball or the down moved" on a complete game's card was false. The 6 pm sweep
+                                      // lists every R-REOPEN by name, so a return is still seen.
+                                      cites: [], t: first.t, impact: 0, impactName: 'invisible', impactText: 'the player would not have noticed', count: 1 });
             }
             let chainBase = 0; const folded = [], raw = [];
             parts.forEach((p, i) => {
@@ -201,7 +206,10 @@ function audit(tl, extra) {
             const sumK = k => ({ n: parts.reduce((a, p) => a + ((p.frozen && p.frozen[k] && p.frozen[k].n) || 0), 0), sec: parts.reduce((a, p) => a + ((p.frozen && p.frozen[k] && p.frozen[k].sec) || 0), 0) });
             const frozenAll = { measured: parts.some(p => p.frozen && p.frozen.measured), sec: parts.reduce((a, p) => a + ((p.frozen && p.frozen.sec) || 0), 0), intervals: [].concat(...parts.map(p => (p.frozen && p.frozen.intervals) || [])),
                                 temporary: sumK('temporary'), permanent: sumK('permanent') };
-            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, complete: parts[parts.length - 1].complete, frozen: frozenAll };
+            // V428 (UZGV): a phone put into a match alone after the final (R-REOPEN) is not the room's last game — its
+            // "incomplete" hid a complete 30-0 game (Shivom vs soham) as UNFINISHED
+            const lastReal = parts.filter(p => !p.reopen).pop() || parts[parts.length - 1];
+            return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, realGames: parts.filter(p => !p.reopen).length, complete: lastReal.complete, frozen: frozenAll };
         }
     }
     const flags = [];

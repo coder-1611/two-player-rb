@@ -85,7 +85,9 @@ async function main() {
         await put(tok, 'rooms/' + code + '/audited', { ts: Date.now(), flagged: res.flags.length, rules: [...new Set(res.flags.map(f => f.rule))], frozenSec: res.frozen && res.frozen.measured ? res.frozen.sec : null, frozenMeasured: !!(res.frozen && res.frozen.measured),
                                                      // V424: a freeze the game went on from is temporary; one it never went on from is permanent
                                                      frozenKind: res.frozen && res.frozen.sec > 0 ? ((res.frozen.permanent && res.frozen.permanent.n > 0) ? 'permanent' : 'temporary') : null,
-                                                     complete: !!comp.complete, horn: !!comp.horn, incompleteWhy: comp.incompleteWhy || '' });
+                                                     complete: !!comp.complete, horn: !!comp.horn, incompleteWhy: comp.incompleteWhy || '',
+                                                     // V428: the games really played here (a phone put into a match alone after the final is not one)
+                                                     games: typeof res.realGames === 'number' ? res.realGames : (res.games || 1) });
         if (!res.flags.length) { try { await fetch(DB + 'rooms/' + code + '/flag.json?auth=' + tok, { method: 'DELETE' }); } catch (e) {} }   // a re-audit that comes out clean clears the old verdict
         if (res.flags.length) await put(tok, 'rooms/' + code + '/flag', { ts: Date.now(), n: res.flags.length, raw: res.rawFlags.length, rules: [...new Set(res.flags.map(f => f.rule))], first: res.flags[0].msg,
                                                                     worst: res.impact.worst, worstName: res.impact.worstName, counts: res.impact.counts, chains: res.impact.chains });

@@ -97,7 +97,8 @@ console.log('=== V426 CHECKER ===');
     for (let t = 132000; t <= 165000; t += 5000) rem.push(mk('a', t, 'stage', { wait: true }), mk('b', t, 'stage', { wait: false }));
     const rr = R.audit(sorted(rem), {});
     check('K5 a lone reopen after the final is R-REOPEN, not a frozen game; a real rematch\'s stall still counts',
-          rl.frozen.sec === 0 && rl.flags.some(f => f.rule === 'R-REOPEN' && f.impact === 1) && !rl.flags.some(f => f.rule === 'R-FREEZE') &&
+          // (V428: R-REOPEN is impact 0 — the game record is untouched; the 6 pm sweep lists it by name)
+          rl.frozen.sec === 0 && rl.flags.some(f => f.rule === 'R-REOPEN' && f.impact === 0) && !rl.flags.some(f => f.rule === 'R-FREEZE') &&
           rr.frozen.sec >= 30 && !rr.flags.some(f => f.rule === 'R-REOPEN'),
           JSON.stringify({ lone: rl.frozen.sec, loneRules: rl.flags.map(f => f.rule), rematch: rr.frozen.sec }));
 }

@@ -439,3 +439,47 @@ After the V426 gate, the test server on port 8801 — freeze-watch's test port �
 have tested THAT tree's files and called its own fix green. `tools/freeze-watch/own-port.sh PORT DIR` stops a test
 server (python http.server only) on PORT that serves another directory; `gate.sh` runs it before the suites and `run.sh`
 before the model starts (8801 = the run's worktree, 8802 = the main tree). No game change.
+
+## V428 (2026-10-01): a complete game vanished from the records — a READY that outlived its game
+
+**What the owner saw:** UZGV, Shivom (phone A) vs soham (phone B, the 49ers), played to the stats screen this
+morning — 49ers 30, Eagles 0; Purdy 19/22, 324 yards, 4 passing touchdowns and a 3-yard touchdown run (every number
+confirmed from soham's play-by-play) — was not in the transcripts. "Our game marking system is wrong."
+
+**Why — asked down to the root:**
+- It was missing from the transcripts because the room had no `outcomes` (team names), and the page hid every room
+  without team names as a "test-harness game".
+- `outcomes` was gone because a new game's start removes the previous game's final, outcomes and audit marker.
+- A new game started because Shivom's phone reloaded 16 s after the final, and the new page saw BOTH seats still READY
+  on the server, so it started a match by itself (`startMatch`).
+- The seats were still READY because a READY was never reset: not at the final, not when a page entered the room.
+  The V266 guard let a "fresh final" through as "a rematch".
+- The checker then marked the room UNFINISHED: a room's "complete" was its LAST game's, and the last "game" was the
+  lone one.
+
+**Not one room:** the transcripts hid 37 real rooms the same way, including NGKD, ZJCF, WNPB and NPJD, and 24 complete
+games were marked unfinished. R-REOPEN (V426) appears in 53 archived rooms.
+
+**Fix:**
+- A match starts only when THIS page pressed READY (`maybeStartMatch` needs `myReady`; the READY click re-checks,
+  because a seat the server already shows READY sends no event).
+- The final screen spends the page's READY (`_rb2p_spendReady`).
+- Entering a room clears a READY the seat kept from an earlier page.
+- The checker: a room's `complete` is its last REAL game's (`realGames`). R-REOPEN is impact 0, because the game record
+  is untouched; "the ball or the down moved" on a complete game's card was false. The 6 pm sweep lists every R-REOPEN
+  by name.
+- `audited.games` holds the real games.
+- The transcripts page hides a room as a test only by its code (harness codes carry a digit) or harness players' names.
+
+**Tests (all fail on V427, pass on V428):**
+- `e2e/v428-ready.js` E1–E3. A real game is played to the stats screen on both phones, then A reloads with its seat
+  READY. On V427 A is put into a game alone, the room goes from 1 game to 2, and final and outcomes are wiped. On V428
+  A waits in the lobby, READY there does not start a game alone, and a real rematch still starts.
+- `e2e/v428-records.js` M1–M3.
+
+**Whole archive:** no freeze verdict moved. R-REOPEN flags go from impact 1 to 0 (72 flags in 53 rooms). 23 rooms go
+from unfinished to complete. PBBW (V394) goes to unfinished: its last two-player game was.
+
+**Still true (OPEN.md Done):**
+- The lobby drops the partner's `final` report as a leftover (V296), which is harmless to the records.
+- The transcripts never show the stats-screen box score.

@@ -6,24 +6,6 @@ run finds a new root it cannot fix today, it adds it here with the rooms that sh
 
 Order = what to take first when the brief has no new freeze to work on.
 
-## 1. A phone that reloads after the final is put into a match alone (R-REOPEN)
-- **Seen in:** 31 of 878 archived rooms (35 times), V387–V424.
-  - EXYT (V424): A reloaded 54 s after the final and played a whole drive alone, a TD and a kickoff to B, while B
-    sat on the stats screen.
-  - BUZT (V415): A reloaded into a lone game 4 times in 40 s.
-  - EQXQ (V423): A reloaded 11 s after the final (snapped alone), then reopened the tab 18 hours later and sat on
-    "resume did not re-enter the match".
-  - SJTR: the players' complaint "Can't exit the game".
-- **Where:** the boot/resume path in `index.html`. The log reads `FLOW restored from this tab g… ep K0`, then
-  `GAME-START` and `TURN-> a (match-start)`, with no check that the room's game is already final.
-- **Fix direction:**
-  - A room whose current game has a `final` lands on its stats screen, with the way out, never in a new match.
-  - The monitor must not say "resume did not re-enter the match" for a finished game, or for a `rb2p_matchLive`
-    older than about 30 minutes.
-  - The rematch flow must keep working (`e2e/v425-rematch.js`, `v398-games`).
-- **Test:** an e2e test that finishes a game and reloads one phone, then both: the stats screen comes back, with no
-  `game` entry and no `act must:true`.
-
 ## 2. Unanswered taps are not a freeze yet
 - Since V426 taps are logged on every device (`tap … p=mouse` on Chromebooks and desktops). Before that, 128 of 154
   V424 games had no taps at all.
@@ -85,6 +67,22 @@ Order = what to take first when the brief has no new freeze to work on.
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V428 — R-REOPEN, the root:** a phone that reloaded after the final was put into a match alone.
+  - **Why:** the READY flags on the server were never reset. The reloaded page saw both seats still READY from the
+    finished game and called startMatch.
+  - **What it cost:** that start wiped the finished game's final, outcomes and audit marker.
+    - UZGV, Shivom vs soham, 49ers 30-0 at the stats screen, vanished from the transcripts and was marked UNFINISHED.
+    - The transcripts hid 37 real rooms; 24 complete games were marked unfinished.
+  - **Fix:**
+    - a match starts only on THIS page's READY;
+    - the final screen spends the READY;
+    - entering a room clears a READY left by an earlier page;
+    - the checker takes a room's "complete" from its last real game;
+    - the transcripts page tells test rooms by their code or harness names.
+  - **Tests:** `e2e/v428-ready.js`, `e2e/v428-records.js`.
+  - **Still true:** the lobby drops the PARTNER's `final` report as a leftover (V296), and the transcripts never show
+    the stats-screen box score. If the box scores should be kept and shown, store each game's final report under
+    `games/{ms}` and render it.
 - **V426 — the detector:**
   - re-audit rooms with entries after their audit;
   - no "offline" rule;
