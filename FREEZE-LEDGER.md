@@ -431,3 +431,11 @@ report. The 6 pm run adds the day's noticeable non-freeze problems and the open 
 **Tests:** `e2e/v426-checker.js` K1–K7 (15 checks; 13 fail on V425's checker), `e2e/v426-telemetry.js` W1–W3 (all 3
 fail on V425). v424-checker, audit-selftest, v424-freezes, v419-canact, v398-games, v406-today, v415-freezes,
 v403-endings, v405-complete unchanged and green.
+
+## V427 (2026-09-30): freeze-watch's tests must serve its own tree
+
+After the V426 gate, the test server on port 8801 — freeze-watch's test port — was still serving another worktree
+(the V426 gate run in `~/rb2p/wt-fw` left it). The e2e harness reuses any server already on its port, so a scheduled run would
+have tested THAT tree's files and called its own fix green. `tools/freeze-watch/own-port.sh PORT DIR` stops a test
+server (python http.server only) on PORT that serves another directory; `gate.sh` runs it before the suites and `run.sh`
+before the model starts (8801 = the run's worktree, 8802 = the main tree). No game change.

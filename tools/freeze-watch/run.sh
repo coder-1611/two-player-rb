@@ -39,6 +39,8 @@ else
   git -C "$WT" checkout -q -B auto origin/main && git -C "$WT" reset -q --hard origin/main && git -C "$WT" clean -qfd -e e2e/node_modules
 fi
 echo "worktree at $(git -C "$WT" log --oneline -1)"
+# the test ports serve the right trees: 8801 this run's worktree, 8802 the live build (the main tree)
+bash "$WT/tools/freeze-watch/own-port.sh" 8801 "$WT"; bash "$WT/tools/freeze-watch/own-port.sh" 8802 "$MAIN"
 
 # what happened since the last run
 BRIEF="$RUN_DIR/brief.md"
