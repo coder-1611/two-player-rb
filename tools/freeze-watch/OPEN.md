@@ -55,6 +55,10 @@ Order = what to take first when the brief has no new freeze to work on.
   a real Q1 horn (a real down at Q1 0:01 with no possession change: the engine's own case 19 runs `_Sc1`), then stage
   the touchdown at Q2 0:02. Must hold: the scorer's try, then Q3 with b receiving and the scorer never snapping in Q3
   first (R-HALF / METB).
+  - V435 does that (`HORN_Q=2 HORN_KIND=td`: the real Q1 horn works), but the dive from the half-yard line at Q2 0:02
+    was stopped in 12 of 12 attempts (Q1: 1 of 1 with the same EASY setup). Find why the Q2 goal-line run never scores
+    (a pass into the end zone? the engine's end-of-half defense?) — or read C10's firings in real games instead
+    (`HORN Q3 law: the try was played before the horn`).
 
 ## 5. The horn law's two specified follow-ups (HORN-RESEARCH.md C11, C12)
 - **C11:** a horn record that arrives after the receiver's quarter already ended must not lower its quarter (the apply

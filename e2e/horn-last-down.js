@@ -69,7 +69,20 @@ async function throwAtDefender(page) {
         const o = await L.offense(g, 40000);
         if (!o.ok) { console.log('  SETUP nobody has the ball'); verdict = 'setup'; return; }
         const OFF = o.off, DEF = OFF === g.a ? g.b : g.a;
-        await L.setQuarter([OFF.page, DEF.page], Q, 75);
+        if (KIND === 'td' && Q % 2 === 0) {
+            // an even quarter reached by writing the quarter skips the engine's direction switch (_Sc1, run by its own
+            // end-of-quarter): a goal-line run there goes backwards. Reach it for real: a real run at Q(n-1) 0:01 with no
+            // possession change, the engine's own horn (V434), and the keep gives OFF the ball in Q n
+            await L.setQuarter([OFF.page, DEF.page], Q - 1, 75);
+            await sleep(1500);
+            await L.setDown(OFF.page, { clk: 1 }); await sleep(600);
+            const rr = await L.realDown(OFF.page, { buttons: false });
+            const roll = await L.until(async () => { const a = await L.st(OFF.page), b = await L.st(DEF.page); return { ok: !!(a && b && a.q === Q && b.q === Q && !a.wait && b.wait && a.ball > 0), a, b }; }, 40000, 700);
+            console.log('  reached Q' + Q + ' through a real Q' + (Q - 1) + ' horn: ' + JSON.stringify(rr && { result: rr.result, gain: rr.gainYds }) + ' -> ' + (roll.ms !== null ? 'yes, ' + roll.ms + ' ms' : 'NO ' + JSON.stringify({ off: roll.a, def: roll.b })));
+            if (roll.ms === null) { console.log('  SETUP the real Q' + (Q - 1) + ' horn did not leave ' + OFF.role + ' the ball in Q' + Q + ' — inconclusive'); verdict = 'setup'; return; }
+        } else {
+            await L.setQuarter([OFF.page, DEF.page], Q, 75);
+        }
         await sleep(1500);
         if (Q === 4) {   // OFF's view [user, opp]: lead = OFF trails by 4 before its last down (a TD/FG decides it), tie = level,
                          // p6tie = OFF leads by 6, so a pick-six ties it BEFORE its try (OPEN.md #5, FGXJ: the try must decide)

@@ -809,3 +809,14 @@ engine's direction switch (`_Sc1`), so a goal-line run at Q2 goes backwards (gai
 work. C10 is narrow (a try snapped after its offer and before the quarter change) and the halftime horn itself is proven
 (M1, H1–H3, M2, M8). Follow-up: reach Q2 through a real Q1 horn, then the touchdown (OPEN.md #4).
 
+**After the push (V435, tests only).** `horn-last-down.js td` uses the lobby's EASY defense (restored after the test;
+already in V434's commit) and, since V435, reaches an even quarter through a real horn (a real run at Q n−1 0:01; the
+engine's own case 19).
+- **C13 proven on the shipped build** (Q1, room of `~/rb2p/gate-v434/td/td-Q1-1.log`): a's dive from the half-yard line
+  scored at Q1 0:00 (6-0), its 1-PT kick was played, then `POST-CONV the try crossed the horn … handing off (TD
+  kickoff)` → `SEND TD Q2 2:00`; b started Q2 with the ball, 1st & 10, full clock, and took Q2's first snap (V433 gave a
+  the ball at its own 35 instead — the research's Z8XW).
+- **C10 still unproven:** the real Q1 horn works (Q2 in 2.1 s, a keeps the ball), but the goal-line run at Q2 0:02 was
+  stopped short in every attempt (12 of 12, against Q1 1 of 1 and Q3 ~1 of 2 with the same setup); the play runs to its
+  end across 0:00 (no rescuer cuts it — the recorder shows Vy 2 / kp 2 until the half ends), it just never scores.
+
