@@ -546,3 +546,14 @@ the final, overtime, or the next quarter with its ball — exactly as after the 
 - `v430-expired`: V429 sent 0:01 and gave the receiver a play in Q1, Q2 and Q4.
 - `v430-checker`: 8 checks.
 - `v430-sync`: V429 wrote 0 samples in 50 s.
+
+## V431 (2026-10-01): "is anyone playing?" means someone is playing
+
+V430 waited 3 hours to ship, because `quiet.js` called a room live if any audit entry was under 3 minutes old. A tab left
+open writes entries forever: its status line and its clock samples. ZIJY's tabs, whose last play was 28 hours earlier,
+counted as live from 3 pm to 7 pm. CRTI's hidden tab kept running its engine clock, with quarter changes and
+possession switches but nobody playing.
+
+Now a room is live only if a player MADE something happen in the last 10 minutes: a snap, its result, the hand-off that
+ends a drive, or a match start. It still caught CRTI's player coming back at 7:10 pm, and V430 shipped at 8:02 pm with
+only ZIJY's abandoned tabs open. Tooling only; no game change.

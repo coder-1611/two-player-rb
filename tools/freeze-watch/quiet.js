@@ -4,7 +4,7 @@
 //   node tools/freeze-watch/quiet.js            exit 0 = quiet, 1 = a game is live (listed)
 //   node tools/freeze-watch/quiet.js --wait 90  wait up to 90 minutes for a quiet moment (checks every minute)
 //
-// "Live" = a non-harness room with an audit entry in the last 3 minutes. The audit watcher writes that list every
+// "Live" = a non-harness room with an audit entry in the last 3 minutes AND actual play in the last 10 (V431). The audit watcher writes that list every
 // minute to ~/rb2p/live-rooms.json; if the file is stale (the watcher is down) this reads the rooms the watcher saw
 // active in the last 2 hours straight from the database (their newest entry only — never the whole tree).
 'use strict';
@@ -46,13 +46,38 @@ async function liveNow() {
     return { via: (stAge < 15 * 60 * 1000 ? 'direct, ' : 'every room (the watcher is not running), ') + recent.length + ' rooms checked', rooms };
 }
 
+// V431: a tab left open writes entries forever (its status line, its clock samples) with nobody playing — ZIJY counted as
+// "live" from 3 pm to 7 pm, CRTI's last play was 46 minutes old — and blocked every push. A room is live only if it had
+// actual PLAY in the last 10 minutes — what only a player makes happen: a snap, its result, the hand-off that ends a
+// drive, a match start. (A hidden tab's engine keeps running its clock: its quarter changes, applies and possession
+// switches happen with nobody there — CRTI.)
+const PLAY = new Set(['snap', 'settle', 'send', 'game']);
+const PLAY_MS = 10 * 60 * 1000;
+async function playedRecently(tok, code) {
+    for (const role of ['a', 'b']) {
+        const r = await fetch(DB + 'rooms/' + code + '/audit/' + role + '.json?orderBy=%22$key%22&limitToLast=150&auth=' + tok);
+        const v = r.ok ? await r.json() : null;
+        for (const k in v || {}) { const e = v[k]; if (e && PLAY.has(e.k) && Date.now() - Number(e.t) < PLAY_MS) return true; }
+    }
+    return false;
+}
+async function playingNow() {
+    const l = await liveNow();
+    if (!l.rooms.length) return Object.assign(l, { idle: [] });
+    const tok = await require(path.join(__dirname, '..', 'fb-auth.js')).token();
+    const playing = [], idle = [];
+    for (const r of l.rooms) (await playedRecently(tok, r.code) ? playing : idle).push(r);
+    return { via: l.via, rooms: playing, idle };
+}
+
 (async () => {
     const i = process.argv.indexOf('--wait');
     const waitMin = i > 0 ? Number(process.argv[i + 1]) || 60 : 0;
     const t0 = Date.now();
     for (;;) {
-        const l = await liveNow();
-        if (!l.rooms.length) { console.log('QUIET — no real game in the last 3 minutes (' + l.via + ')'); process.exit(0); }
+        const l = await playingNow();
+        const idleTxt = l.idle && l.idle.length ? '; open but nobody playing for 10+ min: ' + l.idle.map(r => r.code).join(', ') : '';
+        if (!l.rooms.length) { console.log('QUIET — no real game being played (' + l.via + idleTxt + ')'); process.exit(0); }
         const desc = l.rooms.map(r => r.code + ' (' + Math.round((Date.now() - r.newest) / 1000) + 's ago)').join(', ');
         if (!waitMin || Date.now() - t0 > waitMin * 60000) { console.log('LIVE — ' + desc + ' (' + l.via + ')'); process.exit(1); }
         console.log(new Date().toISOString() + ' live: ' + desc + ' — waiting');
