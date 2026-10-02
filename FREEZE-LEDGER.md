@@ -723,3 +723,16 @@ Before V430, 123 archived hand-offs at the Q2 horn (V383–V429) carried 0:01. T
     end stamped 0:00, and the rest is tooling.
   - The gate's rule is GREEN or nothing, so nothing was pushed (OPEN.md #0).
   - Latch check 0 unclassified. Logs: `~/rb2p/freeze-watch/runs/20261002-1200/gate/` and `…/proof/`.
+
+## V433 (2026-10-02): the freeze counter shows the last 24 hours
+
+The owner: "reset the freeze counter like the numbers to just last 24 hours".
+- `tools/alltime-stats.js` now publishes `freeze.last24`, a rolling 24 hours: games played in it, games with a freeze
+  that began in it (temporary / permanent), their seconds, and the list of them.
+- The transcripts page shows only those numbers ("Freezes — last 24 hours").
+- The older totals stay in the record for the tools that read them.
+
+With V432's checker (which counts the halftime ping-pong) the first 24 hours read: 174 games, 13 frozen (7 temporary,
+6 permanent), 528 s — all but one of them the V430 ping-pong that V432 reverts.
+
+No game change. v428-records and v387-names green; latch check 0 unclassified.

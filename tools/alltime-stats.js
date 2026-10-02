@@ -116,6 +116,11 @@ function freezeCounter() {
     const out = { measuredGames: 0, frozenGames: 0, frozenSec: 0, temporaryGames: 0, permanentGames: 0,
                   today: { games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0 }, week: { games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0 }, since: null, recent: [] };
     const todayKey = localDay(now);
+    // V433 (the owner: "reset the freeze counter … to just last 24 hours"): the counter the page shows is the last 24
+    // hours, rolling — games played in it, the freezes that STARTED in it (temporary / permanent), their seconds, and
+    // the list of them. The older totals stay in the record for the tools that read them.
+    const cut24 = now - dayMs;
+    out.last24 = { from: cut24, games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0, recent: [] };
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
         let tl0 = j.timeline || []; try { tl0 = R.realign(tl0); } catch (e) {}
@@ -130,6 +135,19 @@ function freezeCounter() {
         if (!out.since || t < out.since) out.since = t;
         const bucket = b => { b.games += games; if (sec > 0) { b.frozen++; b.sec += sec; b[kind]++; } };
         if (localDay(t) === todayKey) bucket(out.today);
+        // the last 24 hours: games with a play in it; freezes that began in it
+        {
+            const starts = (typeof R.gameStarts === 'function') ? R.gameStarts(tl) : [];
+            const played = tl.some(e => e.k === 'snap' && e.t >= cut24);
+            if (played) out.last24.games += Math.max(1, starts.filter(x => x >= cut24).length);
+            const ivs = (res.frozen.intervals || []).filter(x => x.kind && x.from >= cut24);
+            if (ivs.length) {
+                const perm = ivs.some(x => x.kind === 'permanent'), s24 = ivs.reduce((a, x) => a + Math.round(x.ms / 1000), 0);
+                out.last24.frozen++; out.last24.sec += s24; out.last24[perm ? 'permanent' : 'temporary']++;
+                const iv0 = ivs.find(x => x.kind === 'permanent') || ivs[0];
+                out.last24.recent.push({ room: f.replace(/\.json$/, ''), t: iv0.from, sec: s24, kind: perm ? 'permanent' : 'temporary', why: iv0.why || '', resumedBy: iv0.resumedBy || '' });
+            }
+        }
         if (now - t < 7 * dayMs) bucket(out.week);
         if (sec > 0) {
             const iv = res.frozen.intervals.find(x => x.kind === 'permanent') || res.frozen.intervals.find(x => x.kind) || {};
@@ -137,6 +155,7 @@ function freezeCounter() {
         }
     }
     out.recent = out.recent.sort((a, b) => b.t - a.t).slice(0, 10);
+    out.last24.recent = out.last24.recent.sort((a, b) => b.t - a.t).slice(0, 25);
     return out;
 }
 
