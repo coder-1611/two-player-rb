@@ -557,3 +557,169 @@ possession switches but nobody playing.
 Now a room is live only if a player MADE something happen in the last 10 minutes: a snap, its result, the hand-off that
 ends a drive, or a match start. It still caught CRTI's player coming back at 7:10 pm, and V430 shipped at 8:02 pm with
 only ZIJY's abandoned tabs open. Tooling only; no game change.
+
+## V432 (2026-10-02): V430's "keep 0:00" looped at the halftime horn (reverted), and a rematch joined through the resume kept the last game's epoch
+
+Freeze-watch run 20261002-0900. The brief had one frozen game (OKYW); the audit of V430 found two of its fixes doing
+harm in real games, one of them worse than anything in the brief.
+
+**1. V430's "keep 0:00" — REVERTED.** All 3 real firings were at the halftime horn, and all 3 looped:
+
+| room | what happened | how it ended |
+|---|---|---|
+| FOVL (3:35 am) | a completed pass ran out Q2; the hand-off shipped 0:00; the receiver's drive at Q2 0:00 never staged (`EMPTY-FIELD … FAILED`), its engine's halftime turnover went back as a `PUNT` stamped 0:00 — and again, 5 bounces | both players quit at halftime (40 s) |
+| ONFE (8:40 am) | the same, 7 bounces | both players quit at halftime (64 s) |
+| HIHR (3:26 am) | 1 bounce, then the Q3 law caught it | 11 s |
+
+V430 said the receiver's engine "ends the quarter itself". It did not: a drive staged at 0:00 never gets a play, so
+nothing ends it. Its test (`v430-expired` X1) passed because it only asked that both phones reach Q3 within 30 s.
+Before V430, 123 archived hand-offs at the Q2 horn (V383–V429) carried 0:01. The receiver played its one down, and
+117 of them reached Q3. None of the other 6 bounced. Neither detector saw FOVL or ONFE: the checker called FOVL
+**CLEAN**, and stuck-scan saw no stretch of 10 s or more (each phone was "live" for under 7 s). That is OPEN.md #2.
+- **Revert:** the send re-stamp is back to V429. The owner's 0:01 glitch (one extra down) is open again (OPEN.md #4).
+- **Tests:** `v432-half-horn` drives V430's own drive end at the Q2 horn.
+  - H1: the hand-off is not stamped 0:00. V431 sends `OTHER Q2 clk0`.
+  - H2: no unplayed hand-off goes back.
+  - H3: the receiver plays its 0:01 down for real (`e2e/qb-bot.js`), and the half ends with both phones in Q3 and one
+    offense.
+  - The harness cannot make the engine ship its halftime turnover after a REAL play. A real pass or run at Q2 0:04
+    ended the half through the halftime law on both builds. So the bounce itself is shown on the three real timelines,
+    and the test pins the 0:00 stamp that every bounce carried.
+  - In one random live-build run, the pass at the horn was intercepted. The PICK6 shipped at 0:00 left the receiver at
+    Q2 0:00 and the sender in Q3, both waiting: a second V431 freeze shape from the same stamp.
+- **`v430-expired` X1–X3** asserted the V430 rule. They now assert the restored one: the hand-off carries 0:01, the
+  receiver has its down, the sender waits, nothing bounces back. X4 is unchanged.
+
+**2. OKYW (the brief's freeze): a rematch joined through the resume carried the finished game's flow record.**
+- **What happened (7:54 pm):** game 1 ended at the stats screen on both phones. Both went back to the lobby and pressed
+  READY together.
+  - A started game 2.
+  - B's READY took the V266 guard ("the partner is mid-match"): A's heartbeat was fresh — most likely its "left" beacon
+    from 10 s earlier (the guard's read is not logged) — and A's final was already removed by A's own match start. So B
+    reloaded into a RESUME of A's game.
+  - The resume never runs the game note. V422's synchronous tab restore skips the "this room's latest game" check that
+    the async restore makes, so it handed B game 1's record: epoch H, final.
+  - Then B ADOPTED game 2's id while keeping epoch H.
+  - A's first hand-off (epoch K0) was "moot" on B ("the law of this half owns the ball") and dropped. Both phones parked
+    11–12 s, then TURN-RESCUE put B at its own 25 instead of the turnover's spot.
+- **Live data:** OKYW b's record on the server is `gid` = game 2, `ep: H`, `final: true`, `gameSrv` 736 s older than A's.
+  JCTW b's is the same.
+- **How often:** in the archive, 17 rematch starts in 14 rooms since V421 have the second phone joining through the
+  resume with the previous game's record (OKYW, JCTW, YISX ×2, FMBV ×2, BXDZ ×2, VAKL, YUHQ, OCCX, ISLU, DAZA, ZMCM,
+  EQXQ, KHIX, SJTR). In 9 of those rooms, hand-offs were dropped as moot: JCTW 5, YISX 6, FMBV 4, KHIX 2, and one each
+  in OKYW, VAKL, YUHQ, OCCX, ZMCM. In 16 of the 17 starts, the starter's pagehide beacon was under 18 s old, which fits
+  the V266 guard reading the V403 "left" beacon as "mid-match".
+- **Fix:** when the partner's record was born at a game that started more than 60 s (server time) after mine, mine is a
+  finished game's record (`final`) and the ids differ, then my record is a previous game's. I become a page that joined
+  mid-game (V422's own rule): untrusted, epoch K0, no chain. The older rescuers are in charge, and nothing is dropped as
+  moot.
+  - The audit guard is `flow-stale`.
+  - B no longer adopts a finished game's id.
+  - A legitimate mid-game record is never `final`, so it cannot be reset.
+- **Not changed today:** the guard's misreading of the beacon. A phone should not reload into a resume at all when its
+  READY started the game. That is OPEN.md #3.
+- **Test:** `v432-rematch-join` plays a real game 1 through the halftime law to the stats screen, then both phones use the
+  stats screen's own button. A starts game 2, and B's READY goes through the real guard → reload → resume.
+  - R1 (setup): B comes back with game 1's epoch-H record (OKYW's state).
+  - R2: B applies A's punt.
+  - R3: no TURN-RESCUE.
+  - R4: B's record is no longer game 1's (`flow-stale` fired).
+  - V431 failed R2–R4 in 4 of 4 runs: the punt was dropped as moot, and TURN-RESCUE took 10–28 s and put B at its own 25.
+    V432 passed 4/4: the punt was applied at its spot.
+
+**3. Found, NOT fixed today — V430's reload-ball resume fired wrongly in its only real firing (FXTE, 8:07 am).**
+- **What happened:** B took a TD kickoff, played three downs into Q2 (3rd & 4 at its 46, 2:54 left), then reloaded.
+  - B's live record was older than its ACK (probably its tab drew almost no frames — `rAF silent` — so the 500 ms push lagged), so the resume "took the
+    TD again".
+  - B was put back at its 40, 1st & 10, with 0:01 left in the half. About 2:53 of Q2 and the downs were lost.
+- **Guard for the next run (OPEN.md #1):** do not take a hand-off again when this tab's own flow record shows a down
+  settled in that possession (`spot.via === 'settle'` and `spot.stg === lo.ts`).
+
+**Release audit (since V430/V431 shipped at 8:02 pm, 47 real games):**
+
+| fix | firings | verdict |
+|---|---|---|
+| keep 0:00 | 6 in 3 games | harmful — reverted |
+| reload-ball | 1 | harmful — OPEN #1 |
+| OT receiver waits | 0 | never fired |
+| outcome-poll telemetry | 4 | telemetry only |
+| `engerr` | 0 | never fired |
+| V428 READY spent | 15 in 9 games | all at the stats screen, then the players left — neutral |
+| V429 pass line | — | display only |
+
+**Gate / latch:** see the run report (`~/rb2p/freeze-watch/reports/20261002-0900.md`).
+
+**Run 20261002-1200 — what it added to V432 (detector and tooling only; no game change). V432 is still NOT shipped (gate RED, see the end):**
+- **The brief had been blind.** `precheck.js` read `<worktree>/audits` whenever that folder existed. Run 0900's
+  `audit-game.js --dry` calls had left 10 rooms there, so the 12:00 brief saw "1 game, 0 frozen" out of 90. `firings.js`
+  and `stuck-scan.js` had the same fallback. All three now read the watcher's archive (`~/rb2p/two-player-rb/audits`)
+  first.
+- **"keep 0:00" was worse than run 0900 measured.** From the V430 ship (1 Oct 8:02 pm) to 12:30 pm on 2 Oct, it
+  bounced the ball in **12 rooms**, and at the **Q1 and Q3 horns too**, not only halftime. The 12th, IFJR, bounced at
+  the Q1 horn at 12:21 pm while this run was working: 18 s, and both players left 20 s later.
+  - PHCY's Q1 bounces also moved the ball. A intercepted B at Q1 0:02 (A's 35). After 5 bounces, B started Q2 with the
+    ball at A's 13 (y +37) and scored a touchdown 7 s later: a possession and a score that football never gave.
+  - WGVH's Q3 bounces ended with both pages reloading, one of them into "Q1 3:00".
+  - **4 games were abandoned at the horn:** ATAN (Q1), FOVL, ONFE and JCPA (13 bounces in 88 s at 30–22).
+  - **The rest stalled 14–46 s:** HIHR, HNWX, PHCY, TWYB, WGVH, IFJR; GCPD and QNGB bounced once.
+  - 9 of the 12 rooms were after 9 am on 2 Oct, while V432 waited for its gate.
+  - **By 1:20 pm, 15 rooms.** IUQI (1:11 pm, 6 bounces) and KPTR (1:12 pm, 8 bounces) were abandoned at the Q1 horn,
+    and DCHO bounced once. 12 froze by the new rule, 6 were abandoned at the horn, and 12 of the 15 were after 9 am.
+  - The checker counted none of them.
+  - The revert covers every quarter, since the whole block is gone.
+- **V430's reload-ball resume ("taking it again"): 4 firings since V430.**
+  - Harmful: FXTE (OPEN.md #1).
+  - Helped: WGVH and IFJR. Each phone reloaded 2–10 s after taking a kickoff, before any snap, and came back with the
+    ball at the same spot in ~5 s.
+  - Neutral: ATUZ. It fired after the final whistle, from a reload on the stats screen.
+  - So the guard in OPEN.md #1 must keep these: no settled down in the possession means take it again.
+- **The detector now counts a ping-pong (OPEN.md #2), in `tools/audit-rules.js` (R-FREEZE) and `tools/stuck-scan.js`
+  (`PING-PONG`).**
+  - A *bounce* is a hand-off sent by a phone with no snap since it applied the previous one. A PAT_RESULT, the
+    pick-six scorer's try, is not a bounce, and a re-send with the same ts is not a second one.
+  - Two bounces in a row are a frozen game. The freeze runs from the first unplayed hand-off to the next snap
+    (temporary), or else to the stats screen, a `pagehide`, or 10 s after the last bounce (permanent).
+  - A glance away inside it (app switcher, no pagehide) does not split it.
+  - The act monitor's stretches inside it are counted once.
+  - **Whole archive, before vs after (1,096 real rooms at 12:20 pm; IFJR came later and reads 18 s temporary):**
+    exactly 9 changed, one ping-pong interval each, and nothing else.
+    - Permanent: ATAN 27 s, FOVL 36 s, ONFE 64 s, JCPA 88 s.
+    - Temporary: HIHR 14 s, PHCY 40 s, HNWX 43 s, TWYB 46 s, WGVH 33 s.
+  - **stuck-scan over the archive since V414** finds the same 9. A 10th, BVTQ (V414, 25 Sep), was a PICK6 → PAT_RESULT
+    exchange, which is the reason PAT_RESULT is excluded.
+  - **Test:** `e2e/v432-checker.js` (pure Node).
+    - P1–P6 cover a permanent and a temporary ping-pong, one bounce not counted, the pick-six exchange, a glance away,
+      and a re-send.
+    - P7 covers the real rooms.
+    - The old checker fails P1, P2, P5, P7 and P8 (P8 is below); the new one passes 8/8.
+- **R-DOWN no longer flags "inches"** (NPXZ, a player's report at 10:16 am: "a pass for 10 on 1st & 10 left it 2nd").
+  - The ball was 0.01 short: 9.99 yards facing 10, so the engine's "2nd & 0.01" is football.
+  - The rule judged with a ±0.05 tolerance and called it a first down.
+  - A gain within 0.05 of the line is now the engine's call.
+  - **Whole archive:** 44 R-DOWN flags in 41 rooms are gone, each one "left it N&0.00–0.05". No other flag was
+    removed and none was added. 17 rooms drop from "yardline" to invisible or clean.
+  - P8 in `v432-checker` covers it: 9.99 facing 10 is not flagged, and a real wrong down (9.5 facing 10 left 1st & 10)
+    still is.
+- **stuck-scan:** a phone's stuck stretch now ends with that phone's own record, not the room's. GCPD's B "stuck
+  2,197 s" was its stream ending mid-try while A's sleeping tab wrote for 36 more minutes; it now reads 10.6 s.
+- **Gate (run 20261002-1200): RED, so V432 is still NOT shipped.** The gate ran 12:00–13:28 at load averages of 10–30.
+  MacRemoteCapture had been streaming at ~235% CPU since 4 am; the software-GL test pages are CPU-bound.
+  - **Every suite passed alone except four**, plus run.js 14/15. Each of the five fails the same way on live V431 alone,
+    or passes on both builds alone:
+
+    | check | V432, alone | V431, alone, same hour |
+    |---|---|---|
+    | v352-conversion | T5/T6 fail | T5/T6 fail, the same values |
+    | v378-gvcg | T3 fails (`liveAt:null`) | T3 fails, the same values |
+    | v430-reload-ball | 0/3, then 2/1: B2 (spot 0,0,0, engine still booting) | 2/1: B2, the same |
+    | v382-clockgate | 5/2 twice, different checks each time (clock never ticked; refusal at 224 ms vs 150) | 7/0 (V432 7/0 alone in run 0900) |
+    | run.js "takeaway" | fails in the full run, passes alone | passes alone |
+
+  - A diagnostic copy of the takeaway test showed the 4 s `setTimeout` hold firing after **10.0 s (V431) and 10.4 s
+    (V432)**: page timers run up to 6 s late on this machine today. The test checks once at 4.5 s.
+  - V430's last green gate (1 Oct, before 15:11) predates both the capture process (started 2 Oct 4:00 am) and Chrome
+    154.0.8037.93 (1 Oct 17:59).
+  - No V432 change is on these paths: the `flow-stale` reset needs a `final` record, the revert only differs at a drive
+    end stamped 0:00, and the rest is tooling.
+  - The gate's rule is GREEN or nothing, so nothing was pushed (OPEN.md #0).
+  - Latch check 0 unclassified. Logs: `~/rb2p/freeze-watch/runs/20261002-1200/gate/` and `…/proof/`.

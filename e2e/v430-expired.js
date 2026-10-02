@@ -7,11 +7,18 @@
 // RE-STAMPED at the send (V354) — from a parked engine that V293 floors at 0:01 (a parked engine must never see 0:00).
 // So the hand-off said 0:01, and the receiver got a second the play had already used.
 //
+// V432 REVERTED "keep 0:00" (FREEZE-LEDGER.md V432): at the halftime horn the receiver of a 0:00 hand-off could not
+// stage a drive and its engine's halftime turnover went back as another 0:00 hand-off — a ping-pong of empty
+// possessions in 3 of 3 real games (FOVL and ONFE: both players quit). X1–X3 asserted the V430 rule (no down at 0:01);
+// they now assert the restored V429 rule, which the archive shows ending the half (117 of 123 Q2-horn hand-offs, no bounce): the
+// hand-off carries 0:01, the receiver gets its one down, the sender waits, and nothing bounces back unplayed. The
+// owner's 0:01 glitch is open again (tools/freeze-watch/OPEN.md #4). e2e/v432-half-horn.js plays that down for real.
+//
 // Each case ends the sender's drive at 0:00 the way a real play does (the clock reaches 0:00, then the engine's own
 // possession change in the same frame) and watches the receiver:
-//   X1  Q2: the half ends — both phones reach Q3 by the halftime law, and the receiver never snaps in Q2
-//   X2  Q4 with the score decided: the game ends — the stats screen on both phones, no snap at 0:01
-//   X3  Q1: the quarter ends and the receiver keeps the ball into Q2 — no snap in Q1
+//   X1  Q2: the receiver gets its down at 0:01 (V432) — one offense, no hand-off back without a snap
+//   X2  Q4 with the score decided: the same (V432)
+//   X3  Q1: the same (V432)
 //   X4  a hand-off with time left (0:05) is unchanged: the receiver plays in the same quarter with the clock it was sent
 const H = require('./harness');
 const TP = require('./two-player');
@@ -67,32 +74,19 @@ async function one(label, q, sec, score, expectFn) {
 
 (async () => {
     console.log('=== V430 EXPIRED HAND-OFF ===');
-    // ---- X1: Q2 ----
-    {
-        const o = await one('X1 Q2 0:00', 2, 0, [7, 3], async (off, def) => {
-            const w = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: a && b && a.q === 3 && b.q === 3, a, b }; }, 30000);
-            return { ok: w.ms !== null, detail: { ms: w.ms, off: w.a, def: w.b } };
-        });
-        check('X1 a play that runs out the clock in Q2 ends the half: both phones in Q3, and the receiver never snapped in Q2',
-              o.res.ok && !o.snaps.some(e => Number(e.q) === 2) && o.sends.some(e => Number(e.clk) === 0), JSON.stringify(o.res.detail));
-    }
-    // ---- X2: Q4, decided ----
-    {
-        const o = await one('X2 Q4 0:00 decided', 4, 0, [21, 10], async (off, def) => {
-            const w = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: a && b && a.fin && b.fin, a, b }; }, 45000, 800);
-            return { ok: w.ms !== null, detail: { ms: w.ms, off: w.a, def: w.b } };
-        });
-        check('X2 a play that runs out the clock in Q4 (score decided) ends the game: the stats screen on both phones, no play at 0:01',
-              o.res.ok && !o.snaps.some(e => Number(e.q) === 4), JSON.stringify(o.res.detail));
-    }
-    // ---- X3: Q1 ----
-    {
-        const o = await one('X3 Q1 0:00', 1, 0, null, async (off, def) => {
-            const w = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: a && b && a.q === 2 && b.q === 2 && b.wait === false && a.wait === true, a, b }; }, 30000);
-            return { ok: w.ms !== null, detail: { ms: w.ms, off: w.a, def: w.b } };
-        });
-        check('X3 a play that runs out the clock in Q1 ends the quarter and the receiver keeps the ball into Q2 (no snap in Q1)',
-              o.res.ok && !o.snaps.some(e => Number(e.q) === 1), JSON.stringify(o.res.detail));
+    // ---- X1–X3 (V432): the receiver gets its one down at 0:01, the sender waits, nothing bounces back unplayed ----
+    const oneDown = (q) => async (off, def) => {
+        const w = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: !!(a && b && b.q === q && b.wait === false && b.m * 60 + b.s >= 1 && a.wait === true), a, b }; }, 25000);
+        await sleep(6000);                               // a bounce would come within the 4 s hold
+        const a2 = await st(off.page), b2 = await st(def.page);
+        return { ok: w.ms !== null && !!(a2 && b2 && a2.wait === true && b2.wait === false && b2.q === q), detail: { ms: w.ms, off: a2, def: b2 } };
+    };
+    const noBounce = async (code, role, t) => (await audit(code, role)).filter(e => e.k === 'send' && e.t >= t).length === 0;
+    for (const [label, q, score] of [['X1 Q2 0:00', 2, [7, 3]], ['X2 Q4 0:00 decided', 4, [21, 10]], ['X3 Q1 0:00', 1, null]]) {
+        let still = null;
+        const o = await one(label, q, 0, score, async (off, def, g) => { const t = await def.page.evaluate(() => Date.now()); const res = await oneDown(q)(off, def); still = await noBounce(g.code, def.role, t - 8000); return res; });
+        check(label.slice(0, 2) + ' a play that runs out the clock in Q' + q + ': the hand-off carries 0:01 and the receiver has its one down, the sender waits, nothing bounced back (V432 revert)',
+              o.res.ok && o.sends.some(e => Number(e.clk) >= 1) && !o.sends.some(e => Number(e.q) === q && Number(e.clk) === 0) && still === true, JSON.stringify({ detail: o.res.detail, sends: o.sends.map(e => e.type + ' Q' + e.q + ' clk' + e.clk), noBounce: still }));
     }
     // ---- X4: time left ----
     {

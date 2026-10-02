@@ -300,7 +300,10 @@ function audit(tl, extra) {
                 const first = gExact >= facedTg - 0.05;
                 const expD = first ? 1 : facedD + 1;
                 const scored = Math.abs(e.y) >= 49.5 || e.su !== lastSettle.su;
-                if (!scored && facedD <= 3 && e.d0 === facedD && e.d !== expD)
+                // V432 (NPXZ): a gain within the log's rounding of the line (y is logged to 0.01 at each end) is decided
+                // by the engine's exact spot — 9.99 facing 10 is "2nd & 0.01", football, not a wrong down
+                const onTheLine = typeof e.y === 'number' && typeof e.y0 === 'number' && Math.abs(gExact - facedTg) <= 0.05;
+                if (!scored && !onTheLine && facedD <= 3 && e.d0 === facedD && e.d !== expD)
                     flag('R-DOWN', `${e.type} for ${g} facing ${facedD}&${facedTg.toFixed(1)} left it ${e.d}&${e.tg}, expected down ${expD}`, [lastSettle, e],
                          `${T(r)}: a ${e.type} for ${g} yards on ${dd(facedD, facedTg)} should have left it ${expD === 1 ? '1st & 10' : ordinal(expD) + ' down'}, but the next down was ${ordinal(e.d)}.`);
             }
@@ -843,6 +846,39 @@ function audit(tl, extra) {
                 // (CZFL: a real 31s both-waiting freeze was zeroed by that rule)
             }
             for (const k of Object.keys(open)) closeIv(k, endAt);
+            // V432 (OPEN.md #2 — FOVL judged CLEAN, ONFE, JCPA, ATAN: both players quit): a hand-off PING-PONG. A
+            // phone that took the ball and sends it back without one snap of its own played nothing — a BOUNCE. Each
+            // phone is "live" for under 7 s at a time, so neither monitor ever sees a stuck stretch of 10 s. Two
+            // bounces in a row are a frozen game, from the first unplayed hand-off (its apply) to the next snap — or,
+            // if nobody snaps again, to the stats screen, a phone leaving the page, or 10 s after the last bounce
+            // (a glance away — the app switcher — is not an end: the ping-pong goes on behind it).
+            {
+                const got = {}, seen = new Set();
+                let run = null, lastEnd = -Infinity;
+                const closeRun = (t) => {
+                    if (run && run.n >= 2) {
+                        const to = Math.min(t, run.last + 10000), ms = to - run.from;
+                        // the act monitor's stretches inside the ping-pong are the same freeze — counted once
+                        for (let i = frozen.intervals.length - 1; i >= 0; i--) { const iv = frozen.intervals[i]; if (iv.from >= run.from - 1000 && iv.from <= to) frozen.intervals.splice(i, 1); }
+                        if (ms >= 3000) frozen.intervals.push({ role: 'ab', from: run.from, ms, why: 'hand-off ping-pong (' + run.n + ' bounces, nobody snapped)' });
+                        lastEnd = to;
+                    }
+                    run = null;
+                };
+                for (const e of tl) {
+                    if (e.k === 'apply') { got[e.role] = e.t; if (run) run.last = Math.max(run.last, e.t); continue; }
+                    if (e.k === 'snap') { got[e.role] = null; if (run) closeRun(e.t); continue; }
+                    if (run && run.n >= 2 && ((e.k === 'vis' && !e.opp && e.why === 'pagehide') || e.k === 'final')) { closeRun(e.t); continue; }
+                    if (e.k !== 'send') continue;
+                    if (e.ts != null) { if (seen.has(String(e.ts))) continue; seen.add(String(e.ts)); }
+                    // a PAT_RESULT is the pick-six scorer's answer (its try — a kick logs no snap), not a bounce
+                    if (e.type === 'PAT_RESULT') { got[e.role] = null; closeRun(e.t); continue; }
+                    if (got[e.role] != null) { if (!run) run = { from: Math.max(got[e.role], lastEnd), n: 0, last: e.t }; run.n++; run.last = e.t; }
+                    else closeRun(e.t);
+                    got[e.role] = null;
+                }
+                closeRun(endAt);
+            }
             // §3(d): a decided game gets 20s to show its stats screen; everything else 10s
             const limitOf = iv => /^stats screen missing/.test(iv.why || '') ? 20000 : T_FREEZE;
             // V424: TEMPORARY or PERMANENT. A freeze is temporary when the game went on after it — a

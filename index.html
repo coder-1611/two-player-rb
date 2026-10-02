@@ -1566,7 +1566,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V431<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V432<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1648,7 +1648,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V431</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V432</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3146,19 +3146,13 @@
                     o.quarter     = Number(em.engineQuarter);
                     o.minutesLeft = Number(em.engineMinutesLeft);
                     o.secondsLeft = Number(em.engineSecondsLeft);
-                    // V430 (the owner: "one second left, interception, the clock goes down to zero, the ball is turned
-                    // over and the clock goes back up to one second"; 53 real hand-offs): the play ran out the clock — the
-                    // record was stamped 0:00 when it ended — and the 4 s hold parked this engine, which V293 floors at
-                    // 0:01 (a parked engine must never see 0:00). Re-stamping read that floor as time left and gave the
-                    // receiver a whole play at 0:01. Same quarter + 0:00 at the drive end = the quarter is over: keep
-                    // 0:00 — the receiver's engine (live now) ends the quarter itself (halftime, the final, overtime,
-                    // or the next quarter with its ball), exactly as it did after the extra play, without the play.
-                    if (typeof wasM === 'number' && typeof wasS === 'number' && Number(wasQ) === o.quarter &&
-                        o.quarter <= 4 && window._rb2p_inOvertime !== true &&
-                        wasM * 60 + wasS <= 0 && o.minutesLeft * 60 + o.secondsLeft <= 1) {
-                        o.minutesLeft = 0; o.secondsLeft = 0; o.expired = true;
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('SEND keeps 0:00 — the play ran out the clock (the parked 0:01 floor is not time left)');
-                    }
+                    // V432: V430's "keep 0:00" (a play that ran out the clock shipped 0:00, so the receiver got no play at
+                    // 0:01) is REVERTED. Its claim — "the receiver's engine ends the quarter itself" — was false at the
+                    // halftime horn in 3 of 3 real games: the receiver's drive at Q2 0:00 never staged (EMPTY-FIELD
+                    // failed), its engine's halftime turnover went back as a PUNT stamped 0:00, and the two phones bounced
+                    // empty possessions every ~7 s (FOVL 40 s and ONFE 64 s — both players quit at halftime; HIHR 11 s).
+                    // The 0:01 extra play is back until the quarter end is done through the engine's real path
+                    // (tools/freeze-watch/OPEN.md #4).
                     if (em.engineScoreboard) {
                         o.scoreUser = em.engineScoreboard[em.engineUserTeamIdx];
                         o.scoreOpp  = em.engineScoreboard[em.engineUserTeamIdx ? 0 : 1];
@@ -19054,9 +19048,28 @@
                     var s = Number(rec.srv) || 0;
                     if (P.rec && s <= P.srv) return;
                     P.rec = rec; P.srv = s; P.rxMs = Date.now();
+                    // V432 (OKYW, JCTW, YISX, FMBV, VAKL, YUHQ…): a phone that joins its partner's NEW game through the
+                    // resume path (the V266 READY guard's reload, or a reload as the partner starts) never runs the game
+                    // note, so the tab restore hands it the FINISHED game's record — epoch H, the old chain — and every
+                    // first-half hand-off of the new game (K0) was dropped as moot: both parked until TURN-RESCUE guessed.
+                    // The partner's record, born at a game that started over a minute after mine (server time, one clock),
+                    // proves mine is a previous game's: from here I am a page that joined mid-game — no chain, the older
+                    // rescuers in charge (V422's own rule), and no epoch of another game.
+                    var pGs = Number(rec.gameSrv) || 0, mGs = Number(F.gameSrv) || 0;
+                    if (rec.trust === true && rec.final !== true && F.final === true && String(rec.gid) !== String(F.gid) && pGs > 0 && mGs > 0 && pGs - mGs > 60000) {
+                        var wasRec = F.gid + ' ep ' + F.ep;
+                        F = { gid: 'pending', seq: F.seq, v: F.v, plays: 0, spot: null, held: null, final: false, gameSrv: 0, trust: false, boot: BOOT, rej: null, draw: null, gl: Date.now() };
+                        Object.assign(F, epochStart('K0', 'a', 'pending'));
+                        P.lastRx = null;
+                        try { sessionStorage.removeItem(heldKey()); } catch (eSH) {}
+                        keep();
+                        try { if (window._rb2p_diagLog) window._rb2p_diagLog('FLOW my record was the previous game\'s (' + wasRec + ', ' + Math.round((pGs - mGs) / 1000) + ' s before the partner\'s) — joined mid-game, no chain'); } catch (eDL) {}
+                        try { if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'flow-stale', was: wasRec, partner: String(rec.gid), gap: pGs - mGs }); } catch (eAU) {}
+                    }
                     // B adopts A's game id once A's record was written AFTER my own game started (server time,
-                    // one clock) — never the previous game's last heartbeat at a rematch
-                    if (myRole === 'b' && rec.gid && rec.gid !== 'pending' && F.gid !== rec.gid && F.gameSrv && s > F.gameSrv) { F.gid = rec.gid; keep(); }
+                    // one clock) — never the previous game's last heartbeat at a rematch, never a finished game's id
+                    // (V432: a partner that resumed with its previous game's record must not pull me into that game)
+                    if (myRole === 'b' && rec.gid && rec.gid !== 'pending' && F.gid !== rec.gid && F.gameSrv && s > F.gameSrv && rec.final !== true) { F.gid = rec.gid; keep(); }
                 }
                 // after a reload: carry on from my own record (the newer of this tab's copy and the server's) if it
                 // belongs to this room's latest game

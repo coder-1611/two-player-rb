@@ -24,7 +24,9 @@ const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const SINCE = Number(String(opt('--since', 'V414')).replace(/\D/g, ''));
 const MIN = Number(opt('--min', '10')) * 1000;
-const ARCH = opt('--archive', fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits');
+// the watcher's archive first — a worktree's audits/ holds only the rooms audit-game.js fetched there (see freeze-watch/precheck.js)
+const MAIN_AUDITS = '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+const ARCH = opt('--archive', fs.existsSync(MAIN_AUDITS) ? MAIN_AUDITS : path.resolve(__dirname, '..', 'audits'));
 const only = args.filter((a, i) => /^[A-Z0-9]{4}$/.test(a) && !(i > 0 && /^--/.test(args[i - 1])));
 const verNum = v => Number(String(v || '').replace(/\D/g, '')) || 0;
 const PROGRESS = new Set(['snap', 'settle', 'send', 'recv', 'apply', 'conv', 'q', 'final', 'p6', 'game']);
@@ -80,7 +82,28 @@ function scan(seg) {
         else if (bothLiveSince) { if (e.t - bothLiveSince >= 5000) out.push({ kind: 'BOTH-LIVE', role: 'ab', from: (bothLiveSince - t0) / 1000, secs: (e.t - bothLiveSince) / 1000, end: e.k }); bothLiveSince = 0; }
     }
     const tEnd = seg[seg.length - 1].t;
-    for (const k of Object.keys(open)) close(k[0], k.slice(1), tEnd, 'end of record');
+    // V432 (OPEN.md #2): a hand-off PING-PONG — a phone sends the ball back with no snap since it took it (a bounce);
+    // two in a row, from the first unplayed hand-off to the next snap, a phone leaving, or 10 s after the last bounce.
+    // Each phone is live under 7 s at a time, so no stretch above ever reaches --min (FOVL, ONFE, JCPA: both quit).
+    {
+        const got = {}, seen = new Set(); let run = null;
+        const end = t => { if (run && run.n >= 2) { const to = Math.min(t, run.last + 10000); if (to - run.from >= MIN) out.push({ kind: 'PING-PONG', role: 'ab', from: (run.from - t0) / 1000, secs: (to - run.from) / 1000, end: run.n + ' bounces' }); } run = null; };
+        for (const e of seg) {
+            if (e.k === 'apply') { got[e.role] = e.t; continue; }
+            if (e.k === 'snap') { got[e.role] = null; end(e.t); continue; }
+            if (run && ((e.k === 'vis' && !e.opp && e.why === 'pagehide') || e.k === 'final')) { end(e.t); continue; }
+            if (e.k !== 'send' || (e.ts != null && seen.has(String(e.ts)))) continue;
+            if (e.ts != null) seen.add(String(e.ts));
+            if (e.type === 'PAT_RESULT') { got[e.role] = null; end(e.t); continue; }   // the pick-six scorer's try, not a bounce
+            if (got[e.role] != null) { if (!run) run = { from: got[e.role], n: 0, last: e.t }; run.n++; run.last = e.t; } else end(e.t);
+            got[e.role] = null;
+        }
+        end(tEnd);
+    }
+    // a phone's stretch ends with ITS record, not the room's (GCPD: B's stream stopped mid-try, A's sleeping tab wrote
+    // for 36 more minutes — "stuck 2,197 s")
+    const lastOf = r => { for (let i = seg.length - 1; i >= 0; i--) if (seg[i].role === r) return seg[i].t; return tEnd; };
+    for (const k of Object.keys(open)) close(k[0], k.slice(1), k[0] === 'a' || k[0] === 'b' ? lastOf(k[0]) : tEnd, 'end of record');
     return out;
 }
 

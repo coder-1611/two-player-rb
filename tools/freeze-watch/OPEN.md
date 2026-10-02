@@ -6,7 +6,67 @@ run finds a new root it cannot fix today, it adds it here with the rooms that sh
 
 Order = what to take first when the brief has no new freeze to work on.
 
-## 1. FGXJ: overtime starts while a pick-six try is still owed (V424, still in the code)
+## 0. FIRST: V432 is committed but not shipped — the gate cannot go green on this machine's load (2026-10-02)
+- V432 is committed on branch `auto` and kept by run.sh. Runs 0900 and 1200 could not ship it.
+- **Every day it waits, games freeze at the quarter horns** (the keep-0:00 ping-pong). By 12:30 pm on 2 Oct: 12
+  rooms, 5 games abandoned (FREEZE-LEDGER.md V432).
+- **Run 1200's gate: RED.** Every suite passed alone except v352-conversion T5/T6, v378-gvcg (1), v382-clockgate T2/T4
+  and v430-reload-ball, plus run.js "takeaway" in the full run.
+  - Each fails the same way on live V431 alone, or passes alone on both builds.
+  - Page timers fired up to 6 s late: a 4 s hold sent at 10 s on BOTH builds.
+  - MacRemoteCapture (the owner's remote desktop) has streamed at ~235% CPU since 4 am. Do not stop it; it is the
+    owner's.
+- **Next run:** check `uptime` and `ps` for MacRemoteCapture.
+  - If the load average is under ~4 (capture stopped), run `gate.sh 8801`, and on GREEN: `quiet.js`, push, doors.
+  - If it is still streaming, run the five checks alone on V431 and V432 again and report. Do not ship on red.
+  - The owner can approve a push of V432 with those five known environment failures, or pause the capture for an
+    hour.
+
+## 1. FXTE: V430's reload-ball resume takes a hand-off again after the phone PLAYED ON (harmful, 1 of 1 real firings)
+- **What happened (FXTE, 2026-10-02 8:07 am, V431):** B took a TD kickoff and played three downs into Q2 (3rd & 4 at its
+  46, 2:54 left), then reloaded. Its live record was older than its ACK, because its tab drew almost no frames and the
+  500 ms push lagged. So the resume said "the TD I took before the reload is newer than my live record — taking it
+  again", and B was put back at its 40, 1st & 10, with 0:01 left in Q2. That lost ~2:53 of the half and the downs
+  (R-YARD, R-POSS).
+- **Fix:** before `ackedUnseen`, read this tab's flow record (`sessionStorage rb2p_flow_<room>_<role>`, or the server's
+  `flow/<role>`). If it staged this hand-off (`staged === lo.ts`) and settled a down in it (`spot.via === 'settle'` and
+  `spot.stg === lo.ts`, or `plays` grew), the phone played on, so do not take it again.
+- **Seen again (ATUZ, 2 Oct 9:15 am, neutral):** the resume "took again" a TD hand-off that arrived 4 s AFTER the final
+  (an OT walk-off; the sender's post-final kickoff was still applied — `POSS -> LIVE` on a phone at the stats screen),
+  because B reloaded at the stats screen. No match resumed, nothing changed for the players. When fixing #1, also never
+  take a hand-off again — or apply one — once this game's `final` is on record.
+- **Test:** the v430-reload-ball setup, but the receiver plays 2 real downs (`e2e/qb-bot.js`) before the reload while its
+  live push is held. It must come back at the spot of its last down, not the kickoff's. Keep v430-reload-ball green.
+
+## 3. The V266 READY guard reads a partner's "left" beacon as "mid-match" — a READY reloads into a resume (OKYW)
+- **What happened:** the guard (`maybeStartMatch`) takes a fresh `hb/<partner>` with no fresh final as "the partner is
+  mid-match" and reloads. Since V403, a page that LEAVES writes `hb {vis:'X'}` with a fresh ts.
+  - When both press READY seconds after one of them reloaded, the starter's own match start has already removed
+    `final`, and the beacon is under 15 s old. So the second phone reloads into a resume of a game it should have
+    started.
+  - This happened in 16 of 17 archived starts where the second phone joined through the resume (V432 ledger).
+- **What V432 did:** V432 made such a join harmless: the old flow record is reset (`flow-stale`).
+- **Fix still needed:** the needless reload. The guard should ignore `vis:'X'`, and better, should not take a partner
+  whose match started from this READY pair as "mid-match".
+- **Second variant (JCTW 3:07 pm):** a page reloaded 1.6 s before the partner's start and resumed into the FINISHED game
+  (Q5, stats screen) while the partner played game 2. B only joined after another reload.
+- **Test:** both phones press READY within a second of one having reloaded. Both must run startMatch (a `game` audit
+  entry on both), with no reload.
+
+## 4. The owner's 0:01 glitch is open again (V430's fix reverted in V432)
+- **The glitch:** a play that runs out the clock hands the partner one more down at 0:01. The drive end is stamped 0:00,
+  the 4 s hold parks the sender (V293 floors at 0:01), and the send re-stamp reads 0:01. 53 archived hand-offs.
+- **Why V430's fix failed:** it shipped 0:00, but a drive staged at 0:00 never gets a play, so nothing ends it. At the
+  halftime horn the receiver's engine turned the ball over again, and the phones ping-ponged (FOVL, ONFE, HIHR).
+- **Fix:** the receiver of an expired hand-off must not get a drive at all. The quarter ends through the laws:
+  - halftime: the Q3 law;
+  - Q4: the final, or the OT flip;
+  - Q1/Q3: the next quarter with the receiver's ball.
+  Find the engine's REAL path for each, and ship in SHADOW first (it moves possession).
+- **Test through a real play:** first find what makes the engine ship its halftime turnover after a real down. In the
+  harness, a real pass or run at Q2 0:04 ended the half through the law on V431 and V432 alike.
+
+## 5. FGXJ: overtime starts while a pick-six try is still owed (V424, still in the code)
 - A pick-six at Q4 0:00 tied the game 12-12 before its try; the engine rolled into Q5 during that temporary tie, so the
   OT code armed and seeded the coin flip (`coin flip only from a tie`). The try made it 13-12 — the game was decided at
   the horn — but OT counted as legitimate because the flip was seen; `_rb2p_p6ScorerOwes` was never cleared (the
@@ -17,43 +77,59 @@ Order = what to take first when the brief has no new freeze to work on.
   clear `_rb2p_p6ScorerOwes` (the flip decides possession). Test through a REAL pick-six at Q4 0:01 (the receiver
   six behind), both a made and a missed try. (Investigator's full chain: the V430 session notes.)
 
-## 2. DAXK: a reload during an overtime try ends the game early (still in the code)
+## 6. DAXK: a reload during an overtime try ends the game early (still in the code)
 - The try's duty record survives the reload; the resume replays it as a synthetic `type:'PICK6'` outcome, and in OT a
   pick-six is a walk-off win (`_rb2p_otWalkoffDefensiveTd`) — the game ended 30-24 with A's answering possession
   unplayed. Fix: mark the replayed outcome (`resumeRepop: true`) and skip the OT walk-off for it. Test: B scores an OT
   touchdown by real play, reloads before choosing; no FINAL, the choice re-shown, a real 2 PT tap, A then plays.
 
-## 3. NERM: the hand-off lives only in the sender's memory for the 4 s pick-six hold
+## 7. NERM: the hand-off lives only in the sender's memory for the 4 s pick-six hold
 - A laptop that sleeps inside the hold strands the partner (the hand-off reached the server 15 minutes later). Fix:
   skip the hold when no pick-six can follow (`_rb2p_driveTurnoverDeltas()` known with intDelta + fumDelta === 0, no
   turnover stamp this drive, no opponent TD replay < 15 s). Risk: a turnover whose stat lands late would ship as OTHER
   first (the OKAG double record; V352's duplicate drop is the backstop). Test with CDP `Debugger.pause` on the sender.
 
-## 4. IEID / WVLK: the engine throws on every frame from the lobby (2 rooms of ~2,500; one pair of new players)
+## 8. IEID / WVLK: the engine throws on every frame from the lobby (2 rooms of ~2,500; one pair of new players)
 - "undefined is not a valid map reference" every frame, from before the match start on both phones: the match never
   started, the players left (twice). V430 logs the engine's full error (`engerr` audit entries) — read them on the next
   occurrence to find the trigger. Optional guard: disable READY while the engine throws every frame (never start a
   game on a broken phone; the partner is not dragged in) — a lobby change, needs its own test.
 
-## 5. Unanswered taps are not a freeze yet
+## 9. Unanswered taps are not a freeze yet
 - Since V426 taps are logged on every device (`tap … p=mouse` on Chromebooks), and since V430 a visible page writes a
   clock sample every 15 s (a heartbeat). The `act` monitor's "taps unanswered" is still soft (never counted).
 - Next: measure on V430+ games — ≥4 taps in 10 s on a must-act, on-screen phone with no progress — against stuck-scan;
   only then count it (a new interval kind, with a whole-archive diff). Also count a reload while must-act and unable.
+- **New evidence (V431):**
+  - NQFD 28:49–29:07: a Chromebook on 4th down tapped 7 times in 17 s while its page drew almost no frames
+    (`hold 9082ms 11f <-- rAF SUSPENDED`). The player left. The checker counted nothing.
+  - ACWF 18:51–19:02: 3 taps on a scrolled page (offset 194,220 came back every 10 s after `scroll healed`), and the
+    4th tap snapped.
+  - OLOI (1 Oct 10:04 pm) B: 9 taps in 16 s on a page scrolled by 59 px. Every press registered only as a `hold`, and
+    the 10th snapped. `scroll healed` ran every ~10 s, but the offset came back each time.
+  - **2 Oct (V431):** FTJY B (1st & 10 after a kickoff, 3 touch taps) and KEIF B (4th & 7.6, 2 mouse clicks) tapped near
+    GUI (150–210, 100–130), upper left, where nothing answered. Then a tap in the middle snapped (6–12 s lost). FTJY's
+    player later sent "Taps / drags don't work" (after two interceptions; every snap tap had worked). Find what is drawn
+    there that looks tappable. Also EXAZ B: a tap on a page scrolled by (221,87).
+  - The scrolled-page taps (ACWF, OLOI) are worth a root of their own: find what re-scrolls the page and where a press
+    on a scrolled page lands in game coordinates.
 
-## 6. The detector under-measures a refusal stall
+## 10. The detector under-measures a refusal stall
 - ZQMT's real freeze was ~13 s on B (refused LIVE → behind the waiting cover) but the act monitor only reported "both
   parked" on A (9-11 s). A `wait refused` audit entry followed by both phones parked is the stuck state; count it from
   the refusal. (V430 fixed ZQMT's cause — the OT kickoff waits for the partner.)
 
-## 7. Low frame rate
+## 11. Low frame rate
 - A separate "degraded" measure: a phone that owes the move at <10 fps for >10 s (XAMX, ZZZX, LMUM). Not a freeze.
 
-## 8. The page reloads itself on a lost graphics context
+## 12. The page reloads itself on a lost graphics context
 - `glLostRecover` reloads the page when the WebGL context is lost (once per 45 s) — against the owner's "no
   auto-reload". It never fired in the cases read; a lost GL context cannot draw again otherwise. Decide with the owner.
 
 ## Owner decisions (do not act on these without the owner)
+- **The defense difficulty defaults to MAX** (`_rb2p_difficultyPref`, the lobby's "DEFENSE DIFFICULTY FOR BOTH
+  PLAYERS"). A player wrote "get df off max" (RWDK, 2 Oct 11:18 am) after a sack and two incompletions ended
+  their drive. Players can change it in the lobby, but most never do. Lowering the default is the owner's call.
 - **Database storage:** the free plan allows 1 GB, and the database is at about 293 MB and grows 30–50 MB a day,
   because rooms are never deleted. It fills in about 2–3 weeks.
   - **Options:** the Blaze plan, or archive old rooms' audit streams to disk and remove them from the database.
@@ -61,6 +137,19 @@ Order = what to take first when the brief has no new freeze to work on.
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V432 (run 20261002-1200; committed, live when V432 ships) — the detector counts a hand-off ping-pong** (was #2): `tools/audit-rules.js` (R-FREEZE,
+  "hand-off ping-pong") and `tools/stuck-scan.js` (`PING-PONG`). Two bounces in a row, from the first unplayed
+  hand-off to the next snap, the stats screen, a pagehide, or 10 s after the last bounce. Whole archive: exactly the 9
+  keep-0:00 rooms changed (4 permanent, 5 temporary). Test: `e2e/v432-checker.js` P1–P7.
+- **V432 (run 20261002-1200; committed, live when V432 ships) — R-DOWN "inches"**: a gain within 0.05 of the line is the engine's call (NPXZ "2nd &
+  0.01"; 44 artifact flags in 41 rooms gone). P8.
+- **V432 (run 20261002-1200; committed, live when V432 ships) — the brief had read a worktree's 10-room audits/** instead of the archive (12:00 brief:
+  "1 game, 0 frozen" of 90). precheck.js, firings.js and stuck-scan.js read the watcher's archive first.
+- **V432 — V430's "keep 0:00" reverted:** it looped at the halftime horn in 3 of 3 real games (FOVL, ONFE: both
+  players quit; HIHR). The 0:01 glitch is open again (#4).
+- **V432 — OKYW:** a phone that joins its partner's new game through the resume no longer keeps the finished game's
+  flow record (epoch H), which had dropped the new game's first-half hand-offs as moot. The record is reset
+  (`flow-stale`), and a finished game's id is never adopted. Test: `e2e/v432-rematch-join.js`.
 - **V430 — the 2026-10-01 freezes:** a phone that reloads seconds after taking the ball comes back with it, at the
   same spot (VWWK, BXDZ, NICE, AOGO — and TURN-RESCUE had put it at its own 25); the OT receiver waits for the partner
   still playing its try (ZQMT; and never two offenses when the flip lands just after the horn); a play that runs out

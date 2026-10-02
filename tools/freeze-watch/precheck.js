@@ -14,7 +14,10 @@ const REPO = path.join(__dirname, '..', '..');
 const R = require(path.join(REPO, 'tools', 'audit-rules.js'));
 const HOME = path.join(os.homedir(), 'rb2p', 'freeze-watch');
 const STATE = path.join(HOME, 'state.json');
-const AUDITS = fs.existsSync(path.join(REPO, 'audits')) ? path.join(REPO, 'audits') : path.join(os.homedir(), 'rb2p', 'two-player-rb', 'audits');
+// The archive is the audit watcher's (the main tree's audits/). A worktree's own audits/ holds only the rooms its runs
+// fetched with audit-game.js — run 20261002-0900 left 10 there, and the 12:00 brief saw 1 game of ~70 and no freeze.
+const MAIN_AUDITS = path.join(os.homedir(), 'rb2p', 'two-player-rb', 'audits');
+const AUDITS = fs.existsSync(MAIN_AUDITS) ? MAIN_AUDITS : path.join(REPO, 'audits');
 const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const daily = process.argv.includes('--daily');

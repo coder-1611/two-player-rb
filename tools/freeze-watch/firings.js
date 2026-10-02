@@ -15,7 +15,9 @@ const R = require(path.join(__dirname, '..', 'audit-rules.js'));
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const pattern = arg('--pattern'); if (!pattern) { console.error('--pattern required'); process.exit(2); }
 const since = arg('--since') ? Date.parse(arg('--since')) || Number(arg('--since')) : Date.now() - 24 * 3600 * 1000;
-const dir = arg('--archive', fs.existsSync(path.join(__dirname, '..', '..', 'audits')) ? path.join(__dirname, '..', '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits');
+// the watcher's archive first — a worktree's audits/ holds only the rooms audit-game.js fetched there (see precheck.js)
+const MAIN_AUDITS = '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+const dir = arg('--archive', fs.existsSync(MAIN_AUDITS) ? MAIN_AUDITS : path.join(__dirname, '..', '..', 'audits'));
 const guardRe = /^guard:(.+)$/;
 const parts = pattern.split('|'), diagRe = new RegExp(parts.filter(p => !guardRe.test(p)).join('|') || '(?!)'), guardWhat = parts.map(p => guardRe.exec(p)).filter(Boolean).map(m => m[1]);
 const isHarness = (code, tl) => /\d/.test(code) || tl.filter(e => e.k === 'bind').every(b => b.src === 'local' || /localhost|127\.0\.0\.1/.test(b.host || '') || b.test === true);
