@@ -5,17 +5,17 @@
 // quarter itself. At the halftime horn it did not, in 3 of 3 real games: the receiver went LIVE at Q2 0:00 with no ball
 // on the field (EMPTY-FIELD re-staged the drive — FAILED), its engine's halftime turnover went back as a PUNT stamped
 // 0:00, the partner did the same, and the two phones bounced empty possessions every ~7 s (FOVL 5 bounces, ONFE 7 —
-// nobody could snap). Before V430, 117 of the archive's 123 hand-offs at the Q2 horn (0:01: the receiver plays one
-// down) reached Q3, and none of the other 6 bounced. V432 reverts "keep 0:00"; the owner's 0:01 glitch (one extra down) is back — OPEN.md #4.
+// nobody could snap). V432 reverted to the 0:01 buffer (the receiver plays one extra down). V434 (the horn law,
+// ~/rb2p/research/HORN-RESEARCH.md) keeps 0:00 AND ends the quarter through the engine's own time-up at the one place a
+// drive is staged (forceUserOffenseDrive): no extra down, no empty field for a rescuer to re-stage, nothing to bounce.
 //
-// The harness cannot make the engine ship its halftime turnover after a REAL play (a real pass or run at Q2 0:04 ends
-// the half through the halftime law here, on both builds — tried 2026-10-02); so the drive end at the horn is driven
-// the way V430's own test drove it (e2e/v430-expired.js: the clock reaches 0:00, then the engine's possession change in
-// the same frame — the bridge's _1c1 hook builds, holds and ships the hand-off). Then:
-//   H1  the hand-off at the horn is not stamped 0:00 — the stamp every real bounce carried (V431: clk 0)
+// The drive end at the horn is driven the way V430's own test drove it (e2e/v430-expired.js: the clock reaches 0:00,
+// then the engine's possession change in the same frame — the bridge's _1c1 hook builds, holds and ships the
+// hand-off); e2e/v434-horn.js does the same horn through real downs. Then:
+//   H1  the hand-off at the horn ships Q2 0:00 (no 0:01 buffer)
 //   H2  no ping-pong: in the next 20 s the receiver sends no hand-off it did not play for
-//   H3  the receiver has its down (Q2, time on the clock, the sender waits) and plays it for real (a run or a pass
-//       through trusted input, e2e/qb-bot.js): the half ends — both phones in Q3, one offense, nothing bounced
+//   H3  the receiver gets no down in Q2 (offered one, it plays it for real through trusted input, e2e/qb-bot.js — and
+//       that fails H3): the half ends on its own — both phones in Q3, b has the kickoff, nobody snapped in Q2
 const H = require('./harness');
 const TP = require('./two-player');
 const QB = require('./qb-bot');
@@ -67,7 +67,7 @@ async function playDown(page, code, role, tries) {
 }
 
 (async () => {
-    console.log('=== V432 HALFTIME HORN ===');
+    console.log('=== V432/V434 HALFTIME HORN ===');
     const g = await TP.startTwoPlayerGame({});
     await sleep(6000);
     const aWait = await g.a.page.evaluate(() => window._rb2p_userIsWaitingForOpponent === true);
@@ -82,25 +82,24 @@ async function playDown(page, code, role, tries) {
     console.log('  the sender\'s drive ran out the clock at the Q2 horn: ' + r + '; sent ' + JSON.stringify(sendsO.map(e => e.type + ' Q' + e.q + ' clk' + e.clk)) +
                 '; the receiver sent ' + JSON.stringify(sendsD.map(e => e.type + ' Q' + e.q + ' clk' + e.clk)) + ', snapped ' + snapsD.length);
     const horn = sendsO.filter(e => Number(e.q) === 2);
-    check('H1 the hand-off at the halftime horn is not stamped 0:00 (the stamp of every real bounce)',
-          horn.length >= 1 && horn.every(e => Number(e.clk) >= 1), JSON.stringify(horn.map(e => e.type + ' Q' + e.q + ' clk' + e.clk)));
+    check('H1 the hand-off at the halftime horn ships Q2 0:00 (no 0:01 buffer)',
+          horn.length >= 1 && horn.every(e => Number(e.clk) === 0), JSON.stringify(horn.map(e => e.type + ' Q' + e.q + ' clk' + e.clk)));
     check('H2 no ping-pong: the receiver sends no hand-off it did not play for', bounce.length === 0,
           JSON.stringify(bounce.map(e => e.type + ' Q' + e.q + ' clk' + e.clk)));
-    // H3: the receiver's down, played for real — then the half ends
+    // H3: no down for the receiver at the horn — the half ends on its own (a down offered in Q2 is played, as a player would)
     const dNow = await st(def.page), oNow = await st(off.page);
-    const hasDown = !!(dNow && oNow && dNow.q === 2 && dNow.wait === false && dNow.m * 60 + dNow.s >= 1 && oNow.wait === true);
-    const t1 = await def.page.evaluate(() => Date.now());
-    const snapped = hasDown ? await playDown(def.page, g.code, def.role, 4) : null;
-    const q3 = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: !!(a && b && a.q === 3 && b.q === 3 && (a.wait !== b.wait)), a, b }; }, 60000, 1000);
+    const offered = !!(dNow && dNow.q === 2 && dNow.wait === false && dNow.m * 60 + dNow.s >= 1);
+    const snapped = offered ? await playDown(def.page, g.code, def.role, 4) : null;
+    const q3 = await until(async () => { const a = await st(off.page), b = await st(def.page); const A = off.role === 'a' ? a : b, B = off.role === 'b' ? a : b; return { ok: !!(A && B && A.q === 3 && B.q === 3 && A.wait === true && B.wait === false), a, b }; }, 45000, 1000);
     await sleep(3000);
     const auD2 = await audit(g.code, def.role), auO2 = await audit(g.code, off.role);
-    const all = auD2.map(e => Object.assign({ who: 'def' }, e)).concat(auO2.map(e => Object.assign({ who: 'off' }, e))).filter(e => e.t >= t1).sort((a, b) => a.t - b.t);
-    const q2sends = all.filter(e => e.k === 'send' && Number(e.q) === 2);
-    const bounce2 = q2sends.filter(s => !all.some(n => n.k === 'snap' && n.who === s.who && n.t < s.t));
-    console.log('  the receiver\'s down: ' + JSON.stringify({ dNow, oNow }) + ' snapped ' + (snapped ? 'Q' + snapped.q + ' clk' + snapped.clk : 'no') +
-                '; Q2 sends after it ' + JSON.stringify(q2sends.map(e => e.who + ' ' + e.type + ' clk' + e.clk)) + '; Q3 on both ' + (q3.ms !== null ? 'after ' + (q3.ms / 1000) + ' s' : 'never') + ' ' + JSON.stringify({ off: q3.a, def: q3.b }));
-    check('H3 the receiver has its down at the horn and plays it for real: the half ends — both phones in Q3, one offense, nothing bounced',
-          hasDown && !!snapped && q3.ms !== null && bounce2.length === 0, JSON.stringify({ hasDown, snapped: !!snapped, q3: q3.ms, bounced: bounce2.map(e => e.who + ' ' + e.type) }));
+    const all = auD2.map(e => Object.assign({ who: 'def' }, e)).concat(auO2.map(e => Object.assign({ who: 'off' }, e))).filter(e => e.t >= t0).sort((a, b) => a.t - b.t);
+    const q2snaps = all.filter(e => e.k === 'snap' && Number(e.q) === 2);
+    const q2sends = all.filter(e => e.k === 'send' && Number(e.q) === 2 && e.who === 'def');
+    console.log('  at the horn: ' + JSON.stringify({ dNow, oNow }) + ' offered a Q2 down: ' + offered + (snapped ? ' (snapped Q' + snapped.q + ' clk' + snapped.clk + ')' : '') +
+                '; Q2 snaps ' + q2snaps.length + ', receiver Q2 sends ' + JSON.stringify(q2sends.map(e => e.type + ' clk' + e.clk)) + '; Q3 with b on offense ' + (q3.ms !== null ? 'after ' + (q3.ms / 1000) + ' s' : 'never') + ' ' + JSON.stringify({ off: q3.a, def: q3.b }));
+    check('H3 the half ends at the horn with no extra down: both phones in Q3, b has the kickoff, nobody snapped in Q2, nothing bounced',
+          !offered && q2snaps.length === 0 && q2sends.length === 0 && q3.ms !== null, JSON.stringify({ offered, q2snaps: q2snaps.length, q2sends: q2sends.length, q3: q3.ms }));
     if (process.env.X_DEBUG) for (const P of [off, def]) console.log('--- ' + (P === off ? 'sender' : 'receiver') + ' diag\n' + String(await P.page.evaluate(() => String(window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : '')).catch(() => '')).split(',').slice(-45).join('\n'));
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');

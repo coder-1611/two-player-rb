@@ -152,5 +152,7 @@
  "window._rb2p_engErrSeen": "V430 telemetry: the engine errors already written to the audit stream (one 'engerr' entry per distinct error); only decides whether to log, never read by game logic",
  "window._rb2p_lastFrameThrewMs": "V430 telemetry: when a frame last threw; read only to word the can-act monitor's label ('the match never started (engine error)'), never gates play",
  "window._rb2p_pollFailLogMs": "V430 log throttle: the outcome poll's failure line at most every 15 s; never gates the poll",
- "window._rb2p_resumedMs": "V430: set when resumeMatch runs; read only to word the monitor's label (a resume vs this page's own match start), never gates play"
+ "window._rb2p_resumedMs": "V430: set when resumeMatch runs; read only to word the monitor's label (a resume vs this page's own match start), never gates play",
+ "window._rb2p_hornQ": "the quarter whose horn this phone last ended through the engine's time-up (5: a drive refused after regulation; with _rb2p_hornMs it only throttles that log line); nothing waits on it",
+ "window._rb2p_hornMs": "when this phone last ended a quarter through the engine's time-up (diagnostic); nothing waits on it"
 }

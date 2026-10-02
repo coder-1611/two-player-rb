@@ -6,22 +6,6 @@ run finds a new root it cannot fix today, it adds it here with the rooms that sh
 
 Order = what to take first when the brief has no new freeze to work on.
 
-## 0. FIRST: V432 is committed but not shipped — the gate cannot go green on this machine's load (2026-10-02)
-- V432 is committed on branch `auto` and kept by run.sh. Runs 0900 and 1200 could not ship it.
-- **Every day it waits, games freeze at the quarter horns** (the keep-0:00 ping-pong). By 12:30 pm on 2 Oct: 12
-  rooms, 5 games abandoned (FREEZE-LEDGER.md V432).
-- **Run 1200's gate: RED.** Every suite passed alone except v352-conversion T5/T6, v378-gvcg (1), v382-clockgate T2/T4
-  and v430-reload-ball, plus run.js "takeaway" in the full run.
-  - Each fails the same way on live V431 alone, or passes alone on both builds.
-  - Page timers fired up to 6 s late: a 4 s hold sent at 10 s on BOTH builds.
-  - MacRemoteCapture (the owner's remote desktop) has streamed at ~235% CPU since 4 am. Do not stop it; it is the
-    owner's.
-- **Next run:** check `uptime` and `ps` for MacRemoteCapture.
-  - If the load average is under ~4 (capture stopped), run `gate.sh 8801`, and on GREEN: `quiet.js`, push, doors.
-  - If it is still streaming, run the five checks alone on V431 and V432 again and report. Do not ship on red.
-  - The owner can approve a push of V432 with those five known environment failures, or pause the capture for an
-    hour.
-
 ## 1. FXTE: V430's reload-ball resume takes a hand-off again after the phone PLAYED ON (harmful, 1 of 1 real firings)
 - **What happened (FXTE, 2026-10-02 8:07 am, V431):** B took a TD kickoff and played three downs into Q2 (3rd & 4 at its
   46, 2:54 left), then reloaded. Its live record was older than its ACK, because its tab drew almost no frames and the
@@ -53,29 +37,32 @@ Order = what to take first when the brief has no new freeze to work on.
 - **Test:** both phones press READY within a second of one having reloaded. Both must run startMatch (a `game` audit
   entry on both), with no reload.
 
-## 4. The owner's 0:01 glitch is open again (V430's fix reverted in V432)
-- **The glitch:** a play that runs out the clock hands the partner one more down at 0:01. The drive end is stamped 0:00,
-  the 4 s hold parks the sender (V293 floors at 0:01), and the send re-stamp reads 0:01. 53 archived hand-offs.
-- **Why V430's fix failed:** it shipped 0:00, but a drive staged at 0:00 never gets a play, so nothing ends it. At the
-  halftime horn the receiver's engine turned the ball over again, and the phones ping-ponged (FOVL, ONFE, HIHR).
-- **Fix:** the receiver of an expired hand-off must not get a drive at all. The quarter ends through the laws:
-  - halftime: the Q3 law;
-  - Q4: the final, or the OT flip;
-  - Q1/Q3: the next quarter with the receiver's ball.
-  Find the engine's REAL path for each, and ship in SHADOW first (it moves possession).
-- **Test through a real play:** first find what makes the engine ship its halftime turnover after a real down. In the
-  harness, a real pass or run at Q2 0:04 ended the half through the law on V431 and V432 alike.
+## 4. Audit V434's horn law in real games (the first 24 hours after the release)
+- V434 ends every quarter through the engine's own time-up (FREEZE-LEDGER.md V434, `~/rb2p/research/HORN-RESEARCH.md`
+  §5.2). Read every firing: the diag `HORN Qn — a drive staged by L<line> at 0:00 ends the quarter here` and the audit
+  `guard {what:'horn', q, why}`.
+  - **Stop the line** if a horn's next period went to the wrong team (Q1/Q3: the team with the ball after the last down;
+    halftime: Team B; Q4: the final, or the flip on a tie). Revert C1–C3 the way V432 reverted V430.
+  - `why` other than "a hand-off" (a rescuer staged at 0:00) should be rare: read each one.
+  - `SEND horn at Qn 0:00 — the partner is on V4xx: it gets the old 0:01` = a mixed-build game (expected for a day).
+  - `guard ot-try-wait` followed by an OT flip more than 30 s later: read it (C6's hold, capped at 120 s).
+- **Checker rules to add** (whole-archive diff first, only intended verdicts may move): R-HORN-EXTRA (a snap in quarter
+  *n* by the receiver of a hand-off sent `Qn 0:00`: the extra play; ≈141 in the buffer era, 0 expected after),
+  R-HORN-RESTAMP (a drive end at `Qn 0:00` sent with another quarter or clk > 0), R-HORN-SPOT (Q1/Q3: the receiver's
+  first snap of Q*n*+1 is not at the hand-off spot on 1st & 10). Spec: HORN-RESEARCH.md §5.2.
+- **Prove C10 (the halftime try) with a real touchdown.** `horn-last-down.js td` at Q2 never scores: the harness writes
+  the quarter, which skips the engine's direction switch (`_Sc1`), so the goal-line run goes backwards. Reach Q2 through
+  a real Q1 horn (a real down at Q1 0:01 with no possession change: the engine's own case 19 runs `_Sc1`), then stage
+  the touchdown at Q2 0:02. Must hold: the scorer's try, then Q3 with b receiving and the scorer never snapping in Q3
+  first (R-HALF / METB).
 
-## 5. FGXJ: overtime starts while a pick-six try is still owed (V424, still in the code)
-- A pick-six at Q4 0:00 tied the game 12-12 before its try; the engine rolled into Q5 during that temporary tie, so the
-  OT code armed and seeded the coin flip (`coin flip only from a tie`). The try made it 13-12 — the game was decided at
-  the horn — but OT counted as legitimate because the flip was seen; `_rb2p_p6ScorerOwes` was never cleared (the
-  PAT guardian stood down, POST-CONV returns for Q≥5), so B's OT kickoff was refused 40 times ("the scorer owes a
-  PAT_RESULT"), then FIELD-CHECK shipped a synthetic result and A went live against the coin flip.
-- Fix (both): don't arm OT / seed the flip while a try is owed on either phone (reuse the halftime law's
-  `q3PartnerTryPending()` + my own `patOwed()`, capped), so 13-12 ends at the horn; and in `_rb2p_applyOtKickoff`
-  clear `_rb2p_p6ScorerOwes` (the flip decides possession). Test through a REAL pick-six at Q4 0:01 (the receiver
-  six behind), both a made and a missed try. (Investigator's full chain: the V430 session notes.)
+## 5. The horn law's two specified follow-ups (HORN-RESEARCH.md C11, C12)
+- **C11:** a horn record that arrives after the receiver's quarter already ended must not lower its quarter (the apply
+  writes the quarter absolutely, 16 ms until V323 pulls it forward; YGJM#2, BHOU#1, EMNP#1). Decide it by the period
+  rule for Q*n*+1 instead.
+- **C12:** a safety on the last down of Q1/Q3 gives the next quarter's ball to the CONCEDING team at its goal line
+  (`_rb2p_scoredSinceCapture` only compares the holder's own score). Void the keep on the opponent's score too, and hand
+  the free kick off the way POST-CONV does. Read the engine path first; test through a real safety.
 
 ## 6. DAXK: a reload during an overtime try ends the game early (still in the code)
 - The try's duty record survives the reload; the resume replays it as a synthetic `type:'PICK6'` outcome, and in OT a
@@ -137,6 +124,11 @@ Order = what to take first when the brief has no new freeze to work on.
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V434 — the 0:01 glitch is gone, with the buffer** (was #4): the horn law. A hand-off decided at 0:00 ships 0:00 (to
+  a V434+ partner) and the receiver's engine ends the quarter itself — no extra down, no bounce. Halftime: Team B by
+  role. Also the scorer's free down after a try across the horn (C10, C13). Tests: `e2e/v434-horn.js`,
+  `e2e/v434-horn-outcomes.js`; v430-expired X1–X3 and v432-half-horn H1/H3 now assert the horn rule.
+- **V434 — FGXJ** (was #5): overtime is not armed while a try is owed; the OT kickoff clears a stale pick-six duty (C6).
 - **V432 (run 20261002-1200; committed, live when V432 ships) — the detector counts a hand-off ping-pong** (was #2): `tools/audit-rules.js` (R-FREEZE,
   "hand-off ping-pong") and `tools/stuck-scan.js` (`PING-PONG`). Two bounces in a row, from the first unplayed
   hand-off to the next snap, the stats screen, a pagehide, or 10 s after the last bounce. Whole archive: exactly the 9

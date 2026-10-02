@@ -475,7 +475,7 @@ async function steerCarrier(page, cal, s0, opts) {
         // defenders ahead of the runner: steer away from the nearest one's lane
         let ax = dir, ay = 0, nearest = null, nd = 999;
         for (const d of s.df) { const fwd = (d.x - c.x) * dir; if (fwd < -10) continue; const dd = Math.hypot(d.x - c.x, d.y - c.y); if (dd < nd) { nd = dd; nearest = d; } }
-        if (nearest && nd < 110) { const side = (nearest.y >= c.y) ? -1 : 1; const tilt = nd < 50 ? 0.9 : 0.5; ax = dir * (1 - tilt); ay = side * tilt; }
+        if (nearest && nd < 110 && !(opts && opts.straight)) { const side = (nearest.y >= c.y) ? -1 : 1; const tilt = nd < 50 ? 0.9 : 0.5; ax = dir * (1 - tilt); ay = side * tilt; }   // opts.straight: a dive (goal line)
         // stay in bounds (field y 132..468)
         if (c.y < 165 && ay < 0) ay = 0.4; if (c.y > 435 && ay > 0) ay = -0.4;
         const L = Math.hypot(ax, ay) || 1; ax /= L; ay /= L;

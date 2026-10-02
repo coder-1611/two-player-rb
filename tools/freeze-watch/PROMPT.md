@@ -48,6 +48,12 @@ again and the problem is often on a deeper level."* So, every run:
   possession goes back to how it was the last time the game was not frozen — same yard line, down and distance —
   unless the ball legitimately changed hands after that"*; never take the ball from a hidden/away player; never end a
   game before the horn.
+- **The horn law (V434): "possession ALWAYS goes to Team B" at halftime, and no 0:01 extra play — "I want this glitch
+  gone along with the buffer".** A quarter ends ONLY through the engine's own time-up at 0:00 (`_rb2p_hornEnd`, reached
+  from `forceUserOffenseDrive`); the keep / Q3 law / final / OT flip decide the next period. Never roll that time-up
+  back, never stage a down at a regulation 0:00, never re-add a 0:01 floor read or buffer. Read
+  `~/rb2p/research/HORN-RESEARCH.md` and FREEZE-LEDGER.md V434 before touching any quarter-end code, and test it with
+  real downs (`e2e/v434-horn.js`, `e2e/v434-horn-outcomes.js`, `e2e/horn-lib.js`) — never a synthetic drive end alone.
 - **Don't interrupt current games**: right before `git push`, run `node tools/freeze-watch/quiet.js --wait 120`. If it
   exits 1, do not push — leave the commit on the branch, say so in the report; the next run ships it. Never write to a
   real room; never restart anything that games depend on while one is live.

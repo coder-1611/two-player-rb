@@ -736,3 +736,76 @@ With V432's checker (which counts the halftime ping-pong) the first 24 hours rea
 6 permanent), 528 s — all but one of them the V430 ping-pong that V432 reverts.
 
 No game change. v428-records and v387-names green; latch check 0 unclassified.
+
+## V434 (2026-10-02): the horn law — every quarter ends through the engine's own time-up; no 0:01 extra play, no bounce
+
+The owner: "Kill these transition issues once and for all. This is REALLY easy, possession ALWAYS goes to Team B",
+"I want this glitch gone along with the buffer". The design is from a deep-research run (Opus 5.5 max,
+`~/rb2p/research/HORN-RESEARCH.md`, brief `HORN-BRIEF.md`), which reproduced every failure through real downs before
+proposing anything.
+
+**What was wrong (one root, three symptoms).** The engine has exactly one way to end a quarter: when a down is over and
+the clock reads 0:00, its "set up the next play" step (`_eb1`) refuses to place a ball and calls time-up (`_hB(9)` →
+`is_quarter_over` → case 19, quarter + 1). The bridge **rolled that back** ("force NO-BALL (rolled back)") wherever it
+staged a drive. So a quarter only ended when the phone with the ball played the last down itself:
+- **The 0:01 glitch (the buffer):** a last down that changed possession (an interception, a fumble, a turnover on
+  downs, a punt) was shipped from a parked sender that V293 holds at 0:01, and the send re-stamp read that 0:01. The
+  receiver got a whole extra down: 150 archived hand-offs, 141 played, 22 scored (132 points).
+- **V430's bounce:** shipping 0:00 made the receiver stage a drive at 0:00 — the engine said time-up, the bridge undid
+  it, EMPTY-FIELD failed, and the drive-end watchdog shipped a PUNT stamped 0:00 back. Both phones did this to each other
+  every ~7 s (FOVL, ONFE, JCPA, KPTR, IUQI, ATAN, ERPY abandoned; PHCY/HNWX handed the ball to the wrong team at Q1/Q3).
+  V432 reverted to the buffer.
+- **Tries across the horn** handed the scorer a free possession: a down at the 2 in Q3 while the partner took the
+  kickoff (METB and ~10 rooms), and after a kicked try at the Q1/Q3 horn a drive at its own 35 (17 of 23 rooms).
+
+The brief's "HALF_END flip" was already gone (V204; zero HALF_END hand-offs in 3,128 rooms). Its last producer line is
+deleted here.
+
+**The fix (C1–C10, C13, C14 of the research):**
+- **C1, the choke point.** Every bridge path that stages a drive goes through `forceUserOffenseDrive`. At a regulation
+  0:00 it now lets the engine's own time-up stand (`_rb2p_hornEnd`: possession, spot and down set, then
+  `s_action_result(9)`) and returns `'horn'`. The caller is named in the diag (`HORN Qn — a drive staged by L<line> at
+  0:00 ends the quarter here`) and an audit `guard {what:'horn'}`. C1b: at Q5 0:00 outside OT nothing is staged.
+- **C2/C3, the stamp.** A drive end decided at 0:00 (after the time the engine still owes: 5–10 s for a punt, 3–5 s for
+  a kickoff) is stamped `hornAt` and the send re-stamp keeps Q*n* 0:00 — **only to a partner on V434+**
+  (`_rb2p_oppVer`). An older partner still gets 0:01, because it would roll the horn back and bounce.
+- **C4/C5, the rescuers.** The drive-end watchdog ends the quarter at 0:00 instead of shipping a PUNT; the kickoff
+  sweeper never pokes the engine at 0:00 or at the end-of-quarter park.
+- **The existing laws decide the next period:** the keep at Q1→Q2 and Q3→Q4 (the team with the ball after the last
+  down, at its spot, 1st & 10, a full clock); the Q3 law at halftime (**Team B, by role**); the final or the OT flip at Q4.
+- **C10:** the Q3 law no longer waits on a try that was snapped before the horn (the scorer's free down at the 2).
+- **C13:** after a kicked try at the Q1/Q3 horn the keep stands down — the scorer kicks off.
+- **C6 (OPEN #5, FGXJ):** overtime is not armed while a try is owed (capped at 120 s); the OT kickoff clears a stale
+  pick-six duty. **C14:** the OT kickoff moves to the flip's period and sets 10:00 before it stages.
+- **C7:** the `prevVy === 24 → HALF_END` producer is deleted (the receiver's consumer stays for old partners).
+- **Latch registry:** `otHoldSince`/`otHoldSawConv` registered as blocking (deadline 120 s); `hornQ`/`hornMs`
+  non-blocking.
+
+**Not in V434 (specified by the research, OPEN.md):** C11 (a horn record that arrives after the receiver's quarter
+already ended must not lower its quarter: 3 archived records), C12 (a safety on the last down), and the checker rules
+R-HORN-EXTRA / R-HORN-RESTAMP / R-HORN-SPOT.
+
+**Tests.** Every down real (the QB bot's trusted input, the engine's own 4th-down dialog, real kicks); the only writes
+are a down's setup before its snap.
+
+| test | unmodified V433 (live) | V434 |
+|---|---|---|
+| `e2e/v434-horn.js` — M1 (the FOVL state) at Q1, Q2, Q3, Q4 decided, Q4 tied; M4 a punt at the Q1 horn | **0 / 6**: every horn hand-off `OTHER Qn clk1`, the receiver snapped the extra down (`a clk0`); at Q1/Q3 the next quarter began on 2nd down; the punt's receiver ran two 0:01 downs | **6 / 6** |
+| `e2e/v430-expired.js` X1–X3 (Q2, Q4 decided, Q1) + X4 (time left) | **1 / 4**: X1–X3 `OTHER Qn clk1`, the receiver live at 0:01 | **4 / 4** |
+| `e2e/v432-half-horn.js` H1–H3 | **1 / 3**: H1 `OTHER Q2 clk1`, H3 the receiver offered and snapped a Q2 down | **3 / 3** |
+| `e2e/v434-horn-outcomes.js` (run, INT, FG, TD+try at Q1/Q2/Q3, pick-six, FGXJ tie, reload, screen off) | (the research's runs: §4.1) | **8 / 8** alone (2 inconclusive: the Q1 and Q2 touchdowns did not score); M3 INT, M5 FG, M6 TD+try at Q3 (C13), M7, **M10 the FGXJ pick-six tie (C6)**, M8 reload, M9 screen off all pass |
+
+Full gate: **GREEN — 57 suites + run.js 15/15** (`~/rb2p/gate-v434/full`, under MacRemoteCapture load, load average ~25).
+Two suites failed only in the 4-at-a-time batch, both on the test's side, and pass alone after the fix:
+- `v434-horn-outcomes` M3/M5: `horn-last-down.js` took "after the last down" as 3 s after the setup, so the field goal's
+  own kick and a retried throw counted as extra plays; and it read the pick-six send 6 s after the snap (it ships ~15 s
+  later). Now: after the last down's own snap; the PICK6 send waited for up to 35 s.
+- `v430-ot-wait` O1 asserted V430's mechanism (the receiver holds the flip). Under C6 overtime is not armed at all while
+  the partner's try is owed — the receiver still waits and the partner plays its try alone ("never two offenses"), and
+  it goes live 1 s after the try. O1 now accepts either hold.
+
+**Not yet proven with a real play: C10 at halftime.** The harness reaches Q2 by writing the quarter, which skips the
+engine's direction switch (`_Sc1`), so a goal-line run at Q2 goes backwards (gain −99); Q1/Q3 share Q1's direction and
+work. C10 is narrow (a try snapped after its offer and before the quarter change) and the halftime horn itself is proven
+(M1, H1–H3, M2, M8). Follow-up: reach Q2 through a real Q1 horn, then the touchdown (OPEN.md #4).
+

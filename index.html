@@ -1566,7 +1566,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V433<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V434<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1648,7 +1648,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V433</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V434</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2451,6 +2451,32 @@
                             if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'flow-shadow', act: 'refuse-drive', why: fsa, y: yardLine });
                         }
                     }
+                    // V434 THE HORN — THE CHOKE POINT: at a regulation quarter's 0:00 no down can be staged.
+                    // s_set_up_play would run the engine's time-up and this function rolled it back (FOVL: the
+                    // parked dead stage came back, the drive-end watchdog shipped a PUNT 0:00). Every caller that
+                    // stages a drive at 0:00 — a 0:00 hand-off, EMPTY-FIELD, TURN-RESCUE, the field check, the
+                    // resume, P6-WATCH — ends the quarter instead, through the engine's own time-up. Quarter 5 is
+                    // left to its owners (the final, the OT flip): the OT kickoff stages before it sets 10:00.
+                    if (window._rb2p_inOvertime !== true) {
+                        var hq0 = Number(engineMatch.engineQuarter), hclk0 = Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft);
+                        if (hclk0 <= 0 && hq0 >= 1 && hq0 <= 4) {
+                            // name the path that tried to stage (the audit says which one ended each quarter)
+                            var hWho = 'a drive staged';
+                            try { var hSt = (new Error().stack || '').split('\n'); var hLn = (hSt[2] || '').trim(); var hM = hLn.match(/:(\d+):\d+\)?$/); if (hM) hWho = 'a drive staged by L' + hM[1]; } catch (eHS) {}
+                            if (typeof window._rb2p_hornEnd === 'function' &&
+                                window._rb2p_hornEnd(null, (typeof yardLine === 'number') ? yardLine : Number(engineMatch.engineYardLineSigned), hWho, restoreDD)) return 'horn';
+                        }
+                        // V434 (C1b): regulation is over — the engine has rolled to Q5 and overtime is not
+                        // armed — so there is no down to stage at 0:00: the final or the OT flip decides (the OT kickoff
+                        // sets its 10:00 first, C14). Z9VV: EMPTY-FIELD staged a drive at Q5 0:00 0.2 s before the final.
+                        if (hclk0 <= 0 && hq0 >= 5) {
+                            if (!(Number(window._rb2p_hornQ) === 5 && Date.now() - (Number(window._rb2p_hornMs) || 0) < 5000)) {
+                                window._rb2p_hornQ = 5; window._rb2p_hornMs = Date.now();
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q5 — a drive staged after regulation: none (the final or the OT flip decides)');
+                            }
+                            return 'horn';
+                        }
+                    }
                     var setUpPlay = RB.getEngineScript('gml_Script_s_set_up_play');
                     if (typeof setUpPlay !== 'function') return false;
                     // V422: every drive this phone stages is recorded (spot, down, distance) — the
@@ -2759,6 +2785,43 @@
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
 
+            // ===== V434 THE HORN (research: ~/rb2p/research/HORN-RESEARCH.md, Opus 5.5 max) =====
+            // A hand-off stamped 0:00 in my own regulation quarter IS the end of that quarter: no drive is staged. The
+            // engine's own end of quarter after a down is s_set_up_play -> s_action_result(9) ACTION_RESULT_TIMEUP
+            // (retrobowl.js _eb1 54927) -> next frame s_update_commentary -> is_quarter_over -> case 19 (quarter +1, line
+            // score, direction, the end-of-quarter button, Vy=13). forceUserOffenseDrive reaches that same call, sees
+            // no ball and ROLLS IT BACK to the parked stage (Vy=4) — FOVL's loop. Here the time-up is called on purpose
+            // and left alone; the governor, the Vy=13 keep, the Q3 law, the final and the OT flip then run exactly as
+            // after a played down.
+            window._rb2p_hornEnd = function (o, yard, why, dd) {
+                try {
+                    var em = RB.engineState(); if (!em || !em.rawEngineMatch) return false;
+                    if (window._rb2p_inOvertime === true || window._rb2p_gameOverReported === true) return false;
+                    var q = Number(em.engineQuarter), clk = Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft);
+                    var oq = o ? Number(o.quarter) : q, oclk = o ? Number(o.minutesLeft) * 60 + Number(o.secondsLeft) : 0;
+                    if (!(q >= 1 && q <= 4) || oq !== q || !(oclk <= 0) || clk > 0) return false;
+                    var tu = RB.getEngineScript('gml_Script_s_action_result');
+                    if (typeof tu !== 'function') return false;
+                    // the possession the last down gave — mine, at the spot (the next quarter's keep starts from here)
+                    em.enginePossessingTeamIdx = em.engineUserTeamIdx;
+                    if (typeof yard === 'number' && isFinite(yard)) em.engineYardLineSigned = Math.max(-50, Math.min(50, yard));
+                    // the down & distance the next quarter starts on: the caller's (the restore rule, a resume), else 1st & 10
+                    var hd = dd && Number(dd.down) >= 1 && Number(dd.down) <= 4 && Number(dd.toGo) > 0 ? dd : null;
+                    em.engineDownNumber = hd ? Number(hd.down) : 1; em.engineYardsToGo = hd ? Number(hd.toGo) : 10;
+                    if (typeof window._rb2p_resyncScrimmage === 'function') window._rb2p_resyncScrimmage(em, 'horn');
+                    // a possession of mine starts here (forceUserOffenseDrive's per-possession resets)
+                    window._rb2p_intReturnActive = false; window._rb2p_pick6SentThisPossession = false; window._rb2p_intCreditedThisPlay = false;
+                    window._rb2p_userScoreAtDriveStart = em.userScore; window._rb2p_opponentScoreAtDriveStart = em.opponentScore;
+                    try { if (Number(em.rawEngineMatch._Nb1) < 1) em.rawEngineMatch._Nb1 = 1; } catch (eN) {}
+                    if (window._rb2p_userOutcomeSendInProgress) window._rb2p_userOutcomeSendInProgress = false;   // a new possession of mine
+                    window._rb2p_hornQ = q; window._rb2p_hornMs = Date.now();
+                    tu(em.rawEngineMatch, _Sc2, 9);   // ACTION_RESULT_TIMEUP: Vy=2, kp=1, _7z=1 — the engine ends the quarter next frame
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q' + q + ' — ' + (why || 'a hand-off') + ' at 0:00 ends the quarter here (the engine\'s time-up), no play');
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'horn', q: q, type: o && o.type, y: Math.round(Number(yard)), why: why || 'handoff' });
+                    return true;
+                } catch (e) { return false; }
+            };
+
             // ===================================================================
             // V358: THE BALL GATE — one check, every placement, no exceptions
             // ===================================================================
@@ -3008,7 +3071,11 @@
                     var em = RB.engineState(); if (!em || !em.rawEngineMatch) return;
                     if (em.enginePossessingTeamIdx !== em.engineUserTeamIdx) return;
                     if (Number(em.engineDownNumber) === 6) return;
-                    if (Math.abs(Math.abs(Number(em.engineYardLineSigned)) - 48) > 1.5) return;
+                    // V434 (C13; CLZP, ERXG, ESDZ, FQHW, HAOK, HNID, IMBY, METB, OOCO, OUFQ, QQQP, SXKY — 17 of 23
+                    // kicked tries at the Q1/Q3 horn): a 1-PT kick leaves the ball at the kick spot (35), not the 2, so this
+                    // hand-off never fired and the Vy=13 keep gave the scorer a drive at its 35. A try snapped before the horn
+                    // ends the drive wherever the ball is.
+                    if (!trySnapped && Math.abs(Math.abs(Number(em.engineYardLineSigned)) - 48) > 1.5) return;
                     if (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) return;
                     window._rb2p_postConvHandoffFor = offer;
                     if (window._rb2p_diagLog) window._rb2p_diagLog('POST-CONV the try crossed the horn and left me a drive at the 2 — handing off (TD kickoff)');
@@ -3153,6 +3220,18 @@
                     // empty possessions every ~7 s (FOVL 40 s and ONFE 64 s — both players quit at halftime; HIHR 11 s).
                     // The 0:01 extra play is back until the quarter end is done through the engine's real path
                     // (tools/freeze-watch/OPEN.md #4).
+                    // V434: the receiver now ends the quarter through that path (_rb2p_hornEnd), so a drive that ended at
+                    // 0:00 ships 0:00 (the parked V293 floor is not time left) — but only to a partner on V434 or later:
+                    // an older receiver would roll the time-up back and bounce, exactly as V430 did (the version from
+                    // rooms/{code}/ver). An older partner keeps V433's 0:01 (one extra down, never a ping-pong).
+                    var hornPartnerOk = Number(window._rb2p_oppVer) >= 434;
+                    if (o.hornAt === true && !hornPartnerOk && window._rb2p_diagLog) window._rb2p_diagLog('SEND horn at Q' + wasQ + ' 0:00 — the partner is on V' + (window._rb2p_oppVer || '?') + ': it gets the old 0:01');
+                    if (o.hornAt === true && hornPartnerOk) {
+                        // v2: the drive ended at the horn of quarter wasQ — ship exactly that, whatever this parked engine shows now
+                        var nowQ = o.quarter, nowClk = o.minutesLeft * 60 + o.secondsLeft;
+                        o.quarter = Number(wasQ); o.minutesLeft = 0; o.secondsLeft = 0; o.horn = true;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('SEND keeps Q' + wasQ + ' 0:00 — the drive ended at the horn (the engine now shows Q' + nowQ + ' ' + nowClk + 's)');
+                    }
                     if (em.engineScoreboard) {
                         o.scoreUser = em.engineScoreboard[em.engineUserTeamIdx];
                         o.scoreOpp  = em.engineScoreboard[em.engineUserTeamIdx ? 0 : 1];
@@ -3273,7 +3352,8 @@
                         }
                         if (plOF >= 5) ballSeenEver = true;   // (diagnostic only)
                         if (sawBtn) {
-                            em.engineControllerState = 2;
+                            var swClk = Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft);
+                            if (!(window._rb2p_inOvertime !== true && (swClk <= 0 || Number(em.engineDriveFsmStage) === 13))) em.engineControllerState = 2;   // V434: not at 0:00, not at the Vy=13 park
                             console.log('[2P KICKOFF-SWEEP] killed late obj_btn_kickoff (t=' +
                                         (ticks * 300) + 'ms, plOF=' + plOF + ' balls=' + balls + ')');
                         }
@@ -6103,7 +6183,8 @@
                 }
                 if (prevVy === 12 || prevVy === 23) return 'PUNT';
                 if (prevVy === 14)                 return 'FG';     // FG made -> kickoff
-                if (prevVy === 24)                 return 'HALF_END';
+                // V434: prevVy 24 is the AI "go for it" stage — a stale _2c1 = 24 typed a real drive end as HALF_END (a
+                // random-spot kickoff). Nothing sends HALF_END since V204 (the Q3 law decides the second half by role).
                 if (prevVy === 1)                  return 'KICKOFF'; // kickoff cascade fired _1c1
                 return 'OTHER';
             }
@@ -7506,15 +7587,10 @@
                     // no-op and it parks just the same.) That's the freeze the
                     // user sees — distinct from the Vy=4 quarter freeze.
                     //
-                    // Both devices reach it; the WAIT device returned above. The
-                    // offense device (poss=ME) drives the resume: possession MUST
-                    // flip at halftime (the 2nd-half kickoff goes to the other
-                    // team — the user's own rule, "it should only switch in
-                    // halftime"), so we reuse the proven handoff path. Advance to
-                    // Q3 + reset the clock so the HALF_END outcome carries the
-                    // right quarter/clock, then fire s_change_possession → the
-                    // _1c1 hook ships a HALF_END outcome and parks us in WAIT.
-                    // The receiver applies it as a 2nd-half kickoff and plays Q3.
+                    // Both devices reach it; the WAIT device returned above.
+                    // V434 (the research): the old HALF_END "flip" hand-off this comment described was removed in V204 —
+                    // the second half is decided by the Q3 law alone, by ROLE: Team B always receives (0 HALF_END
+                    // hand-offs in 3,128 archived rooms). At halftime this handler only parks the watchdog.
                     if (engineMatch.engineDriveFsmStage === 13) {
                         // ===== Vy=13 = the engine's between-quarters park stage =====
                         // CONFIRMED (engine read + headless): at clock=0 the engine
@@ -7914,6 +7990,15 @@
                         return;
                     }
 
+                    // V434: a dead stage with my ball at a regulation 0:00 is the end of the quarter, never a hand-off
+                    // (FOVL/ONFE/JCPA: this force-end shipped PUNT 0:00 and the phones ping-ponged)
+                    if (window._rb2p_inOvertime !== true && Number(engineMatch.engineQuarter) <= 4 &&
+                        Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft) <= 0) {
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('HORN drive-end watchdog: dead stage ' + engineMatch.engineDriveFsmStage + ' at Q' + engineMatch.engineQuarter + ' 0:00 — the quarter ends, no hand-off');
+                        try { window._rb2p_forceUserOffenseDrive(Number(engineMatch.engineYardLineSigned)); } catch (eHW) {}
+                        stuckEngineFsmStage = null; engineFsmStageStuckSinceMs = Date.now();
+                        return;
+                    }
                     // Pick the end-Vy from the score delta so the receiver
                     // gets the right outcome type:
                     //   delta ≥ 6 → vyStage = 9  (TD)       → 'TD'  → kickoff (random 25-40)
@@ -8024,6 +8109,11 @@
                     // conversion still owed, where no score delta exists).
                     if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed())
                         return 'conversion owed';
+                    // V434 (C13): a try snapped before this quarter change ended that drive — the scorer kicks off
+                    {
+                        var qcK = Number(window._rb2p_quarterChangedToMs) || 0, offK = Number(window._rb2p_lastConvModalMs) || 0, snK = Number(window._rb2p_lastSnapMs) || 0;
+                        if (offK > 0 && Number(window._rb2p_lastSnapDown) === 6 && snK > offK && snK < qcK && qcK - snK < 60000) return 'a try was played at the horn (the scorer kicks off)';
+                    }
                     var cap = usedQEnd ? window._rb2p_qEndLatchScore : window._rb2p_preRolloverScore;
                     var capMs = usedQEnd ? window._rb2p_qEndLatchMs : window._rb2p_preRolloverMs;
                     if (typeof cap === 'number' && (Number(em.userScore) || 0) !== cap) return 'score ' + cap + '->' + em.userScore;
@@ -11008,6 +11098,15 @@
                 var live = RB.engineState();
                 var minLeft = (live && typeof live.engineMinutesLeft === 'number') ? live.engineMinutesLeft : 0;
                 var secLeft = (live && typeof live.engineSecondsLeft === 'number') ? live.engineSecondsLeft : 0;
+                // V434: the engine charges a punt (5-10 s, s_punt) or a kickoff (3-5 s) through
+                // time_subtract (_Yc1) and drains it a tick per frame AFTER this hand-off is built — the clock the
+                // player is about to see. Stamp that clock: a punt with 0:03 left ends the quarter.
+                var pendYc = (live && Number(live.engineTickAllowance) > 0) ? Number(live.engineTickAllowance) : 0;
+                if (pendYc > 0) {
+                    var totYc = Math.max(0, Number(minLeft) * 60 + Number(secLeft) - pendYc);
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('SEND clock ' + minLeft + ':' + ('0' + secLeft).slice(-2) + ' less ' + pendYc + ' s the engine still owes -> ' + Math.floor(totYc / 60) + ':' + ('0' + (totYc % 60)).slice(-2));
+                    minLeft = Math.floor(totYc / 60); secLeft = totYc % 60;
+                }
                 var built = {
                     type: type,
                     turnover: isTurnover && (type === 'INT' || type === 'OTHER'),   // V317: cosmetic blast hint; V406: never on a kickoff/TD/PAT_RESULT
@@ -11029,6 +11128,9 @@
                     message: userFacingMessageForType(type, yard, ownSide),
                     ts: Date.now()
                 };
+                // V434: a drive that ended at 0:00 of a regulation quarter is the horn's — its stamp is final
+                if (window._rb2p_inOvertime !== true && Number(post.engineQuarter) >= 1 && Number(post.engineQuarter) <= 4 &&
+                    Number(minLeft) * 60 + Number(secLeft) <= 0) built.hornAt = true;
                 // V350: the deltas ride the outcome ONLY when the baseline was
                 // captured — an absent field tells the receiver "older sender /
                 // unknown", and its turnover fallback stays meaningful.
@@ -11657,6 +11759,8 @@
                         // retry), and do not ACK the turnover until it does, so the
                         // reload-safety record can still recover possession.
                         var spawnOk = true;
+                        // V434: a hand-off at 0:00 of my quarter ends the quarter inside forceUserOffenseDrive
+                        // (the choke point returns 'horn' — success: no drive, no retry loop)
                         if (typeof window._rb2p_forceUserOffenseDrive === 'function') {
                             spawnOk = (window._rb2p_forceUserOffenseDrive(yard) !== false);
                             if (!spawnOk) {
@@ -13109,6 +13213,27 @@
             // equal-possession engine (below) ends it after both teams have had
             // an equal number of possessions and one leads (or on a walk-off).
             var otInitedPeriod = -1;
+            // V434 (C6; FGXJ, OPEN.md #5): is a try still owed — mine, the partner's (its flow record, 120 s
+            // cap), or the answer to a pick-six this phone threw (20 s for the partner's record to show it)? The same
+            // signals and caps as the Q3 law's q3PartnerTryPending (V424), plus this phone's own try.
+            var otHoldSince = 0, otHoldSawConv = false;
+            function otTryPending() {
+                var mine = false, conv = false, threw = false;
+                try { mine = (typeof window._rb2p_patOwed === 'function' && !!window._rb2p_patOwed()) || window._rb2p_patPlayPending === true ||
+                             (window._rb2p_p6ScorerOwes === true && window._rb2p_pickSixThisDeviceIsThrower !== true); } catch (eM) {}
+                try { conv = typeof window._rb2p_flowPartnerConv === 'function' && window._rb2p_flowPartnerConv() === true; } catch (eC) {}
+                threw = window._rb2p_pickSixThisDeviceIsThrower === true && window._rb2p_pickSixPatCascadeActive === true;
+                if (!mine && !conv && !threw) { otHoldSince = 0; otHoldSawConv = false; return false; }
+                if (conv) otHoldSawConv = true;
+                var first = !otHoldSince;
+                if (first) otHoldSince = Date.now();
+                var hold = (mine || conv || (!otHoldSawConv && Date.now() - otHoldSince < 20000)) && Date.now() - otHoldSince < 120000;
+                if (first && hold) {
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('OT waits — a try is still owed (' + (mine ? 'mine' : conv ? 'the partner\'s record' : 'I threw the pick-six') + '): the try decides first');
+                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'ot-try-wait', why: mine ? 'mine' : conv ? 'partner conversion' : 'pick-six thrown' });
+                }
+                return hold;
+            }
             setInterval(function () {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
@@ -13250,6 +13375,10 @@
                     //     from a tie, purged at match start, seen by BOTH devices), or
                     //   • this device's own persisted equal-possession counters.
                     var otTied = Number(em.userScore) === Number(em.opponentScore);
+                    // V434 (C6): a tie reached by a score whose try is still owed is not overtime yet — no arming, no coin
+                    // flip, until the try is over (a made try decides the game at the horn: FGXJ went 13-12 into OT)
+                    if (otTied && !window._rb2p_inOvertime &&
+                        Number(window._rb2p_otFlipSeenPeriod) !== q && Number(window._rb2p_otKickoffAppliedPeriod) !== q && otTryPending()) return;
                     var otLegit = otTied ||
                         Number(window._rb2p_otFlipSeenPeriod)       === q ||
                         Number(window._rb2p_otKickoffAppliedPeriod) === q;
@@ -13394,6 +13523,19 @@
                     // resolving; the PAT guardian owns the play (120s cap), so
                     // this can't hang — once it resolves the flags clear and B
                     // correctly receives the 2nd-half kickoff on the next tick.
+                    // V434 (C10; METB, DBBS, DDRB, HMNC, JIGC, TYHC, XFZT, XMQH, XQKC, ZGDP — the archive survey):
+                    // a try snapped BEFORE the halftime horn is over (the quarter changed when it ended). Its duty record
+                    // lingers 3 s (patOwed S5) and the law waited on it; in that window the scorer was handed a playable
+                    // down at the 2 in Q3 and snapped it while the partner took the kickoff (METB: a free TD). The half
+                    // ends now. A pick-six scorer that still owes its PAT_RESULT is not this case (it ships first).
+                    if (window._rb2p_patPlayPending !== true && window._rb2p_p6ScorerOwes !== true && window._rb2p_patDutyMine) {
+                        var qcH = Number(window._rb2p_quarterChangedToMs) || 0, offH = Number(window._rb2p_lastConvModalMs) || 0, snH = Number(window._rb2p_lastSnapMs) || 0;
+                        if (offH > 0 && Number(window._rb2p_lastSnapDown) === 6 && snH > offH && snH < qcH) {
+                            window._rb2p_patPlayResolved = false; window._rb2p_patDutyMine = null;
+                            try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eHD) {}
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q3 law: the try was played before the horn — the half is over now (duty retired)');
+                        }
+                    }
                     if (window._rb2p_patPlayPending === true ||
                         window._rb2p_patPlayResolved === true) return;
                     // V352b (audit hole 6): the V294 defer above sees only the two
@@ -13567,6 +13709,18 @@
                     }
                     var em = RB.engineState();
                     if (!em || em.engineUserTeamIdx == null) return;
+                    // V434 (C14b): the flip is the fact. A phone still in regulation when the flip for period p
+                    // arrives (its mirror had not yet taken the partner's Q5) moves to period p first, the way the Q3 law syncs
+                    // a catch-up device to Q3 (V322). Z2XX: B applied the flip 0.28 s after the horn while still in Q4, went
+                    // LIVE there with 10:00 and never reached Q5 (the mirror stops writing the quarter once a phone is live).
+                    {
+                        var pOt = Math.max(5, Number(window._rb2p_otFlipSeenPeriod) || 5);
+                        if (Number(em.engineQuarter) < pOt) {
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('OT kickoff: this phone was still in Q' + em.engineQuarter + ' — the flip for period ' + pOt + ' moves it there first');
+                            em.engineQuarter = pOt;
+                            window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, pOt);
+                        }
+                    }
                     // V112: decide the receiver by FIREBASE ROLE (what the coin
                     // flip uses), exactly like the opening kickoff (role==='a').
                     // The old engineUserTeamIdx→role guess was WRONG here: a
@@ -13581,6 +13735,7 @@
                             : ((em.engineUserTeamIdx === 0) ? 'a' : 'b'));
                     window._rb2p_pickSixPatCascadeActive = false;
                     window._rb2p_pickSixThisDeviceIsThrower = false;
+                    window._rb2p_p6ScorerOwes = false;   // V434 (C6): the flip decides possession now
                     if (myRole === receiverRole) {
                         // V430 (ZQMT, a real 13 s freeze): the partner was still playing its conversion across the horn
                         // (live, and the turn record still named it), so V366 rule 2 REFUSED this LIVE — and nothing came
@@ -13627,6 +13782,12 @@
                             // V315: freshDrive — clear the regulation drive's stale
                             // field so the OT huddle re-forms at the LOS instead of
                             // inheriting the last play's scattered sprites.
+                            // V434 (C14): the OT clock first. Staged at the regulation-end 0:00, s_set_up_play answers
+                            // with the time-up, the spawn is rolled back and retried 500 ms later (every tied horn, V433 too).
+                            if (Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft) < 600) {   // v8: any regulation leftover (0:00, or a parked 0:01)
+                                if (window._rb2p_clockLicence) window._rb2p_clockLicence('OT clock 10:00 (before the OT kickoff is staged)');
+                                em.engineMinutesLeft = 10; em.engineSecondsLeft = 0; em.engineTickAllowance = 0;
+                            }
                             var otStaged = window._rb2p_forceUserOffenseDrive(yard, true);
                             // V422 (F24): a failed staging here was final — the flip is marked
                             // applied before this runs, so nothing came back to it and both

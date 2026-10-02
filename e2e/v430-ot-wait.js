@@ -8,7 +8,10 @@
 // of the receiver's own quarter change (this test), V368's quarter exemption let the LIVE through instead: BOTH
 // phones on offense while A played its try (V429 fails O1 that way).
 //
-//   O1  while the partner is still playing (its try owed, live), the receiver does not go live — never two offenses
+//   O1  while the partner is still playing (its try owed, live), the receiver does not go live — never two offenses.
+//       V430: the receiver holds the flip ("OT kickoff waits"). V434 (C6, FGXJ): overtime is not even armed while a
+//       try is owed — the try decides first (a made try ends the game at the horn) — so the flip comes after it. Either
+//       way: the partner live, the receiver waiting, and the hold on record.
 //   O2  the moment the partner finishes (its own kickoff apply parks it), the receiver goes live — within 4 s, with no
 //       rescuer's guess (on V429 it stayed parked until TURN-RESCUE)
 const H = require('./harness');
@@ -47,8 +50,9 @@ const diagHas = (page, re) => page.evaluate(src => new RegExp(src).test(String(w
     const flipped = await until(async () => ({ ok: await def.page.evaluate(() => Number(window._rb2p_otKickoffAppliedPeriod) === 5 || /OT kickoff|POSS-REFUSED LIVE/.test(String(window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : ''))).catch(() => false) }), 30000, 500);
     await sleep(5000);
     const dW = await waiting(def.page), oW = await waiting(off.page);
+    const otHeld = await diagHas(off.page, /OT waits — a try is still owed/) || await diagHas(def.page, /OT waits — a try is still owed/);   // V434 C6
     check('O1 while the partner still plays its try, the overtime receiver does not go live (never two offenses)',
-          flipped.ms !== null && dW === true && oW === false, JSON.stringify({ flipped: flipped.ms, defWaiting: dW, offWaiting: oW, refused: await diagHas(def.page, /POSS-REFUSED LIVE/), waits: await diagHas(def.page, /OT kickoff waits/) }));
+          (flipped.ms !== null || otHeld) && dW === true && oW === false, JSON.stringify({ flipped: flipped.ms, otHeldForTheTry: otHeld, defWaiting: dW, offWaiting: oW, refused: await diagHas(def.page, /POSS-REFUSED LIVE/), waits: await diagHas(def.page, /OT kickoff waits/) }));
     // the partner's try is over: its deferred kickoff apply runs and parks it
     await off.page.evaluate(() => { window._rb2p_patOwed = window.__realPatOwed; });
     const t1 = Date.now();

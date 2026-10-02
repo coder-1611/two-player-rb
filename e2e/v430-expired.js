@@ -7,18 +7,16 @@
 // RE-STAMPED at the send (V354) — from a parked engine that V293 floors at 0:01 (a parked engine must never see 0:00).
 // So the hand-off said 0:01, and the receiver got a second the play had already used.
 //
-// V432 REVERTED "keep 0:00" (FREEZE-LEDGER.md V432): at the halftime horn the receiver of a 0:00 hand-off could not
-// stage a drive and its engine's halftime turnover went back as another 0:00 hand-off — a ping-pong of empty
-// possessions in 3 of 3 real games (FOVL and ONFE: both players quit). X1–X3 asserted the V430 rule (no down at 0:01);
-// they now assert the restored V429 rule, which the archive shows ending the half (117 of 123 Q2-horn hand-offs, no bounce): the
-// hand-off carries 0:01, the receiver gets its one down, the sender waits, and nothing bounces back unplayed. The
-// owner's 0:01 glitch is open again (tools/freeze-watch/OPEN.md #4). e2e/v432-half-horn.js plays that down for real.
+// V434 (the horn law, ~/rb2p/research/HORN-RESEARCH.md): the hand-off carries 0:00 and the receiver's engine ends
+// the quarter itself — its own time-up, no down at 0:01, nothing bounced back. V430 kept 0:00 too but let the receiver
+// try to stage a drive at 0:00 (the engine refused, the rescuers bounced it: the V432 revert); V432 put the 0:01 back.
+// X1–X3 now assert the horn rule; e2e/v434-horn.js plays the same horns through real downs.
 //
 // Each case ends the sender's drive at 0:00 the way a real play does (the clock reaches 0:00, then the engine's own
-// possession change in the same frame) and watches the receiver:
-//   X1  Q2: the receiver gets its down at 0:01 (V432) — one offense, no hand-off back without a snap
-//   X2  Q4 with the score decided: the same (V432)
-//   X3  Q1: the same (V432)
+// possession change in the same frame) and watches both phones:
+//   X1  Q2: the hand-off ships Q2 0:00, nobody snaps in Q2, nothing bounces — Q3 on both, b has the kickoff
+//   X2  Q4 with the score decided: the same — the stats screen on both
+//   X3  Q1: the same — Q2 on both, the receiver keeps the ball it won, a full clock
 //   X4  a hand-off with time left (0:05) is unchanged: the receiver plays in the same quarter with the clock it was sent
 const H = require('./harness');
 const TP = require('./two-player');
@@ -26,7 +24,7 @@ const sleep = H.sleep;
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail++, console.log('  FAIL  ' + n + (d ? ' — ' + d : ''))); };
 async function until(fn, ms, every) { const t0 = Date.now(); let v; while (Date.now() - t0 < ms) { v = await fn(); if (v && v.ok) return Object.assign(v, { ms: Date.now() - t0 }); await sleep(every || 400); } return Object.assign(v || {}, { ms: null }); }
-const st = page => page.evaluate(() => { try { const finEl = document.getElementById('rb-final'); if (!window.RB || !RB.engineState()) return { err: 'no engine', fin: !!(finEl && finEl.style.display === 'block') }; const s = RB.engineState(); return { q: Number(s.engineQuarter), m: Number(s.engineMinutesLeft), s: Number(s.engineSecondsLeft), wait: window._rb2p_userIsWaitingForOpponent === true, fin: (function () { const f = document.getElementById('rb-final'); return !!(f && f.style.display === 'block'); })() }; } catch (e) { return null; } }).catch(() => null);
+const st = page => page.evaluate(() => { const fin = (function () { try { const f = document.getElementById('rb-final'); return !!(f && f.style.display === 'block'); } catch (e) { return false; } })(); const over = window._rb2p_gameOverReported === true; try { if (!window.RB || !RB.engineState() || !RB.engineState().rawEngineMatch) return { err: 'no engine', fin, over }; const s = RB.engineState(); return { q: Number(s.engineQuarter), m: Number(s.engineMinutesLeft), s: Number(s.engineSecondsLeft), wait: window._rb2p_userIsWaitingForOpponent === true, role: window._rb2p_myFirebaseRole, fin, over }; } catch (e) { return { err: String(e), fin, over }; } }).catch(() => null);
 const audit = async (code, role) => Object.values(await TP.fbGet('rooms/' + code + '/audit/' + role) || {});
 
 // end the drive of the phone with the ball the way a play that runs out the clock does: the clock reaches 0:00 (or
@@ -74,19 +72,36 @@ async function one(label, q, sec, score, expectFn) {
 
 (async () => {
     console.log('=== V430 EXPIRED HAND-OFF ===');
-    // ---- X1–X3 (V432): the receiver gets its one down at 0:01, the sender waits, nothing bounces back unplayed ----
-    const oneDown = (q) => async (off, def) => {
-        const w = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: !!(a && b && b.q === q && b.wait === false && b.m * 60 + b.s >= 1 && a.wait === true), a, b }; }, 25000);
-        await sleep(6000);                               // a bounce would come within the 4 s hold
+    // ---- X1–X3 (V434): the hand-off ships 0:00, no down in the old quarter, the next period by rule ----
+    const nextPeriod = (q) => async (off, def) => {
+        const ok = (a, b) => {
+            if (!a || !b) return false;
+            if (q === 4) return (a.fin || a.over) && (b.fin || b.over);
+            if (a.q !== q + 1 || b.q !== q + 1 || a.wait === b.wait) return false;
+            if (q === 2) { const B = a.role === 'b' ? a : b; return B.wait === false; }           // halftime: b, by role
+            return b.wait === false && b.m * 60 + b.s >= 60;                                      // the receiver keeps the ball it won
+        };
+        const w = await until(async () => { const a = await st(off.page), b = await st(def.page); return { ok: ok(a, b), a, b }; }, 45000, 500);
+        await sleep(5000);                                // a bounce would come within the 4 s hold
         const a2 = await st(off.page), b2 = await st(def.page);
-        return { ok: w.ms !== null && !!(a2 && b2 && a2.wait === true && b2.wait === false && b2.q === q), detail: { ms: w.ms, off: a2, def: b2 } };
+        return { ok: w.ms !== null && ok(a2, b2), detail: { ms: w.ms, off: a2, def: b2 } };
     };
-    const noBounce = async (code, role, t) => (await audit(code, role)).filter(e => e.k === 'send' && e.t >= t).length === 0;
+    const why = { 1: 'Q2 on both, the receiver keeps the ball, a full clock', 2: 'Q3 on both, b has the kickoff', 4: 'the stats screen on both' };
     for (const [label, q, score] of [['X1 Q2 0:00', 2, [7, 3]], ['X2 Q4 0:00 decided', 4, [21, 10]], ['X3 Q1 0:00', 1, null]]) {
-        let still = null;
-        const o = await one(label, q, 0, score, async (off, def, g) => { const t = await def.page.evaluate(() => Date.now()); const res = await oneDown(q)(off, def); still = await noBounce(g.code, def.role, t - 8000); return res; });
-        check(label.slice(0, 2) + ' a play that runs out the clock in Q' + q + ': the hand-off carries 0:01 and the receiver has its one down, the sender waits, nothing bounced back (V432 revert)',
-              o.res.ok && o.sends.some(e => Number(e.clk) >= 1) && !o.sends.some(e => Number(e.q) === q && Number(e.clk) === 0) && still === true, JSON.stringify({ detail: o.res.detail, sends: o.sends.map(e => e.type + ' Q' + e.q + ' clk' + e.clk), noBounce: still }));
+        let back = null, oldSnaps = null;
+        const o = await one(label, q, 0, score, async (off, def, g) => {
+            const t = await def.page.evaluate(() => Date.now());
+            const res = await nextPeriod(q)(off, def);
+            await sleep(3500);
+            const auD = await audit(g.code, def.role);
+            back = auD.filter(e => e.k === 'send' && e.t >= t && Number(e.q) === q).map(e => e.type + ' Q' + e.q + ' clk' + e.clk);
+            oldSnaps = auD.filter(e => e.k === 'snap' && e.t >= t && Number(e.q) === q).map(e => 'Q' + e.q + ' clk' + e.clk);
+            return res;
+        });
+        const horn = o.sends.filter(e => Number(e.q) === q);
+        check(label.slice(0, 2) + ' a play that runs out the clock in Q' + q + ': the hand-off ships Q' + q + ' 0:00, nobody snaps in Q' + q + ', nothing bounces, ' + why[q],
+              o.res.ok && horn.length >= 1 && horn.every(e => Number(e.clk) === 0) && back.length === 0 && oldSnaps.length === 0,
+              JSON.stringify({ detail: o.res.detail, sends: o.sends.map(e => e.type + ' Q' + e.q + ' clk' + e.clk), bounced: back, oldQuarterSnaps: oldSnaps }));
     }
     // ---- X4: time left ----
     {
