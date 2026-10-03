@@ -8,23 +8,8 @@ Order = what to take first when the brief has no new freeze to work on.
 
 ## 0. Horn-adjacent roots found by the 2 Oct 6 pm sweep — for the owner's horn session (do not change the horn code from a run)
 The owner's 6:10 pm note froze the quarter-end code while V434's C10 is proven. These three need that code:
-- **a. A 2-pt RUN try that crosses a horn is invisible to every "try snapped" test → 8 unearned points (VCUH, 2 Oct
-  2:24 pm, V433; NQEV the same mechanism).** B's 2-pt run (ball kp 19) scored as Q1 → Q2 (8-0 at 02:06.4); the
-  `QTR-KEEP VOID` left B 1st & 2 at the 2 and B ran it (02:09.2, `snap … q=2 tg=2 via=run y=48`); the post-try hand-off
-  (`guard post-conv-handoff`, index.html ~3081) fired 0.3 s into that live run; B's own engine then credited A with +6
-  (02:14.6, `CONVGATE REFUSED R2`, the score-watcher's `p6 detected`) and shipped a PICK6 — A got a pick-six try on top.
-  **Why:** a run try starts at ball kp 19 and the `CONV try started` block (index.html ~4692) never sets
-  `_rb2p_lastSnapMs` / `_rb2p_lastSnapDown = 6`, which V410's trySnapped (3063), V434 C13 (~3074, 8115) and C10
-  (~13533) read; and the hand-off at ~3081 does not wait for a live ball. **Fix (proposed):** set them in that block as
-  the snap path does; make the ~3081 hand-off (and the Q3-law flip at ~13688) wait while `rb2pPlayInProgress()`. Test
-  through a real 2-pt run at Q1 0:02 (horn-lib).
-- **b. V394's retype ships a TURNOVER as a TD kickoff when it ends a NEW drive within 60 s of the scorer's try (17 drive
-  ends in 14 rooms on 2 Oct: CGQB ×2, EEQG, FGPK ×2, GCPD, GMNR, HNWX, JPUJ, KLHQ ×2, KZCN, PKXS, SEAN, TGSN, UYZP,
-  YFAL).** `buildUserDriveEndOutcome` (index.html ~11080) retypes every OTHER within 60 s of `_rb2p_lastConvModalMs` as
-  TD — also after the scorer has played 1–5 normal downs since. The receiver then starts at a kickoff-return spot, not
-  the turnover's (EEQG: the turnover at B's +16 → A at its own 27; KLHQ: −8 → A at +3). **Fix (proposed):** retype only
-  when no normal-down snap happened since the offer (`_rb2p_lastSnapMs > offer && _rb2p_lastSnapDown !== 6` keeps
-  OTHER) — after (a), so run tries count as snaps. V394's own case (the try dying at the horn) keeps its retype.
+- **a, b: DONE in V441** (see Done) — a run's start writes the snap record; POST-CONV's live-play guard runs; V394's
+  retype only for the try's own drive end.
 - **c. The halftime free down at the 2 (DBBS, TYHC real; CGQB, URBW harmless)** — V434 C10 addresses it; confirm in real
   games (#4). The Q3-law flip at ~13688 still has no live-ball check (URBW snapped 0.4 s after the horn).
 - **d. The wall's MISSED on a normal touchdown's try AT the Q1/Q3 horn can leave both phones waiting (harness, live
@@ -227,6 +212,15 @@ V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from be
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V441 — the blue circle** (the owner: "sometimes just clicking on the blue circle didn't work";
+  ~/rb2p/research/BLUE-CIRCLE.md): a left mouse press arms the tap latch (a Chromebook tap-to-click shorter than a frame
+  was lost: e2e/blue-circle.js T1 V440 0/3 → 3/3); _m01/_o01 divide by the display scale; the landscape-phone dead zone
+  and the rotated-phone offset were already gone with V440. Still the owner's call: a bigger hit circle (26 px, 10 px
+  up the body — tested, not shipped).
+- **V441 — OPEN #0a** (a 2-pt RUN try invisible to "try snapped"; POST-CONV's live-play guard never ran) and **#0b**
+  (V394 retyped a new drive's turnover as the try's kickoff: e2e/v441-retype.js V440 0/2 → 2/2).
+- **V440 — phones/iPads never rotated; the whole game on screen; "turn your device sideways"** (e2e/v440-orientation.js).
+- **V439 — FXTE and the conversion wall** (your run 1804's V438, shipped by the owner's session).
 - **V438 (run 20261002-1804; committed on branch `auto`, NOT shipped — the next run gates and ships it) — FXTE's root (was #1): a resume after taking the ball read a WAITING snapshot from before the hand-off.** The
   resume prefers the stable snapshot (V197, `snap/<role>`) over the live record whenever it is under 25 s old, but the
   snapshot is written only while waiting or at the controller's kp 1 beat, which the 500 ms sampler almost never sees on
