@@ -994,3 +994,27 @@ inconclusive as in the owner's runs); on the final rebased tree v438-wall-try 4/
 v430-reload-ball 3/0; v352-conversion (T5, T6) and v378-gvcg (T2, T3) fail alone with the same values on the live V437
 build. The owner's V435–V437 landed during the run; this commit was rebased onto V437 and relabelled. The next run
 gates this exact tree and ships it.
+
+## V440 (2026-10-02): phones and iPads — never rotated, the whole game on screen, "turn your device sideways"
+
+The owner: "make sure the orientation on phone is optimal and NEVER switches. If that is impossible, have something that
+says, play in landscape only, and in this you should be able to see the clock and the down and yards. Also the options
+to change play and call time outs".
+- **Measured on V438** (e2e/probe-orientation.js, a real two-player game on emulated touch devices): the layout
+  COVER-scaled the engine's 16:9 picture to fill the screen — a phone in landscape (874×402) lost 45 px at the top and
+  bottom (874×360 with the toolbar: 66 px), i.e. the WHOLE scoreboard: score, quarter, the clock you tap to call a
+  timeout, down & distance; an iPad (1180×820) lost 138 px at each side (down & distance, Change Play, the QB's name).
+  The menu, version and report chips sat over the scoreboard's corners. A device held upright got the game rotated
+  -90° (rb-rot90, V214), so every turn of the device flipped the whole page — and a WebGL canvas inside a rotated body
+  was the GET READY compositor freeze (V246).
+- **V440:** never rotated. A touch device held upright (`html.rb-portrait`) gets the "TURN YOUR DEVICE SIDEWAYS — Retro
+  Bowl 2P plays in landscape only" screen (with the Rotation Lock tip); the engine's `_tI2/_uI2` keep sizing for
+  landscape meanwhile, so turning it shows the game unchanged. Android Chrome gets a real lock (fullscreen +
+  `screen.orientation.lock('landscape')`) on the first lobby-button tap; iOS/iPadOS have no lock API. layout() CONTAINS
+  the picture inside the safe area (notch, corners, home bar) — nothing is ever cut off — and moves the chips into the
+  bars beside / above it. Orientation changes are logged (`ORIENT …`, audit `orient`).
+- **Device mix this affects** (V438 profiles): 165 iPads, 20 iPhones, 1 Android tablet played two-player games.
+- **Tests:** e2e/v440-orientation.js — O1 the whole game on screen at 874×402, 874×360, 667×375, 1180×820; O2 the chips
+  beside the picture; O3 upright = the screen, nothing rotated, the same picture back. V438: 0/3 (cut 45/66/138 px,
+  chips over the game, rotated); V440: 3/3. e2e/v419-scroll.js T4 now asserts the upright screen and, turned sideways,
+  taps landing where the finger is on a scrolled page.

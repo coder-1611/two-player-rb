@@ -60,6 +60,7 @@ async function playEndsAtHalf(page) {
 (async () => {
     console.log('=== V432 REMATCH JOIN ===');
     const g = await TP.startTwoPlayerGame({});
+    const g1Start = Date.now();   // V440: game 1's age (see below)
     const A = g.a.role === 'a' ? g.a : g.b, B = A === g.a ? g.b : g.a, code = g.code;
     await sleep(6000);
     // ---- game 1: through a real halftime (epoch H on both phones) ----
@@ -85,6 +86,10 @@ async function playEndsAtHalf(page) {
     const epB = await until(async () => { const f = await TP.fbGet('rooms/' + code + '/flow/b'); return { ok: !!(f && f.ep === 'H'), f }; }, 40000, 1000);
     console.log('  game 1: the Q2 drive ' + half + '; both in Q3 ' + (q3.ms !== null) + '; B\'s record epoch ' + (epB.f && epB.f.ep));
     await sleep(3000);
+    // V440: a real game lasts minutes; the V432 reset needs the partner's new game to start over 60 s after this one
+    // (server time). Since V434 the halftime horn costs no extra down, so this scripted game 1 could end in ~53 s and the
+    // rematch looked like the same game (the gate's R2–R4 failures from 2 Oct 8 pm on every build). Let game 1 run 65 s.
+    { const el = Date.now() - g1Start; if (el < 65000) { console.log('  (game 1 is ' + Math.round(el / 1000) + ' s old — letting it run to 65 s, as a real game would)'); await sleep(65000 - el); } }
     // ---- game 1 ends: a decided horn on the phone with the ball, the engine's own final path ----
     const off2 = (await waiting(A.page)) ? B : A;
     await off2.page.evaluate(() => {

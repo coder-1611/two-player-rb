@@ -136088,7 +136088,8 @@ function _l35() {
 }
 function _tI2() {
     var _ = 640;
-    if (document.documentElement.classList.contains("rb-rot90")) _ = window.innerHeight || document.documentElement.clientHeight || 844;
+    /* V440: rb-portrait = a touch device held upright behind the "turn sideways" screen — size for landscape, as rb-rot90 did */
+    if (document.documentElement.classList.contains("rb-rot90") || document.documentElement.classList.contains("rb-portrait")) _ = window.innerHeight || document.documentElement.clientHeight || 844;
     else "number" == typeof window.innerWidth ? _ = window.innerWidth : document.documentElement && document.documentElement.clientWidth ? _ = document.documentElement.clientWidth : document.body && document.body.clientWidth && (_ = document.body.clientWidth);
     /* V249: a resize delivered while the window reports degenerate dims
        (phone screen lock / app switch / toolbar transition) used to flow
@@ -136102,7 +136103,7 @@ function _tI2() {
 }
 function _uI2() {
     var _ = 480;
-    if (document.documentElement.classList.contains("rb-rot90")) _ = window.innerWidth || document.documentElement.clientWidth || 390;
+    if (document.documentElement.classList.contains("rb-rot90") || document.documentElement.classList.contains("rb-portrait")) _ = window.innerWidth || document.documentElement.clientWidth || 390;   // V440: see _tI2
     else "number" == typeof window.innerHeight ? _ = window.innerHeight : document.documentElement && document.documentElement.clientHeight ? _ = document.documentElement.clientHeight : document.body && document.body.clientHeight && (_ = document.body.clientHeight);
     /* V249: see _tI2 — same degenerate-resize clamp. */
     if (!(_ >= 100)) _ = window.__rbLastGoodH || 480;

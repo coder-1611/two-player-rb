@@ -1218,6 +1218,37 @@
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
         }
+        /* V440 (the owner: "make sure the orientation on phone is optimal and NEVER switches. If that is impossible, have
+           something that says, play in landscape only"): the game is never rotated any more. A touch device held upright
+           (html.rb-portrait) sees this screen over the game instead; turning it sideways shows the game, unchanged. */
+        #rb-turn { display: none; }
+        html.rb-mobile.rb-portrait #rb-turn {
+            display: flex; position: fixed; inset: 0; z-index: 2147483600;
+            flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+            padding: max(24px, env(safe-area-inset-top)) 28px max(24px, env(safe-area-inset-bottom));
+            text-align: center; color: #fff; font-family: 'Press Start 2P', monospace; -webkit-font-smoothing: none;
+            background-color: #1f63cf;
+            background-image:
+                repeating-linear-gradient(0deg, transparent 0 62px, rgba(255,255,255,.07) 62px 64px),
+                linear-gradient(180deg, #2a73e0 0%, #1f63cf 45%, #164da8 100%);
+            -webkit-user-select: none; user-select: none; touch-action: none;
+        }
+        #rb-turn svg { width: 92px; height: 92px; animation: rb-turn-rot 2.6s ease-in-out infinite; filter: drop-shadow(0 6px 0 rgba(10,24,56,.55)); }
+        @keyframes rb-turn-rot { 0%, 25% { transform: rotate(0deg); } 55%, 100% { transform: rotate(-90deg); } }
+        @media (prefers-reduced-motion: reduce) { #rb-turn svg { animation: none; transform: rotate(-90deg); } }
+        #rb-turn .rb-turn-h {
+            margin: 0; font-size: clamp(16px, 5.4vw, 26px); line-height: 1.5; letter-spacing: .02em; text-wrap: balance;
+            color: #ffd23f; -webkit-text-fill-color: #ffd23f;
+            text-shadow: 2px 0 0 #0a1838, -2px 0 0 #0a1838, 0 2px 0 #0a1838, 0 -2px 0 #0a1838, 2px 2px 0 #0a1838, -2px -2px 0 #0a1838, 2px -2px 0 #0a1838, -2px 2px 0 #0a1838, 0 6px 0 rgba(10,24,56,.55);
+        }
+        #rb-turn .rb-turn-sub { margin: 0; max-width: 30ch; font-size: clamp(9px, 2.8vw, 12px); line-height: 2; color: #fff; text-shadow: 2px 2px 0 #0a1838; }
+        #rb-turn .rb-turn-tip { margin: 6px 0 0; max-width: 34ch; font-size: clamp(8px, 2.3vw, 10px); line-height: 2; color: #cfe0ff; text-shadow: 1px 1px 0 #0a1838; }
+        /* V440: the in-game chips sit in the bars beside / above the whole-game picture (layout() sets the offsets),
+           never over the scoreboard's score, clock, or down & distance */
+        html.rb-mobile.rb-in-match #rb-hud-toggle { left: var(--rb-chip-l, 8px); top: var(--rb-chip-t, 8px); }
+        html.rb-mobile #rb-complain { left: var(--rb-chip-l, 8px); bottom: var(--rb-chip-b, 8px); }
+        html.rb-mobile #rb-verjump { right: var(--rb-chip-r, 6px); top: var(--rb-chip-t, 6px); }
+
         /* In rotated mode the visual "width" is the viewport HEIGHT, so vw-based
            font clamps under-size — swap them to vh. */
         html.rb-rot90 #rb-lobby .rb-wordmark  { font-size: clamp(34px, 7vh, 78px); }
@@ -1244,6 +1275,19 @@
 </head>
 
 <body>
+    <!-- V440: a touch device held upright sees this instead of a rotated game (html.rb-portrait) -->
+    <div id="rb-turn" role="alert" aria-live="polite">
+        <svg viewBox="0 0 64 64" aria-hidden="true" shape-rendering="crispEdges">
+            <rect x="18" y="6" width="28" height="52" rx="5" fill="#0a1838"/>
+            <rect x="21" y="10" width="22" height="40" fill="#ffd23f"/>
+            <rect x="23" y="12" width="18" height="36" fill="#2a73e0"/>
+            <rect x="27" y="52" width="10" height="3" rx="1" fill="#ffd23f"/>
+            <rect x="29" y="27" width="6" height="2" fill="#fff"/><rect x="31" y="22" width="2" height="12" fill="#fff"/>
+        </svg>
+        <p class="rb-turn-h">TURN YOUR DEVICE SIDEWAYS</p>
+        <p class="rb-turn-sub">Retro Bowl 2P plays in landscape only.</p>
+        <p class="rb-turn-tip">Screen won't turn? Switch off Rotation Lock, then turn it again.</p>
+    </div>
     <!-- ============ VERSION JUMPER (V269) ============
          Top-right chip: tap it, type a version number, GO -> loads that
          exact historical build (the one whose lobby said V<n>) from the
@@ -1566,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V439<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V440<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1648,7 +1692,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V439</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V440</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -1696,11 +1740,44 @@
             } catch (e) {}
 
             var portraitMQ = window.matchMedia('(orientation: portrait)');
-            // Set rotation state SYNCHRONOUSLY, before retrobowl.js loads below,
-            // so the engine's _tI2/_uI2 report landscape dims when it first sizes
-            // its canvas buffer + camera (otherwise a portrait window makes it
-            // render the field into a letterboxed strip).
-            docEl.classList.toggle('rb-rot90', portraitMQ.matches);
+            // V440 (the owner: "make sure the orientation on phone is optimal and NEVER switches. If that is impossible,
+            // have something that says, play in landscape only, and in this you should be able to see the clock and the
+            // down and yards ... the options to change play and call time outs"):
+            //   - the game is NEVER rotated (rb-rot90 is never set). The forced-landscape rotation (V214) flipped the
+            //     whole page every time the device turned, and a WebGL canvas inside a rotated body was the GET READY
+            //     compositor freeze (V246). A device held upright gets the "turn your device sideways" screen (#rb-turn);
+            //   - where the browser has a real lock (Android Chrome: fullscreen + screen.orientation.lock), the first tap
+            //     on a lobby button locks landscape — iOS / iPadOS have none, the screen covers portrait there;
+            //   - layout() shows the WHOLE game (contain, inside the safe area) — cover-scaling cut the scoreboard off
+            //     (score, quarter, the clock you tap for a timeout, down & distance) on phones and the sides
+            //     (down & distance, Change Play) on iPads.
+            // rb-portrait is set SYNCHRONOUSLY, before retrobowl.js loads: its _tI2/_uI2 then size the game for
+            // landscape while the device is upright, so turning it shows the game at once.
+            docEl.classList.toggle('rb-portrait', portraitMQ.matches);
+            var orientWas = null;
+            var orientNote = function (up) {
+                if (orientWas === up) return; orientWas = up;
+                try { if (window._rb2p_diagLog) window._rb2p_diagLog('ORIENT ' + (up ? 'upright — the turn-sideways screen' : 'landscape')); } catch (e) {}
+                try { if (window._rb2p_audit) window._rb2p_audit('orient', { up: up, w: window.innerWidth, h: window.innerHeight }); } catch (e) {}   // buffered until the phone is in a room
+            };
+            // a real orientation lock where there is one (Android Chrome needs fullscreen first); tried on the first
+            // lobby-button tap (a user gesture), at most twice per page
+            var lockTries = 0;
+            window._rb2p_tryOrientationLock = function (why) {
+                try {
+                    if (lockTries >= 2 || !(screen.orientation && typeof screen.orientation.lock === 'function')) return;
+                    if (/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent || '')) return;
+                    lockTries++;
+                    var el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+                    var fs = (!document.fullscreenElement && !document.webkitFullscreenElement && rq) ? Promise.resolve(rq.call(el, { navigationUI: 'hide' })) : Promise.resolve();
+                    fs.then(function () { return screen.orientation.lock('landscape'); })
+                      .then(function () { lockTries = 99; try { if (window._rb2p_diagLog) window._rb2p_diagLog('ORIENT locked to landscape (' + why + ')'); } catch (e) {} })
+                      .catch(function (e) { try { if (window._rb2p_diagLog) window._rb2p_diagLog('ORIENT no lock (' + ((e && e.name) || e) + ') — the turn-sideways screen covers portrait'); } catch (e2) {} });
+                } catch (e) {}
+            };
+            document.addEventListener('click', function (e) {
+                try { if (e.target && e.target.closest && e.target.closest('#rb-lobby button')) window._rb2p_tryOrientationLock('lobby'); } catch (eC) {}
+            }, true);
 
             // screen (pageX,pageY) -> logical landscape coords, for the -90deg
             // body rotation recipe used in CSS. Identity when not rotated.
@@ -1712,8 +1789,13 @@
 
             function layout() {
                 var canvas = document.getElementById('canvas');
-                if (!canvas) return;
-                var rot = portraitMQ.matches;
+                // V440: never rotated; upright = the turn-sideways screen (the game keeps its last landscape layout under it)
+                var up = portraitMQ.matches;
+                docEl.classList.toggle('rb-portrait', up);
+                docEl.classList.remove('rb-rot90');
+                orientNote(up);
+                if (!canvas || up) return;
+                var rot = false;
 
                 var bw = canvas.width || 853, bh = canvas.height || 480;
                 // logical landscape viewport (swapped when rotated)
@@ -1765,9 +1847,32 @@
                         bS.removeProperty('height');
                     }
                 } catch (eBS) {}
-                var scale = Math.max(LW / bw, LH / bh);   // COVER (no black bars)
+                // V440: CONTAIN inside the safe area (notch, rounded corners, home bar) — the whole game, never cropped.
+                // COVER (V214, "no black bars") cut ~45 px off the top and bottom of a phone (the whole scoreboard) and
+                // ~138 px off each side of an iPad (down & distance, Change Play).
+                var ins = { l: 0, r: 0, t: 0, b: 0 };
+                try {
+                    var sp2 = document.createElement('div');
+                    sp2.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+                        'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);';
+                    document.documentElement.appendChild(sp2);
+                    var cs2 = getComputedStyle(sp2);
+                    ins = { l: parseFloat(cs2.paddingLeft) || 0, r: parseFloat(cs2.paddingRight) || 0, t: parseFloat(cs2.paddingTop) || 0, b: parseFloat(cs2.paddingBottom) || 0 };
+                    sp2.parentNode.removeChild(sp2);
+                } catch (eIn) {}
+                ['l', 'r', 't', 'b'].forEach(function (k) { ins[k] = Math.min(64, Math.max(0, ins[k])); });
+                var aw = Math.max(100, LW - ins.l - ins.r), ah = Math.max(100, LH - ins.t - ins.b);
+                var scale = Math.min(aw / bw, ah / bh);
                 var cw = bw * scale, ch = bh * scale;
-                var ox = (LW - cw) / 2, oy = (LH - ch) / 2;
+                var ox = ins.l + (aw - cw) / 2, oy = ins.t + (ah - ch) / 2;
+                // the in-game chips (menu, version, report) go into the bars beside / above the picture
+                try {
+                    var freeL = ox - ins.l, freeR = LW - ins.r - (ox + cw), dst = docEl.style;
+                    dst.setProperty('--rb-chip-l', Math.round(freeL >= 42 ? ins.l + (freeL - 34) / 2 : ins.l + 8) + 'px');
+                    dst.setProperty('--rb-chip-r', Math.round(freeR >= 54 ? ins.r + (freeR - 46) / 2 : ins.r + 6) + 'px');
+                    dst.setProperty('--rb-chip-t', Math.round(ins.t + 8) + 'px');
+                    dst.setProperty('--rb-chip-b', Math.round(ins.b + 8) + 'px');
+                } catch (eCh) {}
                 // V256: in rotated mode the logical-LEFT edge is the phone's
                 // physical BOTTOM — the home-indicator system-gesture zone,
                 // where the PAT kick meter lands. The system swipe cannot be
