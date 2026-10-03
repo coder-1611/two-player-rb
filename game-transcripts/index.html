@@ -20,6 +20,8 @@
   h1 { font-family:'Anton',sans-serif; font-weight:400; font-size:clamp(28px,6vw,44px); letter-spacing:1px; margin:0 0 4px; text-transform:uppercase; }
   .sub { color:var(--dim); margin:0 0 22px; font-size:13px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }
+  #dv-body td { padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  #dv-body tr:hover td { background:color-mix(in srgb, var(--line) 35%, transparent); }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   .grow { flex:1; min-width:0; }
   .code { font-family:'Anton',sans-serif; font-size:26px; letter-spacing:2px; }
@@ -227,6 +229,20 @@
             '<p class="when" style="margin:8px 0 0">Hours on screen count each phone\'s time between its own events, with idle gaps over five minutes left out (a tab open through lunch is not play). Two-player games are match starts with at least three snaps in the recorded games.</p></div>';
         }
       } catch (e) { allHtml = ''; }
+      // V438 (the owner: "a profile for EVERY device that ever plays this … how many distinct devices … device stats"):
+      // tools/device-profiles.js, published with stats/alltime (the full list in stats/devices, ?devices=1)
+      try {
+        const stD = await stAllP; const dv = stD && stD.devices;
+        if (dv && dv.devices) {
+          const chips = (o, n) => (Array.isArray(o) ? o : Object.entries(o || {})).slice(0, n || 8).map(([k, v]) => '<span class="pill" style="margin:0 6px 6px 0">' + esc(k) + ' · ' + v + '</span>').join('');
+          allHtml += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>Devices</b> <span class="when">(every browser that opened the game since ' +
+            esc(new Date(dv.since || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) + ', by its anonymous id — <a href="?devices=1">see every device</a>)</span></div>' +
+            '<div style="display:flex;gap:14px;flex-wrap:wrap">' + cell(dv.devices, 'distinct devices ever') + cell(dv.played, 'played a two-player game') + cell(dv.newToday, 'new today') + cell(dv.new7d, 'new in 7 days') +
+            cell(dv.activeToday, 'active today') + cell(dv.returning, 'came back on 2+ days') + '</div>' +
+            '<p class="when" style="margin:10px 0 4px">Devices that played, by kind</p><div>' + chips(dv.byKindPlayed) + '</div>' +
+            '<p class="when" style="margin:6px 0 4px">All devices — browser · time zone · door</p><div>' + chips(dv.byBrowser, 6) + chips(dv.byTz, 6) + chips(dv.byDoor, 5) + '</div></div>';
+        }
+      } catch (e) {}
       // V412: this week vs last week, and the three doors
       // V419: the freeze counter (NEVER-FREEZE-PROMPT.md) — published with stats/alltime
       let freezeHtml = '';
@@ -380,8 +396,37 @@
     draw();
   }
 
+  // V438: every device's profile (stats/devices, built on the owner's Mac by tools/device-profiles.js)
+  async function renderDevices() {
+    app.innerHTML = '<div class="empty">Reading devices…</div>';
+    let d = null; try { d = await get('stats/devices'); } catch (e) {}
+    const list = (d && d.list) || [];
+    if (!list.length) { app.innerHTML = '<div class="empty">No device profiles yet — they publish with the next stats update. <a href="./">All games</a></div>'; return; }
+    const fmt = ms => ms ? new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    const kinds = [...new Set(list.map(x => x.kind))];
+    const draw = () => {
+      const k = (app.querySelector('#dv-kind') || {}).value || '', onlyPlayed = !!((app.querySelector('#dv-played') || {}).checked);
+      const sortBy = (app.querySelector('#dv-sort') || {}).value || 'last';
+      const rows = list.filter(x => (!k || x.kind === k) && (!onlyPlayed || x.games > 0)).slice().sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0));
+      app.querySelector('#dv-n').textContent = rows.length + ' of ' + list.length + ' devices';
+      app.querySelector('#dv-body').innerHTML = rows.map(x => '<tr><td style="font-family:monospace">' + esc(x.id) + '</td><td>' + esc(x.kind) + '</td><td>' + esc(x.os) + '</td><td>' + esc(x.browser) + '</td><td>' + esc(x.screen) + (x.touch ? ' · touch' : '') +
+        '</td><td>' + esc(x.tz) + '</td><td>' + esc((x.doors || []).join(', ')) + '</td><td>' + esc(fmt(x.first)) + '</td><td>' + esc(fmt(x.last)) + '</td><td style="text-align:right">' + x.days + '</td><td style="text-align:right">' + x.visits +
+        '</td><td style="text-align:right">' + x.games + '</td><td style="text-align:right">' + x.complete + '</td><td style="text-align:right">' + (x.games ? x.won + '-' + x.lost + (x.tied ? '-' + x.tied : '') : '') + '</td><td>' + esc(x.builds) + '</td></tr>').join('');
+    };
+    app.innerHTML = '<p class="when"><a href="./">← All games</a> · updated ' + esc(fmt(d.updatedAt)) + '</p><h2 style="margin:0 0 10px">Every device</h2>' +
+      '<p class="when" style="margin:0 0 10px">One row per browser that ever opened the game, by its anonymous id (first 6 characters). No names, no addresses. Games = two-player games it played; W-L from its own stats screen.</p>' +
+      '<div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center"><label>Kind <select id="dv-kind"><option value="">all</option>' + kinds.map(x => '<option>' + esc(x) + '</option>').join('') + '</select></label>' +
+      '<label><input type="checkbox" id="dv-played"> played a game</label><label>Sort <select id="dv-sort"><option value="last">last seen</option><option value="first">first seen</option><option value="games">games</option><option value="visits">visits</option><option value="days">days</option></select></label>' +
+      '<span class="when" id="dv-n"></span></div><div class="card" style="overflow-x:auto;padding:0"><table style="border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums">' +
+      '<thead><tr style="text-align:left">' + ['Device', 'Kind', 'OS', 'Browser', 'Screen', 'Time zone', 'Door', 'First seen', 'Last seen', 'Days', 'Visits', 'Games', 'Finished', 'W-L', 'Builds'].map(h => '<th style="padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap">' + h + '</th>').join('') +
+      '</tr></thead><tbody id="dv-body"></tbody></table></div>';
+    app.querySelectorAll('#dv-kind, #dv-played, #dv-sort').forEach(i => i.addEventListener('change', draw));
+    draw();
+  }
+
   const room = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
-  if (room) renderGame(room); else renderList();
+  if (new URLSearchParams(location.search).get('devices') === '1') renderDevices();
+  else if (room) renderGame(room); else renderList();
 })();
 </script>
 </body>

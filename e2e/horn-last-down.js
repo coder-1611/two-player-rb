@@ -159,8 +159,12 @@ async function throwAtDefender(page) {
         }
         // 35 s of play as players would: answer a conversion with a kick, answer a dialog, play a ball offered in the old
         // quarter, and play a ball the WRONG team is offered in the new one (METB: a gift down at the 2 snapped in Q3)
-        const tEnd = Date.now() + 35000; const acts = []; let playedWrong = false;
-        while (Date.now() < tEnd) {
+        // 35 s, and under load until the next period has begun on both phones (+12 s) — a try kicked at the horn can take
+        // 14 s to roll the quarter (V436 gate, Z272: the window closed before Q2 began), capped at 90 s
+        const t35 = Date.now() + 35000, tCap = Date.now() + 90000; const acts = []; let playedWrong = false; let nextAt = 0;
+        const nextBegun = async () => { const a = await L.st(OFF.page), b = await L.st(DEF.page); return !!(a && b && ((a.q >= Q + 1 && b.q >= Q + 1) || a.over || b.over || a.final || b.final)); };
+        while (Date.now() < tCap && (Date.now() < t35 || !nextAt || Date.now() < nextAt + 12000)) {
+            if (!nextAt && await nextBegun()) nextAt = Date.now();
             for (const P of [OFF, DEF]) {
                 const s = await L.st(P.page); if (!s) continue;
                 const bl = await buttons(P.page);

@@ -86,10 +86,11 @@ async function dayReader() {
 }
 async function fromDb() {
     const rd = await dayReader();
-    const out = { visits: 0, devices: new Set(), firstVisit: null, solo: { visits: 0, devices: new Set(), sessions: 0, played: 0, hours: 0, matchHours: 0, matches: 0 } };
+    const out = { visits: 0, devices: new Set(), firstVisit: null, solo: { visits: 0, devices: new Set(), sessions: 0, played: 0, hours: 0, matchHours: 0, matches: 0 }, visitDays: {} };
     const days = await rd.days('visits');
     for (const d of days) {
         const v = await rd.day('visits', d);
+        out.visitDays[d] = v;   // V438: the device profiles reuse these reads
         for (const k in v) { const r = v[k]; if (!r || isTest(r)) continue;
             if (r.src === 'solo') { out.solo.visits++; if (r.uid) out.solo.devices.add(r.uid); }
             else { out.visits++; if (r.uid) out.devices.add(r.uid); if (!out.firstVisit || r.ts < out.firstVisit) out.firstVisit = r.ts; } }
@@ -100,7 +101,7 @@ async function fromDb() {
             out.solo.sessions++; out.solo.hours += (Number(r.dur) || 0) / 3600; out.solo.matchHours += (Number(r.inMatchSec) || 0) / 3600;
             if (r.played === true || Number(r.inMatchSec) >= 20) out.solo.played++; out.solo.matches += Number(r.matches) || 0; }
     }
-    return { visits: out.visits, devices: out.devices.size, firstVisit: out.firstVisit,
+    return { visitDays: out.visitDays, visits: out.visits, devices: out.devices.size, firstVisit: out.firstVisit,
              solo: { visits: out.solo.visits, devices: out.solo.devices.size, sessions: out.solo.sessions, played: out.solo.played, hours: out.solo.hours, matchHours: out.solo.matchHours, matches: out.solo.matches } };
 }
 
@@ -208,16 +209,25 @@ async function weekly() {
 (async () => {
     const a = fromArchives();
     const d = await fromDb();
+    let devs = null;
+    try { devs = require('./device-profiles.js').build(d.visitDays || {}, AUDITS, isTest); } catch (e) { console.error('device profiles: ' + (e && e.message)); }
     const stats = { updatedAt: Date.now(),
         two: { games: a.games, complete: a.complete, phoneSessions: a.phones, personHours: Math.round(a.personHours * 10) / 10, gameHours: Math.round(a.gameHours * 10) / 10, since: a.since, until: a.until,
                visits: d.visits, devices: d.devices, visitsSince: d.firstVisit },
         solo: { visits: d.solo.visits, devices: d.solo.devices, sessions: d.solo.sessions, played: d.solo.played, hours: Math.round(d.solo.hours * 10) / 10, matchHours: Math.round(d.solo.matchHours * 10) / 10, matches: d.solo.matches, since: Date.parse('2026-09-21T13:55:00Z') },
         weekly: await weekly(),
         freeze: freezeCounter(),
+        // V438: one profile per device (tools/device-profiles.js); the summary rides here, the list in stats/devices
+        devices: devs ? devs.summary : null,
         notes: 'two-player games and hours from the audit archives (recorded games since 2026-09-02, idle gaps over 5 min excluded); visits/devices since the visit beacon (2026-09-14); solo since 2026-09-21' };
-    console.log(JSON.stringify(stats, null, 1));
+    console.log(JSON.stringify(stats, null, 1).slice(0, 6000));
+    console.log('device profiles: ' + (devs ? devs.summary.devices + ' devices, ' + devs.summary.played + ' played a two-player game, ' + devs.summary.newToday + ' new today' : 'none'));
     if (dry) return;
     const tok = await ownerToken();
     const r = await fetch(DB + 'stats/alltime.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify(stats) });
     console.log('published stats/alltime: ' + r.status);
+    if (devs) {
+        const r2 = await fetch(DB + 'stats/devices.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify({ updatedAt: stats.updatedAt, list: devs.list }) });
+        console.log('published stats/devices (' + devs.list.length + ' devices): ' + r2.status);
+    }
 })().catch(e => { console.error(e); process.exit(1); });
