@@ -1566,7 +1566,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V435<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V436<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1648,7 +1648,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V435</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V436</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3046,6 +3046,19 @@
             // touchdown three snaps later). After a conversion the drive is over. Once
             // the try has resolved and no play is running, a ball sitting at the 2 on
             // down 1 in the new quarter is handed off as the touchdown's kickoff.
+            // V436 (QAQL, 2 Oct 7:40 pm and 7:47 pm — V434's C13 harmed a real game twice): "the try crossed the horn"
+            // means this phone's try was its LAST PLAY before the quarter changed and nothing changed hands since. V434
+            // read only "my last snap was a try" — which stays true while the OPPONENT plays a whole drive after my
+            // kickoff. A horn hand-off (7:40, b took over at a's 34) or a TD kickoff (7:47, a at its own 27) received
+            // within 90 s of my own try then fired POST-CONV on the RECEIVER: its forced possession change mirrored the
+            // field (b lost 32 yards, a gained 46 and scored). Any hand-off sent or applied after the try = not crossed.
+            window._rb2p_tryCrossedHorn = function (offer, qc) {
+                var sn = Number(window._rb2p_lastSnapMs) || 0;
+                if (!(Number(offer) > 0) || Number(window._rb2p_lastSnapDown) !== 6 || !(sn > Number(offer)) || !(sn < Number(qc))) return false;
+                if ((Number(window._rb2p_lastSentOutcomeMs) || 0) > sn) return false;            // I handed off after my try (its kickoff)
+                if ((Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) > sn) return false;   // I took a hand-off after my try
+                return true;
+            };
             window._rb2p_postConvHandoffFor = 0;
             setInterval(function () {
                 try {
@@ -3060,7 +3073,7 @@
                     // V410 (TXKB): the try itself was snapped (down 6) before the horn, so it is
                     // over — do not wait the 3s the duty takes to retire; the kid snapped the
                     // gift drive inside that window.
-                    var trySnapped = Number(window._rb2p_lastSnapDown) === 6 && Number(window._rb2p_lastSnapMs) > offer && Number(window._rb2p_lastSnapMs) < qc;
+                    var trySnapped = window._rb2p_tryCrossedHorn(offer, qc);   // V436: and nothing changed hands since
                     if (!trySnapped) {
                         if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return;
                         if (window._rb2p_patPlayPending === true) return;
@@ -8112,7 +8125,7 @@
                     // V434 (C13): a try snapped before this quarter change ended that drive — the scorer kicks off
                     {
                         var qcK = Number(window._rb2p_quarterChangedToMs) || 0, offK = Number(window._rb2p_lastConvModalMs) || 0, snK = Number(window._rb2p_lastSnapMs) || 0;
-                        if (offK > 0 && Number(window._rb2p_lastSnapDown) === 6 && snK > offK && snK < qcK && qcK - snK < 60000) return 'a try was played at the horn (the scorer kicks off)';
+                        if (qcK - snK < 60000 && typeof window._rb2p_tryCrossedHorn === 'function' && window._rb2p_tryCrossedHorn(offK, qcK)) return 'a try was played at the horn (the scorer kicks off)';   // V436: nothing changed hands since
                     }
                     var cap = usedQEnd ? window._rb2p_qEndLatchScore : window._rb2p_preRolloverScore;
                     var capMs = usedQEnd ? window._rb2p_qEndLatchMs : window._rb2p_preRolloverMs;
@@ -13530,7 +13543,7 @@
                     // ends now. A pick-six scorer that still owes its PAT_RESULT is not this case (it ships first).
                     if (window._rb2p_patPlayPending !== true && window._rb2p_p6ScorerOwes !== true && window._rb2p_patDutyMine) {
                         var qcH = Number(window._rb2p_quarterChangedToMs) || 0, offH = Number(window._rb2p_lastConvModalMs) || 0, snH = Number(window._rb2p_lastSnapMs) || 0;
-                        if (offH > 0 && Number(window._rb2p_lastSnapDown) === 6 && snH > offH && snH < qcH) {
+                        if (typeof window._rb2p_tryCrossedHorn === 'function' && window._rb2p_tryCrossedHorn(offH, qcH)) {   // V436: and nothing changed hands since
                             window._rb2p_patPlayResolved = false; window._rb2p_patDutyMine = null;
                             try { if (typeof window._rb2p_setPatDuty === 'function') window._rb2p_setPatDuty(null); } catch (eHD) {}
                             if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q3 law: the try was played before the horn — the half is over now (duty retired)');

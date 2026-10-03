@@ -44,6 +44,14 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         await sleep(2500);
         const fsm1 = await O1.page.evaluate(() => { const m = RB.engineState().rawEngineMatch; return { Vy: m._Vy, kp: m._kp, z7: m._7z }; });
         console.log('  ' + O1.role + ' (the receiver-to-be) parked at ' + JSON.stringify(fsm1) + ' (FOVL: a phone parked after its own send)');
+        // V436 (QAQL 7:40 pm): the receiver's own last play was a try a moment ago — its kickoff went out, the partner
+        // drove, and the partner's turnover reaches it at the horn. V434/V435 read that try as "my try crossed the horn":
+        // POST-CONV fired on the RECEIVER and its forced possession change mirrored the field (b lost 32 yards). The
+        // setup writes the bridge's own bookkeeping of a try (offer 3 s ago, the try snapped 1.5 s ago), nothing else.
+        if (process.env.HORN_EVENT === 'staletry') {
+            await O1.page.evaluate(() => { const now = Date.now(); window._rb2p_lastConvModalMs = now - 3000; window._rb2p_lastSnapDown = 6; window._rb2p_lastSnapMs = now - 1500; });
+            console.log('  ' + O1.role + '\'s last play is now a try (offer 3 s ago, snapped 1.5 s ago) — as b\'s was in QAQL');
+        }
         // 2. the horn: O2's real turnover on downs snapped at 0:01
         const lead = Q === 4 ? (SCORE === 'tie' ? [10, 10] : [3, 10]) : null;   // O2's view: user, opp
         await L.setDown(O2.page, { clk: 1, down: 4, toGo: 25, score: lead });
@@ -118,6 +126,12 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
                 right = !!(A1 && A2 && A1.q === Q + 1 && A2.q === Q + 1 && A1.wait === false && A2.wait === true && A1.d === 1 && A1.clk >= 60); why = 'Q' + (Q + 1) + ', ' + O1.role + ' keeps the ball, 1st & 10, full clock';
             }
             check('M1d the next period starts by rule (' + why + ')', right, JSON.stringify({ [O1.role]: A1, [O2.role]: A2 }));
+            if (process.env.HORN_EVENT === 'staletry') {
+                const pc = rec1.diag.filter(x => x[0] >= t0 && /POST-CONV the try crossed the horn/.test(x[1])).map(x => x[1]);
+                const hy = Number(hornSend.y), ay = A1 ? Number(A1.y) : NaN;
+                check('M1e a try that is NOT the last play before the horn does not hand the ball away: no POST-CONV on ' + O1.role + ', its ball at the hand-off spot (' + hy + '), not mirrored',
+                      pc.length === 0 && isFinite(ay) && Math.sign(ay) === Math.sign(hy) && Math.abs(ay - hy) <= 3, JSON.stringify({ postConv: pc, handoffY: hy, ballY: ay }));
+            }
         }
         const out = path.join(__dirname, '..', '..', 'research', 'probe-out', 'M1-Q' + Q + '-' + MODE + (Q === 4 ? '-' + SCORE : '') + (process.env.HORN_EVENT ? '-' + process.env.HORN_EVENT : '') + '-' + g.code + '.json');
         try { fs.mkdirSync(path.dirname(out), { recursive: true }); } catch (eM) {}

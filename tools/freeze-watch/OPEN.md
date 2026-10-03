@@ -46,6 +46,10 @@ Order = what to take first when the brief has no new freeze to work on.
   - `why` other than "a hand-off" (a rescuer staged at 0:00) should be rare: read each one.
   - `SEND horn at Qn 0:00 — the partner is on V4xx: it gets the old 0:01` = a mixed-build game (expected for a day).
   - `guard ot-try-wait` followed by an OT flip more than 30 s later: read it (C6's hold, capped at 120 s).
+  - **V436:** every `guard post-conv-handoff` must come from the scorer whose try was its last play before the horn
+    (no `send`/`apply` between its d=6 snap and the quarter change). QAQL 19:40/19:47 (V435) were receivers — the field
+    mirrored (−32 / +46 yards). Check whether R-YARD flagged QAQL; if not, the checker misses a mirrored first snap
+    after a quarter change (the first snap's y = −(the last hand-off's y)) — add it.
 - **Checker rules to add** (whole-archive diff first, only intended verdicts may move): R-HORN-EXTRA (a snap in quarter
   *n* by the receiver of a hand-off sent `Qn 0:00`: the extra play; ≈141 in the buffer era, 0 expected after),
   R-HORN-RESTAMP (a drive end at `Qn 0:00` sent with another quarter or clk > 0), R-HORN-SPOT (Q1/Q3: the receiver's

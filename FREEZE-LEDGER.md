@@ -820,3 +820,41 @@ engine's own case 19).
   stopped short in every attempt (12 of 12, against Q1 1 of 1 and Q3 ~1 of 2 with the same setup); the play runs to its
   end across 0:00 (no rescuer cuts it — the recorder shows Vy 2 / kp 2 until the half ends), it just never scores.
 
+
+## V436 (2026-10-02): V434's "the try crossed the horn" fired on the RECEIVER — the field mirrored twice in a real game
+
+The first real games on the horn law (QAQL, both phones V435, 19:37–20:03; game 1 complete 50-41, game 2 left at 34-38
+with 1:30 to play) crossed seven horns. What the law was built for held every time:
+- three horn hand-offs arrived at 0:00 and the receiver's engine ended the quarter itself — 19:40 (Q1, a turnover on
+  downs), 19:51 (Q4: the final on both within 2 s), 19:57 (halftime) — no 0:01 extra play, no bounce;
+- halftime: b received the second half both games;
+- C13 twice (19:47, 20:01): a touchdown on the last play of Q3, the try at 0:00, the scorer kicked off.
+
+**But C13's signal misfired twice in game 1.** POST-CONV (V406/V410, broadened by C13) read "my last snap was a try,
+after its offer and before the quarter change" as "my try crossed the horn". That stays true while the OPPONENT plays a
+whole drive after my kickoff:
+- **19:40:33, b:** b's TD and try (19:39:49), b's kickoff, a's drive, a's 4th-down turnover at Q1 0:00 → b took over at
+  a's 34 at the horn (correct) → b's POST-CONV fired 47 s after b's try; EMPTY-FIELD re-staged (more than 40 s since the
+  offer) and POST-CONV's fallback forced `s_change_possession` → the field mirrored: **b snapped from its own 34
+  (−32 yards)**.
+- **19:47:18, a:** b's TD on the last play of Q3, its try at 0:00, b kicked off (C13, correct) → a at its own 27 → a's
+  POST-CONV fired 56 s after a's own try → mirrored: **a snapped from b's 27 (+46 yards)** and scored 49 s later.
+- No possession went to the wrong team (the forced change never shipped a hand-off), but the yard line moved by 32 and
+  46 yards — not by football (R-YARD). V434/V435 caused it; before V434 the "ball at the 2" check stopped it.
+
+**Fix:** `window._rb2p_tryCrossedHorn(offer, qc)` — the try was this phone's last play before the quarter change AND
+nothing changed hands since: no hand-off sent (`_rb2p_lastSentOutcomeMs`) or applied (`_rb2p_lastOpponentOutcomeApplyMs`)
+after the try's snap. Used by all three readers of that signal: POST-CONV, the keep's void (C13) and the Q3 law (C10).
+A real crossing (the try snapped at 0:00, the quarter rolls with the scorer still holding the ball) is unchanged.
+
+**Test:** `e2e/horn-fovl.js` HORN_EVENT=staletry = M11 in `e2e/v434-horn.js`: the FOVL state at Q1 with the receiver's
+own last play a try (the bridge's try bookkeeping written: offer 3 s ago, snapped 1.5 s ago). **V435: FAIL M1e** —
+POST-CONV fired on the receiver and its ball went from the hand-off spot (−14.4) to +14. **V436: 5/5.**
+Also at the same horn in **VZLC (20:13, V435)**: a's last play of Q3 (snapped at 0:02) was intercepted/fumbled
+(`BLAST@possession INT/FUM` on b) — the horn hand-off shipped Q3 0:00, b's engine ended Q3 with b holding the ball
+(the keep armed at −22) — then b's POST-CONV fired 26 s after b's own try: under 40 s, so EMPTY-FIELD handed off for real
+(`SEND PUNT Q4 3:00`) and **b's takeaway was erased** (a started Q4 with the ball). Three harmful firings in 2 games in
+~45 minutes of play.
+
+**Shipped before the full gate, on the owner's call** ("push now"): the live build was harming games and the machine was
+at load 46 (the gate and the 6 pm freeze-watch run's tests together). The gate kept running after the push.

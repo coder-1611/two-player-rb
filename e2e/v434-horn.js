@@ -8,6 +8,8 @@
 //      the old quarter after it; nothing bounces and no rescuer acts; both phones reach the next period with ONE
 //      offense — Q1/Q3 the team that has the ball at the turnover spot, 1st & 10, a full clock; halftime Team B's
 //      kickoff; Q4 the stats screen (decided) or the overtime coin flip (tied)
+//   M11 (V436, QAQL 2 Oct 7:40 pm) the FOVL state at Q1 where the receiver's own last play was a try: V434/V435 took it
+//      for "my try crossed the horn" and handed the ball away / mirrored the field (b lost 32 yards)
 //   M4 a punt at the Q1 horn (e2e/horn-last-down.js punt) — 4th & 15 with 0:03: the punt's 5-10 s are charged, the
 //      hand-off ships Q1 0:00, the receiver starts Q2 at the punt spot, 1st & 10
 //
@@ -23,6 +25,7 @@ const cases = [
     ['M1 Q4 horn, decided — the final', 'horn-fovl.js', { HORN_Q: '4', HORN_SCORE: 'lead' }],
     ['M1 Q4 horn, tied — overtime', 'horn-fovl.js', { HORN_Q: '4', HORN_SCORE: 'tie' }],
     ['M4 a punt at the Q1 horn', 'horn-last-down.js', { HORN_Q: '1', HORN_KIND: 'punt' }],
+    ['M11 the receiver\'s own last play was a try (QAQL, V436): the horn hand-off is not handed away or mirrored', 'horn-fovl.js', { HORN_Q: '1', HORN_EVENT: 'staletry' }],
 ];
 console.log('=== V434 THE HORN ===');
 for (const [name, file, env, args] of cases) {
