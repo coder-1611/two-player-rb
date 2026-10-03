@@ -59,10 +59,21 @@ const screenClass = (w, h) => { const s = Math.min(w, h), l = Math.max(w, h); if
 const doorName = src => ({ vercel: 'Vercel', pages: 'GitHub Pages', sites: 'Google Sites', solo: 'solo game', local: 'local' }[src] || (/web\.app|firebaseapp/.test(src) ? 'Firebase' : String(src)));
 const verNum = v => Number(String(v || '').replace(/\D/g, '')) || 0;
 
-function build(visitDays, auditsDir, isTest) {
+// V444 (the owner: "a separate tab in game transcripts where each device is named after its first ever username … click on a
+// device profile you see the games played, the complaints and all the usernames"): extra = { names: {ROOM: {a, b}} (the
+// rooms' rooms/CODE/names — the name each seat typed), complaints: {id: rec} }. Every game's names come from the bind
+// entry when it carries one (V444 on), else the room's names record (the last name each seat wrote — exact for a one-game
+// room, the room's latest name for a rematch room). A complaint belongs to the device that sat in its room's seat at the
+// time (V444 on: its own uid).
+const ID_LEN = 8;
+function build(visitDays, auditsDir, isTest, extra) {
+    extra = extra || {};
+    const roomNames = extra.names || {}, complaints = extra.complaints || {};
     const dev = {};
     const get = uid => (dev[uid] = dev[uid] || { uid, visits: 0, solo: 0, days: new Set(), doors: new Set(), first: Infinity, last: 0, ua: '', platform: '', touch: false,
-                                                  sw: 0, sh: 0, dpr: 0, tz: '', lang: '', games: 0, complete: 0, won: 0, lost: 0, tied: 0, rooms: new Set(), vmin: 0, vmax: 0 });
+                                                  sw: 0, sh: 0, dpr: 0, tz: '', lang: '', games: 0, complete: 0, won: 0, lost: 0, tied: 0, rooms: new Set(), vmin: 0, vmax: 0,
+                                                  names: {}, gameList: [], complaints: [] });
+    const nameSeen = (d, nm, t) => { nm = String(nm || '').trim(); if (!nm || nm === '?') return; const e = (d.names[nm] = d.names[nm] || { n: 0, first: Infinity, last: 0 }); e.n++; if (t < e.first) e.first = t; if (t > e.last) e.last = t; };
     // 1. visits: one record per page load
     for (const day of Object.keys(visitDays)) {
         const v = visitDays[day] || {};
@@ -80,54 +91,119 @@ function build(visitDays, auditsDir, isTest) {
     // 2. games: the archive's bind entries say which device played which role; a game counts for a device when its
     //    role snapped in it (a game = a match-start segment with at least 3 snaps, as tools/alltime-stats.js counts)
     const R = require('./audit-rules.js');
+    const bindsByRoom = {};
     for (const f of fs.readdirSync(auditsDir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(auditsDir, f), 'utf8')); } catch (e) { continue; }
         const tl = (j.timeline || []).slice().sort((a, b) => a.t - b.t); if (!tl.length) continue;
         const binds = tl.filter(e => e.k === 'bind');
         if (!binds.some(b => b.uid) || binds.every(b => isTest(b))) continue;
+        const room = f.replace(/\.json$/, '');
+        bindsByRoom[room] = binds;
         let starts = []; try { starts = (typeof R.gameStarts === 'function') ? R.gameStarts(tl) : []; } catch (e) { starts = []; }
         if (!starts.length) starts = [tl[0].t];
-        const room = f.replace(/\.json$/, '');
         for (let i = 0; i < starts.length; i++) {
             const a = starts[i], b = i + 1 < starts.length ? starts[i + 1] : Infinity;
             const seg = tl.filter(e => e.t >= a - 1000 && e.t < b);
             if (seg.filter(e => e.k === 'snap').length < 3) continue;
+            const seat = {};
+            for (const role of ['a', 'b']) seat[role] = binds.filter(e => e.role === role && e.uid && e.t < b).pop() || null;
+            const nameOf = role => { const bd = seat[role]; return String((bd && bd.name) || (roomNames[room] && roomNames[room][role]) || '').trim(); };
             for (const role of ['a', 'b']) {
-                const bd = binds.filter(e => e.role === role && e.uid && e.t < b).pop(); if (!bd) continue;
+                const bd = seat[role]; if (!bd) continue;
                 if (!seg.some(e => e.role === role && e.k === 'snap')) continue;
+                const other = role === 'a' ? 'b' : 'a';
                 const d = get(bd.uid);
                 d.games++; d.rooms.add(room);
                 const v = verNum(bd.ver); if (v) { d.vmin = d.vmin ? Math.min(d.vmin, v) : v; d.vmax = Math.max(d.vmax, v); }
                 const fin = seg.filter(e => e.role === role && e.k === 'final').pop();
-                if (fin) { d.complete++; const su = Number(fin.su), so = Number(fin.so); if (su > so) d.won++; else if (su < so) d.lost++; else d.tied++; }
+                const sc = fin || seg.filter(e => e.role === role && e.k === 'score').pop();
+                let res = '';
+                if (fin) { d.complete++; const su = Number(fin.su), so = Number(fin.so); if (su > so) { d.won++; res = 'W'; } else if (su < so) { d.lost++; res = 'L'; } else { d.tied++; res = 'T'; } }
                 if (seg[0] && seg[0].t < d.first) d.first = seg[0].t;
                 const segLast = seg[seg.length - 1].t; if (segLast > d.last) d.last = segLast;
                 if (!d.ua) { d.ua = bd.ua || ''; }
                 if (bd.src) d.doors.add(doorName(bd.src));
+                const me = nameOf(role); nameSeen(d, me, seg[0].t);
+                d.gameList.push({ r: room, t: seg[0].t, role, me, opp: nameOf(other), od: seat[other] && seat[other].uid ? seat[other].uid.slice(0, ID_LEN) : '',
+                                  su: sc ? Number(sc.su) || 0 : null, so: sc ? Number(sc.so) || 0 : null, res, fin: !!fin,
+                                  q: Math.max(0, ...seg.filter(e => e.role === role && e.k === 'snap').map(e => Number(e.q) || 0)), v: bd.ver || '' });
             }
         }
     }
-    // 3. the profiles and the summary
+    // 3. complaints: the device that sat in the room's seat when it was sent (V444 on: its own uid)
+    const byPrefix = {}; for (const uid of Object.keys(dev)) byPrefix[uid] = dev[uid];
+    const unlinked = [];
+    for (const id of Object.keys(complaints)) {
+        const c = complaints[id]; if (!c) continue;
+        if (isTest({ ua: c.ua })) continue;
+        let uid = c.uid && dev[c.uid] ? c.uid : null;
+        if (!uid && c.room && c.role && bindsByRoom[c.room]) {
+            const bs = bindsByRoom[c.room].filter(e => e.role === c.role && e.uid);
+            const bd = bs.filter(e => e.t <= (Number(c.ts) || Infinity)).pop() || bs[bs.length - 1];
+            if (bd) uid = bd.uid;
+        }
+        const rec = { id, t: Number(c.ts) || 0, text: String(c.text || '').slice(0, 600), ch: Array.isArray(c.choices) ? c.choices.slice(0, 12) : [], r: c.room || '', v: c.ver || '', name: c.name || '' };
+        if (uid) { const d = get(uid); d.complaints.push(rec); nameSeen(d, c.name, rec.t); } else unlinked.push(rec);
+    }
+    // 4. the list, the profiles and the summary
     const now = Date.now(), today = localDay(now), wk = now - 7 * 86400000;
-    const list = Object.values(dev).filter(d => d.visits || d.games || d.solo).map(d => ({
-        id: d.uid.slice(0, 6), kind: kindOf(d), browser: browserOf(d.ua), os: (kindOf(d) === 'iPad' && /Macintosh/.test(d.ua)) ? 'iPadOS' : osOf(d.ua), screen: d.sw && d.sh ? d.sw + 'x' + d.sh : '', screenClass: screenClass(d.sw, d.sh),
+    const all = Object.values(dev).filter(d => d.visits || d.games || d.solo);
+    const namesOf = d => Object.entries(d.names).map(([nm, e]) => [nm, e.n, e.first, e.last]).sort((x, y) => x[2] - y[2]);
+    const info = d => ({
+        id: d.uid.slice(0, ID_LEN), kind: kindOf(d), browser: browserOf(d.ua), os: (kindOf(d) === 'iPad' && /Macintosh/.test(d.ua)) ? 'iPadOS' : osOf(d.ua), screen: d.sw && d.sh ? d.sw + 'x' + d.sh : '', screenClass: screenClass(d.sw, d.sh),
         dpr: d.dpr || null, touch: d.touch, tz: d.tz, lang: d.lang, doors: [...d.doors].sort(), first: isFinite(d.first) ? d.first : d.last, last: d.last, days: d.days.size,
         visits: d.visits, solo: d.solo, games: d.games, complete: d.complete, won: d.won, lost: d.lost, tied: d.tied, rooms: d.rooms.size,
-        builds: d.vmin ? (d.vmin === d.vmax ? 'V' + d.vmax : 'V' + d.vmin + '–V' + d.vmax) : '' })).sort((x, y) => y.last - x.last);
+        builds: d.vmin ? (d.vmin === d.vmax ? 'V' + d.vmax : 'V' + d.vmin + '–V' + d.vmax) : '' });
+    const list = all.map(d => { const ns = namesOf(d); return Object.assign(info(d), { name: ns.length ? ns[0][0] : '', names: ns.length, reports: d.complaints.length }); }).sort((x, y) => y.last - x.last);
+    const profiles = {};
+    for (const d of all) {
+        const ns = namesOf(d);
+        profiles[d.uid.slice(0, ID_LEN)] = Object.assign(info(d), { name: ns.length ? ns[0][0] : '', names: ns,
+            gameList: d.gameList.sort((x, y) => y.t - x.t), complaints: d.complaints.sort((x, y) => y.t - x.t) });
+    }
     const tally = (key, filter) => { const o = {}; for (const p of list.filter(filter || (() => true))) { const k = (typeof key === 'function' ? key(p) : p[key]) || 'unknown'; o[k] = (o[k] || 0) + 1; } return Object.entries(o).sort((a, b) => b[1] - a[1]); };   // [name, count] pairs: database keys cannot hold '/' or '.' (time zones, hosts)
     const played = p => p.games > 0;
     const summary = {
         devices: list.length, played: list.filter(played).length, visitedOnly: list.filter(p => !p.games && p.visits).length, soloOnly: list.filter(p => !p.games && !p.visits && p.solo).length,
+        named: list.filter(p => p.name).length,
         newToday: list.filter(p => localDay(p.first) === today).length, new7d: list.filter(p => p.first >= wk).length,
         activeToday: list.filter(p => localDay(p.last) === today).length, active7d: list.filter(p => p.last >= wk).length,
         returning: list.filter(p => p.days >= 2).length,
         byKind: tally('kind'), byKindPlayed: tally('kind', played), byBrowser: tally(p => p.browser.replace(/ \d+$/, '')), byOs: tally(p => p.os.replace(/ [\d./]+$/, '') || 'unknown'),
         byDoor: tally(p => p.doors.join('+') || 'unknown'), byTz: tally('tz'), byScreen: tally('screenClass'), touch: list.filter(p => p.touch).length,
-        deviceGames: list.reduce((a, p) => a + p.games, 0), since: list.length ? Math.min(...list.map(p => p.first)) : null };
-    return { summary, list };
+        deviceGames: list.reduce((a, p) => a + p.games, 0), since: list.length ? Math.min(...list.map(p => p.first)) : null, reportsUnlinked: unlinked.length };
+    return { summary, list, profiles, unlinked };
 }
 
-module.exports = { build, kindOf, browserOf, osOf };
+// the rooms' names and the complaints, cached on this Mac (~/rb2p/device-cache.json): a room's names are fetched again
+// only when its archive file changed since; complaints are write-once — only new ids are fetched
+async function loadExtras(auditsDir, tok) {
+    const os = require('os');
+    const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
+    const CACHE = path.join(os.homedir(), 'rb2p', 'device-cache.json');
+    let c = {}; try { c = JSON.parse(fs.readFileSync(CACHE, 'utf8')); } catch (e) { c = {}; }
+    c.names = c.names || {}; c.complaints = c.complaints || {};
+    const getJ = async p => { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+    const todo = [];
+    for (const f of fs.readdirSync(auditsDir).filter(x => x.endsWith('.json'))) {
+        const room = f.replace(/\.json$/, ''); if (/[0-9]/.test(room)) continue;   // harness rooms
+        let mt = 0; try { mt = fs.statSync(path.join(auditsDir, f)).mtimeMs; } catch (e) { continue; }
+        if (!c.names[room] || c.names[room].at < mt) todo.push([room, mt]);
+    }
+    let i = 0;
+    await Promise.all(Array.from({ length: 8 }, async () => { while (i < todo.length) { const [room, mt] = todo[i++]; try { const v = await getJ('rooms/' + room + '/names'); c.names[room] = { v: v || {}, at: Math.max(mt, Date.now()) }; } catch (e) {} } }));
+    try {
+        const ids = Object.keys(await getJ('complaints', 'shallow') || {});
+        const sh = await (await fetch(DB + 'complaints.json?shallow=true&auth=' + tok)).json() || {};
+        for (const id of Object.keys(sh)) if (!c.complaints[id]) { const rec = await getJ('complaints/' + id); if (rec) { delete rec.diag; c.complaints[id] = rec; } }
+        void ids;
+    } catch (e) {}
+    try { fs.writeFileSync(CACHE, JSON.stringify(c)); } catch (e) {}
+    const names = {}; for (const room of Object.keys(c.names)) names[room] = c.names[room].v || {};
+    return { names, complaints: c.complaints, fetchedNames: todo.length };
+}
+
+module.exports = { build, loadExtras, kindOf, browserOf, osOf };
 
 if (require.main === module) {
     (async () => {
@@ -140,8 +216,11 @@ if (require.main === module) {
         for (const d of days) visitDays[d] = cache[d] || await (await fetch(DB + 'visits/' + d + '.json?auth=' + tok)).json() || {};
         const isTest = r => !!r && (r.src === 'local' || /localhost|127\.0\.0\.1/.test(String(r.host || '')) || /HeadlessChrome/.test(String(r.ua || '')));
         const AUD = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
-        const out = build(visitDays, AUD, isTest);
-        console.log(JSON.stringify(out.summary, null, 1));
-        console.log('top 15 by games: ' + out.list.slice().sort((a, b) => b.games - a.games).slice(0, 15).map(p => p.id + ' ' + p.kind + ' ' + p.games + 'g ' + p.won + '-' + p.lost).join(' | '));
+        const ex = await loadExtras(AUD, tok);
+        const out = build(visitDays, AUD, isTest, ex);
+        console.log(JSON.stringify(out.summary, null, 1).slice(0, 1500) + ' …');
+        console.log('names fetched this run: ' + ex.fetchedNames + '; complaints ' + Object.keys(ex.complaints).length + ' (unlinked ' + out.unlinked.length + ')');
+        console.log('profiles JSON ' + Math.round(JSON.stringify(out.profiles).length / 1024) + ' KB; list ' + Math.round(JSON.stringify(out.list).length / 1024) + ' KB');
+        console.log('top 12 by games: ' + out.list.slice().sort((a, b) => b.games - a.games).slice(0, 12).map(p => (p.name || '(no name)') + ' [' + p.id + '] ' + p.kind + ' ' + p.games + 'g ' + p.won + '-' + p.lost + (p.names > 1 ? ' +' + (p.names - 1) + ' names' : '')).join(' | '));
     })().catch(e => { console.error(e); process.exit(1); });
 }

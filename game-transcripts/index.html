@@ -20,8 +20,41 @@
   h1 { font-family:'Anton',sans-serif; font-weight:400; font-size:clamp(28px,6vw,44px); letter-spacing:1px; margin:0 0 4px; text-transform:uppercase; }
   .sub { color:var(--dim); margin:0 0 22px; font-size:13px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin:0 0 12px; }
-  #dv-body td { padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
-  #dv-body tr:hover td { background:color-mix(in srgb, var(--line) 35%, transparent); }
+  /* V444: the GAMES | DEVICES tabs, the device cards and a device's profile */
+  .tabs { display:flex; gap:4px; margin:0 0 18px; border-bottom:1px solid var(--line); }
+  .tabs a { font-family:'Anton',sans-serif; font-size:18px; letter-spacing:1.5px; text-transform:uppercase; color:var(--mute); text-decoration:none; padding:6px 14px 8px; border-bottom:3px solid transparent; margin-bottom:-1px; }
+  .tabs a:hover { color:var(--ink); }
+  .tabs a[aria-current="page"] { color:var(--ink); border-bottom-color:var(--green); }
+  .dv-tools { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0 0 14px; }
+  .dv-tools input[type=search], .dv-tools select { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  .dv-tools input[type=search] { flex:1 1 200px; min-width:0; }
+  .dv-tools label { display:inline-flex; align-items:center; gap:6px; color:var(--dim); font-size:12px; }
+  .dv-tools input[type=checkbox] { accent-color:var(--green); }
+  .dv-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:10px; }
+  .dv-card { display:block; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; color:inherit; text-decoration:none; min-width:0; }
+  .dv-card:hover, .dv-card:focus-visible { border-color:color-mix(in srgb,var(--green) 45%,var(--line)); outline:none; }
+  .dv-name { font-family:'Anton',sans-serif; font-size:22px; letter-spacing:.5px; line-height:1.15; overflow-wrap:anywhere; }
+  .dv-name.unnamed { color:var(--mute); font-size:18px; }
+  .dv-meta { color:var(--dim); font-size:12px; margin-top:2px; }
+  .dv-stats { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .dv-stats b { color:var(--ink); font-weight:600; }
+  .dv-id { font-size:11px; color:var(--mute); letter-spacing:.5px; }
+  .dv-cells { display:flex; gap:14px; flex-wrap:wrap; }
+  .dv-cell { min-width:92px; text-align:center; }
+  .dv-cell .n { font-family:'Anton',sans-serif; font-size:26px; line-height:1; font-variant-numeric:tabular-nums; }
+  .dv-cell .l { color:var(--mute); font-size:11px; margin-top:4px; }
+  .dv-info { display:grid; grid-template-columns:max-content 1fr; gap:4px 14px; font-size:13px; margin:0; }
+  .dv-info dt { color:var(--mute); } .dv-info dd { margin:0; overflow-wrap:anywhere; }
+  .dv-game { display:grid; grid-template-columns:118px 1fr auto; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent); font-variant-numeric:tabular-nums; }
+  .dv-game:last-child { border-bottom:0; }
+  .dv-game .sc { font-family:'Anton',sans-serif; font-size:18px; letter-spacing:1px; white-space:nowrap; }
+  .res { display:inline-block; min-width:22px; text-align:center; border-radius:6px; padding:1px 6px; font-weight:700; font-size:12px; margin-left:6px; }
+  .res.W { background:color-mix(in srgb,var(--green) 22%,transparent); color:var(--green); }
+  .res.L { background:color-mix(in srgb,var(--red) 22%,transparent); color:var(--red); }
+  .res.T { background:color-mix(in srgb,var(--amber) 22%,transparent); color:var(--amber); }
+  .res.U { background:color-mix(in srgb,var(--line) 60%,transparent); color:var(--dim); }
+  .dv-report { border-left:3px solid var(--amber); padding:8px 12px; background:color-mix(in srgb,var(--amber) 7%,var(--panel)); border-radius:0 8px 8px 0; margin:0 0 10px; }
+  @media (max-width:560px) { .dv-game { grid-template-columns:1fr auto; } .dv-game .when { grid-column:1 / -1; } }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
   .grow { flex:1; min-width:0; }
   .code { font-family:'Anton',sans-serif; font-size:26px; letter-spacing:2px; }
@@ -74,6 +107,7 @@
 <div class="wrap">
   <h1>Game Transcripts</h1>
   <p class="sub">Every game since V365 records itself. This page tells it back in plain English and runs the same checks the detector runs — <a href="/">back to the game</a>.</p>
+  <nav class="tabs" aria-label="Sections"><a href="./" id="tab-games">Games</a><a href="?tab=devices" id="tab-devices">Devices</a></nav>
   <div id="app"><div class="empty">Loading…</div></div>
 </div>
 <script src="/tools/audit-rules.js"></script>
@@ -236,7 +270,7 @@
         if (dv && dv.devices) {
           const chips = (o, n) => (Array.isArray(o) ? o : Object.entries(o || {})).slice(0, n || 8).map(([k, v]) => '<span class="pill" style="margin:0 6px 6px 0">' + esc(k) + ' · ' + v + '</span>').join('');
           allHtml += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>Devices</b> <span class="when">(every browser that opened the game since ' +
-            esc(new Date(dv.since || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) + ', by its anonymous id — <a href="?devices=1">see every device</a>)</span></div>' +
+            esc(new Date(dv.since || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) + ', by its anonymous id — <a href="?tab=devices">see every device</a>)</span></div>' +
             '<div style="display:flex;gap:14px;flex-wrap:wrap">' + cell(dv.devices, 'distinct devices ever') + cell(dv.played, 'played a two-player game') + cell(dv.newToday, 'new today') + cell(dv.new7d, 'new in 7 days') +
             cell(dv.activeToday, 'active today') + cell(dv.returning, 'came back on 2+ days') + '</div>' +
             '<p class="when" style="margin:10px 0 4px">Devices that played, by kind</p><div>' + chips(dv.byKindPlayed) + '</div>' +
@@ -396,36 +430,79 @@
     draw();
   }
 
-  // V438: every device's profile (stats/devices, built on the owner's Mac by tools/device-profiles.js)
+  // V444 (the owner: "a separate tab in game transcripts where each device is named after its first ever username and you
+  // can scroll and see every device and when you click on a device profile you see the games played, the complaints and
+  // all the usernames"): built on the owner's Mac by tools/device-profiles.js — stats/devices (one card per device) and
+  // stats/deviceProfiles/{id} (read when a card is opened).
+  const fmtDate = ms => ms ? new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  const ago = ms => { if (!ms) return ''; const s = (Date.now() - ms) / 1000; if (s < 90) return 'just now'; if (s < 3600) return Math.round(s / 60) + ' min ago'; if (s < 86400) return Math.round(s / 3600) + ' h ago'; const d = Math.round(s / 86400); return d === 1 ? 'yesterday' : d + ' days ago'; };
+  const devLabel = x => x.name ? esc(x.name) : 'Unnamed ' + esc(x.kind || 'device');
+  const wl = x => x.games ? (x.won || 0) + '–' + (x.lost || 0) + (x.tied ? '–' + x.tied : '') : '';
   async function renderDevices() {
     app.innerHTML = '<div class="empty">Reading devices…</div>';
-    let d = null; try { d = await get('stats/devices'); } catch (e) {}
+    let d = null, st = null; try { [d, st] = await Promise.all([get('stats/devices'), get('stats/alltime')]); } catch (e) {}
     const list = (d && d.list) || [];
-    if (!list.length) { app.innerHTML = '<div class="empty">No device profiles yet — they publish with the next stats update. <a href="./">All games</a></div>'; return; }
-    const fmt = ms => ms ? new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-    const kinds = [...new Set(list.map(x => x.kind))];
+    if (!list.length) { app.innerHTML = '<div class="empty">No device profiles yet — they publish with the next stats update (every 10 minutes).</div>'; return; }
+    const kinds = [...new Set(list.map(x => x.kind))].sort();
+    const saved = (() => { try { return JSON.parse(localStorage.getItem('rb2p_tx_devfilters') || '{}'); } catch (e) { return {}; } })();
+    app.innerHTML = '<p class="when" style="margin:0 0 12px">' + list.length.toLocaleString() + ' devices have opened the game' + (st && st.devices && st.devices.since ? ' since ' + esc(fmtDate(st.devices.since)) : '') +
+      ' — each named after the first username typed on it (a device that never played has none). One anonymous id per browser; updated ' + esc(ago(st && st.updatedAt)) + '.</p>' +
+      '<div class="dv-tools"><input type="search" id="dv-q" placeholder="Search a username" aria-label="Search a username" value="' + esc(saved.q || '') + '">' +
+      '<select id="dv-kind" aria-label="Kind of device"><option value="">Every kind</option>' + kinds.map(k => '<option' + (saved.kind === k ? ' selected' : '') + '>' + esc(k) + '</option>').join('') + '</select>' +
+      '<select id="dv-sort" aria-label="Sort"><option value="last">Last seen</option><option value="games">Most games</option><option value="first">Newest</option><option value="name">Name A–Z</option></select>' +
+      '<label><input type="checkbox" id="dv-played"' + (saved.played ? ' checked' : '') + '> played a game</label></div>' +
+      '<p class="when" id="dv-n" style="margin:0 0 10px"></p><div class="dv-grid" id="dv-grid"></div>';
+    if (saved.sort) app.querySelector('#dv-sort').value = saved.sort;
     const draw = () => {
-      const k = (app.querySelector('#dv-kind') || {}).value || '', onlyPlayed = !!((app.querySelector('#dv-played') || {}).checked);
-      const sortBy = (app.querySelector('#dv-sort') || {}).value || 'last';
-      const rows = list.filter(x => (!k || x.kind === k) && (!onlyPlayed || x.games > 0)).slice().sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0));
-      app.querySelector('#dv-n').textContent = rows.length + ' of ' + list.length + ' devices';
-      app.querySelector('#dv-body').innerHTML = rows.map(x => '<tr><td style="font-family:monospace">' + esc(x.id) + '</td><td>' + esc(x.kind) + '</td><td>' + esc(x.os) + '</td><td>' + esc(x.browser) + '</td><td>' + esc(x.screen) + (x.touch ? ' · touch' : '') +
-        '</td><td>' + esc(x.tz) + '</td><td>' + esc((x.doors || []).join(', ')) + '</td><td>' + esc(fmt(x.first)) + '</td><td>' + esc(fmt(x.last)) + '</td><td style="text-align:right">' + x.days + '</td><td style="text-align:right">' + x.visits +
-        '</td><td style="text-align:right">' + x.games + '</td><td style="text-align:right">' + x.complete + '</td><td style="text-align:right">' + (x.games ? x.won + '-' + x.lost + (x.tied ? '-' + x.tied : '') : '') + '</td><td>' + esc(x.builds) + '</td></tr>').join('');
+      const q = app.querySelector('#dv-q').value.trim().toLowerCase(), k = app.querySelector('#dv-kind').value, played = app.querySelector('#dv-played').checked, sort = app.querySelector('#dv-sort').value;
+      try { localStorage.setItem('rb2p_tx_devfilters', JSON.stringify({ q, kind: k, played, sort })); } catch (e) {}
+      const by = { last: (a, b) => (b.last || 0) - (a.last || 0), games: (a, b) => (b.games || 0) - (a.games || 0) || (b.last || 0) - (a.last || 0), first: (a, b) => (b.first || 0) - (a.first || 0),
+                   name: (a, b) => (a.name ? 0 : 1) - (b.name ? 0 : 1) || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }) };
+      const rows = list.filter(x => (!k || x.kind === k) && (!played || x.games > 0) && (!q || String(x.name || '').toLowerCase().includes(q))).sort(by[sort] || by.last);
+      app.querySelector('#dv-n').textContent = rows.length.toLocaleString() + ' of ' + list.length.toLocaleString() + ' devices';
+      app.querySelector('#dv-grid').innerHTML = rows.map(x => '<a class="dv-card" href="?device=' + encodeURIComponent(x.id) + '">' +
+        '<div class="dv-name' + (x.name ? '' : ' unnamed') + '">' + devLabel(x) + '</div>' +
+        '<div class="dv-meta">' + esc([x.kind, x.os, x.browser].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="dv-stats">' + (x.games ? '<span><b>' + x.games + '</b> game' + (x.games === 1 ? '' : 's') + '</span><span>W–L <b>' + wl(x) + '</b></span>' : '<span>no games — ' + x.visits + ' visit' + (x.visits === 1 ? '' : 's') + '</span>') +
+        (x.names > 1 ? '<span>+' + (x.names - 1) + ' other name' + (x.names > 2 ? 's' : '') + '</span>' : '') + (x.reports ? '<span style="color:var(--amber)">' + x.reports + ' bug report' + (x.reports === 1 ? '' : 's') + '</span>' : '') + '</div>' +
+        '<div class="dv-id" style="margin-top:6px">' + esc(x.id) + ' · last seen ' + esc(ago(x.last)) + '</div></a>').join('');
     };
-    app.innerHTML = '<p class="when"><a href="./">← All games</a> · updated ' + esc(fmt(d.updatedAt)) + '</p><h2 style="margin:0 0 10px">Every device</h2>' +
-      '<p class="when" style="margin:0 0 10px">One row per browser that ever opened the game, by its anonymous id (first 6 characters). No names, no addresses. Games = two-player games it played; W-L from its own stats screen.</p>' +
-      '<div class="card" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center"><label>Kind <select id="dv-kind"><option value="">all</option>' + kinds.map(x => '<option>' + esc(x) + '</option>').join('') + '</select></label>' +
-      '<label><input type="checkbox" id="dv-played"> played a game</label><label>Sort <select id="dv-sort"><option value="last">last seen</option><option value="first">first seen</option><option value="games">games</option><option value="visits">visits</option><option value="days">days</option></select></label>' +
-      '<span class="when" id="dv-n"></span></div><div class="card" style="overflow-x:auto;padding:0"><table style="border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums">' +
-      '<thead><tr style="text-align:left">' + ['Device', 'Kind', 'OS', 'Browser', 'Screen', 'Time zone', 'Door', 'First seen', 'Last seen', 'Days', 'Visits', 'Games', 'Finished', 'W-L', 'Builds'].map(h => '<th style="padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap">' + h + '</th>').join('') +
-      '</tr></thead><tbody id="dv-body"></tbody></table></div>';
-    app.querySelectorAll('#dv-kind, #dv-played, #dv-sort').forEach(i => i.addEventListener('change', draw));
+    app.querySelectorAll('#dv-q, #dv-kind, #dv-sort, #dv-played').forEach(i => i.addEventListener(i.id === 'dv-q' ? 'input' : 'change', draw));
     draw();
+  }
+  async function renderDevice(id) {
+    app.innerHTML = '<div class="empty">Reading ' + esc(id) + '…</div>';
+    let p = null; try { p = await get('stats/deviceProfiles/' + id); } catch (e) {}
+    if (!p) { app.innerHTML = '<div class="empty">No device ' + esc(id) + ' (profiles update every 10 minutes). <a href="?tab=devices">All devices</a></div>'; return; }
+    const cell = (n, l) => '<div class="dv-cell"><div class="n">' + n + '</div><div class="l">' + esc(l) + '</div></div>';
+    const games = p.gameList || [], reps = p.complaints || [], names = p.names || [];
+    const info = [['Kind', p.kind], ['System', p.os], ['Browser', p.browser], ['Screen', (p.screen || '') + (p.touch ? ' · touch' : '')], ['Time zone', p.tz], ['Language', p.lang],
+                  ['Came in by', (p.doors || []).join(', ')], ['First seen', fmtWhen(p.first)], ['Last seen', fmtWhen(p.last) + ' (' + ago(p.last) + ')'], ['Builds played', p.builds], ['Device id', p.id]]
+      .filter(r => r[1]).map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>').join('');
+    const gameRow = g => {
+      const res = g.res || 'U', resTxt = g.res || (g.fin ? '' : 'unfinished');
+      const opp = g.opp ? (g.od ? '<a href="?device=' + encodeURIComponent(g.od) + '">' + esc(g.opp) + '</a>' : esc(g.opp)) : (g.od ? '<a href="?device=' + encodeURIComponent(g.od) + '">an unnamed device</a>' : 'someone');
+      return '<div class="dv-game"><div class="when">' + esc(fmtWhen(g.t)) + '</div>' +
+        '<div style="min-width:0">' + (g.me ? esc(g.me) + ' ' : '') + 'vs ' + opp + ' <span class="when">· <a href="?room=' + encodeURIComponent(g.r) + '">' + esc(g.r) + '</a>' + (g.v ? ' · ' + esc(g.v) : '') + (g.fin ? '' : g.q > 4 ? ' · reached overtime' : g.q ? ' · reached Q' + g.q : '') + '</span></div>' +
+        '<div class="sc">' + (g.su != null ? g.su + '–' + g.so : '—') + '<span class="res ' + res + '">' + esc(resTxt || '·') + '</span></div></div>';
+    };
+    app.innerHTML = '<p class="when" style="margin:0 0 10px"><a href="?tab=devices">← All devices</a></p>' +
+      '<div class="card"><div class="dv-name" style="font-size:34px">' + devLabel(p) + '</div><div class="dv-meta">' + esc([p.kind, p.os, p.browser].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="dv-cells" style="margin-top:14px">' + cell(p.games || 0, 'games') + cell(p.complete || 0, 'played to the end') + cell(p.games ? wl(p) : '—', 'won–lost') + cell(p.visits || 0, 'visits') + cell(p.days || 0, 'days seen') + cell(names.length, 'usernames') + cell(reps.length, 'bug reports') + '</div></div>' +
+      '<h2>Usernames</h2>' + (names.length ? '<div class="card">' + names.map((n, i) => '<span class="pill' + (i === 0 ? ' clean' : '') + '" style="margin:0 6px 6px 0">' + esc(n[0]) + ' · ' + n[1] + (n[1] === 1 ? ' time' : ' times') + ' · ' + esc(fmtDate(n[2])) + (n[3] && fmtDate(n[3]) !== fmtDate(n[2]) ? ' – ' + esc(fmtDate(n[3])) : '') + '</span>').join('') +
+        '<p class="when" style="margin:6px 0 0">The first one names the device. A name is counted once per game (and per bug report) it was typed for.</p></div>' : '<div class="card when">No username yet — this device never played a two-player game.</div>') +
+      '<h2>Games (' + games.length + ')</h2>' + (games.length ? '<div class="card">' + games.map(gameRow).join('') + '</div>' : '<div class="card when">No two-player games.</div>') +
+      '<h2>Bug reports (' + reps.length + ')</h2>' + (reps.length ? reps.map(c => '<div class="dv-report"><div class="when">' + esc(fmtWhen(c.t)) + (c.r ? ' · <a href="?room=' + encodeURIComponent(c.r) + '">' + esc(c.r) + '</a>' : '') + (c.v ? ' · ' + esc(c.v) : '') + (c.name ? ' · as ' + esc(c.name) : '') + '</div>' +
+        (c.ch && c.ch.length ? '<div style="margin:4px 0">' + c.ch.map(x => '<span class="pill" style="margin:0 6px 4px 0">' + esc(x) + '</span>').join('') + '</div>' : '') + (c.text ? '<div>' + esc(c.text) + '</div>' : '') + '</div>').join('') : '<div class="card when">None.</div>') +
+      '<h2>Device</h2><div class="card"><dl class="dv-info">' + info + '</dl></div>';
   }
 
   const room = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
-  if (new URLSearchParams(location.search).get('devices') === '1') renderDevices();
+  const qs = new URLSearchParams(location.search), devId = qs.get('device');
+  const onDevices = !!devId || qs.get('tab') === 'devices' || qs.get('devices') === '1';
+  try { document.getElementById(onDevices ? 'tab-devices' : 'tab-games').setAttribute('aria-current', 'page'); } catch (e) {}
+  if (devId) renderDevice(devId);
+  else if (onDevices) renderDevices();
   else if (room) renderGame(room); else renderList();
 })();
 </script>

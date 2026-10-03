@@ -210,7 +210,11 @@ async function weekly() {
     const a = fromArchives();
     const d = await fromDb();
     let devs = null;
-    try { devs = require('./device-profiles.js').build(d.visitDays || {}, AUDITS, isTest); } catch (e) { console.error('device profiles: ' + (e && e.message)); }
+    try {
+        const DP = require('./device-profiles.js');
+        let ex = {}; try { ex = await DP.loadExtras(AUDITS, await require('./fb-auth.js').token()); } catch (eX) { console.error('device extras: ' + (eX && eX.message)); }
+        devs = DP.build(d.visitDays || {}, AUDITS, isTest, ex);
+    } catch (e) { console.error('device profiles: ' + (e && e.message)); }
     const stats = { updatedAt: Date.now(),
         two: { games: a.games, complete: a.complete, phoneSessions: a.phones, personHours: Math.round(a.personHours * 10) / 10, gameHours: Math.round(a.gameHours * 10) / 10, since: a.since, until: a.until,
                visits: d.visits, devices: d.devices, visitsSince: d.firstVisit },
@@ -227,7 +231,22 @@ async function weekly() {
     const r = await fetch(DB + 'stats/alltime.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify(stats) });
     console.log('published stats/alltime: ' + r.status);
     if (devs) {
-        const r2 = await fetch(DB + 'stats/devices.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify({ updatedAt: stats.updatedAt, list: devs.list }) });
-        console.log('published stats/devices (' + devs.list.length + ' devices): ' + r2.status);
+        // V444: the Devices tab's list (one card per device: its first username, kind, games, W-L, last seen) and, apart,
+        // every device's full profile (usernames, games, reports) — read one at a time when a card is opened. Each is
+        // published only when it changed (the profiles are ~1 MB).
+        const card = p => ({ id: p.id, name: p.name, names: p.names, kind: p.kind, os: p.os, browser: p.browser, games: p.games, won: p.won, lost: p.lost, tied: p.tied,
+                             complete: p.complete, reports: p.reports, visits: p.visits, days: p.days, first: p.first, last: p.last });
+        const crypto = require('crypto'), HASH = path.join(os.homedir(), 'rb2p', 'device-publish-hash.json');
+        let prev = {}; try { prev = JSON.parse(fs.readFileSync(HASH, 'utf8')); } catch (e) {}
+        const putIfChanged = async (key, body) => {
+            const h = crypto.createHash('sha1').update(JSON.stringify(body)).digest('hex');
+            if (prev[key] === h) { console.log('stats/' + key + ': unchanged'); return; }
+            const r2 = await fetch(DB + 'stats/' + key + '.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify(body) });
+            console.log('published stats/' + key + ': ' + r2.status);
+            if (r2.ok) prev[key] = h;
+        };
+        await putIfChanged('devices', { list: devs.list.map(card), unlinkedReports: (devs.unlinked || []).length });
+        await putIfChanged('deviceProfiles', devs.profiles);
+        try { fs.writeFileSync(HASH, JSON.stringify(prev)); } catch (e) {}
     }
 })().catch(e => { console.error(e); process.exit(1); });

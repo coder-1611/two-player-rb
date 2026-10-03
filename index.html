@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V443<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V444<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1692,7 +1692,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V443</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V444</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -17454,6 +17454,7 @@
             var ver = ''; try { ver = (document.querySelector('.prompt') || { textContent: '' }).textContent.match(/V\d+/)[0]; } catch (e) {}
             var rec = { name: rb2pName() || '?', room: myRoom || (function () { try { return sessionStorage.getItem('rb_room') || ''; } catch (e) { return ''; } })(),
                         role: myRole || '', ver: ver, text: t, choices: ch, ts: Date.now(), ua: String(navigator.userAgent || '').slice(0, 140),
+                        uid: (window._rb2p_uid ? window._rb2p_uid() : ''),   // V444: which device sent it (the device profiles)
                         diag: String(window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : '').slice(-1500) };
             var id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
             try { await FB.set(FB.ref(db, 'complaints/' + id), rec); }
@@ -18157,7 +18158,8 @@
             // chain on top of whatever's there so simulate()/sentLog still
             // work for debugging.
             if (window._rb2p_auditBind) window._rb2p_auditBind(myRoom, myRole);   // V365
-            if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '', uid: (window._rb2p_uid ? window._rb2p_uid() : '') }; } catch (e) { return {}; } })()));   // V388: which door; V392: which device
+            if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '', uid: (window._rb2p_uid ? window._rb2p_uid() : ''),
+                name: (function () { try { return String(localStorage.getItem('rb2p_name') || '').trim().slice(0, 40); } catch (eN) { return ''; } })() }; } catch (e) { return {}; } })()));   // V388: which door; V392: which device; V444: under which username (the device profiles)
             var origSend = window._twoPlayer.send.bind(window._twoPlayer);
             window._twoPlayer.send = function (outcome) {
                 // V208: stamp the moment we hand the ball to the opponent via a
