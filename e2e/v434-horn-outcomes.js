@@ -23,6 +23,8 @@ const cases = [
     ['M6 a touchdown and its try at the Q3 horn', 'horn-last-down.js', { HORN_Q: '3', HORN_KIND: 'td' }],
     ['M7 a pick-six at the Q1 horn (guard)', 'horn-last-down.js', { HORN_Q: '1', HORN_KIND: 'pick6' }],
     ['M10 a pick-six ties it at the Q4 horn — the try decides before overtime', 'horn-last-down.js', { HORN_Q: '4', HORN_KIND: 'pick6', HORN_SCORE: 'p6tie' }],
+    ['M6b a touchdown and a 2-point RUN try at the Q1 horn (V441, OPEN #0a: the scorer kicks off)', 'horn-last-down.js', { HORN_Q: '1', HORN_KIND: 'td2' }],
+    ['R1 a new drive ended within 60 s of a try ships as a turnover, not the try\'s kickoff (V441, OPEN #0b)', 'v441-retype.js', {}],
     ['M8 the receiver reloads at the halftime horn', 'horn-fovl.js', { HORN_Q: '2', HORN_EVENT: 'reload' }],
     ['M9 the receiver\'s screen is off at the Q1 horn', 'horn-fovl.js', { HORN_Q: '1', HORN_EVENT: 'hidden' }],
 ];

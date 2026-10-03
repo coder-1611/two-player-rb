@@ -94,7 +94,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     // ---- T5 ----
     check('T5 stale live payloads from before the last applied hand-off are ignored, and the post-try typing window is 60s',
           /opponentLivePayload\.iHaveBall === true &&\s*\n?\s*Number\(opponentLivePayload\.ts\) < \(Number\(window\._rb2p_lastAppliedOutcomeTs\) \|\| 0\)\) return;/.test(src) &&
-          /window\._rb2p_lastAppliedOutcomeTs = val\.ts;/.test(src) && /_rb2p_lastConvModalMs\) \|\| 0\) < 60000\) \{ type = 'TD'/.test(src), '');
+          /window\._rb2p_lastAppliedOutcomeTs = val\.ts;/.test(src) &&
+          // V441 (OPEN #0b): the 60 s window stands, for the try's own drive end only (a new drive keeps OTHER — e2e/v441-retype.js)
+          /Date\.now\(\) - offV394 < 60000\)/.test(src) && /if \(!newDriveV394\) \{ type = 'TD'/.test(src), '');
 
     await g.cleanup();
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');

@@ -1,6 +1,7 @@
 # the full regression: every suite here must pass (=== N passed, 0 failed ===) before a build ships.
 # A fix adds its own test here (the one that fails on the live build and passes on the fix).
 v440-orientation
+blue-circle
 v434-horn
 v434-horn-outcomes
 v432-rematch-join

@@ -1018,3 +1018,35 @@ to change play and call time outs".
   beside the picture; O3 upright = the screen, nothing rotated, the same picture back. V438: 0/3 (cut 45/66/138 px,
   chips over the game, rotated); V440: 3/3. e2e/v419-scroll.js T4 now asserts the upright screen and, turned sideways,
   taps landing where the finger is on a scrolled page.
+
+## V441 (2026-10-03): the blue circle answers a Chromebook click; a run is a snap; a turnover after a try stays a turnover
+
+**The blue circle** (the owner: "sometimes running the ball freeze sometimes while rest of game works", "sometimes just
+clicking on the blue circle didn't work"; research: `~/rb2p/research/BLUE-CIRCLE.md`). A run starts with a press within
+20 room px of the running back's feet (the blue ring, ball kp 19); any other press is a pass press — so a lost click
+looks like "the run froze". No mid-run freeze in 2,828 real hand-offs.
+- **B (fixed): a Chromebook click shorter than a frame was lost.** The engine reads the button at its steps; touch had a
+  latch for this (V259), the mouse did not. Tap-to-click delivers down+up back to back: 0/6 hand-offs at 0 ms in the
+  harness; 53 Chromebook downs clicked twice for one hand-off (Windows/Mac: 1). A left mouse press now arms the latch.
+  e2e/blue-circle.js T1: V440 0/3, V441 3/3.
+- **C (fixed by V440's layout, plus a belt):** presses were scaled by the canvas BUFFER size, so on a cover-stretched
+  landscape phone the lower screen read as the button strip (touch presses there: 29% answered vs 98% elsewhere). V440
+  shows the canvas at its buffer size — T3/T4 pass on V440 already; `_m01/_o01` now divide by the display scale too.
+- **D (gone with V440):** the rotated portrait phone's hit circle sat 30–80 px off the drawn ring — nothing is rotated now.
+- **A (the owner's call, not changed):** the hit circle is 20 px at the feet; players click the body (7.6 per 100
+  Chromebook hand-offs came after a registered miss). A 26 px circle 10 px up the body was tested, not shipped.
+
+**OPEN #0a — a run is a snap.** `_rb2p_lastSnapMs/Down` (and the score at the snap) were written only by the pass snap
+(cSNAP): a 2-pt RUN try crossing the horn was invisible to every "a try was snapped" test (V410, V434 C13/C10, V436),
+and a rushing touchdown's L1c baseline was the last PASS (VCUH, V433: 8 points never earned). A run's start (ball 0 → 19)
+now writes them. And POST-CONV's "never during a live play" guard never ran: `rb2pPlayInProgress` is declared in a later
+<script>'s scope (`typeof` was always 'undefined' — checked in a live page); it calls the export now (VCUH: the hand-off
+fired 0.3 s into a live run). Guard test: v434-horn-outcomes M6b (a 2-pt run try at the Q1 horn → the scorer kicks off),
+green on V440 and V441.
+
+**OPEN #0b — a turnover after a try stays a turnover** (17 drive ends in 14 rooms on 2 Oct: EEQG, KLHQ, CGQB …). V394
+typed every drive end within 60 s of the scorer's conversion offer as the touchdown's kickoff — also a NEW drive's
+turnover, so the receiver started at a kickoff return. Now only the try's own drive end: a normal down snapped since
+the offer (runs included), a hand-off taken, or one sent (other than a pick-six scorer's PAT_RESULT) keeps OTHER.
+e2e/v441-retype.js (in v434-horn-outcomes, R1): V440 0/2 (the turnover shipped TD; the partner started at its own 28),
+V441 2/2 (OTHER; the partner at the turnover spot).

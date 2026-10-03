@@ -76459,7 +76459,11 @@ function _hp2(_) {
             i) {
                 case "start":
                 case "move":
-                    "start" == i && "mouse" != _.pointerType && (window.__rbTapLatch = 2),
+                    /* V441 (BLUE-CIRCLE B, the owner: "sometimes just clicking on the blue circle didn't work"): a left
+                       MOUSE press arms the latch too. A touchpad tap-to-click (Chromebooks) delivers down+up back to back,
+                       inside one frame: no step ever saw the button, so the click on the running back (or a GUI button)
+                       did nothing at all — 53 Chromebook downs in the archive clicked twice for one hand-off. */
+                    "start" == i && ("mouse" != _.pointerType || 0 === _.button) && (window.__rbTapLatch = 2),
                     _ip2 = 0,
                         "mouse" == _.pointerType && (_ip2 = _.button),
                         -1 != _.button && (2 == _ip2 ? _ip2 = 1 : 1 == _ip2 && (_ip2 = 2),
@@ -86792,7 +86796,7 @@ function _m01(_) {
         return _rix < 0 && (_rix = _rwx), ~~((t - _rvx.left) * (_rix / _rwx))
     }
     _No2(canvas, _Oo2),
-        t -= _Oo2.left;
+        t = (t - _Oo2.left) / (_Oo2.scaleX || 1);   /* V441 (BLUE-CIRCLE C): CSS px -> buffer px (1 when the canvas shows at its buffer size) */
     var i = _fI2;
     return i < 0 && (i = _IA1()),
         ~~(t * (i / _IA1()))
@@ -86805,7 +86809,7 @@ function _o01(_) {
         return _riy < 0 && (_riy = _rhy), ~~((t - _rvy.top) * (_riy / _rhy))
     }
     _No2(canvas, _Oo2),
-        t -= _Oo2.top;
+        t = (t - _Oo2.top) / (_Oo2.scaleY || 1);   /* V441 (BLUE-CIRCLE C): CSS px -> buffer px */
     var i = _dI2;
     return i < 0 && (i = _JA1()),
         ~~(t * (i / _JA1()))
@@ -121551,7 +121555,8 @@ function _ZN4() {
         // so engine buttons (PAT 1PT/2PT modal) never see the click. The
         // input handlers arm __rbTapLatch=2 on touch-down; here we force one
         // full step of button-1 held, then let it release the next step.
-        // Mouse input never arms the latch — desktop behavior unchanged.
+        // V441 (BLUE-CIRCLE B): a left mouse press arms it too (a click shorter than a frame was lost);
+        // a mouse held longer than a frame is unaffected.
         window.__rbTapLatch === 2 ? (this._WN4 |= 1, window.__rbTapLatch = 1)
             : window.__rbTapLatch === 1 && (window.__rbTapLatch = 0),
         0 != (1 & this._WN4) ? (this._hn2[0] = 1,

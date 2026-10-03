@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V440<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V441<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1692,7 +1692,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V440</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V441</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3194,7 +3194,9 @@
                     // hand-off never fired and the Vy=13 keep gave the scorer a drive at its 35. A try snapped before the horn
                     // ends the drive wherever the ball is.
                     if (!trySnapped && Math.abs(Math.abs(Number(em.engineYardLineSigned)) - 48) > 1.5) return;
-                    if (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress()) return;
+                    // V441 (VCUH: the hand-off fired 0.3 s into a live run): rb2pPlayInProgress is declared in a later
+                    // <script>'s scope, so `typeof` was always 'undefined' here and this guard never ran — its export does
+                    if (typeof window._rb2p_playInProgress === 'function' && window._rb2p_playInProgress()) return;
                     window._rb2p_postConvHandoffFor = offer;
                     if (window._rb2p_diagLog) window._rb2p_diagLog('POST-CONV the try crossed the horn and left me a drive at the 2 — handing off (TD kickoff)');
                     if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'post-conv-handoff', y: Math.round(Number(em.engineYardLineSigned)), d: Number(em.engineDownNumber) });
@@ -4790,8 +4792,18 @@
                     rb2pPrevBallKp = bkp;
                     // V419 (F5, BHZJ): a run starts by pressing near the back (ball kp 19) and never
                     // passes through 1/2, so it left no snap on record — the play settled with
-                    // nothing before it and looked like a stuck player. Recorded for the audit
-                    // ONLY: no game state reads this (the feed's cSNAP and lastSnapMs are unchanged).
+                    // nothing before it and looked like a stuck player. Recorded for the audit.
+                    // V441 (OPEN #0a, VCUH: 8 points never earned): and for the GAME too — a run is a snap. Every
+                    // "a try was snapped / a down was played since" test (V410/V434 C13/C10/V436, the conversion gate's
+                    // L1c "+6 since the snap", "played on after the hand-off") read _rb2p_lastSnapMs/Down, which only the
+                    // pass snap (cSNAP) wrote: a 2-pt RUN try crossing the horn was invisible, and a rushing touchdown's
+                    // baseline was the last PASS.
+                    try {
+                        if (bkp === 19 && prev !== 19 && prev !== 1 && prev !== 2) {
+                            var emRG = RB.engineState();
+                            if (emRG) { window._rb2p_scoreAtLastSnap = Number(emRG.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); window._rb2p_lastSnapDown = Number(emRG.engineDownNumber); }
+                        }
+                    } catch (eRG) {}
                     try {
                         if (bkp === 19 && prev !== 19 && prev !== 1 && prev !== 2 && window._rb2p_audit) {
                             var emRS = RB.engineState();
@@ -11195,7 +11207,18 @@
                 // V394 (ILVQ, OHVZ, DMVF, YMLH): a try that dies at the horn ends on a dead stage and was
                 // typed OTHER — the receiver then took the ball on its 11. After a conversion the
                 // scorer kicks off: type it as the touchdown drive-end it is.
-                if (type === 'OTHER' && Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 60000) { type = 'TD'; if (window._rb2p_diagLog) window._rb2p_diagLog('drive-end after a conversion typed TD (kickoff), not OTHER'); }
+                // V441 (OPEN #0b: 17 drive ends in 14 rooms on 2 Oct — EEQG, KLHQ …): ONLY the try's own drive end. A
+                // NEW drive since the offer (a normal down snapped — runs included since V441 —, a hand-off taken, or one
+                // sent other than a pick-six scorer's PAT_RESULT) ends as what it is: a turnover hands over at its spot,
+                // not at a kickoff return.
+                var offV394 = Number(window._rb2p_lastConvModalMs) || 0;
+                var sentV394 = window._rb2p_lastSentOutcome && window._rb2p_lastSentOutcome.type !== 'PAT_RESULT' ? (Number(window._rb2p_lastSentOutcomeMs) || 0) : 0;
+                var newDriveV394 = (Number(window._rb2p_lastSnapMs) > offV394 && Number(window._rb2p_lastSnapDown) !== 6) ||
+                                   (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) > offV394 || sentV394 > offV394;
+                if (type === 'OTHER' && Date.now() - offV394 < 60000) {
+                    if (!newDriveV394) { type = 'TD'; if (window._rb2p_diagLog) window._rb2p_diagLog('drive-end after a conversion typed TD (kickoff), not OTHER'); }
+                    else if (window._rb2p_diagLog) window._rb2p_diagLog('drive-end within 60 s of a conversion, but on a NEW drive — kept OTHER (the turnover spot)');
+                }
                 // V317: prevVy is frequently stale on a genuine INT/fumble (reads
                 // active-play → typed OTHER). The real-time _Vy=8 latch is reliable;
                 // if it fired in the last few seconds this possession change IS a

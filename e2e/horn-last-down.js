@@ -58,7 +58,7 @@ async function throwAtDefender(page) {
 }
 
 (async () => {
-    const Q = Number(process.env.HORN_Q || 1), KIND = process.env.HORN_KIND || 'run', MODE = process.env.HORN_MODE || 'fix', SCORE = process.env.HORN_SCORE || 'lead';
+    const Q = Number(process.env.HORN_Q || 1), KIND0 = process.env.HORN_KIND || 'run', TRY2 = KIND0 === 'td2', KIND = TRY2 ? 'td' : KIND0, MODE = process.env.HORN_MODE || 'fix', SCORE = process.env.HORN_SCORE || 'lead';
     console.log('=== HORN last down — ' + KIND + ' at the Q' + Q + ' horn, mode ' + MODE + (Q === 4 ? ', score ' + SCORE : '') + ' ===');
     const g = await L.TP.startTwoPlayerGame({});
     let verdict = 'ran';
@@ -169,6 +169,8 @@ async function throwAtDefender(page) {
                 const s = await L.st(P.page); if (!s) continue;
                 const bl = await buttons(P.page);
                 // a conversion is answered on any phone: a pick-six scorer plays its try while flagged "waiting" (the bridge's own note)
+                // V441 (td2): a 2-point RUN try — the ball goes 0 -> 19 (a hand-off), never through the pass snap (OPEN #0a, VCUH)
+                if (TRY2 && bl.some(b => /^2 ?pt/i.test(b.label || ''))) { await pressLabel(P.page, /^2 ?pt/i); await sleep(1500); const rr2 = await L.realDown(P.page, { buttons: false, straight: true }); acts.push(P.role + ' try 2PT run ' + JSON.stringify(rr2 && rr2.result)); continue; }
                 if (bl.some(b => /^1 ?pt/i.test(b.label || ''))) { const lab = await pressLabel(P.page, /^1 ?pt/i); await sleep(1000); let k = null; try { k = await QB.kickOne(P.page, await QB.calibrate(P.page), {}); } catch (e) {} acts.push(P.role + ' try 1PT ' + JSON.stringify(k && k.result)); continue; }
                 if (s.wait) continue;
                 if (s.q === Q && s.ball > 0 && s.clk > 0 && s.d >= 1 && s.d <= 4) { const rr = await L.realDown(P.page, { buttons: true }); acts.push(P.role + ' played a down in Q' + Q + ' at clk ' + s.clk + ': ' + (rr && rr.result)); }
