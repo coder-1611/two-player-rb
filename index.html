@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V446<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V447<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1692,7 +1692,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V446</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V447</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4375,27 +4375,85 @@
                 } catch (e) {}
             }, 100);
 
+            // V447 (the owner: "clicking the back button takes too many clicks on iphone, this is when we go view
+            // rosters"). Measured on an emulated iPhone (WebKit, touch): BACK itself answered one tap, but
+            //   - a swipe on the roster that ended on another card opened THAT card (the engine opens the card under a
+            //     lifted finger), and V86's BACK only went from a card back to the grid — so every look-around cost
+            //     two more taps;
+            //   - the action waited for the browser's click, which iOS drops when the finger moves a little.
+            // Now: BACK leaves the roster in ONE tap from the grid or a card; a card has its own ◀ ROSTER for the grid;
+            // both act on the finger lifting off them (the click that would follow is swallowed, so it cannot land on
+            // the lobby that just appeared under the finger); a touch that moved is a swipe, never a tap on a card.
+            var previewBtnCss =
+                'position:fixed;bottom:10px;z-index:9999;display:none;' +
+                'background:#1a1a2e;color:#fff;border:2px solid #fff;border-radius:8px;' +
+                'min-height:44px;padding:12px 20px;font-family:monospace;font-size:14px;font-weight:bold;' +
+                'letter-spacing:2px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;' +
+                '-webkit-user-select:none;user-select:none;';
             var previewBackBtn = document.createElement('button');
             previewBackBtn.id = 'rb-preview-back';
+            previewBackBtn.type = 'button';
             previewBackBtn.textContent = '◀ BACK';
-            previewBackBtn.style.cssText =
-                'position:fixed;left:10px;bottom:10px;z-index:9999;display:none;' +
-                'background:#1a1a2e;color:#fff;border:2px solid #fff;border-radius:8px;' +
-                'padding:10px 18px;font-family:monospace;font-size:14px;font-weight:bold;' +
-                'letter-spacing:2px;cursor:pointer;';
+            previewBackBtn.style.cssText = previewBtnCss + 'left:10px;';
             document.body.appendChild(previewBackBtn);
-            previewBackBtn.addEventListener('click', function () {
-                // V86: BACK is room-aware. From a player's profile page
-                // (opened by tapping a card) it returns to the roster grid,
-                // staying in preview. Only from the roster grid does it exit
-                // all the way out to the lobby.
+            var previewRosterBtn = document.createElement('button');
+            previewRosterBtn.id = 'rb-preview-roster';
+            previewRosterBtn.type = 'button';
+            previewRosterBtn.textContent = '◀ ROSTER';
+            previewRosterBtn.style.cssText = previewBtnCss + 'left:150px;';
+            document.body.appendChild(previewRosterBtn);
+            var previewSwallowClickUntil = 0;
+            document.addEventListener('click', function (e) {
+                if (Date.now() < previewSwallowClickUntil) { previewSwallowClickUntil = 0; e.preventDefault(); e.stopPropagation(); }
+            }, true);
+            function previewTapButton(btn, act) {
+                var down = false, firedAt = 0;
+                btn.addEventListener('pointerdown', function () { down = true; });
+                btn.addEventListener('pointercancel', function () { down = false; });
+                btn.addEventListener('pointerup', function (e) {
+                    if (!down) return; down = false;
+                    var r = btn.getBoundingClientRect(), pad = 24;   // a finger that slid a little off still counts
+                    if (e.clientX < r.left - pad || e.clientX > r.right + pad || e.clientY < r.top - pad || e.clientY > r.bottom + pad) return;
+                    firedAt = Date.now(); previewSwallowClickUntil = firedAt + 700;
+                    act();
+                });
+                btn.addEventListener('click', function () {   // keyboard / a browser without pointer events
+                    if (Date.now() - firedAt < 700) return;
+                    firedAt = Date.now(); act();
+                });
+            }
+            previewTapButton(previewBackBtn, function () { window._rb2p_exitRosterPreview(); });
+            previewTapButton(previewRosterBtn, function () {
                 var room = (typeof _ft !== 'undefined' && _ft._gt) ? _ft._gt() : -1;
-                if (room === PROFILE_ROOM) {
-                    try { _Hj(ROSTER_ROOM); } catch (e) {}
-                } else {
-                    window._rb2p_exitRosterPreview();
-                }
+                if (room === PROFILE_ROOM) { try { _Hj(ROSTER_ROOM); } catch (e) {} }
             });
+            // a swipe is not a tap: a press on the roster or a card that moves more than 12 px is handed to the engine
+            // as a finger lifted off the screen (no card under it). Roster preview only — never in a game.
+            (function () {
+                var drag = null;
+                function inPreview() {
+                    if (!window._rb2p_rosterPreviewActive) return false;
+                    var room = -1; try { room = _ft._gt(); } catch (e) {}
+                    return room === ROSTER_ROOM || room === PROFILE_ROOM;
+                }
+                window.addEventListener('pointerdown', function (e) {
+                    drag = (e.target && e.target.id === 'canvas' && inPreview()) ? { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false } : null;
+                }, true);
+                window.addEventListener('pointermove', function (e) {
+                    if (drag && e.pointerId === drag.id && !drag.moved && Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 12) drag.moved = true;
+                }, true);
+                window.addEventListener('pointerup', function (e) {
+                    if (!drag || e.pointerId !== drag.id) return;
+                    var d = drag; drag = null;
+                    if (!d.moved || !inPreview()) return;
+                    var cv = document.getElementById('canvas'); if (!cv) return;
+                    e.stopImmediatePropagation();
+                    try {
+                        cv.dispatchEvent(new PointerEvent('pointerup', { pointerId: e.pointerId, pointerType: e.pointerType, isPrimary: e.isPrimary,
+                            clientX: -10000, clientY: -10000, button: e.button, buttons: 0, bubbles: true, cancelable: true }));
+                    } catch (eP) {}
+                }, true);
+            })();
             window._rb2p_previewRoster = function (uid) {
                 try {
                     var st = _6E2._Ue2(64);
@@ -4421,6 +4479,7 @@
                 window._rb2p_rosterPreviewActive = false;
                 window._rb2p_previewUid = null;   // V144: stop card recolor
                 previewBackBtn.style.display = 'none';
+                previewRosterBtn.style.display = 'none';
                 try { _Hj(14); } catch (e) {}   // rm_home
                 if (typeof window._rb2p_afterPreview === 'function') {
                     try { window._rb2p_afterPreview(); } catch (e) {}
@@ -4430,11 +4489,14 @@
                 try {
                     if (!window._rb2p_rosterPreviewActive) {
                         if (previewBackBtn.style.display !== 'none') previewBackBtn.style.display = 'none';
+                        if (previewRosterBtn.style.display !== 'none') previewRosterBtn.style.display = 'none';
                         return;
                     }
                     var room = (typeof _ft !== 'undefined' && _ft._gt) ? _ft._gt() : -1;
                     if (room !== ROSTER_ROOM && room !== PROFILE_ROOM) return;
                     previewBackBtn.style.display = 'block';
+                    var rosterShow = room === PROFILE_ROOM ? 'block' : 'none';   // V447: the grid, from a card
+                    if (previewRosterBtn.style.display !== rosterShow) previewRosterBtn.style.display = rosterShow;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     for (var i = 0; i < all.length; i++) {
                         var inst = all[i];
