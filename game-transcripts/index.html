@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Game Transcripts — Retro Bowl 2P</title>
-<link rel="icon" type="image/jpeg" href="/favicon.jpg">
+<link rel="icon" type="image/jpeg" href="../favicon.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -106,11 +106,11 @@
 <body>
 <div class="wrap">
   <h1>Game Transcripts</h1>
-  <p class="sub">Every game since V365 records itself. This page tells it back in plain English and runs the same checks the detector runs — <a href="/">back to the game</a>.</p>
-  <nav class="tabs" aria-label="Sections"><a href="./" id="tab-games">Games</a><a href="?tab=devices" id="tab-devices">Devices</a></nav>
+  <p class="sub">Every game since V365 records itself. This page tells it back in plain English and runs the same checks the detector runs — <a href="../">back to the game</a>.</p>
+  <nav class="tabs" aria-label="Sections"><a href="?" id="tab-games">Games</a><a href="?tab=devices" id="tab-devices">Devices</a></nav>
   <div id="app"><div class="empty">Loading…</div></div>
 </div>
-<script src="/tools/audit-rules.js"></script>
+<script src="../tools/audit-rules.js"></script>
 <script>
 (function () {
   'use strict';
@@ -210,7 +210,7 @@
     const real = rows.filter(r => !isTestRoom(r));
     const shown = showTests ? rows : real;
     if (!shown.length) { app.innerHTML = '<div class="empty">No recorded games yet. Play one on V365 or later and it will appear here.' + (rows.length ? ' <a href="?tests=1">Show ' + rows.length + ' test-harness games</a>' : '') + '</div>'; return; }
-    const foot = (!showTests && rows.length > real.length) ? '<p class="when" style="text-align:center;margin-top:18px">' + (rows.length - real.length) + ' test-harness game' + (rows.length - real.length === 1 ? '' : 's') + ' hidden · <a href="?tests=1">show them</a></p>' : (showTests ? '<p class="when" style="text-align:center;margin-top:18px"><a href="./">hide test-harness games</a></p>' : '');
+    const foot = (!showTests && rows.length > real.length) ? '<p class="when" style="text-align:center;margin-top:18px">' + (rows.length - real.length) + ' test-harness game' + (rows.length - real.length === 1 ? '' : 's') + ' hidden · <a href="?tests=1">show them</a></p>' : (showTests ? '<p class="when" style="text-align:center;margin-top:18px"><a href="?">hide test-harness games</a></p>' : '');
     // V387: bug reports from the in-game "!" box, newest first
     let complaintsHtml = '';
     try {
@@ -338,7 +338,7 @@
     let who = null, myComplaints = [];
     try { [aud, outcomes, fin, who] = await Promise.all([get('rooms/' + code + '/audit'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/final'), get('rooms/' + code + '/names')]); }
     catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
-    if (!aud || (!aud.a && !aud.b)) { app.innerHTML = '<div class="empty">No transcript for ' + esc(code) + ' (played before V365, or already cleaned up). <a href="./">All games</a></div>'; return; }
+    if (!aud || (!aud.a && !aud.b)) { app.innerHTML = '<div class="empty">No transcript for ' + esc(code) + ' (played before V365, or already cleaned up). <a href="?">All games</a></div>'; return; }
     const R = window.RB2P_AUDIT;
     const tl = R.toTimeline({ a: aud.a || {}, b: aud.b || {} });
     const nm = withWho(names(outcomes), who);
@@ -392,7 +392,7 @@
       .replace(/\bboot\b/g, 'refresh');
     let html = '<div class="card"><div class="row"><div class="grow"><div class="code">' + esc(code) + '</div><div class="teams">' + esc(nm.a) + ' vs ' + esc(nm.b) + ' · ' + esc(fmtWhen(tl[0].t)) + ' · ' + dur + ' min' + (live ? ' · still going' : ended ? '' : ' · abandoned') + '</div></div>' + verdict + '</div>' +
       '<div class="score" style="margin-top:10px"><span class="you">' + sa[0] + '</span> <span style="color:var(--mute)">–</span> <span class="opp">' + sa[1] + '</span></div><div class="teams">' + esc(nm.a) + ' – ' + esc(nm.b) + '</div>' +
-      '<p style="margin:12px 0 0">' + esc(summary) + (tl.clockSkewMs ? ' The two phones\' clocks differed by about ' + Math.abs(tl.clockSkewMs / 1000).toFixed(0) + ' seconds; ' + esc(nm.b) + '\'s lines were shifted to match.' : '') + '</p><div style="margin-top:12px"><a class="btn" href="./" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
+      '<p style="margin:12px 0 0">' + esc(summary) + (tl.clockSkewMs ? ' The two phones\' clocks differed by about ' + Math.abs(tl.clockSkewMs / 1000).toFixed(0) + ' seconds; ' + esc(nm.b) + '\'s lines were shifted to match.' : '') + '</p><div style="margin-top:12px"><a class="btn" href="?" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
 
     if (res.flags.length) {
       if (myComplaints.length) html += '<h2>What the players reported</h2>' + myComplaints.map(complaintCard).join('');
