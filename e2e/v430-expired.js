@@ -7,7 +7,7 @@
 // RE-STAMPED at the send (V354) — from a parked engine that V293 floors at 0:01 (a parked engine must never see 0:00).
 // So the hand-off said 0:01, and the receiver got a second the play had already used.
 //
-// V434 (the horn law, ~/rb2p/research/HORN-RESEARCH.md): the hand-off carries 0:00 and the receiver's engine ends
+// V434 (the horn law, ~/Projects/two-player-rb/.rb2p/research/HORN-RESEARCH.md): the hand-off carries 0:00 and the receiver's engine ends
 // the quarter itself — its own time-up, no down at 0:01, nothing bounced back. V430 kept 0:00 too but let the receiver
 // try to stage a drive at 0:00 (the engine refused, the rescuers bounced it: the V432 revert); V432 put the 0:01 back.
 // X1–X3 now assert the horn rule; e2e/v434-horn.js plays the same horns through real downs.

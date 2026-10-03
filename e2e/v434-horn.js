@@ -1,6 +1,6 @@
 // e2e/v434-horn.js — every quarter ends at its horn through the engine's own time-up: no 0:01 extra play, no bounce
 // (the owner: "I want this glitch gone along with the buffer", "possession ALWAYS goes to Team B" at halftime).
-// The research: ~/rb2p/research/HORN-RESEARCH.md (Opus 5.5 max, 2026-10-02). The cases are its tests, run with REAL
+// The research: ~/Projects/two-player-rb/.rb2p/research/HORN-RESEARCH.md (Opus 5.5 max, 2026-10-02). The cases are its tests, run with REAL
 // downs (the QB bot's trusted input, the engine's own 4th-down dialog) — no synthetic drive end:
 //
 //   M1 Q1 / Q2 / Q3 / Q4 decided / Q4 tied  (e2e/horn-fovl.js) — FOVL's state: a real turnover on downs decided at 0:00,

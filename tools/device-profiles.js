@@ -175,12 +175,12 @@ function build(visitDays, auditsDir, isTest, extra) {
     return { summary, list, profiles, unlinked };
 }
 
-// the rooms' names and the complaints, cached on this Mac (~/rb2p/device-cache.json): a room's names are fetched again
+// the rooms' names and the complaints, cached on this Mac (~/Projects/two-player-rb/.rb2p/device-cache.json): a room's names are fetched again
 // only when its archive file changed since; complaints are write-once — only new ids are fetched
 async function loadExtras(auditsDir, tok) {
     const os = require('os');
     const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
-    const CACHE = path.join(os.homedir(), 'rb2p', 'device-cache.json');
+    const CACHE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'device-cache.json');
     let c = {}; try { c = JSON.parse(fs.readFileSync(CACHE, 'utf8')); } catch (e) { c = {}; }
     c.names = c.names || {}; c.complaints = c.complaints || {};
     const getJ = async p => { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
@@ -210,12 +210,12 @@ if (require.main === module) {
         const os = require('os');
         const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
         const tok = await require('./fb-auth.js').token();
-        const cache = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), 'rb2p', 'stats-day-cache.json'), 'utf8')).visits || {}; } catch (e) { return {}; } })();
+        const cache = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'stats-day-cache.json'), 'utf8')).visits || {}; } catch (e) { return {}; } })();
         const days = Object.keys(await (await fetch(DB + 'visits.json?shallow=true&auth=' + tok)).json() || {}).sort();
         const visitDays = {};
         for (const d of days) visitDays[d] = cache[d] || await (await fetch(DB + 'visits/' + d + '.json?auth=' + tok)).json() || {};
         const isTest = r => !!r && (r.src === 'local' || /localhost|127\.0\.0\.1/.test(String(r.host || '')) || /HeadlessChrome/.test(String(r.ua || '')));
-        const AUD = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+        const AUD = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
         const ex = await loadExtras(AUD, tok);
         const out = build(visitDays, AUD, isTest, ex);
         console.log(JSON.stringify(out.summary, null, 1).slice(0, 1500) + ' …');

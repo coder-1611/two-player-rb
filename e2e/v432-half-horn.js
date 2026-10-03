@@ -6,7 +6,7 @@
 // on the field (EMPTY-FIELD re-staged the drive — FAILED), its engine's halftime turnover went back as a PUNT stamped
 // 0:00, the partner did the same, and the two phones bounced empty possessions every ~7 s (FOVL 5 bounces, ONFE 7 —
 // nobody could snap). V432 reverted to the 0:01 buffer (the receiver plays one extra down). V434 (the horn law,
-// ~/rb2p/research/HORN-RESEARCH.md) keeps 0:00 AND ends the quarter through the engine's own time-up at the one place a
+// ~/Projects/two-player-rb/.rb2p/research/HORN-RESEARCH.md) keeps 0:00 AND ends the quarter through the engine's own time-up at the one place a
 // drive is staged (forceUserOffenseDrive): no extra down, no empty field for a rescuer to re-stage, nothing to bounce.
 //
 // The drive end at the horn is driven the way V430's own test drove it (e2e/v430-expired.js: the clock reaches 0:00,

@@ -7,8 +7,8 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 NODE="$(command -v node)"
 LABEL="com.rb2p.embed-watch"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-LOG="$HOME/rb2p/embed-watch.log"
-mkdir -p "$HOME/Library/LaunchAgents" "$HOME/rb2p"
+LOG="$HOME/Projects/two-player-rb/.rb2p/embed-watch.log"
+mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Projects/two-player-rb/.rb2p"
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

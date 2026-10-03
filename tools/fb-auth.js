@@ -3,7 +3,7 @@
 // Firebase rate-limits anonymous sign-up per IP (TOO_MANY_ATTEMPTS_TRY_LATER).
 // Minting a fresh user per audit and per watcher tick tripped it and took the
 // e2e harness down with it. The phones never had this problem: they cache the
-// token and refresh it. So do the tools now — one identity in ~/rb2p/.fbtok.json,
+// token and refresh it. So do the tools now — one identity in ~/Projects/two-player-rb/.rb2p/.fbtok.json,
 // refreshed through securetoken when it is within 5 minutes of expiry, and a
 // brand-new sign-up only when there is no refresh token at all.
 'use strict';
@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
-const FILE = path.join(os.homedir(), 'rb2p', '.fbtok.json');
+const FILE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', '.fbtok.json');
 
 function load() { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) { return null; } }
 function save(t) { try { fs.mkdirSync(path.dirname(FILE), { recursive: true }); fs.writeFileSync(FILE, JSON.stringify(t)); } catch (e) {} }

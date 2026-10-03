@@ -89,7 +89,7 @@ console.log('=== V432 CHECKER (hand-off ping-pong) ===');
     check('P6 a hand-off re-sent with the same ts is not another bounce', pp(g.r).length === 0, JSON.stringify(g.r.frozen.intervals));
 }
 {
-    const dir = '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+    const dir = '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
     if (!fs.existsSync(path.join(dir, 'FOVL.json'))) console.log('  SKIP  P7 (no archive on this machine)');
     else {
         const want = { ATAN: 'permanent', FOVL: 'permanent', JCPA: 'permanent', ONFE: 'permanent', HIHR: 'temporary', HNWX: 'temporary', PHCY: 'temporary', TWYB: 'temporary', WGVH: 'temporary', BVTQ: null, GCPD: null, QNGB: null };

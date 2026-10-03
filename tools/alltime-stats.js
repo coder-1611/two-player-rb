@@ -21,7 +21,7 @@ const GK = new Set(['snap', 'settle', 'score', 'q', 'send', 'recv', 'conv', 'p6'
 const GAP_MS = 5 * 60 * 1000;
 const dry = process.argv.includes('--dry');
 // the archive is gitignored and lives in the main tree; a worktree reads that one
-const AUDITS = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+const AUDITS = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
 
 async function ownerToken() {
     const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config/configstore/firebase-tools.json'), 'utf8'));
@@ -66,7 +66,7 @@ function fromArchives() {
 // V426 (infra): this ran every 10 minutes and downloaded the whole visits and solo trees TWICE per run (once for
 // the day list, once per day) — ~4.6 MB a run, ~0.66 GB a day on a free plan allowed 10 GB a month. Days before
 // yesterday (UTC keys) never change: they are kept on this Mac and read from the database once.
-const DAY_CACHE = path.join(os.homedir(), 'rb2p', 'stats-day-cache.json');
+const DAY_CACHE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'stats-day-cache.json');
 let dayCache = null;
 async function dayReader() {
     const tok = await require('./fb-auth.js').token();
@@ -236,7 +236,7 @@ async function weekly() {
         // published only when it changed (the profiles are ~1 MB).
         const card = p => ({ id: p.id, name: p.name, names: p.names, kind: p.kind, os: p.os, browser: p.browser, games: p.games, won: p.won, lost: p.lost, tied: p.tied,
                              complete: p.complete, reports: p.reports, visits: p.visits, days: p.days, first: p.first, last: p.last });
-        const crypto = require('crypto'), HASH = path.join(os.homedir(), 'rb2p', 'device-publish-hash.json');
+        const crypto = require('crypto'), HASH = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'device-publish-hash.json');
         let prev = {}; try { prev = JSON.parse(fs.readFileSync(HASH, 'utf8')); } catch (e) {}
         const putIfChanged = async (key, body) => {
             const h = crypto.createHash('sha1').update(JSON.stringify(body)).digest('hex');

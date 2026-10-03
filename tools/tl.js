@@ -15,7 +15,7 @@ const R = require('./audit-rules.js');
 const args = process.argv.slice(2);
 const code = String(args[0] || '').toUpperCase();
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-const ARCH = opt('--archive', fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits');
+const ARCH = opt('--archive', fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits');
 if (!code) { console.error('usage: node tools/tl.js CODE [--game N] [--from S] [--to S] [--kinds a,b] [--grep RE] [--no-stage]'); process.exit(2); }
 const j = JSON.parse(fs.readFileSync(path.join(ARCH, code + '.json'), 'utf8'));
 let tl = (j.timeline || []).slice().sort((a, b) => a.t - b.t);

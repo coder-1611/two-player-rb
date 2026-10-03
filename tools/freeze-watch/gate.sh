@@ -5,7 +5,7 @@
 # both results are printed.
 PORT=${1:-8801}
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-OUT=${2:-$HOME/rb2p/freeze-watch/gate-$(date +%Y%m%d-%H%M)}
+OUT=${2:-$HOME/Projects/two-player-rb/.rb2p/freeze-watch/gate-$(date +%Y%m%d-%H%M)}
 mkdir -p "$OUT"; cd "$REPO" || exit 2
 bash tools/freeze-watch/own-port.sh "$PORT" "$REPO" || { echo "GATE RED — port $PORT is not usable"; exit 1; }
 SUITES=$(grep -v '^#' tools/freeze-watch/suites.txt | grep -v '^\s*$')

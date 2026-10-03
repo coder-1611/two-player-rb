@@ -6,7 +6,7 @@
 // the ball is shoved to midfield, the conversion modal is popped, and you see
 // where it lands. Windows stay open until you press Ctrl-C.
 //
-//   cd ~/rb2p/two-player-rb && node e2e/watch-live.js
+//   cd ~/Projects/two-player-rb && node e2e/watch-live.js
 const H = require('./harness');
 const TP = require('./two-player');
 const puppeteer = H.puppeteer;

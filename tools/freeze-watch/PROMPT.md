@@ -18,8 +18,8 @@ again and the problem is often on a deeper level."* So, every run:
 - **check the detector** — a freeze it misses is a freeze; an artifact it invents is a wasted fix.
 
 ## Where things are
-- Repo `coder-1611/two-player-rb`. **Your worktree: `~/rb2p/wt-auto`** (branch `auto`, reset to `origin/main` by the
-  runner) — work only there; test port **8801**. The **main tree `~/rb2p/two-player-rb` is the live build**: the embed
+- Repo `coder-1611/two-player-rb`. **Your worktree: `~/Projects/two-player-rb/.rb2p/wt-auto`** (branch `auto`, reset to `origin/main` by the
+  runner) — work only there; test port **8801**. The **main tree `~/Projects/two-player-rb` is the live build**: the embed
   LaunchAgent builds from it — never edit it or leave files in it; to run a test against the live build, copy the test
   to `e2e/_tmp-<name>.js` there, run it with `RB_E2E_PORT=8802`, delete the copy.
 - `index.html` = the bridge (~20k lines — grep, read windows). `retrobowl.js` = the GameMaker engine (obfuscated;
@@ -28,8 +28,8 @@ again and the problem is often on a deeper level."* So, every run:
   `FIX-AUDIT-2026-09-30.md` — how fixes are judged against real games (the method you repeat in step 1).
   `tools/freeze-watch/OPEN.md` — known roots not fixed yet, in order; take the top one when the brief has no new
   freeze; add what you find and cannot fix today; move what you fix to Done.
-- Archive of real games: `~/rb2p/two-player-rb/audits/<CODE>.json` (timeline of both phones + report), written by the
-  audit watcher (LaunchAgent `com.rb2p.audit-watch`, log `~/rb2p/audit-watch.log`).
+- Archive of real games: `~/Projects/two-player-rb/audits/<CODE>.json` (timeline of both phones + report), written by the
+  audit watcher (LaunchAgent `com.rb2p.audit-watch`, log `~/Projects/two-player-rb/.rb2p/audit-watch.log`).
 - Tools (run from the worktree): `node tools/tl.js CODE --from S --to S --no-stage` (a timeline window),
   `node tools/audit-game.js CODE --dry` (the checker's report), `node tools/stuck-scan.js CODE…` (the independent
   stuck measure), `tools/audit-rules.js` (the checker: `R.realign`, `R.audit`), `tools/freeze-watch/firings.js` (did a
@@ -52,7 +52,7 @@ again and the problem is often on a deeper level."* So, every run:
   gone along with the buffer".** A quarter ends ONLY through the engine's own time-up at 0:00 (`_rb2p_hornEnd`, reached
   from `forceUserOffenseDrive`); the keep / Q3 law / final / OT flip decide the next period. Never roll that time-up
   back, never stage a down at a regulation 0:00, never re-add a 0:01 floor read or buffer. Read
-  `~/rb2p/research/HORN-RESEARCH.md` and FREEZE-LEDGER.md V434 before touching any quarter-end code, and test it with
+  `~/Projects/two-player-rb/.rb2p/research/HORN-RESEARCH.md` and FREEZE-LEDGER.md V434 before touching any quarter-end code, and test it with
   real downs (`e2e/v434-horn.js`, `e2e/v434-horn-outcomes.js`, `e2e/horn-lib.js`) — never a synthetic drive end alone.
 - **Don't interrupt current games**: right before `git push`, run `node tools/freeze-watch/quiet.js --wait 120`. If it
   exits 1, do not push — leave the commit on the branch, say so in the report; the next run ships it. Never write to a
@@ -61,11 +61,14 @@ again and the problem is often on a deeper level."* So, every run:
   commit (`N=$(git rev-list --count HEAD); V=$((N+1)); sed -i '' "s/GAME — V$N/GAME — V$V/; s/class=\"o\">V$N</class=\"o\">V$V</" index.html`);
   commit as `git -c user.name="Soham Sthitpragya" -c user.email="sohamsthitpragya@Sohams-Mac-mini.local" commit -F msgfile`,
   message ending with `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`; add specific files only.
+- Since 2026-10-03 the repo is `~/Projects/two-player-rb` and this run's files are in its `.rb2p/` (git-ignored), so this
+  session also loads `~/Projects/.claude/CLAUDE.md`. Its "always commit and push" does not override this prompt: a red
+  gate, a fix you are not sure of, or `quiet.js` exiting 1 still means **push nothing**.
 - Python 3.9 syntax. Never send the owner's email address anywhere. Assume good faith about the players.
 
 ## The run
 **0. Read** the brief (its path is in your prompt), the last two FREEZE-LEDGER.md sections, `tools/freeze-watch/OPEN.md`,
-the previous report in `~/rb2p/freeze-watch/reports/`.
+the previous report in `~/Projects/two-player-rb/.rb2p/freeze-watch/reports/`.
 
 **1. Audit the release(s) listed in the brief — before anything else.** For each fix they shipped: find its log trace
 (the commit's diff / the ledger), then `node tools/freeze-watch/firings.js --pattern '<trace>' --since <ship time>`;
@@ -110,16 +113,16 @@ you can show in the logs. "The player left" is a fact, not a root — why were t
 tests), commit, `quiet.js --wait 120`, push, then wait until every door serves it — sha256 of `index.html` and
 `retrobowl.js` on two-player-rb.vercel.app, coder-1611.github.io/two-player-rb and realretrobowl2p.web.app equal the
 commit's, `embedcode/meta` has the version, `gh run list` green. The embed watcher fast-forwards the main tree by itself
-once the new label is live (`git -C ~/rb2p/two-player-rb log -1` shows your commit within a few minutes); if you
+once the new label is live (`git -C ~/Projects/two-player-rb log -1` shows your commit within a few minutes); if you
 changed `tools/audit-watch.js`, restart the watcher after that (`launchctl kickstart -k gui/$(id -u)/com.rb2p.audit-watch`
-— it serves no game) and check `~/rb2p/audit-watch.log`. Not sure the fix is right, or the gate is red: **ship
+— it serves no game) and check `~/Projects/two-player-rb/.rb2p/audit-watch.log`. Not sure the fix is right, or the gate is red: **ship
 nothing** and write the analysis — a wrong fix is worse than a known freeze.
 
-**7. Report and state.** Write `~/rb2p/freeze-watch/reports/<run id>.md` for the owner, in plain words: each frozen
+**7. Report and state.** Write `~/Projects/two-player-rb/.rb2p/freeze-watch/reports/<run id>.md` for the owner, in plain words: each frozen
 game (temporary / permanent) and **why**; what you changed and the proof; what you did NOT fix and why; detector
-findings; the last release's audit. Then update `~/rb2p/freeze-watch/state.json`: `lastRun` = the brief's time,
+findings; the last release's audit. Then update `~/Projects/two-player-rb/.rb2p/freeze-watch/state.json`: `lastRun` = the brief's time,
 `handled[key] = "<fixed in Vnnn | not a freeze: …>"` for each key you resolved (keys are at the end of the brief),
-`lastReleaseAudited` = the newest commit you audited. Finally write `~/rb2p/freeze-watch/runs/<run id>/status.json`:
+`lastReleaseAudited` = the newest commit you audited. Finally write `~/Projects/two-player-rb/.rb2p/freeze-watch/runs/<run id>/status.json`:
 `{"done": true|false, "why": "..."}`.
 
 ## The 6 pm run also does the daily sweep

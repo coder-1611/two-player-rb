@@ -8,7 +8,7 @@
 // `audited` (and `flag` when irregular). The client's sweep never deletes a
 // room that is flagged or not yet audited, so the evidence is there when you
 // look. Installed as a LaunchAgent by tools/install-audit-watch.sh; logs to
-// ~/rb2p/audit-watch.log.
+// ~/Projects/two-player-rb/.rb2p/audit-watch.log.
 'use strict';
 const { execFileSync } = require('child_process');
 const path = require('path');
@@ -37,12 +37,12 @@ const log = (m) => console.log(new Date().toISOString() + ' ' + m);
 // monitoring, 2026-09-30; the project has no billing). Now each tick reads the room list (shallow, ~15 KB), then
 // small reads for rooms that are new or were active in the last 2 hours, plus a slow sweep that visits every
 // other room once per SWEEP_TICKS ticks; a room's full audit stream is read only when it is audited (once per
-// game, by audit-game.js). It also writes ~/rb2p/live-rooms.json — the real rooms with an entry in the last
+// game, by audit-game.js). It also writes ~/Projects/two-player-rb/.rb2p/live-rooms.json — the real rooms with an entry in the last
 // 3 minutes — which tools/freeze-watch/quiet.js reads ("is anyone playing right now?").
 const fs = require('fs');
 const os = require('os');
-const STATE_FILE = path.join(os.homedir(), 'rb2p', 'audit-watch-state.json');
-const LIVE_FILE = path.join(os.homedir(), 'rb2p', 'live-rooms.json');
+const STATE_FILE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'audit-watch-state.json');
+const LIVE_FILE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'live-rooms.json');
 const SWEEP_TICKS = 15, ACTIVE_MS = 2 * 60 * 60 * 1000, LIVE_MS = 3 * 60 * 1000;
 let st = { rooms: {}, sweep: 0 };
 try { st = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); if (!st.rooms) st.rooms = {}; } catch (e) {}

@@ -8,7 +8,7 @@
 // tools/embed-publish.sh, which builds, stores and VERIFIES. So a push that
 // deploys is in the Google Sites page within a few minutes, with no one
 // remembering to do anything. Installed as a LaunchAgent by
-// tools/install-embed-watch.sh; logs to ~/rb2p/embed-watch.log.
+// tools/install-embed-watch.sh; logs to ~/Projects/two-player-rb/.rb2p/embed-watch.log.
 'use strict';
 const { execFileSync } = require('child_process');
 const path = require('path');

@@ -18,7 +18,7 @@ const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const SINCE = Number(String(opt('--since', 'V405')).replace(/\D/g, ''));
 const SHOW = Number(opt('--show', '20'));
-const ARCH = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+const ARCH = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
 const only = args.filter((a, i) => /^[A-Z0-9]{4}$/.test(a) && !(i > 0 && /^--/.test(args[i - 1])));
 const verNum = v => Number(String(v || '').replace(/\D/g, '')) || 0;
 const other = r => (r === 'a' ? 'b' : 'a');

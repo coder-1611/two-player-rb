@@ -7,12 +7,12 @@
 #   run.sh --daily    include the daily sweep at any hour
 #   run.sh --dry      precheck only: write the brief, start nothing
 #
-# Runtime files (not in the repo): ~/rb2p/freeze-watch/{state.json, logs/, runs/<id>/, reports/, lock}
+# Runtime files (not in the repo): ~/Projects/two-player-rb/.rb2p/freeze-watch/{state.json, logs/, runs/<id>/, reports/, lock}
 # V428: ~/.local/bin first — the native, self-updating Claude Code. /usr/local/bin held an old npm copy (2.1.247) that
 # the API refused for this model on 2026-10-01 ("version 2.1.280 or newer is required"): the 9:00 and 12:00 runs died.
 export PATH="$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 CLAUDE="${FW_CLAUDE:-$HOME/.local/bin/claude}"; [ -x "$CLAUDE" ] || CLAUDE="$(command -v claude)"   # FW_CLAUDE: a test seam
-FW="$HOME/rb2p/freeze-watch"; WT="$HOME/rb2p/wt-auto"; MAIN="$HOME/rb2p/two-player-rb"
+FW="$HOME/Projects/two-player-rb/.rb2p/freeze-watch"; WT="$HOME/Projects/two-player-rb/.rb2p/wt-auto"; MAIN="$HOME/Projects/two-player-rb"
 MODEL="claude-opus-5-5"; EFFORT="xhigh"
 mkdir -p "$FW/logs" "$FW/runs" "$FW/reports"
 RUN_ID="$(date +%Y%m%d-%H%M)"; RUN_DIR="$FW/runs/$RUN_ID"; mkdir -p "$RUN_DIR"
@@ -61,7 +61,7 @@ END=$(( $(date +%s) + BUDGET ))
 PROMPT="Freeze-watch run $RUN_ID. Read your standing instructions first, completely: $WT/tools/freeze-watch/PROMPT.md. This run's brief: $BRIEF. Work in $WT (test port 8801; the live build for comparisons: the main tree on 8802). Run id for reports/$RUN_ID.md and runs/$RUN_ID/status.json: $RUN_ID.$( [ -n "$DAILY" ] && echo ' This is the 6 pm run: do the daily sweep too.') Write the report, state.json and status.json by $(date -r $END +%H:%M) at the latest."
 ask() {   # ask <n> <prompt> [session] — one claude turn, killed at END
   local n=$1 p=$2 sid=$3
-  local args=(-p "$p" --model "$MODEL" --effort "$EFFORT" --permission-mode bypassPermissions --add-dir "$HOME/rb2p" --output-format json)
+  local args=(-p "$p" --model "$MODEL" --effort "$EFFORT" --permission-mode bypassPermissions --add-dir "$HOME/Projects/two-player-rb" --output-format json)
   [ -n "$sid" ] && args=(--resume "$sid" "${args[@]}")
   (cd "$HOME/Projects" && "$CLAUDE" "${args[@]}" > "$RUN_DIR/result-$n.json" 2> "$RUN_DIR/stderr-$n.txt") &
   local pid=$!

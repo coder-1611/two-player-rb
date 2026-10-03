@@ -24,7 +24,7 @@ const R = require('./audit-rules.js');
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const SINCE = Number(String(opt('--since', 'V395')).replace(/\D/g, ''));
-const ARCH = opt('--archive', fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits');
+const ARCH = opt('--archive', fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits');
 const OUT = opt('--json', '');
 const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 

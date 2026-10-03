@@ -33,7 +33,7 @@ console.log('=== V428 RECORDS ===');
 }
 // ---- M2 ----
 {
-    const dir = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+    const dir = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
     const f = path.join(dir, 'UZGV.json');
     if (!fs.existsSync(f)) console.log('  SKIP  M2 (the archive of real rooms is not on this machine)');
     else {

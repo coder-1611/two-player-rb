@@ -25,7 +25,7 @@ const FB_API_KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
 // A fresh anonymous sign-up per suite (x40 suites per gate, plus the audit
 // watcher) tripped Firebase's per-IP limit — TOO_MANY_ATTEMPTS_TRY_LATER — and
 // the last four two-player suites of a gate "crashed" at host time. See
-// tools/fb-auth.js (cache in ~/rb2p/.fbtok.json).
+// tools/fb-auth.js (cache in ~/Projects/two-player-rb/.rb2p/.fbtok.json).
 let _fbToken = null;
 async function fbToken() {
     if (_fbToken) return _fbToken;

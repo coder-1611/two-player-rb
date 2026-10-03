@@ -60,7 +60,7 @@ V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from be
   entry on both), with no reload.
 
 ## 4. Audit V434's horn law in real games (the first 24 hours after the release)
-- V434 ends every quarter through the engine's own time-up (FREEZE-LEDGER.md V434, `~/rb2p/research/HORN-RESEARCH.md`
+- V434 ends every quarter through the engine's own time-up (FREEZE-LEDGER.md V434, `~/Projects/two-player-rb/.rb2p/research/HORN-RESEARCH.md`
   §5.2). Read every firing: the diag `HORN Qn — a drive staged by L<line> at 0:00 ends the quarter here` and the audit
   `guard {what:'horn', q, why}`.
   - **Stop the line** if a horn's next period went to the wrong team (Q1/Q3: the team with the ball after the last down;
@@ -213,7 +213,7 @@ V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from be
 
 ## Done
 - **V441 — the blue circle** (the owner: "sometimes just clicking on the blue circle didn't work";
-  ~/rb2p/research/BLUE-CIRCLE.md): a left mouse press arms the tap latch (a Chromebook tap-to-click shorter than a frame
+  ~/Projects/two-player-rb/.rb2p/research/BLUE-CIRCLE.md): a left mouse press arms the tap latch (a Chromebook tap-to-click shorter than a frame
   was lost: e2e/blue-circle.js T1 V440 0/3 → 3/3); _m01/_o01 divide by the display scale; the landscape-phone dead zone
   and the rotated-phone offset were already gone with V440. Still the owner's call: a bigger hit circle (26 px, 10 px
   up the body — tested, not shipped).

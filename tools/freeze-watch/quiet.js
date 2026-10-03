@@ -5,12 +5,12 @@
 //   node tools/freeze-watch/quiet.js --wait 90  wait up to 90 minutes for a quiet moment (checks every minute)
 //
 // "Live" = a non-harness room with an audit entry in the last 3 minutes AND actual play in the last 10 (V431). The audit watcher writes that list every
-// minute to ~/rb2p/live-rooms.json; if the file is stale (the watcher is down) this reads the rooms the watcher saw
+// minute to ~/Projects/two-player-rb/.rb2p/live-rooms.json; if the file is stale (the watcher is down) this reads the rooms the watcher saw
 // active in the last 2 hours straight from the database (their newest entry only — never the whole tree).
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path');
-const LIVE_FILE = path.join(os.homedir(), 'rb2p', 'live-rooms.json');
-const STATE_FILE = path.join(os.homedir(), 'rb2p', 'audit-watch-state.json');
+const LIVE_FILE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'live-rooms.json');
+const STATE_FILE = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'audit-watch-state.json');
 const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 const LIVE_MS = 3 * 60 * 1000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));

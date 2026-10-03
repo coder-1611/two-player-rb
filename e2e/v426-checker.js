@@ -112,7 +112,7 @@ console.log('=== V426 CHECKER ===');
 }
 // ---- K7 ----
 {
-    const dir = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+    const dir = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
     const rooms = ['CZFL', 'NERM', 'NGKD', 'WNPB', 'DAXK', 'FGXJ', 'FQHW', 'RPLB', 'VVVS', 'PCBC', 'LBZF', 'EQXQ', 'EXYT', 'UVXN'];
     if (!rooms.every(c => fs.existsSync(path.join(dir, c + '.json')))) console.log('  SKIP  K7 (the archive of real rooms is not on this machine)');
     else {

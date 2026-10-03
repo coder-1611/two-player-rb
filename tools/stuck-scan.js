@@ -25,7 +25,7 @@ const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] :
 const SINCE = Number(String(opt('--since', 'V414')).replace(/\D/g, ''));
 const MIN = Number(opt('--min', '10')) * 1000;
 // the watcher's archive first — a worktree's audits/ holds only the rooms audit-game.js fetched there (see freeze-watch/precheck.js)
-const MAIN_AUDITS = '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+const MAIN_AUDITS = '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
 const ARCH = opt('--archive', fs.existsSync(MAIN_AUDITS) ? MAIN_AUDITS : path.resolve(__dirname, '..', 'audits'));
 const only = args.filter((a, i) => /^[A-Z0-9]{4}$/.test(a) && !(i > 0 && /^--/.test(args[i - 1])));
 const verNum = v => Number(String(v || '').replace(/\D/g, '')) || 0;

@@ -78,7 +78,7 @@ console.log('=== V424 CHECKER ===');
 }
 // ---- C5 ----
 {
-    const dir = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+    const dir = fs.existsSync(path.resolve(__dirname, '..', 'audits')) ? path.resolve(__dirname, '..', 'audits') : '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
     const want = { FQHW: 'none', RPLB: 'none', DPWZ: 'temporary', UVXN: 'temporary', QJFB: 'temporary' };
     if (!Object.keys(want).every(c => fs.existsSync(path.join(dir, c + '.json')))) console.log('  SKIP  C5 (the archive of real rooms is not on this machine)');
     else {

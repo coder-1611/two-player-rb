@@ -16,7 +16,7 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? proces
 const pattern = arg('--pattern'); if (!pattern) { console.error('--pattern required'); process.exit(2); }
 const since = arg('--since') ? Date.parse(arg('--since')) || Number(arg('--since')) : Date.now() - 24 * 3600 * 1000;
 // the watcher's archive first — a worktree's audits/ holds only the rooms audit-game.js fetched there (see precheck.js)
-const MAIN_AUDITS = '/Users/sohamsthitpragya/rb2p/two-player-rb/audits';
+const MAIN_AUDITS = '/Users/sohamsthitpragya/Projects/two-player-rb/audits';
 const dir = arg('--archive', fs.existsSync(MAIN_AUDITS) ? MAIN_AUDITS : path.join(__dirname, '..', '..', 'audits'));
 const guardRe = /^guard:(.+)$/;
 const parts = pattern.split('|'), diagRe = new RegExp(parts.filter(p => !guardRe.test(p)).join('|') || '(?!)'), guardWhat = parts.map(p => guardRe.exec(p)).filter(Boolean).map(m => m[1]);

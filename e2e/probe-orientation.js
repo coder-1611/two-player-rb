@@ -3,7 +3,7 @@
 const H = require('./harness');
 const TP = require('./two-player');
 const sleep = H.sleep;
-const OUT = process.env.ORIENT_OUT || require('path').join(process.env.HOME, 'rb2p', 'research', 'orient');
+const OUT = process.env.ORIENT_OUT || require('path').join(process.env.HOME, 'Projects', 'two-player-rb', '.rb2p', 'research', 'orient');
 (async () => {
     const MODE = process.env.ORIENT_MODE || 'landscape';
     const g = await TP.startTwoPlayerGame({ mobile: MODE });
