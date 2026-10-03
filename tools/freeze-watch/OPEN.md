@@ -6,21 +6,58 @@ run finds a new root it cannot fix today, it adds it here with the rooms that sh
 
 Order = what to take first when the brief has no new freeze to work on.
 
-## 1. FXTE: V430's reload-ball resume takes a hand-off again after the phone PLAYED ON (harmful, 1 of 1 real firings)
-- **What happened (FXTE, 2026-10-02 8:07 am, V431):** B took a TD kickoff and played three downs into Q2 (3rd & 4 at its
-  46, 2:54 left), then reloaded. Its live record was older than its ACK, because its tab drew almost no frames and the
-  500 ms push lagged. So the resume said "the TD I took before the reload is newer than my live record — taking it
-  again", and B was put back at its 40, 1st & 10, with 0:01 left in Q2. That lost ~2:53 of the half and the downs
-  (R-YARD, R-POSS).
-- **Fix:** before `ackedUnseen`, read this tab's flow record (`sessionStorage rb2p_flow_<room>_<role>`, or the server's
-  `flow/<role>`). If it staged this hand-off (`staged === lo.ts`) and settled a down in it (`spot.via === 'settle'` and
-  `spot.stg === lo.ts`, or `plays` grew), the phone played on, so do not take it again.
-- **Seen again (ATUZ, 2 Oct 9:15 am, neutral):** the resume "took again" a TD hand-off that arrived 4 s AFTER the final
-  (an OT walk-off; the sender's post-final kickoff was still applied — `POSS -> LIVE` on a phone at the stats screen),
-  because B reloaded at the stats screen. No match resumed, nothing changed for the players. When fixing #1, also never
-  take a hand-off again — or apply one — once this game's `final` is on record.
-- **Test:** the v430-reload-ball setup, but the receiver plays 2 real downs (`e2e/qb-bot.js`) before the reload while its
-  live push is held. It must come back at the spot of its last down, not the kickoff's. Keep v430-reload-ball green.
+## 0. Horn-adjacent roots found by the 2 Oct 6 pm sweep — for the owner's horn session (do not change the horn code from a run)
+The owner's 6:10 pm note froze the quarter-end code while V434's C10 is proven. These three need that code:
+- **a. A 2-pt RUN try that crosses a horn is invisible to every "try snapped" test → 8 unearned points (VCUH, 2 Oct
+  2:24 pm, V433; NQEV the same mechanism).** B's 2-pt run (ball kp 19) scored as Q1 → Q2 (8-0 at 02:06.4); the
+  `QTR-KEEP VOID` left B 1st & 2 at the 2 and B ran it (02:09.2, `snap … q=2 tg=2 via=run y=48`); the post-try hand-off
+  (`guard post-conv-handoff`, index.html ~3081) fired 0.3 s into that live run; B's own engine then credited A with +6
+  (02:14.6, `CONVGATE REFUSED R2`, the score-watcher's `p6 detected`) and shipped a PICK6 — A got a pick-six try on top.
+  **Why:** a run try starts at ball kp 19 and the `CONV try started` block (index.html ~4692) never sets
+  `_rb2p_lastSnapMs` / `_rb2p_lastSnapDown = 6`, which V410's trySnapped (3063), V434 C13 (~3074, 8115) and C10
+  (~13533) read; and the hand-off at ~3081 does not wait for a live ball. **Fix (proposed):** set them in that block as
+  the snap path does; make the ~3081 hand-off (and the Q3-law flip at ~13688) wait while `rb2pPlayInProgress()`. Test
+  through a real 2-pt run at Q1 0:02 (horn-lib).
+- **b. V394's retype ships a TURNOVER as a TD kickoff when it ends a NEW drive within 60 s of the scorer's try (17 drive
+  ends in 14 rooms on 2 Oct: CGQB ×2, EEQG, FGPK ×2, GCPD, GMNR, HNWX, JPUJ, KLHQ ×2, KZCN, PKXS, SEAN, TGSN, UYZP,
+  YFAL).** `buildUserDriveEndOutcome` (index.html ~11080) retypes every OTHER within 60 s of `_rb2p_lastConvModalMs` as
+  TD — also after the scorer has played 1–5 normal downs since. The receiver then starts at a kickoff-return spot, not
+  the turnover's (EEQG: the turnover at B's +16 → A at its own 27; KLHQ: −8 → A at +3). **Fix (proposed):** retype only
+  when no normal-down snap happened since the offer (`_rb2p_lastSnapMs > offer && _rb2p_lastSnapDown !== 6` keeps
+  OTHER) — after (a), so run tries count as snaps. V394's own case (the try dying at the horn) keeps its retype.
+- **c. The halftime free down at the 2 (DBBS, TYHC real; CGQB, URBW harmless)** — V434 C10 addresses it; confirm in real
+  games (#4). The Q3-law flip at ~13688 still has no live-ball check (URBW snapped 0.4 s after the horn).
+- **d. The wall's MISSED on a normal touchdown's try AT the Q1/Q3 horn can leave both phones waiting (harness, live
+  V434-code build, `proof/m6q3-live.log` of run 1804).** `HORN_Q=3 HORN_KIND=td`: a's TD at Q3 0:01, its 1 PT kick never
+  launched under load, the wall shipped its synthetic PAT_RESULT (the branch keyed on `patDutyMine`, which C11 sets for
+  every try) and parked a; b's P6-WATCH did not force a drive at Q3 0:01; 35 s later both waited at Q3 0:01. Mid-quarter
+  the same branch is rescued 4 s later by b's P6-WATCH (RVLS 08:40.7). Read the branch for a normal touchdown at the horn
+  (the post-conversion kickoff — C13 — is what should follow, not a PAT_RESULT). V438 makes it rarer (the wall waits 20 s
+  from the player's last press) but does not change it.
+
+## 1. Leftovers of the reload-ball resume (V430) after V438 fixed its input (V438: committed, not shipped yet)
+V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from before the hand-off. What is left:
+- **A hand-off taken again in the NEXT game (QFJK, 2 Oct 2:35 pm, V433, harmless) or after the final (ATUZ, 9:15 am,
+  neutral).** QFJK's A reloaded into game 2 through the resume and took game 1's TD again (A was game 2's opening
+  receiver anyway, so nothing changed). Never take a hand-off again — or apply one — once this game's `final` is on
+  record, or when the hand-off's game is not the one being resumed (the flow record's `gid`).
+- **Both records stale** (a throttled tab whose 500 ms live push also lagged — V430's original theory; not shown in any
+  room read so far: FXTE's live record was fresh, A's mirror followed it): then the take-again still fires. If it ever misfires again, guard it with the
+  tab's flow record (`staged === lo.ts` and a settled spot `spot.via === 'settle'`, `spot.stg === lo.ts` = played on).
+
+## 2. IJYB: a rematch that BOTH phones started carried game 1's score, and its first hand-off never arrived (missed by the checker)
+- **What happened (IJYB, 2 Oct 11:24 am, V431):** game 1 ended 42-40 (final 15:04). Both pages reloaded at 15:23.9 and
+  resumed into the FINISHED game (`FLOW restored … ep H`, "final soon", a second `final` at 15:32). Then B reloaded again
+  and both logged `game` within 0.3 s (A ms …352 at 15:41.8, B ms …571 at 15:42.1) — two starts, not a start and a
+  join. A's new game was floored to the old score (`SCORE-FLOOR 0-0 -> 42-40`, 15:41.9), A drove and scored (48-40,
+  then 50-40), and shipped a KICKOFF at 16:47.2 that B never logged receiving; B's record said `game ids differ` the
+  whole time (`FLOW restored from this tab pending ep K0`). B sat on "waiting" on screen 77 s and left (16:59.5).
+- **Detector:** R-POSS saw 13 s of it; R-FREEZE counted nothing — a `send` deletes the open both-waiting interval and
+  only an act/vis event reopens it, so a send that never lands excuses the rest. R-REOPEN needs ONE starter.
+- **Questions (read before fixing):** why did both phones start (both READY, or the V266 guard, #3)? Why does the score
+  floor (index.html ~7126) carry a finished game's score into a new one (it has no game boundary)? Why did B drop A's
+  KICKOFF (B's `matchStartMs` vs A's ts, or the "pending" flow record)? V432's `flow-stale` reset does not cover two
+  starters. Tied to #3.
 
 ## 3. The V266 READY guard reads a partner's "left" beacon as "mid-match" — a READY reloads into a resume (OKYW)
 - **What happened:** the guard (`maybeStartMatch`) takes a fresh `hb/<partner>` with no fresh final as "the partner is
@@ -63,6 +100,19 @@ Order = what to take first when the brief has no new freeze to work on.
     was stopped in 12 of 12 attempts (Q1: 1 of 1 with the same EASY setup). Find why the Q2 goal-line run never scores
     (a pass into the end zone? the engine's end-of-half defense?) — or read C10's firings in real games instead
     (`HORN Q3 law: the try was played before the horn`).
+- **Run 20261002-1804 (read at 21:15):** 3 real games on V434/V435 since 18:03 — QAQL (7:36 pm), VZLC (8:03 pm), ZCEX
+  (8:42 pm, V436/V435). 9 horn firings (Q1, Q2, Q3, Q4 ×2, the Q3 law's "try played before the horn"), every one followed
+  by the next period by rule; the two Q4 horns went to the stats screen. No frozen interval in any of the three, all
+  three reached their final. QAQL's two `post-conv-handoff` firings on the RECEIVER are what the owner's V436 fixed.
+- **MROY (2 Oct 2:40 pm, V433) is FGXJ's shape — watch it on V434+:** a pick-six at Q4 0:00 tied it 20-20 before its try;
+  A (the scorer) missed the try; OT armed and the flip named A, but the stale pick-six duty refused A's OT kickoff ten
+  times (`P6 refused force-drive — the scorer owes a PAT_RESULT`, `OT kickoff staging failed — retrying (1..10)`); A then
+  pressed the engine's own post-try kickoff button, which handed B the first OT possession against the flip, and A sat
+  on an empty field 11 s (counted, temporary) until TURN-HEAL parked it; FIELD-CHECK shipped a synthetic PAT_RESULT at
+  14:24.9. V434's C6 clears that duty at the OT kickoff (`_rb2p_applyOtKickoff`) and holds OT while the try is owed. Any
+  `P6 refused force-drive` in Q5 on V434+ means C6 did not cover it.
+- **The halftime free down at the 2 (#0c):** DBBS and TYHC (2 Oct, V431) lost points to it; C10 should end it. R-GIFT
+  on a V434+ game at the Q2 horn = C10 did not hold.
 
 ## 5. The horn law's two specified follow-ups (HORN-RESEARCH.md C11, C12)
 - **C11:** a horn record that arrives after the receiver's quarter already ended must not lower its quarter (the apply
@@ -78,6 +128,9 @@ Order = what to take first when the brief has no new freeze to work on.
   received while the receiver drew frames (FABY, JMUK, QCLM, TDWD, WMCM, AWCI, FVTL, IJYB, VWEI).
 - Read each on its timeline: either the can-act monitor missed a real freeze (fix the `act` entries or the interval
   rules, then the card shows its seconds) or the stall rule is wrong (lower its grade). Whole-archive diff either way.
+- **Read by run 20261002-1804:** ELKO (and XRDX, MCKV, NQFD, RCMA) — the waiting phone was hidden; R-POSS checks
+  "hidden" only when it fires and `OUTCOME drained` clears it while still hidden → the stall rule is wrong (#10).
+  IJYB — a real 77 s stall (#2): a send that never lands ends the both-waiting interval.
 
 ## 6. DAXK: a reload during an overtime try ends the game early (still in the code)
 - The try's duty record survives the reload; the resume replays it as a synthetic `type:'PICK6'` outcome, and in OT a
@@ -115,11 +168,39 @@ Order = what to take first when the brief has no new freeze to work on.
     there that looks tappable. Also EXAZ B: a tap on a page scrolled by (221,87).
   - The scrolled-page taps (ACWF, OLOI) are worth a root of their own: find what re-scrolls the page and where a press
     on a scrolled page lands in game coordinates.
+  - **LDVA A (2 Oct 12:45 pm, V431) — a real stall the checker missed, the clearest case yet:** a visible Chromebook page
+    drawing 2–8 fps with a full field (`hold 535ms 2f <-- rAF SUSPENDED DURING HOLD`) for ~88 s, 17 clicks in that time
+    that got nothing; the snaps came only on later clicks, two snaps were never logged at all. It began when A came back
+    from a 26 s hide (VIS-KICK burst, `ENGINE LOOP DEAD — kicking _fi5 (kicks=43)`, TURN-RESCUE applying a held PICK6 at
+    09:05.6); fps was 34–61 before and 2–26 after, cause not shown. The game was abandoned at Q2 1:12. The act monitor
+    reports "no frames drawn" only at fps 0 and "taps unanswered" is soft, so R-FREEZE saw two 3.5 s near misses. Other
+    visible full-field stretches under 12 fps for >20 s on 2 Oct (leads, not read): NQFD A +1721 s, XRDX B +1073 s, YNKU B
+    +1187 s, Z5GB A +52 s (448 s), Z6BZ A, Z9NX A. This is #11 and #9 together: count "must act, on screen, < 10 fps,
+    taps unanswered" as stuck.
 
 ## 10. The detector under-measures a refusal stall
 - ZQMT's real freeze was ~13 s on B (refused LIVE → behind the waiting cover) but the act monitor only reported "both
   parked" on A (9-11 s). A `wait refused` audit entry followed by both phones parked is the stuck state; count it from
   the refusal. (V430 fixed ZQMT's cause — the OT kickoff waits for the partner.)
+
+- **More detector findings (run 20261002-1804):**
+  - **FQNK (2 Oct 3:20 pm) was a network outage, counted as a freeze.** A's socket was down 1:37–2:14 and its REST
+    uploads landed only twice in that stretch (114.1 s and 133.6 s, backlog 15); B was offline 2:15–2:19.6. The V430
+    "no network" rule needs no upload in the window AND a backlog of 20+ — A's quiet page queued only 15. Better test:
+    an upload whose oldest entry waited > 8 s (the batch's `srv` against the entries' `t`) means no network.
+  - **The sender's delivery watchdog fails silently** (index.html ~18240): its REST look at the server is `.catch(function
+    () {})`, and `fbRestPut`'s failures in the FB-STALL path log neither "ok" nor "FAILED" when fetch throws. FQNK's A
+    shows no line for ~25 s of failed re-sends. Log them like V430's `OUTCOME-POLL failed`.
+  - **IJYB** (#2): a send that never lands ends a both-waiting interval for good.
+  - **R-POSS "DEADLOCK" flags today (ELKO, XRDX, MCKV, NQFD, RCMA) are artifacts:** "hidden" is checked only at the moment
+    the flag fires (often just after the phone came back), and `OUTCOME drained` clears hidden while the page is still
+    hidden. R-FREEZE excused all five correctly (the waiting phone's own monitor said hidden).
+  - **R-GIFT / R-P6 checker artifacts (8 flags in 7 games):** R-GIFT does not close its window at Q3 (Team B's ball by
+    rule) or Q5 (the OT flip); R-P6's "resolved" test ignores a change to Q5, a `final`, a `SEND TD/KICKOFF` diag, and a
+    page close (RDDK, TYHC, VCUH "played but never resolved" were all played and missed).
+  - **stuck-scan:** end COVERED at `final` (GOPA, IEYC, NQSG, PKXS, QFJK, URBW were the "final soon" cover); a phone whose
+    stream ended is gone (DCHO, RPLL "BOTH-LIVE 21 s" — A's stream had ended 14.5 min earlier); start STUCK-LIVE at the
+    first unanswered tap, not the last progress; count `CONV try started` as progress.
 
 ## 11. Low frame rate
 - A separate "degraded" measure: a phone that owes the move at <10 fps for >10 s (XAMX, ZZZX, LMUM). Not a freeze.
@@ -127,6 +208,13 @@ Order = what to take first when the brief has no new freeze to work on.
 ## 12. The page reloads itself on a lost graphics context
 - `glLostRecover` reloads the page when the WebGL context is lost (once per 45 s) — against the owner's "no
   auto-reload". It never fired in the cases read; a lost GL context cannot draw again otherwise. Decide with the owner.
+
+## 13. The conversion wall's screen-on rule leaks after a long hide (UKMX, NQEV)
+- V395 counts the wall on SCREEN-ON time: `patOwedSinceMs` resets only when the check runs while the tab is hidden, and
+  a hidden tab's timers run rarely. UKMX B (hidden 115 s from before the offer) and NQEV B (97 minutes asleep) had the
+  wall fire 1 s after the tab came back — the player never saw the choice. Fix: when the tab becomes visible, or after a
+  gap of more than 2 s between two looks, set `patOwedSinceMs = now - min(elapsed on screen, 25 s)`. Low risk (only the
+  wall waits). Test: v395-hidden's setup with the hide starting before the offer.
 
 ## Owner decisions (do not act on these without the owner)
 - **The defense difficulty defaults to MAX** (`_rb2p_difficultyPref`, the lobby's "DEFENSE DIFFICULTY FOR BOTH
@@ -139,6 +227,25 @@ Order = what to take first when the brief has no new freeze to work on.
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V438 (run 20261002-1804; committed on branch `auto`, NOT shipped — the next run gates and ships it) — FXTE's root (was #1): a resume after taking the ball read a WAITING snapshot from before the hand-off.** The
+  resume prefers the stable snapshot (V197, `snap/<role>`) over the live record whenever it is under 25 s old, but the
+  snapshot is written only while waiting or at the controller's kp 1 beat, which the 500 ms sampler almost never sees on
+  offense. Measured in the harness: 22 s after taking a punt and playing a down, the server's snapshot still said
+  "waiting" (22.6 s old) while the live record said 2nd & 1 with the ball. FXTE's B pushed its live record all along
+  (A's mirror followed B's quarter change after B's ACK), so only the snapshot can have said "no ball, older than my ACK"
+  — the same input explains V430's own rooms (VWWK, BXDZ, NICE: reloads 2.6–8.2 s after taking the ball). Now a
+  snapshot that says waiting, under a live record that has said "I have the ball" for over 1.5 s on a scrimmage down,
+  is from the other side of the possession change: my own newer facts decide — the last settled down from this tab's
+  flow record (the restore rule's spot) when it is this possession's and not older, else the live record (diag `RESUME
+  my snapshot says waiting…`, audit `guard resume-live` with `via`). Test `e2e/v438-reload-played-on.js`: live V434 failed P1/P2 (parked, then TURN-RESCUE at
+  its own 25 instead of its 14 on 2nd down; another run: "taking it again", back to the punt's 1st & 10) — V438 5/5.
+- **V438 (committed, NOT shipped) — the 35 s conversion wall threw away a try the player had just chosen (daily sweep, 5 games on 2 Oct: PKXS,
+  RVLS, EKRA, ZNSO, CGQB).** Its holds covered the choice ON screen (V415) and a launched try (V406), not the seconds
+  between the 1 PT / 2 PT tap and the kick or snap; it fired 0.3–2.7 s after the tap. Now a player who pressed since
+  the offer, with its try lined up (down 6 or the kick set), gets 20 s from its last press, within 90 s of the offer
+  (diag `PAT-INV wall waits — the player chose and is lining up the try`, audit `guard wall-wait-try`). Test
+  `e2e/v438-wall-try.js` (a real goal-line TD, 1 PT past the 35 s mark, a real kick 5 s later): live V434 W1–W3 FAIL
+  ("35s wall — resolving the conversion as MISSED" ~5 s after the tap), V438 4/4 (the kick good, +1, the kickoff carried 7).
 - **V434 — the 0:01 glitch is gone, with the buffer** (was #4): the horn law. A hand-off decided at 0:00 ships 0:00 (to
   a V434+ partner) and the receiver's engine ends the quarter itself — no extra down, no bounce. Halftime: Team B by
   role. Also the scorer's free down after a try across the horn (C10, C13). Tests: `e2e/v434-horn.js`,

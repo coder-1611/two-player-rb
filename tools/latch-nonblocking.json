@@ -154,5 +154,7 @@
  "window._rb2p_pollFailLogMs": "V430 log throttle: the outcome poll's failure line at most every 15 s; never gates the poll",
  "window._rb2p_resumedMs": "V430: set when resumeMatch runs; read only to word the monitor's label (a resume vs this page's own match start), never gates play",
  "window._rb2p_hornQ": "the quarter whose horn this phone last ended through the engine's time-up (5: a drive refused after regulation; with _rb2p_hornMs it only throttles that log line); nothing waits on it",
- "window._rb2p_hornMs": "when this phone last ended a quarter through the engine's time-up (diagnostic); nothing waits on it"
+ "window._rb2p_hornMs": "when this phone last ended a quarter through the engine's time-up (diagnostic); nothing waits on it",
+ "window._rb2p_convWallChoiceFor": "V438: remembers which conversion offer the 'wall waits — the player chose and is lining up the try' diag line was already written for; gates only that log line",
+ "window._rb2p_lastPressMs": "V438: the time of this page's last in-match press (canvas pointerdown); the 35 s conversion wall reads it to wait 20 s from a player lining up its try, always within 90 s of the offer — a time, never a flag anything waits on"
 }

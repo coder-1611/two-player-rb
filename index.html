@@ -1566,7 +1566,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V438<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V439<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1648,7 +1648,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V438</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V439</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9542,6 +9542,24 @@
                                 }
                                 return why;
                             }
+                            // V438 (PKXS, RVLS, EKRA, ZNSO, CGQB — 5 games on 2 Oct, a real try lost in each): the hold above
+                            // lasts while the choice is ON screen and the one below once the try is launched. In between —
+                            // the player has just tapped 1 PT / 2 PT and lines up the kick or the snap — neither held, and the
+                            // wall shipped MISSED 0.3-2.7 s after the tap. A player who pressed since the offer, with its try
+                            // lined up on this phone (down 6, or the kick set), gets 20 s from its last press — within the
+                            // same 90 s from the offer. Nothing is moved here: only the wall waits.
+                            var pressMs = Number(window._rb2p_lastPressMs) || 0, offerMs = Number(window._rb2p_lastConvModalMs) || 0;
+                            if (!wallSnapped && offerMs && pressMs > offerMs && Date.now() - pressMs < 20000 && Date.now() - offerMs < 90000 &&
+                                window._rb2p_pickSixThisDeviceIsThrower !== true &&
+                                emW && (Number(emW.engineDownNumber) === 6 || Number(emW.enginePatModeFlag))) {
+                                window._rb2p_patOwedSinceMs = Date.now() - 30000;   // looked at again in 5 s
+                                if (window._rb2p_convWallChoiceFor !== offerMs) {
+                                    window._rb2p_convWallChoiceFor = offerMs;
+                                    if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall waits — the player chose and is lining up the try (last press ' + Math.round((Date.now() - pressMs) / 100) / 10 + ' s ago)');
+                                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'wall-wait-try', sincePress: Date.now() - pressMs, sinceOffer: Date.now() - offerMs });
+                                }
+                                return why;
+                            }
                             if (wallSnapped && Date.now() - wallSnapped < 20000) {
                                 window._rb2p_patOwedSinceMs = Date.now() - 20000;   // a launched try gets 15 more seconds from here
                                 if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV wall deferred — the try is in flight');
@@ -15151,6 +15169,7 @@
             if (canvasEl) canvasEl.addEventListener('pointerdown', function (e) {
                 try {
                     if (!document.documentElement.classList.contains('rb-in-match')) return;
+                    window._rb2p_lastPressMs = Date.now();   // V438: every press (the conversion wall waits for a player lining up its try)
                     var mobileTap = document.documentElement.classList.contains('rb-mobile');
                     // V239: log EVERY in-match tap (throttled 1/s) — during the
                     // on-device stall taps were invisible because logging was
@@ -16761,6 +16780,43 @@
                 var oppSnapSnap = await fbGetT(FB.ref(db, 'rooms/' + savedRoom + '/snap/' + oppRole));
                 var oppSnap = oppSnapSnap.val();
                 var SNAP_FRESH = 25000;
+                // V438 (FXTE, OPEN.md #1): the snapshot is written only while I wait or at the controller's kp 1 beat,
+                // which the 500 ms sampler almost never sees on offense — after I take the ball it stays the WAITING
+                // snapshot from before the hand-off for its whole 25 s (FXTE: three downs into Q2, then a reload; the
+                // resume read "no ball, older than my ACK" and took the TD again — B lost Q2's 2:53 and its downs).
+                // A snapshot that says I was waiting, under a live record that has said I hold the ball for over 1.5 s
+                // (a waiting phone refreshes its snapshot every 500 ms), is from the other side of a possession change:
+                // my own newer record decides, on a scrimmage down only (the snapshot's own rule).
+                var snapBeforeMyBall = !!(mySnap && myLive && mySnap.iHaveBall !== true && myLive.iHaveBall === true &&
+                                          Number(myLive.ts) - (Number(mySnap.ts) || 0) > 1500 &&
+                                          Number(myLive.down) >= 1 && Number(myLive.down) <= 4 &&
+                                          (Number(myLive.quarter) || 1) >= (Number(mySnap.quarter) || 1));
+                if (snapBeforeMyBall && (Date.now() - (Number(mySnap.ts) || 0) < SNAP_FRESH)) {
+                    try {
+                        var sbAge = Math.round((Number(myLive.ts) - Number(mySnap.ts)) / 100) / 10;
+                        // The live record is a 500 ms sample: it can be mid-play, one push behind the down that just
+                        // settled (harness: an incompletion 0.6 s before the reload came back as the down before it).
+                        // This tab's flow record holds the last SETTLED down of this possession, written at the settle —
+                        // the restore rule's own spot. It is taken when it is this possession's and not older than the
+                        // sample: same quarter, its clock not above the sample's.
+                        var sbVia = 'live';
+                        try {
+                            var fT = JSON.parse(sessionStorage.getItem('rb2p_flow_' + savedRoom + '_' + savedRole) || 'null');
+                            var spT = (fT && fT.trust === true && fT.final !== true) ? fT.spot : null;
+                            var liveClk = Number(myLive.minutesLeft) * 60 + Number(myLive.secondsLeft);
+                            if (spT && spT.via === 'settle' && String(spT.stg) === String(fT.staged) && spT.ep === fT.ep &&
+                                Number(spT.q) === Number(myLive.quarter) && Number(spT.d) >= 1 && Number(spT.d) <= 4 &&
+                                isFinite(Number(spT.y)) && isFinite(Number(spT.tg)) && isFinite(Number(spT.clk)) && isFinite(liveClk) &&
+                                Number(spT.clk) <= liveClk) {
+                                myLive = Object.assign({}, myLive, { down: Number(spT.d), toGo: Number(spT.tg), yardLine: Number(spT.y),
+                                                                     minutesLeft: Math.floor(Number(spT.clk) / 60), secondsLeft: Number(spT.clk) % 60 });
+                                sbVia = 'settle';
+                            }
+                        } catch (eFT) {}
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('RESUME my snapshot says waiting, ' + sbAge + ' s older than my live record with the ball — resuming from ' + (sbVia === 'settle' ? 'this tab\'s last settled down' : 'the live record') + ' (' + myLive.down + ' & ' + Math.round(Number(myLive.toGo)) + ' at ' + Math.round(Number(myLive.yardLine)) + ')');
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'resume-live', gap: sbAge, d: myLive.down, y: myLive.yardLine, q: myLive.quarter, via: sbVia });
+                    } catch (eSB) {}
+                } else
                 if (mySnap  && (Date.now() - (Number(mySnap.ts)  || 0) < SNAP_FRESH)) myLive  = mySnap;
                 if (oppSnap && (Date.now() - (Number(oppSnap.ts) || 0) < SNAP_FRESH)) oppLive = oppSnap;
                 // V198: my saved offensive box stats — restored into the roster on

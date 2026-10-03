@@ -889,3 +889,108 @@ WRONGLY" → "GAME FROZE" (timed freezes, label only); 51 NO FREEZE → FROZE ·
 10 NO FREEZE → FROZE (page hangs: QQZQ 1489 s, PGJF 1237 s, TJPM 328 s, LLMK 318 s, PTBE 21 s, RCMA 18 s …); 9 → GAME
 ENDED WRONGLY; 12 dropped below the top grade (ABGV and 6 more telemetry gaps; AOGO, CZFL deferred; GLOY, IWCK, DQCK).
 The 207 changed rooms' stored verdicts were refreshed after the push.
+
+
+## V438 (2026-10-02): a reload after taking the ball read the waiting snapshot from before it (FXTE), and the conversion wall threw away a chosen try
+
+Freeze-watch run 20261002-1804 (the 6 pm run, with the daily sweep). The owner's 6:10 pm note froze the quarter-end code
+while V434's C10 is proven; nothing here touches it.
+
+**The brief's two frozen games — neither is a code freeze left open:**
+- **FQNK (3:20 pm, V433, 13 s "both parked", temporary): a network outage on both Chromebooks.** A's 4th-down
+  turnover (OTHER) was sent at 1:47.5 while A's socket was down (1:37.7–2:14.4, 12 drops in a minute); its REST copy
+  failed silently (no `REST send … ok/FAILED` line: `fbRestPut` threw), and A's REST uploads landed only twice in the
+  stretch (114.1 s and 133.6 s). The record reached the server when A's socket came back; B, itself offline
+  2:15.0–2:19.6, polled the moment its network returned (V430's `NET online — polling the hand-off now`) and snapped
+  1.4 s after applying. The checker's V430 "no network" rule missed it (A's next upload carried 15 entries, the rule
+  wants 20) — OPEN.md #10.
+- **MROY (2:40 pm, V433, 11 s "empty field", temporary): FGXJ's shape, which V434's C6 fixed at 18:03.** A pick-six at
+  Q4 0:00 tied it before its try; A missed the try; the flip named A, but the stale pick-six duty refused A's OT kickoff
+  ten times; A pressed the engine's own post-try kickoff button and handed B the first OT possession; A's empty field
+  lasted until TURN-HEAL. C6 clears that duty at the OT kickoff (OPEN.md #4 says what to watch).
+
+**Release audit (V432 shipped 14:13, V433 14:13, V434 18:03; 64 real games since noon; the owner's V435–V437 landed during this run):**
+
+| fix | firings since its ship | verdict |
+|---|---|---|
+| V432 revert of "keep 0:00" | no ping-pong in any V432+ game (the brief's 4 ping-pongs are V431: IFJR, IUQI, KPTR, UYZP) | helped |
+| V432 `flow-stale` (OKYW) | 1: QFJK 2:35 pm — A reloaded into game 2 with game 1's record, reset, snapped 1.2 s later | helped |
+| V430 reload-ball (live in V432+) | 1: QFJK — took game 1's TD again in game 2; A was the opening receiver anyway | neutral (OPEN.md #1) |
+| V433 counter | — | display only |
+| V434 horn law | at 18:10: 0 real games; by 21:15: 9 firings in 3 real games (QAQL, VZLC, ZCEX) | every horn → the next period by rule, no freeze, all three finished (QAQL's receiver-side post-conv hand-off = the owner's V436) |
+
+**Detector check (two background readers + this run):** of the stuck-scan stretches since noon, most were players
+taking their time (the TD → 1 PT / 2 PT choice sitting 11–29 s: ZNSO ×3; KLHQ; EEQG's Q3 kickoff) or stuck-scan
+artifacts (COVERED that is the "final soon" cover; DCHO/RPLL phones whose stream had ended). Two real stalls the checker
+missed: **LDVA** (a visible Chromebook at 2–8 fps, 17 unanswered clicks over ~88 s, game abandoned — OPEN.md #9) and
+**IJYB** (a rematch both phones started: game 1's 42-40 floored onto the new game, A's kickoff never reached B, 77 s —
+OPEN.md #2). Today's R-POSS "deadlock" flags were hidden phones (artifacts), R-GIFT/R-P6 had 8 artifact flags at Q3/Q5
+(OPEN.md #10).
+
+**1. FXTE (OPEN.md #1) — why, five times.**
+1. Why was B put back at the kickoff with 0:01 left? The resume "took the TD again" (V430): its ACK was newer than its
+   own record and the record said "no ball".
+2. Why did B's record say "no ball" after three downs? Not the live record: B pushed it every 500 ms (A's mirror
+   followed B's quarter change at 4:06.8, after B's ACK at 3:54.7). The resume does not read the live record when the
+   stable snapshot (`snap/<role>`, V197) is under 25 s old — and B reloaded 21.9 s after taking the ball.
+3. Why was the snapshot still the waiting one? It is written only while the phone waits or when the 500 ms sampler
+   catches the controller at kp 1 — a beat an offense almost never shows it. Harness, live V434: 22 s after taking a
+   punt and playing a down, the server's snapshot said `iHaveBall:false`, 22.6 s old; the live record said 2nd & 1 with
+   the ball, 0.6 s old.
+4. Is it our own earlier fix? Yes, twice: V197 chose the snapshot to avoid mid-play transients and V430 trusted it to
+   decide "taking it again". V430's own rooms (VWWK, BXDZ, NICE: reloads 2.6–8.2 s after taking the ball, parked until
+   TURN-RESCUE) are the same input — V430 called it a throttled tab.
+5. Root: a "stable" record that is stale across a possession change was preferred over a fresher one.
+- **Fix:** a snapshot that says I was waiting, under a live record that has said I hold the ball for over 1.5 s (a
+  waiting phone refreshes its snapshot every 500 ms) on a scrimmage down (1–4, the snapshot's own rule) and not an
+  earlier quarter, is from before the possession change: my own newer facts decide. The live record is a 500 ms sample
+  and can be one push behind a down that just settled (seen on the final tree: an incompletion 0.6 s before the reload
+  came back as the down before it — the very 1-s window FXTE reloaded in), so the down, distance and spot come from
+  this tab's flow record (`sessionStorage rb2p_flow_<room>_<role>`, its `spot` written at the settle — the restore
+  rule's own "last time the game was not frozen") when it is this possession's (`spot.stg === staged`, same epoch,
+  `via: 'settle'`), in the live record's quarter and not older than it (its clock not above the sample's); else from
+  the live record. Diag `RESUME my snapshot says waiting, N s older than my live record with the ball — resuming from
+  this tab's last settled down | the live record (d & tg at y)`, audit `guard resume-live` (`via: settle|live`). The
+  existing resume then restores that down and spot (V186). V430's take-again stays for a phone whose live record is
+  stale too (v430-reload-ball holds the live push).
+- **Not shadowed:** it moves nothing new — the resume already decides possession from this phone's own last record; it
+  now reads the newest one. The take-again it replaces in these cases did harm in 1 of its real firings (FXTE).
+- **Test `e2e/v438-reload-played-on.js`** (a punt, ONE real down — the QB bot's throw-away, FXTE's last down was an
+  incompletion — then the reload; the snapshot's age at the resume's own read is timed from its console, and a read
+  outside the 25 s window is retried with the roles swapped, then exit 3): live V434 **3/5** — P1/P2 FAIL (parked; 11 s
+  later TURN-RESCUE put B at its own 25 instead of its 14 on 2nd down); an earlier live run: "taking it again", back to
+  the punt's 1st & 10. V438 **5/5** (back LIVE at once, 2nd & 10 at its 17, same clock). On the rebased tree, before the settled-down
+  refinement: 4/5 — P2 lost the incompletion's down (the live record said 1st & 10, 0.45 s old); with it: 5/5 twice,
+  one of them the same race (the live record said 1st down, B came back 2nd & 10).
+
+**2. The daily sweep's top root outside the horn code: the 35 s conversion wall threw away a chosen try (5 games).**
+- PKXS (pick-six try), RVLS, EKRA, ZNSO, CGQB: the player tapped 1 PT / 2 PT and the wall shipped "resolving the
+  conversion as MISSED" 0.3–2.7 s later (RVLS: tap 08:36.2, kick set at the 35 at 08:36.3, wall 08:36.5).
+- **Why:** the wall's holds cover the choice ON screen (V415: it re-looks every 5 s while the choice is up, until 90 s
+  after the offer) and a launched try (V406, `convTrySnappedMs`). Between the tap and the launch neither holds, so the
+  first look after the tap fired.
+- **Fix:** every in-match press is stamped (`_rb2p_lastPressMs`, canvas pointerdown). A player who pressed since the
+  offer, with the try lined up on this phone (down 6, or the kick set — `enginePatModeFlag`), not the pick-six thrower,
+  gets 20 s from the last press, within the same 90 s from the offer. Diag `PAT-INV wall waits — the player chose and
+  is lining up the try`, audit `guard wall-wait-try`. Nothing is moved: only the wall waits; a player who chooses and
+  walks away still gets the wall 20 s after the last press.
+- **Test `e2e/v438-wall-try.js`** (a real goal-line TD; the choice left on screen past the 35 s mark; 1 PT tapped right
+  after the wall's look; a real kick through the meter 5 s later): live V434 **1/4** — W1 FAIL "35s wall — resolving the
+  conversion as MISSED" ~5 s after the tap, the kick never counted. V438 **4/4** — the wall waited, the kick launched,
+  good, 6 → 7, the scorer's KICKOFF carried 7.
+
+**Also found by the sweep, NOT fixed here (horn-adjacent, OPEN.md #0):** a 2-pt RUN try across a horn is invisible to
+every try-snapped test and gave VCUH's A 8 unearned points; V394's retype ships a turnover as a TD kickoff when it ends
+a new drive within 60 s of the try (17 drive ends in 14 rooms); the halftime free down at the 2 (V434 C10). Also the
+wall's screen-on rule leaks after a long hide (UKMX, NQEV — OPEN.md #13).
+
+Latch registry: `_rb2p_lastPressMs`, `_rb2p_convWallChoiceFor` non-blocking (a time; a log gate).
+
+**Gate — NOT green, NOT shipped.** The full gate ran 19:00–21:03 on the V434-based commit at load averages 30–42 (the
+owner's horn tests ran in parallel, plus MacRemoteCapture): ~22 suites failed in the 4-at-a-time batch, run.js 14/15
+("takeaway", as on live at 12:00). Solo before the run ended: v434-horn-outcomes 8 of 10 (M6-Q3 fails alone on the live
+build too, `proof/m6q3-live.log` — both phones waiting at Q3 0:01 after the wall's MISSED, OPEN.md #0d; the halftime M6
+inconclusive as in the owner's runs); on the final rebased tree v438-wall-try 4/4, v438-reload-played-on 5/5 ×2,
+v430-reload-ball 3/0; v352-conversion (T5, T6) and v378-gvcg (T2, T3) fail alone with the same values on the live V437
+build. The owner's V435–V437 landed during the run; this commit was rebased onto V437 and relabelled. The next run
+gates this exact tree and ships it.
