@@ -236,11 +236,11 @@
           const fzCell = (n, label, bad) => '<div style="text-align:center;min-width:86px"><div style="font-family:Anton,sans-serif;font-size:26px;line-height:1;' + (bad ? 'color:var(--red)' : '') + '">' + n + '</div><div class="when" style="margin-top:4px">' + esc(label) + '</div></div>';
           // V433 (the owner: "reset the freeze counter … to just last 24 hours"): every number is the last 24 hours, rolling
           const L = fz.last24 || null;
-          const recent = ((L && L.recent) || fz.recent || []).map(x => '<a href="?room=' + esc(x.room) + '">' + esc(x.room) + '</a> ' + x.sec + 's' + (x.kind ? ' ' + (x.kind === 'permanent' ? '<b style="color:var(--red)">permanent</b>' : 'temporary') : '') + (x.why ? ' (' + esc(x.why) + ')' : '')).join(' · ');
+          const recent = ((L && L.recent) || fz.recent || []).map(x => '<a href="?room=' + esc(x.room) + '">' + esc(x.room) + '</a> ' + (x.kind === 'untimed' ? 'not timed' : x.sec + 's' + (x.kind ? ' ' + (x.kind === 'permanent' ? '<b style="color:var(--red)">permanent</b>' : 'temporary') : '')) + (x.why ? ' (' + esc(x.why) + ')' : '')).join(' · ');
           freezeHtml = '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)"><div class="teams" style="margin-bottom:6px"><b>Freezes — last 24 hours</b> <span class="when">(a phone that had to play, on screen and online, could not' + (L ? '; since ' + new Date(L.from).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '') + ')</span></div>' +
             (L ? '<div style="display:flex;gap:14px;flex-wrap:wrap">' + fzCell(L.games, 'games played') + fzCell(L.frozen, 'games frozen', L.frozen > 0) +
               // V424: temporary = the game went on after the freeze; permanent = it never did (the players left stuck)
-              fzCell(L.temporary, 'temporary (game went on)', L.temporary > 0) + fzCell(L.permanent, 'permanent (never went on)', L.permanent > 0) + fzCell(L.sec + 's', 'frozen seconds', L.sec > 0) + '</div>'
+              fzCell(L.temporary, 'temporary (game went on)', L.temporary > 0) + fzCell(L.permanent, 'permanent (never went on)', L.permanent > 0) + fzCell(L.sec + 's', 'frozen seconds', L.sec > 0) + (L.untimed > 0 ? fzCell(L.untimed, 'not timed (a stall the checker flagged)', true) : '') + '</div>'
                : '<p class="when" style="margin:6px 0 0">The 24-hour counter publishes with the next stats update.</p>') +
             (recent ? '<p class="when" style="margin:8px 0 0">' + (L ? 'In the last 24 hours: ' : 'Latest: ') + recent + '</p>' : '<p class="when" style="margin:6px 0 0">No freezes in the last 24 hours.</p>') + '</div>';
         }
@@ -265,12 +265,18 @@
     } catch (e) { playersHtml = ''; }
     app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
+      // V437 (the owner: "the no freeze and game frozen tags are showing up the same time"): the top grade is named by
+      // what it was in THIS game, and the freeze pill counts every stall the checker flags — the two can no longer disagree
+      const TOPK = { froze: 'GAME FROZE', ended: 'GAME ENDED WRONGLY', chain: 'SEVERAL PROBLEMS IN A ROW' };
+      const untimedOf = r => !!(r.audited && Array.isArray(r.audited.frozenUntimed) && r.audited.frozenUntimed.length);
+      const noFreezeOf = r => !!(r.audited && r.audited.frozenMeasured && !(Number(r.audited.frozenSec) > 0) && !untimedOf(r));
+      const implOf = r => r.flag.worst === 3 ? (TOPK[r.flag.worstKind] || (noFreezeOf(r) ? 'A SERIOUS PROBLEM' : IMPL[3])) : IMPL[r.flag.worst];
       const done = r.audited && typeof r.audited.complete === 'boolean' ? (r.audited.complete ? '<span class="pill clean">COMPLETE</span> ' : (r.audited.horn ? '<span class="pill i1">INCOMPLETE</span> ' : '<span class="pill i0">UNFINISHED</span> ')) : '';
       // V419: frozen seconds, measured by the can-act monitor (games from V419 on)
       // V424: TEMPORARY (the game went on after it) or PERMANENT (it never did)
       const fKind = r.audited && r.audited.frozenKind === 'permanent' ? ' · PERMANENT' : (r.audited && r.audited.frozenKind === 'temporary' ? ' · TEMPORARY' : '');
-      const froze = r.audited && r.audited.frozenMeasured ? (Number(r.audited.frozenSec) > 0 ? '<span class="pill ' + (fKind === ' · TEMPORARY' ? 'i2' : 'i3') + '">FROZE ' + Number(r.audited.frozenSec) + 's' + fKind + '</span> ' : '<span class="pill clean">NO FREEZE</span> ') : '';
-      const pill = done + froze + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + IMPL[r.flag.worst] + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
+      const froze = r.audited && r.audited.frozenMeasured ? (Number(r.audited.frozenSec) > 0 ? '<span class="pill ' + (fKind === ' · TEMPORARY' ? 'i2' : 'i3') + '">FROZE ' + Number(r.audited.frozenSec) + 's' + fKind + '</span> ' : (untimedOf(r) ? '<span class="pill i3" title="' + esc(r.audited.frozenUntimed.join(', ')) + '">FROZE · NOT TIMED</span> ' : '<span class="pill clean">NO FREEZE</span> ')) : '';
+      const pill = done + froze + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + implOf(r) + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + implOf(r) + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
       return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }
@@ -300,7 +306,10 @@
     let hbNow = null; try { hbNow = await get('rooms/' + code + '/hb'); } catch (e) {}
     const live = Date.now() - lastGame.t < 3 * 60 * 1000 || (hbNow && Object.values(hbNow).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000));
     const IMP = { invisible: 'NOT NOTICEABLE', yardline: 'BALL / DOWN MOVED', scoreclock: 'SCORE OR CLOCK CHANGED', gameover: 'GAME FROZE OR ENDED WRONGLY' };
-    const verdict = res.flags.length ? '<span class="pill i' + res.impact.worst + '">' + IMP[res.impact.worstName] + '</span> <span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
+    // V437: the top grade named by what it was (a stall, the ending, a chain of smaller problems)
+    const TOPK1 = { froze: 'GAME FROZE', ended: 'GAME ENDED WRONGLY', chain: 'SEVERAL PROBLEMS IN A ROW' };
+    const flagLabel = f => f.impact === 3 ? ((R.stallFlag && R.stallFlag(f)) ? TOPK1.froze : f.rule === 'R-FINAL' ? TOPK1.ended : IMP.gameover) : IMP[f.impactName];
+    const verdict = res.flags.length ? '<span class="pill i' + res.impact.worst + '">' + ((res.impact.worst === 3 && TOPK1[res.impact.worstKind]) || IMP[res.impact.worstName]) + '</span> <span class="pill flag">' + res.flags.length + ' PROBLEM' + (res.flags.length === 1 ? '' : 'S') + '</span>' : '<span class="pill clean">CLEAN</span>';
     const dur = ((lastGame.t - tl[0].t) / 60000).toFixed(0);
 
     // plain-English summary
@@ -341,7 +350,7 @@
       const ordered = res.flags.slice().sort((x, y) => (Math.max(y.impact, y.chainImpact || 0) - Math.max(x.impact, x.chainImpact || 0)) || (x.t - y.t));
       for (const f of ordered) {
         const when = (typeof f.q === 'number' && typeof f.clk === 'number') ? 'Q' + f.q + ' ' + mmss(f.clk) : mmss((f.t - tl[0].t) / 1000) + ' of real time in';
-        const badge = '<span class="pill i' + f.impact + '" style="margin-left:8px">' + IMP[f.impactName] + '</span>' + (f.chain ? ' <span class="pill chain">CHAIN ' + f.chain + ' · ' + f.chainSize + ' problems within 25s → ' + IMP[f.chainImpactName] + '</span>' : '');
+        const badge = '<span class="pill i' + f.impact + '" style="margin-left:8px">' + flagLabel(f) + '</span>' + (f.chain ? ' <span class="pill chain">CHAIN ' + f.chain + ' · ' + f.chainSize + ' problems within 25s → ' + (f.chainImpact === 3 && f.chainImpact > f.impact ? TOPK1.chain : IMP[f.chainImpactName]) + '</span>' : '');
         html += '<div style="padding:10px 0;border-bottom:1px solid var(--line)"><div class="when">' + esc(when) + badge + '</div><div class="what" style="margin:2px 0 4px">' + esc(f.plain) + '</div>' +
                 '<details><summary>' + esc(f.rule) + ' · what the checker looked at</summary><div class="why" style="margin:6px 0">' + esc(R.explain(f.rule)) + '</div><div class="why">' + esc(f.msg) + '</div><pre>' + esc((f.cites || []).join('\n')) + '</pre></details></div>';
       }

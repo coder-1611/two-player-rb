@@ -858,3 +858,34 @@ Also at the same horn in **VZLC (20:13, V435)**: a's last play of Q3 (snapped at
 
 **Shipped before the full gate, on the owner's call** ("push now"): the live build was harming games and the machine was
 at load 46 (the gate and the 6 pm freeze-watch run's tests together). The gate kept running after the push.
+
+## V437 (2026-10-02): a game card can no longer say NO FREEZE next to GAME FROZE
+
+The owner: "the no freeze and game frozen tags are showing up the same time again". Two detectors fed the card:
+- the **freeze pill** (FROZE Ns / NO FREEZE) = the can-act monitor's measured freeze time;
+- the **top grade** ("GAME FROZE OR ENDED WRONGLY") = the worst flag's impact level — reached by flags that are not
+  freezes at all, and by stalls the monitor never timed.
+
+The 87 clashing rooms in the archive (1,187 real rooms) had four causes:
+- **a recording gap graded as a freeze** — R-XPORT "telemetry dropped N entries" (ABGV: "could not record 4045
+  moments"). Now impact 0: a player never sees the recording.
+- **an on-screen page hang** — the hung page cannot write its own act entries, so the monitor saw nothing while R-HANG
+  graded it "the game froze" (QQZQ: 939 s). The watchdog's stall entries (one every ~10 s during a hang, each with the
+  time since the page last answered) are now freeze intervals: timed, TEMPORARY/PERMANENT like any other; R-HANG
+  itself is graded through them (impact 0 when the measure exists, 3 on older builds).
+- **a chain** — three smaller problems within 25 s are graded one level up; the card said "froze". Now
+  "SEVERAL PROBLEMS IN A ROW".
+- **stalls the monitor did not time** — R-POSS DEADLOCK / DOUBLE OFFENSE / REFUSED, R-P6 never resolved / chain broke,
+  R-XPORT a hand-off never received. Inside a window the monitor judged NOT the game (no network, nobody trying to play —
+  V430's CZFL/ZNSO rules) they now defer to it (AOGO, CZFL). Otherwise the card says **FROZE · NOT TIMED** and the
+  24-hour counter counts the game ("not timed" cell).
+
+The top grade is named by what it was (`flag.worstKind`): GAME FROZE / GAME ENDED WRONGLY / SEVERAL PROBLEMS IN A ROW.
+`audited.frozenUntimed` lists the untimed stall rules. A stored verdict without the new fields that would still clash
+reads "A SERIOUS PROBLEM".
+
+**Whole-archive diff** (old vs new rules, 1,187 real rooms; nothing threw): clashes **87 → 0**. 103 "GAME FROZE OR ENDED
+WRONGLY" → "GAME FROZE" (timed freezes, label only); 51 NO FREEZE → FROZE · NOT TIMED; 22 → SEVERAL PROBLEMS IN A ROW;
+10 NO FREEZE → FROZE (page hangs: QQZQ 1489 s, PGJF 1237 s, TJPM 328 s, LLMK 318 s, PTBE 21 s, RCMA 18 s …); 9 → GAME
+ENDED WRONGLY; 12 dropped below the top grade (ABGV and 6 more telemetry gaps; AOGO, CZFL deferred; GLOY, IWCK, DQCK).
+The 207 changed rooms' stored verdicts were refreshed after the push.

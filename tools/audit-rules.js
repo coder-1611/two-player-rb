@@ -189,6 +189,21 @@ function gameStarts(tl) {
 }
 
 const GAMEKINDS = new Set(['snap', 'settle', 'score', 'send', 'recv', 'conv', 'p6', 'final']);
+// V437: what the top grade ("the game froze, stalled or ended wrongly") was in this game, so the transcripts card never
+// says "froze" next to NO FREEZE: 'froze' (a stall rule), 'ended' (the final went wrong), or 'chain' (three smaller
+// problems within 25 s, graded one level up). And the stalls the checker flags that the freeze measure has no seconds
+// for (a stuck conversion, a deadlock, a hand-off never received): the game froze, untimed.
+function stallFlag(f) {
+    const m = f.msg || '';
+    return (f.rule === 'R-FREEZE' && /^FROZEN:/.test(m)) || (f.rule === 'R-HANG' && /^HANG:/.test(m)) || f.rule === 'R-POSS' || f.rule === 'R-P6' ||
+           (f.rule === 'R-XPORT' && /never received/.test(m)) || f.rule === 'R-FALLBACK';
+}
+function topKind(folded, worst, frozen) {
+    const top = folded.filter(f => f.impact === 3);
+    const kind = worst < 3 ? null : top.some(stallFlag) ? 'froze' : top.some(f => f.rule === 'R-FINAL') ? 'ended' : 'chain';
+    const untimed = frozen && frozen.measured && !(frozen.sec > 0) ? [...new Set(top.filter(f => stallFlag(f) && f.rule !== 'R-FREEZE').map(f => f.rule))] : [];
+    return { kind, untimed };
+}
 function audit(tl, extra) {
     // V397: a rematch reuses the room code. Every 'TURN-> x (match-start)'
     // after the first begins a new game — the windows of R-GIFT, R-P6, R-HALF
@@ -241,6 +256,7 @@ function audit(tl, extra) {
                                 temporary: sumK('temporary'), permanent: sumK('permanent') };
             // V428 (UZGV): a phone put into a match alone after the final (R-REOPEN) is not the room's last game — its
             // "incomplete" hid a complete 30-0 game (Shivom vs soham) as UNFINISHED
+            { const tk = topKind(folded, worst, frozenAll); impact.worstKind = tk.kind; frozenAll.untimed = tk.untimed; }
             const lastReal = parts.filter(p => !p.reopen).pop() || parts[parts.length - 1];
             return { flags: folded, rawFlags: raw, impact, t0: tl[0].t, entries: tl.length, games: parts.length, realGames: parts.filter(p => !p.reopen).length, complete: lastReal.complete, frozen: frozenAll };
         }
@@ -899,6 +915,24 @@ function audit(tl, extra) {
                 const nx = fullTl.find(e => e.role === r && e.k === 'sync' && e.t > b);
                 return !!(nx && Number(nx.q) >= 20);
             };
+            // V437 (QQZQ: "the page hung for 939 s while the screen was on" next to NO FREEZE): a page that hangs ON SCREEN
+            // cannot write its own act entries, so the can-act monitor never saw what R-HANG (the off-thread watchdog)
+            // grades "the game froze". The watchdog writes a stall entry every ~10 s DURING the hang, each with the time
+            // since the page last answered: one hang = the entries sharing a start (t − ms), its length the longest.
+            // It is a freeze interval like any other (classified below; not counted twice where the monitor has one).
+            {
+                const hangs = {};
+                for (const e of tl) {
+                    if (e.k !== 'stall' || e.kind === 'sleep' || e.vis !== 'V') continue;
+                    const ms = Number(e.ms) || 0; if (ms <= 0) continue;
+                    const from = e.t - ms, key = e.role + '|' + Math.round(from / 5000);
+                    if (!hangs[key] || ms > hangs[key].ms) hangs[key] = { role: e.role, from, ms };
+                }
+                for (const h of Object.values(hangs)) {
+                    if (frozen.intervals.some(iv => (iv.role === h.role || iv.role === 'ab') && iv.from < h.from + h.ms && iv.from + iv.ms > h.from)) continue;
+                    frozen.intervals.push({ role: h.role, from: h.from, ms: h.ms, why: 'the page hung (screen on)' });
+                }
+            }
             for (const iv of frozen.intervals) {
                 iv.why = String(iv.why || '').replace(/ \d+s$/, '');
                 const ivEnd = iv.from + iv.ms;
@@ -938,8 +972,11 @@ function audit(tl, extra) {
     const impactOf = f => {
         const m = f.msg || '';
         switch (f.rule) {
-            case 'R-XPORT': return /never received|dropped/.test(m) ? 3 : 0;
-            case 'R-HANG': return /^HANG:/.test(m) ? 3 : 0;
+            // V437: dropped TELEMETRY is a gap in the recording, not something a player saw (ABGV: "could not record 4045
+            // moments" graded "the game froze" next to NO FREEZE); a hand-off never received still is
+            case 'R-XPORT': return /never received/.test(m) ? 3 : 0;
+            // V437: an on-screen hang is a freeze on the freeze measure's own terms (see the hang intervals above)
+            case 'R-HANG': return /^HANG:/.test(m) && !frozen.measured ? 3 : 0;   // measured: the hang is a freeze interval, graded by its R-FREEZE flag (FROZEN over 10 s, a near miss under)
             case 'R-FREEZE': return /^FROZEN:/.test(m) ? 3 : 0;
             case 'R-OVL': return 0;
             case 'R-GATE': return 1;
@@ -967,6 +1004,16 @@ function audit(tl, extra) {
         return 1;
     };
     for (const f of flags) { f.impact = impactOf(f); f.impactName = IMPACT_NAME[f.impact]; f.impactText = IMPACT_TEXT[f.impact]; }
+    // V437: a stall another rule grades "the game froze" inside a window the freeze measure judged NOT the game (a phone
+    // with no network, nobody trying to play — V430's CZFL / ZNSO rules) defers to that judgement; any other stall the
+    // measure has no seconds for stays, and the card says FROZE · NOT TIMED (DWJE, ELKO: both phones waiting 15–24 s
+    // with no interval measured — misses of the measure, tools/freeze-watch/OPEN.md)
+    if (frozen.measured) for (const f of flags) {
+        if (f.impact !== 3 || f.rule === 'R-FREEZE' || !stallFlag(f)) continue;
+        const ft = Number(f.t) || 0;
+        const ex = (frozen.intervals || []).find(iv => iv.notPlay && iv.from - 30000 <= ft && iv.from + iv.ms + 30000 >= ft);
+        if (ex) { f.impact = 0; f.impactName = IMPACT_NAME[0]; f.impactText = IMPACT_TEXT[0]; f.deferredTo = ex.notPlay; }
+    }
     // fold repeats: same rule, same sentence with the numbers taken out
     const keyOf = f => f.rule + '|' + String(f.plain).replace(/Q\d+ \d+:\d\d/g, 'Q#').replace(/\d+(\.\d+)?/g, '#');
     const folded = [], byKey = {};
@@ -996,6 +1043,7 @@ function audit(tl, extra) {
     const worst = folded.length ? Math.max(...folded.map(x => Math.max(x.impact, x.chainImpact || 0))) : -1;
     const counts = [0, 0, 0, 0]; folded.forEach(x => counts[x.impact]++);
     const impact = { worst, worstName: worst >= 0 ? IMPACT_NAME[worst] : 'clean', worstText: worst >= 0 ? IMPACT_TEXT[worst] : 'nothing wrong', counts, names: IMPACT_NAME, texts: IMPACT_TEXT, raw: flags.length, folded: folded.length, chains: chainId };
+    { const tk = topKind(folded, worst, frozen); impact.worstKind = tk.kind; frozen.untimed = tk.untimed; }
     return { flags: folded, rawFlags: flags, impact, t0, entries: tl.length, complete, frozen };
 }
 
@@ -1174,5 +1222,5 @@ function realign(tl) {
     return toTimeline(streams);
 }
 
-return { toTimeline, realign, audit, narrate, explain, line, fmtT, phantomPick6, gameStarts };
+return { toTimeline, realign, audit, narrate, explain, line, fmtT, phantomPick6, gameStarts, stallFlag };
 });

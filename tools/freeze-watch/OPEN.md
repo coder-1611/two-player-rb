@@ -72,6 +72,13 @@ Order = what to take first when the brief has no new freeze to work on.
   (`_rb2p_scoredSinceCapture` only compares the holder's own score). Void the keep on the opponent's score too, and hand
   the free kick off the way POST-CONV does. Read the engine path first; test through a real safety.
 
+## 5b. The freeze measure misses stalls other rules see (V437: 51 rooms read FROZE · NOT TIMED)
+- R-POSS DEADLOCK with **no measured interval at all**: DWJE (V422, both waiting 24 s), ELKO (V431, 15 s), ELTR, JDZQ
+  (x7), DCCV (16 s), KVOP (20 s x3); R-P6 conversions never resolved (CRTI, DQJI, GXFI, HEIG, MFTC); hand-offs never
+  received while the receiver drew frames (FABY, JMUK, QCLM, TDWD, WMCM, AWCI, FVTL, IJYB, VWEI).
+- Read each on its timeline: either the can-act monitor missed a real freeze (fix the `act` entries or the interval
+  rules, then the card shows its seconds) or the stall rule is wrong (lower its grade). Whole-archive diff either way.
+
 ## 6. DAXK: a reload during an overtime try ends the game early (still in the code)
 - The try's duty record survives the reload; the resume replays it as a synthetic `type:'PICK6'` outcome, and in OT a
   pick-six is a walk-off win (`_rb2p_otWalkoffDefensiveTd`) — the game ended 30-24 with A's answering possession

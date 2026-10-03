@@ -120,7 +120,7 @@ function freezeCounter() {
     // hours, rolling — games played in it, the freezes that STARTED in it (temporary / permanent), their seconds, and
     // the list of them. The older totals stay in the record for the tools that read them.
     const cut24 = now - dayMs;
-    out.last24 = { from: cut24, games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0, recent: [] };
+    out.last24 = { from: cut24, games: 0, frozen: 0, sec: 0, temporary: 0, permanent: 0, untimed: 0, recent: [] };
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
         let tl0 = j.timeline || []; try { tl0 = R.realign(tl0); } catch (e) {}
@@ -146,6 +146,14 @@ function freezeCounter() {
                 out.last24.frozen++; out.last24.sec += s24; out.last24[perm ? 'permanent' : 'temporary']++;
                 const iv0 = ivs.find(x => x.kind === 'permanent') || ivs[0];
                 out.last24.recent.push({ room: f.replace(/\.json$/, ''), t: iv0.from, sec: s24, kind: perm ? 'permanent' : 'temporary', why: iv0.why || '', resumedBy: iv0.resumedBy || '' });
+            } else if (res.frozen.untimed && res.frozen.untimed.length && typeof R.stallFlag === 'function') {
+                // V437: a stall the checker flags with no seconds on the freeze measure (a stuck conversion, a deadlock, a
+                // hand-off never received) is a frozen game too — the transcripts card says FROZE · NOT TIMED
+                const st = (res.flags || []).filter(x => x.impact === 3 && R.stallFlag(x) && x.rule !== 'R-FREEZE' && (Number(x.t) || 0) >= cut24);
+                if (st.length) {
+                    out.last24.frozen++; out.last24.untimed++;
+                    out.last24.recent.push({ room: f.replace(/\.json$/, ''), t: st[0].t, sec: 0, kind: 'untimed', why: String(st[0].plain || st[0].msg || st[0].rule).replace(/^Game \d+ of \d+ in this room — /, '').slice(0, 90) });
+                }
             }
         }
         if (now - t < 7 * dayMs) bucket(out.week);
