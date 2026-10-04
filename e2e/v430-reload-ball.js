@@ -48,7 +48,10 @@ const spot = page => page.evaluate(() => { try { const s = RB.engineState(); ret
     const back = await until(async () => {
         const w = await waiting(def.page), inM = await def.page.evaluate(() => document.documentElement.classList.contains('rb-in-match')).catch(() => false);
         if (inM && inMatchMs === null) inMatchMs = Date.now() - tBoot;
-        return { ok: inM && w === false, w, inM };
+        // V455: "not waiting" alone also holds on a page still booting (the flag is undefined there, and `waiting` tests
+        // === true): the gate's B2 reds on V449, V450 and V455 all read the spot 0/0/0 from that page. LIVE = a real drive.
+        const sp = (inM && w === false) ? await spot(def.page) : null;
+        return { ok: !!(inM && w === false && sp && sp.d >= 1 && sp.d <= 4), w, inM, sp };
     }, 45000, 250);
     await sleep(1500);
     const after = await spot(def.page), offWait = await waiting(off.page);

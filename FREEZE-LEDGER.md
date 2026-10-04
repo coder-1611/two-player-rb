@@ -1192,3 +1192,24 @@ without it: M4 H3 FAIL); opp-view 6/6 (fidelity ≥ 99.9 %, smoothness, W4 "the 
 Also: `e2e/v432-rematch-join.js` R1 reads the resume's restored record from the audit's `flow-stale` guard when the
 11-line diag ring has already dropped `FLOW restored …` (since V450 a waiting phone logs the replay's VIEW lines too —
 R1 failed on V453 with R2–R4 green).
+
+## V456 (2026-10-04): RUN IT BACK's pulse without repaints; four tests no longer read evidence a page has already dropped
+
+From the V455 gate (RED: v430-reload-ball B2 and final-scroll alone; v434-horn-outcomes, v394-fixes, v398-games and
+v410-lobby failed only in the batch). None was the game:
+- **RUN IT BACK's pulse** animated `box-shadow` (a repaint every frame — the stats screen is where players linger, some
+  on GPU-less Chromebooks). Now a gold ring on its own layer grows and fades (transform + opacity; nothing repaints).
+  final-scroll's F4 "Input.dispatchTouchEvent timed out" also hit V450's batch, which has no button; alone on V455 and
+  V450 it passed 4/4.
+- **The on-page diag ring keeps 11 lines.** Since V450 a phone also logs the opponent's-screen lines (VIEW …, OPP-VIS),
+  so a line a test looks for seconds later can be gone: v398-games T4 (GAME-START), v394-fixes T4 (the TD typing),
+  v410-lobby T6. They now record every diag line themselves (a wrapper on `window._rb2p_diagLog`); v432-rematch-join
+  R1 reads the audit (V455).
+- **v410-lobby T6** staged its try "snapped 8 s ago" six seconds into a game — older than the opening drive's own apply
+  stamp (pollA writes `_rb2p_lastOpponentOutcomeApplyMs`), so `_rb2p_tryCrossedHorn` rightly said "a hand-off came after
+  the try" and the watcher waited for the duty. The offer, snap and quarter change are now staged in the last 3 s.
+- **v430-reload-ball** took "not waiting" for "LIVE" — but `_rb2p_userIsWaitingForOpponent` is undefined on a page still
+  booting, so the spot was read there: 0/0/0 (V449, V450 and V455 batch runs alike). LIVE now needs a real drive
+  (down 1–4). Fixed test on V455's game: 3/3 twice (the punt spot, 1st & 10, LIVE ~4 s after rejoining).
+- New: `e2e/run-it-back-both.js` (suites.txt) — both players tap RUN IT BACK within a second: B1 passes (game 2 on both
+  ~11 s after the taps, no guard reload).

@@ -76,6 +76,10 @@ const since = (page, m) => page.evaluate((m) => { const s = String(window._rb2p_
 
     // ---- T4: drive-end after a conversion is a kickoff ----
     const t4 = await off.page.evaluate(async () => {
+        // V455: every diag line of T4 (the on-page ring keeps 11; since V450 the opponent's-screen lines of the hand-off can
+        // push the typing line — and T4-START — out of it before the send lands)
+        const odT4 = window._rb2p_diagLog, allT4 = [];
+        window._rb2p_diagLog = function (m) { try { allT4.push(String(m)); } catch (e) {} return odT4.apply(this, arguments); };
         window._rb2p_diagLog('T4-START');
         window.__t4 = []; const real = window._twoPlayer.send; window._twoPlayer.send = o => { window.__t4.push(o.type); real.call(window._twoPlayer, o); };
         window._rb2p_lastConvModalMs = Date.now();
@@ -83,9 +87,8 @@ const since = (page, m) => page.evaluate((m) => { const s = String(window._rb2p_
         window._rb2p_userOutcomeSendInProgress = false; window._rb2p_userIsWaitingForOpponent = false; window._rb2p_kickoffGraceUntil = 0;
         try { _1c1(s.rawEngineMatch, _Sc2); } catch (e) {}
         const t0 = Date.now(); while (Date.now() - t0 < 6000 && !window.__t4.length) await new Promise(r => setTimeout(r, 100));
-        window._twoPlayer.send = real;
-        const d = String(window._rb2p_readDiagLog()); const i = d.lastIndexOf('T4-START');
-        return { sent: window.__t4, typed: /typed TD \(kickoff\), not OTHER/.test(d.slice(i)) };
+        window._twoPlayer.send = real; window._rb2p_diagLog = odT4;
+        return { sent: window.__t4, typed: allT4.some(m => /typed TD \(kickoff\), not OTHER/.test(m)) };
     });
     console.log('  T4: ' + JSON.stringify(t4));
     check('T4 a dead-stage drive-end within 30s of a conversion offer ships as TD (kickoff), not OTHER', t4.typed && t4.sent.includes('TD') && !t4.sent.includes('OTHER'), JSON.stringify(t4));

@@ -54,10 +54,16 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     const off = aWait ? g.b : g.a, def = aWait ? g.a : g.b;
 
     const t6 = await off.page.evaluate(async () => {
+        // V455: every diag line of T6 (the on-page ring keeps 11; the opponent's-screen lines can push T6-START out)
+        const odT6 = window._rb2p_diagLog, allT6 = [];
+        window._rb2p_diagLog = function (m) { try { allT6.push(String(m)); } catch (e) {} return odT6.apply(this, arguments); };
         window._rb2p_diagLog('T6-START');
         const em = RB.engineState();
         const sent = []; const real = window._twoPlayer.send; window._twoPlayer.send = o => { sent.push(o.type); return real.call(window._twoPlayer, o); };
-        window._rb2p_lastConvModalMs = Date.now() - 12000; window._rb2p_lastSnapDown = 6; window._rb2p_lastSnapMs = Date.now() - 8000;
+        // V455: the offer, the try's snap and the quarter change all come AFTER the opening drive's own apply stamp (pollA
+        // stamps _rb2p_lastOpponentOutcomeApplyMs when it forces the opening drive, ~6 s before this; a try "snapped 8 s
+        // ago" read as older than that hand-off, so the watcher rightly waited for the duty — the T6 reds since V450)
+        window._rb2p_lastConvModalMs = Date.now() - 3000; window._rb2p_lastSnapDown = 6; window._rb2p_lastSnapMs = Date.now() - 2000;
         window._rb2p_quarterChangedToMs = Date.now() - 1000;
         window._rb2p_patPlayPending = true;               // the duty has not retired yet — the old code waited here
         window._rb2p_userIsWaitingForOpponent = false; window._rb2p_userOutcomeSendInProgress = false; window._rb2p_kickoffGraceUntil = 0;
@@ -69,10 +75,9 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         };
         hold();
         const t0 = Date.now(); while (Date.now() - t0 < 6000 && !sent.length) { await new Promise(r => setTimeout(r, 100)); if (!sent.length) hold(); }
-        window._twoPlayer.send = real;
-        const d = String(window._rb2p_readDiagLog()); const tail = d.slice(d.lastIndexOf('T6-START'));
+        window._twoPlayer.send = real; window._rb2p_diagLog = odT6;
         window._rb2p_lastConvModalMs = 0; window._rb2p_patPlayPending = false;
-        return { sent, logged: /POST-CONV the try crossed the horn/.test(tail), ms: Date.now() - t0 };
+        return { sent, logged: allT6.some(m => /POST-CONV the try crossed the horn/.test(m)), ms: Date.now() - t0 };
     });
     check('T6 a try snapped before the horn: the drive at the 2 is handed off at once, even before the duty retires', t6.logged && t6.sent.includes('TD'), JSON.stringify(t6));
 

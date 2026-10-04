@@ -7,6 +7,7 @@
 //   R3  B's stats screen says A wants to run it back
 //   R4  B taps it: the next game starts on both phones in the same room (a second games/ entry, a GAME-START on each),
 //       Q1 with a full clock, 0-0, exactly one phone with the ball
+//   B1  (RIB_BOTH=1) both tap within a second: the next game starts on both, no guard reload
 //   R5  the start was clean: no READY-guard reload into a resume (V452), no score or quarter carried from game 1, and
 //       game 2's first hand-off is applied by the other phone itself (not dropped as moot, no rescuer)
 // Game 1 is a real 2P game that runs 65 s (as v432-rematch-join: a real game lasts minutes), then ends by the engine's own
@@ -71,6 +72,20 @@ const finalButtons = page => page.evaluate(() => {
               onFirst(fa) && onFirst(fb) && onFirst(fp) && biggest(fa) && biggest(fb) && /RUN IT BACK/.test(fa.again.text) && /RUN IT BACK/.test(fb.again.text),
               JSON.stringify({ a: fa.again, b: fb.again, phone: fp && fp.again, vhPhone: fp && fp.vh }));
 
+        // ---- RIB_BOTH=1: both players tap it within a second (two friends at once) ----
+        if (process.env.RIB_BOTH) {
+            const tAB = Date.now();
+            await Promise.all([A.page.click('#rb-final-again'), sleep(700).then(() => B.page.click('#rb-final-again'))]);
+            const bothB = await until(async () => ({ ok: (await inMatch(A.page)) === true && (await inMatch(B.page)) === true }), 90000, 700);
+            await sleep(6000);
+            const sA2 = await st(A.page), sB2 = await st(B.page), g2 = Object.keys(await TP.fbGet('rooms/' + code + '/games') || {}).length;
+            const dd = (await diag(A.page)) + (await diag(B.page));
+            console.log('  both tapped: game 2 on both ' + (bothB.ms !== null ? Math.round((Date.now() - tAB) / 100) / 10 + ' s after the taps' : 'NO') + '; A ' + JSON.stringify(sA2) + '; B ' + JSON.stringify(sB2) + '; games ' + g2);
+            check('B1 both tap at once: the next game starts on both (Q1, 0-0, one ball), no READY-guard reload',
+                  bothB.ms !== null && g2 === games1 + 1 && sA2 && sB2 && sA2.q === 1 && sB2.q === 1 && sA2.su + sA2.so + sB2.su + sB2.so === 0 && sA2.wait !== sB2.wait && !/READY blocked — opponent mid-match/.test(dd),
+                  JSON.stringify({ both: bothB.ms, games1, g2, sA2, sB2 }));
+            return;
+        }
         // ---- R2: A taps it ----
         const tA = Date.now();
         await A.page.click('#rb-final-again');

@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V455<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V456<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V455</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V456</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15818,19 +15818,22 @@
             if (!document.getElementById('rb-final-again-style')) {
                 var agSt = document.createElement('style'); agSt.id = 'rb-final-again-style';
                 agSt.textContent =
-                    '#rb-final-again{display:inline-flex;align-items:center;gap:.45em;font-family:\'Anton\',sans-serif;font-size:clamp(26px,3.6vw,42px);' +
+                    '#rb-final-again{position:relative;display:inline-flex;align-items:center;gap:.45em;font-family:\'Anton\',sans-serif;font-size:clamp(26px,3.6vw,42px);' +
                     'letter-spacing:3px;line-height:1;text-transform:uppercase;color:#0b120d;background:' + GOLD + ';border:none;border-radius:4px;' +
                     'padding:.5em 1.25em .48em;cursor:pointer;box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.22);' +
-                    'animation:rbAgainPulse 2s ease-in-out infinite;-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
+                    '-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
+                    // the pulse: a gold ring that grows and fades on its own layer (transform + opacity: the compositor moves it,
+                    // nothing repaints — a box-shadow pulse repainted every frame, costly on a GPU-less Chromebook)
+                    '#rb-final-again::after{content:"";position:absolute;inset:-3px;border:3px solid ' + GOLD + ';border-radius:7px;pointer-events:none;' +
+                    'opacity:0;will-change:transform,opacity;animation:rbAgainRing 2s ease-out infinite}' +
                     '#rb-final-again:hover{filter:brightness(1.06)}#rb-final-again:active{transform:translateY(2px)}' +
                     '#rb-final-again:focus-visible{outline:3px solid ' + CHALK + ';outline-offset:5px}' +
-                    '#rb-final-again[disabled]{cursor:default;animation:none;filter:saturate(.7)}' +
-                    '#rb-final-again.hot{animation-duration:.9s}' +
-                    '@keyframes rbAgainPulse{0%,100%{box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.22),0 0 0 0 rgba(255,207,77,.55)}' +
-                    '60%{box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.22),0 0 0 16px rgba(255,207,77,0)}}' +
+                    '#rb-final-again[disabled]{cursor:default;filter:saturate(.7)}#rb-final-again[disabled]::after{animation:none;opacity:0}' +
+                    '#rb-final-again.hot::after{animation-duration:.9s}' +
+                    '@keyframes rbAgainRing{0%{transform:scale(1);opacity:.8}75%,100%{transform:scale(1.1,1.45);opacity:0}}' +
                     '#rb-final-again-note{font-family:\'IBM Plex Mono\',monospace;font-weight:600;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:' + CHALK + ';opacity:.8;text-align:center;max-width:36em;text-wrap:balance}' +
                     '#rb-final-again-note.hot{color:' + GOLD + ';opacity:1}' +
-                    '@media (prefers-reduced-motion:reduce){#rb-final-again,#rb-final-again.hot{animation:none}}' +
+                    '@media (prefers-reduced-motion:reduce){#rb-final-again::after,#rb-final-again.hot::after{animation:none;opacity:0}}' +
                     // a phone held sideways (~390 px tall): the result, the score, RUN IT BACK and its note on the first screen
                     '@media (max-height:520px){#rb-final .rb-scroll{padding-top:16px!important}' +
                     '#rb-final .rb-fin-title{font-size:clamp(38px,6.4vw,60px)!important}#rb-final .rb-fin-scoreline{margin-top:8px!important}' +

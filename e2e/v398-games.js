@@ -16,6 +16,10 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     console.log('=== V398 GAME BARRIER ===');
     // plant a stale `audited` marker under the code the harness is about to use — the match start must clear it
     const g = await TP.startTwoPlayerGame({ beforeReady: async (page, label, code) => {
+        // V455: every diag line from here on (the on-page ring keeps 11, and since V450 the opponent's-screen lines at a
+        // match start can push GAME-START out of it before T4 reads it)
+        await page.evaluate(() => { const od = window._rb2p_diagLog; window.__diagAll = []; if (typeof od === 'function')
+            window._rb2p_diagLog = function (m) { try { window.__diagAll.push(String(m)); } catch (e) {} return od.apply(this, arguments); }; });
         if (label !== 'a') return;
         await TP.fbPut('rooms/' + code + '/audited', { ts: 1, flagged: 0, planted: true });
         const back = await TP.fbGet('rooms/' + code + '/audited');
@@ -36,7 +40,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
     const audited = await TP.fbGet('rooms/' + code + '/audited');
     check('T3 the stale `audited` marker planted before READY is gone after the match start', audited == null, JSON.stringify(audited));
 
-    const diag = await g.a.page.evaluate(() => String(window._rb2p_readDiagLog()));
+    const diag = await g.a.page.evaluate(() => String(window._rb2p_readDiagLog()) + ' | ' + (window.__diagAll || []).join(' | '));
     check('T4 the diag log says GAME-START with the quarter length', /GAME-START qmins=\d+/.test(diag), diag.slice(-200));
 
     // T5: the checker on the real stream + a second synthetic marker 5 minutes later
