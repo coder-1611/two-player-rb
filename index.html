@@ -1642,7 +1642,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V461<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V462<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1731,7 +1731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V461</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V462</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15142,10 +15142,12 @@
             }
             var oE = _EG4, oH = _HG4;
             window._EG4 = function () {
+                CAP.fT0 = performance.now();   // V462: every frame timed — a captured one against a plain one is the capture's real cost
                 try { if (CAP.wantFrame && !CAP.failed && CAP.wantFrame()) startFrame(); } catch (e) { capFail('start', e); }
                 return oE.apply(this, arguments);
             };
             window._HG4 = function () {
+                var captured = CAP.on;
                 if (CAP.on) {
                     var fr = null;
                     try { flushPend(); fr = CAP.frame; } catch (e) { capFail('end', e); }
@@ -15154,6 +15156,9 @@
                 }
                 var rr = oH.apply(this, arguments);
                 if (SND.shotSeq) { try { SND.shot = { seq: SND.shotSeq, png: document.getElementById('canvas').toDataURL('image/png') }; } catch (e3) {} SND.shotSeq = 0; }
+                if (CAP.fT0) { var fd = performance.now() - CAP.fT0; CAP.fT0 = 0;
+                    if (fd < 200) { if (captured) CAP.capFrameMs = CAP.capFrameMs ? CAP.capFrameMs * 0.9 + fd * 0.1 : fd;
+                                    else CAP.plainFrameMs = CAP.plainFrameMs ? CAP.plainFrameMs * 0.95 + fd * 0.05 : fd; } }
                 return rr;
             };
             CAP.installed = true;
@@ -15403,12 +15408,26 @@
     function inMatch() { try { return !!(window.RB && RB.isEngineInMatchRoom()); } catch (e) { return false; } }
     // 30 frames a second on the direct link (the replay glides between them), 5-6 on Firebase; a phone whose capture +
     // encode runs long gives up frames rather than its own smoothness
-    function capInterval() { var base = NET && NET.mode() === 'fb' ? 166 : 33; return SND.costMs > 6 ? Math.max(base, 66) : (SND.costMs > 4 ? Math.max(base, 50) : base); }
+    // V462 (the owner: "slight lag in second half offense ever since we added the pixel by pixel recreation"; a player:
+    // "Im steady lagging only on offense"): the cost of a captured frame is the capture (every draw call recorded) AND the
+    // encoding — measured as a captured frame's time over a plain one's (fr.capMs was never filled in, so a slow phone never
+    // backed off: on a Chromebook-slow phone 6% of frames ran late with the link, 18% with the recorder too). A slow phone
+    // now sends fewer frames (the replay glides between them).
+    function capOverMs() { return Math.max(SND.costMs, (CAP.capFrameMs && CAP.plainFrameMs) ? CAP.capFrameMs - CAP.plainFrameMs : 0); }
+    function capInterval() {
+        var base = NET && NET.mode() === 'fb' ? 166 : 33, over = capOverMs();
+        return over > 5 ? Math.max(base, 100) : over > 2 ? Math.max(base, 66) : over > 1.5 ? Math.max(base, 50) : base;
+    }
     CAP.wantFrame = function () {
         var now = performance.now(), link = false, rec = false;
         if (!SND.failed && NET && now - SND.lastCapAt >= capInterval() - 4 &&
             !(Date.now() > SND.wantUntil || !NET.mode() || amWaiting() || !inMatch() || document.hidden)) { link = true; SND.lastCapAt = now; }
-        if (REC.active && !REC.failed && now - REC.lastCapAt >= recInterval() - 4 && inMatch() && !document.hidden) { rec = true; REC.lastCapAt = now; }   // V458
+        // V458 the recorder; V462: while the link is capturing at least as often, only on the link's own frames — its own
+        // timer captured extra frames (with the link: nearly every frame)
+        if (REC.active && !REC.failed && inMatch() && !document.hidden && now - REC.lastCapAt >= recInterval() - 4) {
+            var linkOn = !SND.failed && NET && NET.mode() && Date.now() <= SND.wantUntil && !amWaiting() && capInterval() <= recInterval();
+            if (!linkOn || link) { rec = true; REC.lastCapAt = now; }
+        }
         CAP.forLink = link; CAP.forRec = rec;
         return link || rec;
     };
@@ -15465,7 +15484,7 @@
     // the ball's states that end a play (the engine's obj_ball _kp): tackled, touchdown, incomplete, out of bounds, sack,
     // and the kicks' ends
     var REC_DEAD = { 4: 1, 6: 1, 7: 1, 8: 1, 11: 1, 12: 1, 14: 1, 15: 1, 16: 1, 17: 1 };
-    function recInterval() { return REC.costMs > 8 ? 100 : 66; }   // 15 frames a second; 10 on a phone whose encoding runs long
+    function recInterval() { return (REC.costMs > 8 || capOverMs() > 5) ? 100 : 66; }   // 15 frames a second; 10 on a slow phone
     function recEnabled() {
         if (window._rb2p_recForce === true) return true;
         if (window._rb2p_recForce === false) return false;
@@ -15847,7 +15866,8 @@
         attachNet: function (net) { NET = net; installCapture(); recFlagRefresh(true); },
         onPacket: onPacket, onAck: onAck, onWant: onWant,
         stats: function () {
-            return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed },
+            return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed,
+                            capOver: +capOverMs().toFixed(2), capInt: capInterval(), capFrameMs: +(CAP.capFrameMs || 0).toFixed(2), plainFrameMs: +(CAP.plainFrameMs || 0).toFixed(2) },
                      rcv: { rx: RCV.rx, bytes: RCV.rxBytes, frames: RCV.frames.length, showing: RCV.showing, drawn: RCV.drawn, starved: RCV.starved, delay: Math.round(RCV.delay),
                             decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed, morphs: RCV.morphs, resized: RCV.resized, stretched: RCV.stretched, tickMs: +RCV.tickMs.toFixed(2), tickMax: Math.round(RCV.tickMax), skipped: RCV.skipped, lite: RCV.lite, software: !!(RCV.R && RCV.R.software) }, net: NET ? NET.mode() : null };
         },

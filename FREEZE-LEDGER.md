@@ -1327,3 +1327,18 @@ The owner: "also when a fumble happens, the interception pop up happens. Try to 
 - **The highlights' play detector** (`tools/highlights/features.js`) reads a play only up to the frame it ended: a
   recording runs on past the whistle, sometimes into the next snap, whose QB read as the last ball carrier — the first
   real 6 pm run's #1 (Kelce, 43 yd, room VOHK) was labelled "Mahomes 43 yd" (the judge's headline was right).
+
+## V462 (2026-10-04): no offense lag from the opponent's screen and the play recorder
+
+The owner: "there is slight lag in second half offense ever since we added the pixel by pixel recreation"; a player
+(VOHK, a Chromebook): "Im steady lagging only on offense".
+
+- Measured on a Chromebook-slow offense phone (CPU x4, a real 2P game, the bot's downs): frames later than 33 ms — 3%
+  with no capture, 6% with the opponent's-screen link, **18%** with the link and the V458 recorder.
+- Why: the recorder captured frames on its own timer, so with the link nearly every frame was captured; and the link's
+  back-off for slow phones counted only the encoding, never the capture itself (`fr.capMs` was never filled in), so a
+  slow or heating-up phone (the second half) never backed off.
+- Now: every engine frame is timed; a captured frame's time over a plain one's is the capture's real cost. A phone over
+  1.5 / 2 / 5 ms sends 20 / 15 / 10 frames a second instead of 30 (the replay glides between them). The recorder uses
+  only frames the link captures anyway while the link is at least as fast. After: 6.8% late frames with everything on.
+- opp-view W1–W7 and play-rec P1–P7 green.
