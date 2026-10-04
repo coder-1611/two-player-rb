@@ -4,7 +4,9 @@
 //   W1  the waiting phone shows the opponent's live screen within 15 s of the opponent having the ball (the direct link)
 //   W2  it IS the opponent's screen: a frame the phone with the ball sent, replayed on the waiting phone, is at least 99.9%
 //       pixel-identical to what that phone's own engine drew
-//   W3  smooth through a real down: the waiting phone redraws on (nearly) every animation frame its browser gives it,
+//   W3  smooth through a real down (V451: and NO piece ever stretched between two frames — the owner's screenshot showed
+//       a sideline sprite blown up across the field for a split second): the waiting phone redraws on (nearly) every
+//       animation frame its browser gives it,
 //       fewer than 10% of redraws wait on a late frame, and the camera following the play glides: under 2% spikes (a
 //       step 2.5x its neighbours') and under 2% stutters (a still frame between moving ones) — the frames come 15-30 a
 //       second, the picture moves on every redraw
@@ -59,7 +61,7 @@ async function directGame() {
         check('W2 a frame replayed on the waiting phone is at least 99.9% pixel-identical to the sender\'s own', !!(w2 && w2.samePct >= 99.9), JSON.stringify(w2));
         // W3 + W4: a real down, the ball traced on the waiting phone
         // the field camera follows the play: its position on every replay is the smoothness the player sees
-        await DEF.page.evaluate(() => window._rb2p_view.traceCamera());
+        await DEF.page.evaluate(() => { window._rb2p_view.traceCamera(); window._rb2p_view.audit = true; });
         await DEF.page.evaluate(() => { window.__rafN = 0; if (!window.__rafOn) { window.__rafOn = true; (function f() { window.__rafN++; requestAnimationFrame(f); })(); } });
         const defBefore = await gameState(DEF.page), sendBefore = await vstats(OFF.page), recvBefore = await vstats(DEF.page), t0 = Date.now();
         const r = await L.realDown(OFF.page, { straight: true });
@@ -86,14 +88,15 @@ async function directGame() {
         }
         const drawn = recvAfter.rcv.drawn - recvBefore.rcv.drawn, starved = recvAfter.rcv.starved - recvBefore.rcv.starved;
         const sent = sendAfter.snd.sent - sendBefore.snd.sent, bps = Math.round((sendAfter.snd.bytes - sendBefore.snd.bytes) / secs);
-        const w3 = { play: r && r.result, secs: +secs.toFixed(1), sent, sentFps: +(sent / secs).toFixed(1), drawn, drawFps: +(drawn / secs).toFixed(1), rafTicks: rafN, starvedPct: drawn ? Math.round(100 * starved / drawn) : null,
+        const stretched = recvAfter.rcv.stretched - recvBefore.rcv.stretched, resized = recvAfter.rcv.resized - recvBefore.rcv.resized;
+        const w3 = { stretched, resizedGlides: resized, play: r && r.result, secs: +secs.toFixed(1), sent, sentFps: +(sent / secs).toFixed(1), drawn, drawFps: +(drawn / secs).toFixed(1), rafTicks: rafN, starvedPct: drawn ? Math.round(100 * starved / drawn) : null,
                      tracePts: pts.length, cameraSpan: Math.round(span), movingSteps: steps.length, medianStep: +med.toFixed(2), maxStep: +maxStep.toFixed(2),
                      spikePct: moving ? +(100 * spikes / moving).toFixed(1) : null, stutterPct: moving ? +(100 * stutters / moving).toFixed(1) : null, maxGapMs: maxGap, delayMs: recvAfter.rcv.delay };
         console.log('  W3: ' + JSON.stringify(w3));
         const big = []; for (let i = 1; i < pts.length && false; i++) { const d = Math.abs(pts[i][1] - pts[i - 1][1]); if (d > 4 * med + 0.5) big.push({ i, d: +d.toFixed(1), dt: pts[i][0] - pts[i - 1][0], seqs: [pts[i - 1][3], pts[i][3]], from: pts[i - 1].slice(1, 3).map(v => +v.toFixed(1)), to: pts[i].slice(1, 3).map(v => +v.toFixed(1)) }); }
         if (big.length) console.log('  W3 big steps: ' + JSON.stringify(big.slice(0, 6)));
-        check('W3 smooth through a real down: a redraw on nearly every animation frame, few waits on a late frame, the camera glides',
-              !!(r && pts.length > 20 && steps.length > 10 && drawn >= 0.85 * rafN && starved / Math.max(1, drawn) < 0.10 && spikes <= 0.02 * moving && stutters <= 0.02 * moving), JSON.stringify(w3));
+        check('W3 smooth through a real down: a redraw on nearly every animation frame, few waits on a late frame, the camera glides, nothing stretched',
+              !!(r && pts.length > 20 && steps.length > 10 && drawn >= 0.85 * rafN && starved / Math.max(1, drawn) < 0.10 && spikes <= 0.02 * moving && stutters <= 0.02 * moving && stretched === 0), JSON.stringify(w3));
         const errs = (DEF.errors || []).filter(e => !/_GL2/.test(e));
         check('W4 the direct link carries under 40 KB/s, and the waiting phone\'s own game is untouched',
               bps < 40960 && defAfter.wait === true && defBefore.wait === true && defAfter.q === defBefore.q && defAfter.su === defBefore.su && defAfter.so === defBefore.so && errs.length === 0,

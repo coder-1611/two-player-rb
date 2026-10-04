@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V450<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V451<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V450</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V451</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -14500,19 +14500,22 @@
     // respawned formation does not shift every later uniform out of line; other state ops match by their order
     function assignMatchKeys(fr) {
         if (fr.idx) return;
-        var ops = fr.ops, n = ops.length, cnt = {}, idx = new Map(), mks = new Array(n), nextD = new Array(n), nd = 'end';
+        var ops = fr.ops, n = ops.length, cnt = {}, idx = new Map(), mks = new Array(n), nextD = new Array(n), nd = 'end', tgt = new Array(n), t = 1;
         for (var j = n - 1; j >= 0; j--) { if (ops[j].k === 'D') nd = ops[j].key; nextD[j] = nd; }
         for (var i = 0; i < n; i++) {
             var op = ops[i], mk;
+            if (op.k === 'T') t = op.t;
+            tgt[i] = t;
             if (op.k === 'D') mk = 'd' + op.key;
             else if (op.k === 'U') mk = 'u' + op.name + '@' + nextD[i];
             else if (op.k === 'S') mk = 's' + op.id + '@' + nextD[i];
+            else if (op.k === 'M') { var mkey = 'M' + op.type + 't' + t; mk = mkey + '#' + (cnt[mkey] = (cnt[mkey] || 0) + 1); }
             else mk = op.k + (cnt[op.k] = (cnt[op.k] || 0) + 1);
             if (idx.has(mk)) { var dup = (cnt[mk] = (cnt[mk] || 1) + 1); mk = mk + '#' + dup; }
             mks[i] = mk;
             idx.set(mk, i);
         }
-        fr.idx = idx; fr.mks = mks;
+        fr.idx = idx; fr.mks = mks; fr.tgt = tgt;
     }
     function shapeHash(v) {   // FNV over the shape relative to its first vertex (for instancing within a frame)
         var h = 2166136261, x0 = v[0], y0 = v[1];
@@ -14889,7 +14892,7 @@
     }
 
     // ---------------------------------------------------------------- capture (the phone with the ball)
-    var CAP = { installed: false, failed: false, on: false, frame: null, pend: null, inst: null, evt: 0, k: 0, kgLast: null, kgK: 0, freeK: 0,
+    var CAP = { installed: false, failed: false, on: false, frame: null, pend: null, inst: null, evt: 0, kc: null, kgLast: null, kgK: null, freeK: null, target: 1,
                 appFb: null, appTex: null, progs: null, curProg: null, t0: performance.now() };
     function capFail(where, e) {
         if (CAP.failed) return; CAP.failed = true; CAP.on = false;
@@ -14933,15 +14936,23 @@
         }
         p.op.v = v;
     }
-    function drawKey() {
-        var inst = CAP.inst;
-        if (inst && inst.id != null) return inst.id * 100000 + (CAP.evt % 100) * 1000 + Math.min(999, CAP.k++);
-        var kg = null; try { kg = (typeof _Kg2 !== 'undefined') ? _Kg2 : null; } catch (e) {}
-        if (kg && kg !== CAP.kgStart && kg.id != null) {
-            if (kg !== CAP.kgLast) { CAP.kgLast = kg; CAP.kgK = 0; }
-            return kg.id * 100000 + 99000 + Math.min(999, CAP.kgK++);
+    // A piece's key: who drew it (the instance, or none), in which event, on which target (the 480x270 picture or the
+    // screen), with which kind of texture, and its count among those. V451: the pass and the texture are part of it — a
+    // count that ran on past the last instance (the picture's copy onto the screen) used to share a key with a field
+    // sprite one frame later, and the replay glided a small sprite toward a full-screen quad (the owner's screenshot).
+    function drawKey(tex) {
+        var cls = ((CAP.target === 0 ? 0 : 1) << 3) | (tex & 7), inst = CAP.inst, id, ev;
+        if (inst && inst.id != null) { id = inst.id; ev = CAP.evt; }
+        else {
+            var kg = null; try { kg = (typeof _Kg2 !== 'undefined') ? _Kg2 : null; } catch (e) {}
+            if (kg && kg !== CAP.kgStart && kg.id != null && CAP.target === 0) {
+                if (kg !== CAP.kgLast) { CAP.kgLast = kg; CAP.kgK = new Array(16).fill(0); }
+                return kg.id * 1e8 + ((31 * 128) * 16 + cls) * 1024 + Math.min(1023, CAP.kgK[cls]++);
+            }
+            id = 0; ev = 30 * 128;
+            var fk = CAP.freeK; return ((ev * 16 + cls) * 1024 + Math.min(1023, fk[cls]++));
         }
-        return 99999 * 1000 + Math.min(999, CAP.freeK++);
+        var kc = CAP.kc; return id * 1e8 + ((ev & 4095) * 16 + cls) * 1024 + Math.min(1023, kc[cls]++);
     }
     function rec(op) { if (CAP.frame) CAP.frame.ops.push(op); }
     function installCapture() {
@@ -14956,7 +14967,7 @@
                 var r = o8.apply(this, arguments);
                 if (CAP.on) {
                     try {
-                        var op = { k: 'D', key: drawKey(), prim: prim | 0, tex: texCode(tex), n: n | 0, v: null };
+                        var tc = texCode(tex), op = { k: 'D', key: drawKey(tc), prim: prim | 0, tex: tc, n: n | 0, v: null };
                         if (CAP.nextEll) { op.ell = CAP.nextEll; CAP.nextEll = null; }
                         rec(op); CAP.pend = { op: op, buf: r, start: r._dj2, n: n | 0 };
                     }
@@ -14965,7 +14976,7 @@
                 return r;
             };
             X._l43 = function (fb) {
-                if (CAP.on) { try { flushPend(); rec({ k: 'T', t: fb === CAP.appFb ? 0 : (fb == null ? 1 : 2) }); } catch (e) { capFail('target', e); } }
+                if (CAP.on) { try { flushPend(); var tt = fb === CAP.appFb ? 0 : (fb == null ? 1 : 2); CAP.target = tt; CAP.kgLast = null; rec({ k: 'T', t: tt }); } catch (e) { capFail('target', e); } }
                 return ol43.apply(this, arguments);
             };
             X._aI3 = function (x, y, w, h) {
@@ -15007,10 +15018,10 @@
                 // every argument passes through untouched (the 5th is the parent object event_inherited dispatches from)
                 _1M2.prototype._2f2 = function (evt, sub, self) {
                     if (!CAP.on) return o2f2.apply(this, arguments);
-                    var pi = CAP.inst, pe = CAP.evt, pk = CAP.k;
-                    CAP.inst = self; CAP.evt = (typeof evt === 'number' ? evt : 0) * 10 + ((sub | 0) % 10); CAP.k = 0;
+                    var pi = CAP.inst, pe = CAP.evt, pk = CAP.kc;
+                    CAP.inst = self; CAP.evt = ((typeof evt === 'number' ? evt : 0) & 31) * 128 + ((sub | 0) & 127); CAP.kc = new Array(16).fill(0);
                     try { return o2f2.apply(this, arguments); }
-                    finally { CAP.inst = pi; CAP.evt = pe; CAP.k = pk; }
+                    finally { CAP.inst = pi; CAP.evt = pe; CAP.kc = pk; }
                 };
             }
             // draw_ellipse(_colour) / draw_circle: the parameters of the ellipse, so the other phone can rebuild it
@@ -15056,7 +15067,7 @@
         var cv = document.getElementById('canvas');
         try { var sr = __r2._Ue2(_K33); CAP.appFb = sr ? sr._543 : null; CAP.appTex = sr && sr._0e2 ? sr._0e2._1j2 : null; CAP.aw = sr && sr._0e2 ? sr._0e2.width : 480; CAP.ah = sr && sr._0e2 ? sr._0e2.height : 270; } catch (e) { CAP.appFb = null; CAP.appTex = null; }
         try { CAP.kgStart = (typeof _Kg2 !== 'undefined') ? _Kg2 : null; } catch (e) { CAP.kgStart = null; }
-        CAP.kgLast = null; CAP.kgK = 0; CAP.freeK = 0; CAP.inst = null; CAP.k = 0; CAP.pend = null;
+        CAP.kgLast = null; CAP.kgK = new Array(16).fill(0); CAP.freeK = new Array(16).fill(0); CAP.inst = null; CAP.kc = new Array(16).fill(0); CAP.pend = null; CAP.target = 1;
         CAP.frame = { t: performance.now() - CAP.t0, cw: cv ? cv.width : 0, ch: cv ? cv.height : 0, aw: CAP.aw || 480, ah: CAP.ah || 270, ops: [] };
         // the shader in force when the frame starts
         if (CAP.curProg) CAP.frame.ops.push({ k: 'S', id: progId(CAP.curProg) });
@@ -15072,6 +15083,12 @@
         this.cv = canvas;
         var gl = this.gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: !!keep });
         if (!gl) throw new Error('no webgl');
+        // a software renderer (no GPU: SwiftShader / llvmpipe — some managed Chromebooks) draws every pixel on the CPU
+        try {
+            var dbg = gl.getExtension('WEBGL_debug_renderer_info'), rn = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+            this.software = /swiftshader|llvmpipe|software|basic render/i.test(rn);
+            this.rendererName = rn.slice(0, 80);
+        } catch (e) { this.software = false; }
         this.progs = [this.prog(GLSL_VS, GLSL_FS, 'default')];
         try { for (var i = 0; i < _Y._X1.length; i++) this.progs.push(this.prog(_Y._X1[i]._Y1, _Y._X1[i]._Z1, _Y._X1[i].name)); } catch (e) { console.warn('[2P VIEW] game shader', e); }
         this.tex = [];
@@ -15191,6 +15208,11 @@
     };
 
     // ---------------------------------------------------------------- interpolation
+    function bbox(v) { var x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; for (var i = 0; i < v.length; i += 5) { if (v[i] < x0) x0 = v[i]; if (v[i] > x1) x1 = v[i]; if (v[i + 1] < y0) y0 = v[i + 1]; if (v[i + 1] > y1) y1 = v[i + 1]; } return [x1 - x0, y1 - y0, (x0 + x1) / 2, (y0 + y1) / 2]; }
+    function sameSize(av, bv) {   // within a quarter (and 1 unit) in width and height
+        var a = bbox(av), b = bbox(bv);
+        return Math.abs(a[0] - b[0]) <= 0.25 * Math.max(a[0], b[0]) + Q && Math.abs(a[1] - b[1]) <= 0.25 * Math.max(a[1], b[1]) + Q;
+    }
     function lerpPositions(A, B, alpha) {
         // positions of B's draws moved back toward A's by (1-alpha); returns per-op Int32Array overrides (or null)
         if (!A || !B || alpha >= 1) return null;
@@ -15199,11 +15221,27 @@
         for (var i = 0; i < B.ops.length; i++) {
             var b = B.ops[i]; if (b.k !== 'D') continue;
             var j = A.idx.get(B.mks[i]); if (j === undefined) continue;
-            var a = A.ops[j]; if (a.k !== 'D' || a.n !== b.n || a === b) continue;
-            var av = a.v, bv = b.v, dx0 = bv[0] - av[0], dy0 = bv[1] - av[1];
-            if (Math.abs(dx0) > 6400 || Math.abs(dy0) > 6400) continue;   // a jump of more than 400 units is a cut, not motion
-            var v = new Int32Array(bv), t = 1 - alpha;
-            for (var k = 0; k < v.length; k += 5) { v[k] = Math.round(bv[k] - (bv[k] - av[k]) * t); v[k + 1] = Math.round(bv[k + 1] - (bv[k + 1] - av[k + 1]) * t); }
+            var a = A.ops[j]; if (a.k !== 'D' || a.n !== b.n || a === b || a.tex !== b.tex || a.prim !== b.prim) continue;
+            var av = a.v, bv = b.v, t = 1 - alpha, v;
+            if (sameSize(av, bv)) {
+                var dx0 = bv[0] - av[0], dy0 = bv[1] - av[1];
+                if (Math.abs(dx0) > 6400 || Math.abs(dy0) > 6400) continue;   // a jump of more than 400 units is a cut, not motion
+                v = new Int32Array(bv);
+                for (var k = 0; k < v.length; k += 5) { v[k] = Math.round(bv[k] - (bv[k] - av[k]) * t); v[k + 1] = Math.round(bv[k + 1] - (bv[k + 1] - av[k + 1]) * t); }
+            } else {
+                // a new animation frame of another size: glide its centre and draw the NEW frame at its own size (never
+                // stretch one into the other)
+                var ba = bbox(av), bb = bbox(bv), cx = (bb[2] - ba[2]), cy = (bb[3] - ba[3]);
+                if (Math.abs(cx) > 6400 || Math.abs(cy) > 6400) { RCV.morphs++; continue; }
+                var sx = Math.round(cx * t), sy = Math.round(cy * t);
+                v = new Int32Array(bv);
+                for (var m = 0; m < v.length; m += 5) { v[m] -= sx; v[m + 1] -= sy; }
+                RCV.resized++;
+            }
+            if (API.audit) {   // test seam: a glided piece is never bigger than both its old and its new self
+                var bo = bbox(v), mx = Math.max(bbox(av)[0], bbox(bv)[0]) + Q, my = Math.max(bbox(av)[1], bbox(bv)[1]) + Q;
+                if (bo[0] > mx || bo[1] > my) RCV.stretched++;
+            }
             pos[i] = v; any = true;
         }
         return any ? pos : null;
@@ -15214,7 +15252,7 @@
         assignMatchKeys(A); assignMatchKeys(B);
         var ops = null;
         for (var i = 0; i < B.ops.length; i++) {
-            var b = B.ops[i]; if (b.k !== 'M') continue;
+            var b = B.ops[i]; if (b.k !== 'M' || b.type !== 0 || B.tgt[i] !== 0) continue;   // the field camera only — never the HUD's
             var j = A.idx.get(B.mks[i]); if (j === undefined) continue;
             var a = A.ops[j]; if (a.k !== 'M' || a.type !== b.type || a === b) continue;
             var m = new Float32Array(16), ok = true;
@@ -15224,7 +15262,7 @@
             ops[i] = { k: 'M', type: b.type, m: m };
         }
         if (!ops) return B;
-        return { seq: B.seq, t: B.t, cw: B.cw, ch: B.ch, aw: B.aw, ah: B.ah, ops: ops, idx: B.idx, mks: B.mks };
+        return { seq: B.seq, t: B.t, cw: B.cw, ch: B.ch, aw: B.aw, ah: B.ah, ops: ops, idx: B.idx, mks: B.mks, tgt: B.tgt };
     }
 
 
@@ -15262,7 +15300,7 @@
     var NET = null;
     var SND = { costMs: 0, shotWanted: false, shot: null, seq: 0, ring: [], acked: 0, wantUntil: 0, forceKey: true, lastKeyAt: 0, lastKeySeq: 0, lastCapAt: 0, bytes: 0, sent: 0, keys: 0, since: 0, failed: false,
                 caps: 0, chain: Promise.resolve(), inFlight: 0 };
-    var RCV = { chain: Promise.resolve(), queued: 0, frames: [], bySeq: new Map(), lastRxAt: 0, offs: [], gaps: [], lastT: -1, delay: 120, cv: null, R: null, chip: null, raf: 0,
+    var RCV = { lastDrawAt: 0, lastTickAt: 0, rafGap: 16, pauseUntil: 0, slowSince: 0, lite: false, skipN: 0, skipped: 0, tickMs: 0, tickMax: 0, stretched: 0, morphs: 0, resized: 0, chain: Promise.resolve(), queued: 0, frames: [], bySeq: new Map(), lastRxAt: 0, offs: [], gaps: [], lastT: -1, delay: 120, cv: null, R: null, chip: null, raf: 0,
                 showing: false, lastWantAt: 0, needKey: true, rx: 0, rxBytes: 0, drawn: 0, starved: 0, decodeFail: 0, lastAckSent: 0, mode: null, failed: false };
     function amWaiting() { return window._rb2p_userIsWaitingForOpponent === true; }
     function inMatch() { try { return !!(window.RB && RB.isEngineInMatchRoom()); } catch (e) { return false; } }
@@ -15345,7 +15383,7 @@
         fs.splice(i, 0, fr);
         while (fs.length > 2 && now - fs[0].rx > 3000) { RCV.bySeq.delete(fs[0].seq); fs.shift(); }
         if (NET) { NET.ack(fr.seq); RCV.lastAckSent = now; }
-        if (!RCV.showing && amWaiting() && inMatch()) show();
+        if (!RCV.showing && !API.off && amWaiting() && inMatch()) show();
     }
     function traceDraw(F, pos, now) {   // one exact piece (the first one of the traced object seen), every replay
         var T = RCV.trace; if (T.pts.length > 4000) return;
@@ -15371,13 +15409,23 @@
             cv.setAttribute('aria-label', "The opponent's screen, live");
             cv.style.cssText = 'position:fixed;left:0;top:0;width:10px;height:10px;z-index:1600;display:none;pointer-events:none;image-rendering:pixelated;background:#000;';
             document.body.appendChild(cv);
+            // V451 (the owner: "a LITTLE more obvious that it is opponent screen"): a frame in the opponent's team colour
+            // just inside the picture's edges, and a LIVE tag with their team's name
+            var st = document.createElement('style');
+            st.textContent = '#rb-oppview-chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff3b3b;margin-right:7px;vertical-align:1px;box-shadow:0 0 6px #ff3b3b;animation:rbOvPulse 1.4s ease-in-out infinite}' +
+                '@keyframes rbOvPulse{0%,100%{opacity:1}50%{opacity:.35}}@media (prefers-reduced-motion: reduce){#rb-oppview-chip .dot{animation:none}}';
+            document.head.appendChild(st);
+            var frame = document.createElement('div');
+            frame.id = 'rb-oppview-frame';
+            frame.style.cssText = 'position:fixed;z-index:1601;display:none;pointer-events:none;box-sizing:border-box;';
+            document.body.appendChild(frame);
             var chip = document.createElement('div');
             chip.id = 'rb-oppview-chip';
-            chip.textContent = "LIVE · OPPONENT'S SCREEN";
-            chip.style.cssText = 'position:fixed;z-index:1601;display:none;pointer-events:none;left:50%;transform:translateX(-50%);' +
-                'font:bold 9px "Press Start 2P",monospace;letter-spacing:1px;color:#fff;background:rgba(10,24,56,.72);border:2px solid rgba(255,255,255,.85);' +
-                'padding:5px 8px 4px;border-radius:4px;white-space:nowrap;';
+            chip.style.cssText = 'position:fixed;z-index:1602;display:none;pointer-events:none;left:50%;transform:translateX(-50%);' +
+                'font:bold 10px "Press Start 2P",monospace;letter-spacing:1px;color:#fff;background:rgba(8,14,30,.82);border:2px solid #fff;' +
+                'padding:6px 10px 5px;border-radius:5px;white-space:nowrap;text-shadow:1px 1px 0 #000;';
             document.body.appendChild(chip);
+            RCV.frame = frame;
             RCV.cv = cv; RCV.chip = chip;
             RCV.R = new Renderer(cv);
             return true;
@@ -15395,14 +15443,21 @@
         var W = w, H = w / asp; if (H > h) { H = h; W = h * asp; }
         var L = r.left + (w - W) / 2, T = r.top + (h - H) / 2;
         cv.style.left = Math.round(L) + 'px'; cv.style.top = Math.round(T) + 'px'; cv.style.width = Math.round(W) + 'px'; cv.style.height = Math.round(H) + 'px';
-        var dpr = Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+        var dpr = (RCV.lite || (RCV.R && RCV.R.software)) ? 1 : Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);
         if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
-        if (RCV.chip) RCV.chip.style.top = Math.round(T + H - 26) + 'px';
+        if (RCV.frame) { var fs = RCV.frame.style; fs.left = cv.style.left; fs.top = cv.style.top; fs.width = cv.style.width; fs.height = cv.style.height; }
+        if (RCV.chip) RCV.chip.style.top = Math.round(T + H - 34) + 'px';
     }
     function show() {
         if (RCV.showing || !ensureCanvas()) return;
-        RCV.showing = true; place();
-        RCV.cv.style.display = 'block'; RCV.chip.style.display = 'block';
+        RCV.showing = true; RCV.lastTickAt = 0; RCV.pauseUntil = 0; place();
+        var acc = '#ff5b6e', nm = 'OPPONENT';
+        try { if (window._rb2p_teamAccent) acc = window._rb2p_teamAccent(window._rb2p_oppTeamUid) || acc; } catch (e0) {}
+        try { if (window._rb2p_teamName) nm = String(window._rb2p_teamName(window._rb2p_oppTeamUid) || nm).toUpperCase(); } catch (e1) {}
+        RCV.frame.style.boxShadow = 'inset 0 0 0 3px ' + acc + ', inset 0 0 22px ' + acc + '99';
+        RCV.chip.style.borderColor = acc;
+        RCV.chip.innerHTML = '<span class="dot"></span>LIVE \u00b7 ' + nm.replace(/[<>&]/g, '') + '\u2019S SCREEN';
+        RCV.cv.style.display = 'block'; RCV.chip.style.display = 'block'; RCV.frame.style.display = 'block';
         try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW showing the opponent\'s screen (' + (RCV.mode || '?') + ')'); } catch (e) {}
         if (!RCV.raf) RCV.raf = requestAnimationFrame(tick);
     }
@@ -15411,18 +15466,31 @@
         RCV.showing = false;
         if (RCV.cv) RCV.cv.style.display = 'none';
         if (RCV.chip) RCV.chip.style.display = 'none';
+        if (RCV.frame) RCV.frame.style.display = 'none';
+    }
+    // V451: on a software renderer (no GPU: some managed Chromebooks) or a page whose own frames run slow, the replay draws
+    // at CSS resolution (pixel art looks the same; a third to a ninth of the pixels). It still draws every frame — pausing
+    // it measured no benefit to the page and made the replay stutter.
+    function paced(now) {
+        var gap = RCV.lastTickAt ? now - RCV.lastTickAt : 16; RCV.lastTickAt = now;
+        RCV.rafGap = RCV.rafGap * 0.9 + Math.min(gap, 400) * 0.1;
+        var lite = !!(RCV.R && RCV.R.software) || RCV.rafGap > 34;
+        if (lite !== RCV.lite) { RCV.lite = lite; place(); }
+        return true;
     }
     function tick() {
         RCV.raf = 0;
+        var t0 = performance.now();
         try {
-            var now = performance.now();
-            if (!amWaiting() || !inMatch() || now - RCV.lastRxAt > 2000 || !RCV.frames.length) { hide(); return; }
+            var now = t0;
+            if (API.off || !amWaiting() || !inMatch() || now - RCV.lastRxAt > 2000 || !RCV.frames.length) { hide(); return; }
+            if (!paced(now)) { RCV.skipped++; RCV.raf = requestAnimationFrame(tick); return; }
             place();
             // the clock: transit floor over the last 4 s, then a delay that covers the packet spacing and the jitter
             var minOff = Infinity, offs = RCV.offs, jit = [];
             for (var i = 0; i < offs.length; i++) if (offs[i][1] < minOff) minOff = offs[i][1];
             for (var j = 0; j < offs.length; j++) jit.push(offs[j][1] - minOff);
-            var target = Math.max(50, Math.min(900, median(RCV.gaps) * 1.6 + pctl(jit, 0.9) + 10));
+            var target = Math.max(RCV.mode === 'fb' ? 160 : 100, Math.min(900, median(RCV.gaps) * 2.2 + pctl(jit, 0.95) + 20));
             RCV.delay += Math.max(-1.5, Math.min(1.5, target - RCV.delay));
             var playT = now - minOff - RCV.delay, fs = RCV.frames, A = null, B = null;
             for (var k = fs.length - 1; k >= 0; k--) if (fs[k].t <= playT) { A = fs[k]; B = fs[k + 1] || null; break; }
@@ -15435,6 +15503,7 @@
                 if (RCV.trace) traceDraw(F, pos, now);
             }
             RCV.drawn++;
+            var dt = performance.now() - t0; RCV.tickMs = RCV.tickMs * 0.95 + dt * 0.05; if (dt > RCV.tickMax) RCV.tickMax = dt;
         } catch (e) {
             RCV.failed = true; hide(); console.warn('[2P VIEW] receiver stopped', e);
             try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW receiver stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {}
@@ -15442,6 +15511,32 @@
         }
         RCV.raf = requestAnimationFrame(tick);
     }
+
+    // V451: the replay's one-time setup (shaders + the two texture pages into a WebGL context) costs ~60 ms on a GPU but
+    // ~1.7 s on a software-rendered page (measured) — and it used to run at the FIRST hand-off a phone watched, where a
+    // second without frames makes the hand-off gate hold the incoming drive (OUTCOME held — fps 0, then TURN-RESCUE).
+    // It runs ahead of time instead: in the lobby's room screen (idle), or while a reloaded page boots back into a game.
+    function pagesLoaded() {
+        try { return !!(_Xd2 && _Xd2[0] && _Xd2[1] && _Xd2[0].complete && _Xd2[1].complete && _Xd2[0].naturalWidth && _Xd2[1].naturalWidth && _Y && _Y._X1); } catch (e) { return false; }
+    }
+    var warmTries = 0;
+    function prewarm() {
+        if (RCV.cv || RCV.failed || RCV.warming) return;
+        if (!pagesLoaded()) { if (++warmTries < 60) setTimeout(prewarm, 1000); return; }
+        RCV.warming = true;
+        var go = function () {
+            RCV.warming = false;
+            try {
+                if (!ensureCanvas()) return;
+                RCV.R.draw({ cw: 2, ch: 2, aw: 480, ah: 270, ops: [] }, null);   // link and bind everything once
+                try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW ready ahead of time'); } catch (e2) {}
+            } catch (e) {}
+        };
+        if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 300);
+    }
+    // a page that reloads into a game (a room in this tab's session) gets ready while it boots
+    try { if (sessionStorage.getItem('rb_room')) setTimeout(prewarm, 1500); } catch (e) {}
+
     // the waiting phone asks for frames once a second (and for a keyframe when it has nothing to build on)
     setInterval(function () {
         try {
@@ -15452,13 +15547,14 @@
     }, 1000);
     window.addEventListener('resize', function () { if (RCV.showing) place(); });
 
-    window._rb2p_view = {
+    var API = window._rb2p_view = {
+        audit: false, off: false, prewarm: prewarm,
         attachNet: function (net) { NET = net; installCapture(); },
         onPacket: onPacket, onAck: onAck, onWant: onWant,
         stats: function () {
             return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed },
                      rcv: { rx: RCV.rx, bytes: RCV.rxBytes, frames: RCV.frames.length, showing: RCV.showing, drawn: RCV.drawn, starved: RCV.starved, delay: Math.round(RCV.delay),
-                            decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed }, net: NET ? NET.mode() : null };
+                            decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed, morphs: RCV.morphs, resized: RCV.resized, stretched: RCV.stretched, tickMs: +RCV.tickMs.toFixed(2), tickMax: Math.round(RCV.tickMax), skipped: RCV.skipped, lite: RCV.lite, software: !!(RCV.R && RCV.R.software) }, net: NET ? NET.mode() : null };
         },
         // test seams: render one decoded frame (no interpolation) to a canvas of the sender's size
         testRender: function (seq) { var f = RCV.bySeq.get(seq); if (!f) return null; var cv = document.createElement('canvas'); cv.width = f.cw; cv.height = f.ch; new Renderer(cv, true).draw(f, null); return cv.toDataURL('image/png'); },
@@ -17876,6 +17972,8 @@
             lobby.dataset.active = name;
             lobby.style.display = 'flex';
             showLeaveGameBtn(false);   // in the lobby, not the game
+            // V451: the opponent's-screen replay gets its one-time setup done here, while the players pick teams
+            if (name === 'room') { try { if (window._rb2p_view && window._rb2p_view.prewarm) window._rb2p_view.prewarm(); } catch (eW) {} }
             if (name === 'entry') {
                 setTimeout(function () { try { $input.focus(); $input.select(); } catch (e) {} }, 50);
             }
@@ -19331,7 +19429,7 @@
         // the ball overwrites ONE node, rooms/{code}/view/{role}, about 6 times a second — the database never grows.
         var viewLinkInstalled = false;
         function installViewLink() {
-            if (viewLinkInstalled || !window._rb2p_view || !myRoom || !myRole) return;
+            if (viewLinkInstalled || !window._rb2p_view || !myRoom || !myRole || window._rb2p_viewNoLink) return;
             viewLinkInstalled = true;
             var V = window._rb2p_view, me = myRole, other = me === 'a' ? 'b' : 'a', root = 'rooms/' + myRoom;
             var sid = Math.random().toString(36).slice(2, 10);

@@ -161,5 +161,6 @@
  "window._rb2p_fixedDir": "V449: this player's held drive direction (+1/-1), seeded at every launch from rb2p_driveDir; _Sc1 is skipped and a stray _501 is put back to it — it corrects which way the field faces, never refuses or waits",
  "window._rb2p_lastPressMs": "V438: the time of this page's last in-match press (canvas pointerdown); the 35 s conversion wall reads it to wait 20 s from a player lining up its try, always within 90 s of the offer — a time, never a flag anything waits on",
  "window._rb2p_view": "V450: the opponent's-screen module (capture, codec, replay renderer, playback) — an API object; it holds no game state and nothing waits on it",
+ "window._rb2p_viewNoLink": "V451 test seam: the opponent's-screen link is never installed on this page (bisecting a slowdown); the game never sets it",
  "window._rb2p_viewNoP2P": "V450 test seam: forces the opponent's-screen link onto its Firebase path; the game never sets it"
 }
