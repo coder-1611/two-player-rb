@@ -166,5 +166,6 @@
  "storage:rb2p_readyGuardNote": "V452 telemetry: the READY guard's read (the partner's heartbeat age/vis, its final's age) carried across the guard's reload so the resumed page can audit it at bind; read once and removed; nothing waits on it",
  "window._rb2p_qtrHoldLoggedQ": "V453 diag dedupe: the quarter whose end-of-quarter pause already logged its QTR-HOLD line; it only limits a log line to one per quarter and never gates play",
  "storage:rb2p_runItBack": "V454 RUN IT BACK: this tab's player tapped RUN IT BACK on the stats screen; after the reload the room presses this page's READY once (the engine up, the partner in the room), then it is removed — expires after 10 min, cleared on LEAVE; it never holds play",
- "room:again": "V454 RUN IT BACK notice (rooms/{code}/again/{role}): the partner's stats screen says 'X wants to run it back'; judged against this game's start on the server clock, it never starts, holds or gates anything"
+ "room:again": "V454 RUN IT BACK notice (rooms/{code}/again/{role}): the partner's stats screen says 'X wants to run it back'; judged against this game's start on the server clock, it never starts, holds or gates anything",
+ "storage:rb2p_a2hs_v457": "V457 the iPhone Add-to-Home-Screen popup was dismissed in this browser (shown once); a notice only, it never holds or gates play"
 }

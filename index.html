@@ -166,7 +166,8 @@
             if (!host && framed) host = 'embedded';
             var ref = ''; try { ref = String(document.referrer || '').slice(0, 160); } catch (e) {}
             var src = /vercel\.app$/.test(host) ? 'vercel' : /github\.io$/.test(host) ? 'pages' : /googleusercontent|sites\.google|srcdoc|embedded/.test(host + ' ' + ref) ? 'sites' : /localhost|127\.0\.0\.1/.test(host) ? 'local' : (host || 'unknown');
-            return { host: host, framed: framed, ref: ref, src: src };
+            var app = false; try { app = navigator.standalone === true || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); } catch (e) {}
+            return { host: host, framed: framed, ref: ref, src: src, app: app };
         };
         // V407: a test run is not a view. The harness serves from localhost and drives
         // an automated browser (navigator.webdriver) — neither writes a visit.
@@ -181,7 +182,7 @@
                 if (window._rb2p_isTestRun()) return;
                 var w = window._rb2p_whereAmI();
                 var tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
-                var rec = { ts: Date.now(), src: w.src, host: w.host, framed: w.framed, ref: w.ref,
+                var rec = { ts: Date.now(), src: w.src, host: w.host, framed: w.framed, ref: w.ref, app: w.app ? true : undefined,   // V457: from the Home Screen
                             ua: String(navigator.userAgent || '').slice(0, 160), lang: String(navigator.language || ''), tz: tz,
                             sw: screen.width, sh: screen.height, dpr: window.devicePixelRatio || 1,
                             touch: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0), platform: String(navigator.platform || '') };
@@ -565,7 +566,8 @@
     <meta charset="utf-8" />
     <!-- V350: the LITERAL Retro Bowl player icon (official 512px art) -->
     <link rel="icon" type="image/jpeg" href="favicon.jpg?v=350">
-    <link rel="apple-touch-icon" href="favicon.jpg?v=350">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=457">
+    <meta name="apple-mobile-web-app-title" content="Retro Bowl 2P" />
     <title>Retro Bowl 2P — Play Two-Player Retro Bowl in Your Browser</title>
     <meta name="description"
         content="Play Retro Bowl two-player in your browser. Create a room, share the code, and go head-to-head with a friend on any phone or laptop — no download, no sign-up." />
@@ -938,6 +940,24 @@
         #rb-news .chip { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 2px solid #ffd23c; border-radius: 6px; color: #ffd23c; font-weight: bold; vertical-align: middle; }
         #rb-news button { display: block; margin: 16px auto 0; font: bold 12px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 12px 24px;
             background: #ffd23f; color: #0a1838; border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
+        /* V457: iPhone — add the game to the Home Screen (first visit; above the turn-sideways screen, either way up) */
+        #rb-a2hs { position: fixed; inset: 0; z-index: 2147483605; display: flex; align-items: center; justify-content: center;
+            background: rgba(4,10,28,.84); padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-sizing: border-box; }
+        #rb-a2hs[hidden] { display: none; }
+        #rb-a2hs .box { width: min(520px, 100%); max-height: 100%; overflow-y: auto; background: #0d2a6b; border: 5px solid #fff;
+            box-shadow: 8px 8px 0 #0a1838; padding: 20px 22px; color: #fff; font-family: monospace; text-align: left; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
+        #rb-a2hs h2 { margin: 0 0 12px; font: bold 13px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; text-align: center; line-height: 1.6; }
+        #rb-a2hs p { margin: 0 0 12px; font-size: 15px; line-height: 1.45; }
+        #rb-a2hs b { color: #ffd23f; }
+        #rb-a2hs ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: a2hs; }
+        #rb-a2hs li { counter-increment: a2hs; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; font-size: 15px; line-height: 1.4; }
+        #rb-a2hs li::before { content: counter(a2hs); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 2px solid #ffd23c;
+            border-radius: 50%; color: #ffd23c; font: bold 11px 'Press Start 2P', monospace; }
+        #rb-a2hs .ico { display: inline-block; width: 1.3em; height: 1.3em; vertical-align: -.3em; margin: 0 .15em; color: #7fb2ff; }
+        #rb-a2hs button { display: block; margin: 16px auto 0; font: bold 12px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 12px 24px;
+            background: #ffd23f; color: #0a1838; border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
+        #rb-a2hs button:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #0a1838; }
+        #rb-a2hs button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
         #rb-lobby .rb-join-btn:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #0a1838; }
 
         #rb-lobby .msg { font-size: 11px; min-height: 14px; margin: 4px 0 0 0; letter-spacing: 1px; color: #ff8c8c; }
@@ -1587,6 +1607,18 @@
             <button id="rb-news-ok" type="button">GOT IT</button>
         </div>
     </div>
+    <div id="rb-a2hs" hidden>
+        <div class="box" role="dialog" aria-modal="true" aria-labelledby="rb-a2hs-h">
+            <h2 id="rb-a2hs-h">PLAY IT LIKE AN APP</h2>
+            <p>Add <b>Retro Bowl 2P</b> to your iPhone&rsquo;s Home Screen. It opens full screen, with no Safari bars in the way, and starts with one tap.</p>
+            <ol>
+                <li><span>Tap <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12M8 7l4-4 4 4M7 10H5v11h14V10h-2"/></svg><b>Share</b> &mdash; at the bottom of Safari, or under <b>&middot;&middot;&middot;</b></span></li>
+                <li><span>Tap <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM12 8v8M8 12h8"/></svg><b>Add to Home Screen</b> (scroll down if you don&rsquo;t see it)</span></li>
+                <li><span>Tap <b>Add</b>, then open the game from your Home Screen</span></li>
+            </ol>
+            <button id="rb-a2hs-ok" type="button">GOT IT</button>
+        </div>
+    </div>
     <div id="rb-lobby" data-active="entry">
         <!-- field background layers -->
         <div class="rb-bg-hash" aria-hidden="true"></div>
@@ -1610,7 +1642,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V456<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V457<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V456</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V457</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15412,20 +15444,27 @@
             // V451 (the owner: "a LITTLE more obvious that it is opponent screen"): a frame in the opponent's team colour
             // just inside the picture's edges, and a LIVE tag with their team's name
             var st = document.createElement('style');
-            st.textContent = '#rb-oppview-chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff3b3b;margin-right:7px;vertical-align:1px;box-shadow:0 0 6px #ff3b3b;animation:rbOvPulse 1.4s ease-in-out infinite}' +
+            st.textContent = '#rb-oppview-chip .dot{display:inline-block;width:.7em;height:.7em;border-radius:50%;background:#ff3b3b;margin-right:.7em;vertical-align:0;box-shadow:0 0 .6em #ff3b3b;animation:rbOvPulse 1.4s ease-in-out infinite}' +
+                // V457 (the owner: "a faint watermark saying opponent"): one word across the middle of the picture, faint enough
+                // to play through
+                '#rb-oppview-frame .rb-ov-mark{position:absolute;left:-20%;right:-20%;top:50%;transform:translateY(-50%) rotate(-9deg);text-align:center;' +
+                'font-family:"Press Start 2P",monospace;letter-spacing:.14em;line-height:1;color:rgba(255,255,255,.13);white-space:nowrap;-webkit-user-select:none;user-select:none}' +
                 '@keyframes rbOvPulse{0%,100%{opacity:1}50%{opacity:.35}}@media (prefers-reduced-motion: reduce){#rb-oppview-chip .dot{animation:none}}';
             document.head.appendChild(st);
             var frame = document.createElement('div');
             frame.id = 'rb-oppview-frame';
-            frame.style.cssText = 'position:fixed;z-index:1601;display:none;pointer-events:none;box-sizing:border-box;';
+            frame.style.cssText = 'position:fixed;z-index:1601;display:none;pointer-events:none;box-sizing:border-box;overflow:hidden;';
+            var mark = document.createElement('div');
+            mark.className = 'rb-ov-mark'; mark.setAttribute('aria-hidden', 'true'); mark.textContent = 'OPPONENT';
+            frame.appendChild(mark);
             document.body.appendChild(frame);
             var chip = document.createElement('div');
             chip.id = 'rb-oppview-chip';
             chip.style.cssText = 'position:fixed;z-index:1602;display:none;pointer-events:none;left:50%;transform:translateX(-50%);' +
-                'font:bold 10px "Press Start 2P",monospace;letter-spacing:1px;color:#fff;background:rgba(8,14,30,.82);border:2px solid #fff;' +
-                'padding:6px 10px 5px;border-radius:5px;white-space:nowrap;text-shadow:1px 1px 0 #000;';
+                'font:bold 15px "Press Start 2P",monospace;line-height:1;letter-spacing:.08em;color:#fff;background:rgba(8,14,30,.86);border:3px solid #fff;' +
+                'padding:.6em .9em .55em;border-radius:7px;white-space:nowrap;text-shadow:2px 2px 0 #000;box-shadow:0 4px 14px rgba(0,0,0,.45);';
             document.body.appendChild(chip);
-            RCV.frame = frame;
+            RCV.frame = frame; RCV.mark = mark;
             RCV.cv = cv; RCV.chip = chip;
             RCV.R = new Renderer(cv);
             return true;
@@ -15446,7 +15485,16 @@
         var dpr = (RCV.lite || (RCV.R && RCV.R.software)) ? 1 : Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);
         if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
         if (RCV.frame) { var fs = RCV.frame.style; fs.left = cv.style.left; fs.top = cv.style.top; fs.width = cv.style.width; fs.height = cv.style.height; }
-        if (RCV.chip) RCV.chip.style.top = Math.round(T + H - 34) + 'px';
+        if (RCV.chip) {
+            var nCh = Math.max(12, (RCV.chip.textContent || '').length + 2);
+            var fz = Math.round(Math.max(12, Math.min(22, H * 0.042, W * 0.75 / (nCh * 1.1))));
+            RCV.chip.style.fontSize = fz + 'px';
+            var chH = fz * 2.15 + 6, chTop = T + H - chH - Math.max(8, H * 0.025);
+            // never under the room badge (bottom-left, above everything) — on a phone held sideways they met
+            try { var bdg = document.getElementById('rb-fb-badge'); if (bdg) { var bR = bdg.getBoundingClientRect(); if (bR.height && bR.width) chTop = Math.min(chTop, bR.top - 6 - chH); } } catch (eB) {}   // (fixed: no offsetParent)
+            RCV.chip.style.top = Math.round(chTop) + 'px';
+        }
+        if (RCV.mark) RCV.mark.style.fontSize = Math.round(Math.min(H * 0.115, W * 0.085)) + 'px';
     }
     function show() {
         if (RCV.showing || !ensureCanvas()) return;
@@ -15457,6 +15505,7 @@
         RCV.frame.style.boxShadow = 'inset 0 0 0 3px ' + acc + ', inset 0 0 22px ' + acc + '99';
         RCV.chip.style.borderColor = acc;
         RCV.chip.innerHTML = '<span class="dot"></span>LIVE \u00b7 ' + nm.replace(/[<>&]/g, '') + '\u2019S SCREEN';
+        place();   // V457: the chip is sized by its text
         RCV.cv.style.display = 'block'; RCV.chip.style.display = 'block'; RCV.frame.style.display = 'block';
         // V455: this phone's own game canvas, covered by the replay, is not composited while it is covered. Two full-screen
         // WebGL layers at once stalled a GPU-less browser for over a second at a quarter-end hand-off (the "engine is not
@@ -19000,6 +19049,38 @@
             }
         } catch (eNews) {}
 
+        // ===== V457: iPhone — add the game to the Home Screen (the owner: "if the phone is an iphone, tell them to add it to
+        // home screen for a better experience ... a pop up on iphone for first time visitors") =====
+        // The page already runs as a full-screen web app from the Home Screen (apple-mobile-web-app-capable). Shown once
+        // per browser (localStorage), after the first-run news if that is up, never over a match, never in a frame.
+        try {
+            var a2hsUa = navigator.userAgent || '';
+            var a2hsApp = navigator.standalone === true || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+            var a2hsFramed = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
+            var a2hsSeen = true; try { a2hsSeen = !!localStorage.getItem('rb2p_a2hs_v457'); } catch (e) {}
+            if (a2hsApp && window._rb2p_diagLog) window._rb2p_diagLog('A2HS running from the Home Screen');
+            if (/iPhone|iPod/.test(a2hsUa) && !a2hsApp && !a2hsFramed && !a2hsSeen) {
+                var $a2hs = document.getElementById('rb-a2hs'), $a2hsOk = document.getElementById('rb-a2hs-ok'), a2hsT0 = Date.now();
+                var a2hsIv = setInterval(function () {
+                    try {
+                        if (Date.now() - a2hsT0 > 10 * 60000) { clearInterval(a2hsIv); return; }
+                        if (Date.now() - a2hsT0 < 1200) return;                                              // the lobby first
+                        if ($news && $news.hidden === false) return;                                         // after the news
+                        if (document.documentElement.classList.contains('rb-in-match')) return;              // never over a game
+                        clearInterval(a2hsIv);
+                        if (!$a2hs) return;
+                        $a2hs.hidden = false;
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('A2HS shown (iPhone, first visit)');
+                    } catch (e) {}
+                }, 400);
+                if ($a2hsOk) $a2hsOk.addEventListener('click', function () {
+                    try { localStorage.setItem('rb2p_a2hs_v457', '1'); } catch (e) {}
+                    if ($a2hs) $a2hs.hidden = true;
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('A2HS dismissed');
+                });
+            }
+        } catch (eA2) {}
+
         // ===== V387: bug reports -> complaints/{id} =====
         window._rb2p_sendComplaint = async function (text, choices) {
             var t = String(text || '').trim().slice(0, 2000);
@@ -19896,7 +19977,7 @@
             // chain on top of whatever's there so simulate()/sentLog still
             // work for debugging.
             if (window._rb2p_auditBind) window._rb2p_auditBind(myRoom, myRole);   // V365
-            if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '', uid: (window._rb2p_uid ? window._rb2p_uid() : ''),
+            if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, app: w.app ? true : undefined, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '', uid: (window._rb2p_uid ? window._rb2p_uid() : ''),
                 name: (function () { try { return String(localStorage.getItem('rb2p_name') || '').trim().slice(0, 40); } catch (eN) { return ''; } })() }; } catch (e) { return {}; } })()));   // V388: which door; V392: which device; V444: under which username (the device profiles)
             try {   // V452: the READY guard's read that reloaded this tab (age/vis of the partner's heartbeat, its final's age)
                 var rgN = JSON.parse(sessionStorage.getItem('rb2p_readyGuardNote') || 'null');

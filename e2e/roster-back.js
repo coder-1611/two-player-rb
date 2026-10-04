@@ -30,7 +30,7 @@ async function phone(kind) {
     const br = await launch(kind);
     const ctx = await br.newContext({ ...pw.devices['iPhone 13 landscape'] });
     // a returning player: the one-time news box dismissed, a name given
-    await ctx.addInitScript(() => { try { localStorage.setItem('rb2p_news_v387', '1'); localStorage.setItem('rb2p_name', 'Roster Test'); } catch (e) {} });
+    await ctx.addInitScript(() => { try { localStorage.setItem('rb2p_news_v387', '1'); localStorage.setItem('rb2p_a2hs_v457', '1'); localStorage.setItem('rb2p_name', 'Roster Test'); } catch (e) {} });   // V457: past the iPhone Home Screen popup too
     const page = await ctx.newPage();
     await page.goto(H.url());
     await page.waitForFunction(() => { try { return typeof window._rb2p_previewRoster === 'function' && _ft._gt() >= 0; } catch (e) { return false; } }, null, { timeout: 90000 });

@@ -10,6 +10,7 @@
 //       fewer than 10% of redraws wait on a late frame, and the camera following the play glides: under 2% spikes (a
 //       step 2.5x its neighbours') and under 2% stutters (a still frame between moving ones) — the frames come 15-30 a
 //       second, the picture moves on every redraw
+//   W7  (V457) the LIVE tag is big (>= 14 px) and never under the room badge; a faint OPPONENT watermark over the picture
 //   W4  light and harmless: the direct link carries under 40 KB/s; the waiting phone's own game is untouched (still
 //       waiting, same quarter and score) and its page has no errors
 //   W5  when the waiting phone gets the ball (a turnover on downs), the opponent's screen goes away within 20 s
@@ -46,6 +47,23 @@ async function directGame() {
         const s1 = await vstats(DEF.page);
         check('W1 the waiting phone shows the opponent\'s live screen over the direct link', w1.ms !== null, JSON.stringify({ shownAfterMs: w1.ms, rcv: s1.rcv }));
         if (w1.ms === null) return;
+        // W7 (V457, the owner: "make the LIVE opponent bigger and add like a faint watermark saying opponent"): a big LIVE tag
+        // above the room badge, and a faint OPPONENT across the picture — at the desktop size and on a phone held sideways
+        const look = () => DEF.page.evaluate(() => {
+            const c = document.getElementById('rb-oppview-chip'), m = document.querySelector('#rb-oppview-frame .rb-ov-mark'), b = document.getElementById('rb-fb-badge'), v = document.getElementById('rb-oppview');
+            const cr = c.getBoundingClientRect(), br = b ? b.getBoundingClientRect() : null, vr = v.getBoundingClientRect(), ms = m ? getComputedStyle(m) : null;
+            return { chipPx: parseFloat(getComputedStyle(c).fontSize), chipIn: cr.left >= vr.left - 1 && cr.right <= vr.right + 1 && cr.bottom <= vr.bottom + 1,
+                     overBadge: !!(br && br.height && cr.bottom > br.top && cr.left < br.right && cr.right > br.left),
+                     mark: m ? m.textContent : null, markPx: ms ? parseFloat(ms.fontSize) : 0, markAlpha: ms ? Number((ms.color.match(/[\d.]+\)$/) || ['1'])[0].replace(')', '')) : 1 };
+        });
+        const lookDesk = await look();
+        const vp0 = DEF.page.viewport();
+        await DEF.page.setViewport({ width: 844, height: 390 }); await sleep(900);
+        const lookPhone = await look();
+        await DEF.page.setViewport(vp0); await sleep(600);
+        const lookOk = l => l.chipPx >= 14 && l.chipIn && !l.overBadge && l.mark === 'OPPONENT' && l.markPx >= 30 && l.markAlpha > 0 && l.markAlpha <= 0.2;
+        check('W7 a big LIVE tag (not under the room badge) and a faint OPPONENT watermark — desktop and a phone held sideways',
+              lookOk(lookDesk) && lookOk(lookPhone), JSON.stringify({ desk: lookDesk, phone: lookPhone }));
         // W2: one sent frame, the sender's own pixels vs the waiting phone's replay
         let w2 = null;
         for (let attempt = 0; attempt < 4 && !(w2 && w2.samePct >= 99.9); attempt++) {
