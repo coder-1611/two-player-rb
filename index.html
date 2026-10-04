@@ -1642,7 +1642,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V457<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V458<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1731,7 +1731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V457</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V458</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15340,16 +15340,20 @@
     // encode runs long gives up frames rather than its own smoothness
     function capInterval() { var base = NET && NET.mode() === 'fb' ? 166 : 33; return SND.costMs > 6 ? Math.max(base, 66) : (SND.costMs > 4 ? Math.max(base, 50) : base); }
     CAP.wantFrame = function () {
-        if (SND.failed || !NET) return false;
-        var now = performance.now();
-        if (now - SND.lastCapAt < capInterval() - 4) return false;
-        if (Date.now() > SND.wantUntil || !NET.mode() || amWaiting() || !inMatch() || document.hidden) return false;
-        SND.lastCapAt = now;
-        return true;
+        var now = performance.now(), link = false, rec = false;
+        if (!SND.failed && NET && now - SND.lastCapAt >= capInterval() - 4 &&
+            !(Date.now() > SND.wantUntil || !NET.mode() || amWaiting() || !inMatch() || document.hidden)) { link = true; SND.lastCapAt = now; }
+        if (REC.active && !REC.failed && now - REC.lastCapAt >= recInterval() - 4 && inMatch() && !document.hidden) { rec = true; REC.lastCapAt = now; }   // V458
+        CAP.forLink = link; CAP.forRec = rec;
+        return link || rec;
     };
     // the base of a delta: on the direct link (packets can be lost) the last frame the other phone CONFIRMED; on Firebase
     // (in order, nothing lost while connected) the previous frame SENT — a broken chain costs one keyframe, asked for
     CAP.onFrame = function (fr) {
+        var forLink = CAP.forLink !== false, forRec = !!CAP.forRec;   // V458: the frame's users, decided at its start
+        CAP.forLink = CAP.forRec = false;
+        if (forRec) recFrame(fr);
+        if (!forLink) return;
         try {
             var mode = NET && NET.mode(); if (!mode) return;
             if (!NET.canSend(SND.inFlight)) return;   // decided BEFORE encoding: a frame that cannot go is not built
@@ -15380,6 +15384,174 @@
             }, function () { SND.inFlight--; SND.forceKey = true; });
         } catch (e) { SND.failed = true; console.warn('[2P VIEW] sender stopped', e); try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW sender stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} }
     };
+    // ===== V458: THE PLAY RECORDER (the owner: "store the numerical representation of every play for 24 hours then take
+    // it out of firebase and store just the numerical representation in local file somewhere and then delete it every 30
+    // days"; with a guard so the free plan's downloads never run out) =====
+    // On the phone with the ball, every play — from its snap (a pass, a run, a kick) until it settles or the ball changes
+    // hands, plus 1.5 s — is recorded as the opponent's-screen numbers: its own chain (a keyframe, then deltas), 15 frames a
+    // second (the video tool glides between them, as the live replay does), packed and deflated, and uploaded AFTER the
+    // play to rooms/{code}/plays/{role}/p{ms}. A Mac job moves each play to a local archive after 24 h (deleted there
+    // after 30 days) and publishes embedcode/playrec {on, at}: the phones record only while that flag is on and fresh
+    // (< 26 h) — a budget hit or a Mac that stopped running both stop the recording by themselves.
+    var REC = { active: false, failed: false, enabledFlag: false, flagAt: 0, flagReadAt: 0, flagBusy: false, lastCapAt: 0, t0: 0, lastT: 0,
+                prev: null, prevSeq: 0, seq: 0, lastKeyAt: 0, parts: [], raw: 0, meta: null, res: null, end: '', stopAt: 0, stopTimer: null,
+                costMs: 0, plays: 0, uploads: 0, upBytes: 0, upFails: 0, skipped: 0, queue: Promise.resolve(), last: null };
+    var REC_MAX_MS = 30000, REC_MAX_RAW = 1500000, REC_POST_MS = 1500, REC_KEY_MS = 4000;
+    // the ball's states that end a play (the engine's obj_ball _kp): tackled, touchdown, incomplete, out of bounds, sack,
+    // and the kicks' ends
+    var REC_DEAD = { 4: 1, 6: 1, 7: 1, 8: 1, 11: 1, 12: 1, 14: 1, 15: 1, 16: 1, 17: 1 };
+    function recInterval() { return REC.costMs > 8 ? 100 : 66; }   // 15 frames a second; 10 on a phone whose encoding runs long
+    function recEnabled() {
+        if (window._rb2p_recForce === true) return true;
+        if (window._rb2p_recForce === false) return false;
+        try { if (window._rb2p_isTestRun && window._rb2p_isTestRun()) return false; } catch (e) {}
+        return REC.enabledFlag === true && Date.now() - REC.flagAt < 26 * 3600000;
+    }
+    function recFlagRefresh(force) {
+        if (REC.flagBusy || (!force && Date.now() - REC.flagReadAt < 10 * 60000)) return;
+        REC.flagBusy = true;
+        fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/embedcode/playrec.json', { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (j) { REC.enabledFlag = !!(j && j.on === true); REC.flagAt = Number(j && j.at) || 0; REC.flagReadAt = Date.now(); },
+                  function () { REC.flagReadAt = Date.now() - 9 * 60000; })   // try again in a minute
+            .then(function () { REC.flagBusy = false; });
+    }
+    function recWhere() {
+        try { var room = sessionStorage.getItem('rb_room') || ''; var role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : '';
+              return (room && /^[ab]$/.test(role)) ? { room: room, role: role } : null; } catch (e) { return null; }
+    }
+    function recStart(f) {
+        if (REC.active) recFinish('next snap');
+        if (!recEnabled() || REC.failed || !NET || amWaiting() || !inMatch()) return;
+        var where = recWhere(); if (!where) return;
+        REC.active = true; REC.t0 = performance.now(); REC.lastT = 0; REC.prev = null; REC.prevSeq = 0; REC.lastKeyAt = 0;
+        REC.parts = []; REC.raw = 0; REC.res = null; REC.end = ''; REC.stopAt = 0; REC.lastCapAt = 0;
+        REC.meta = { room: where.room, role: where.role, at: Date.now(), q: f.q, clk: f.clk, d: f.d, tg: f.tg, y: f.y, dir: f.dir, via: f.via || 'pass', poss: f.poss };
+        REC.trk = { v: 2, roster: [], idx: new Map(), frames: [] };   // V458: what happened, for the daily highlights
+        REC.sawLive = false; REC.sawDead = false;
+        if (REC.stopTimer) clearTimeout(REC.stopTimer);
+        REC.stopTimer = setTimeout(function () { recFinish('cap'); }, REC_MAX_MS);
+    }
+    function recStopSoon(why, ms) {   // a stop already set only moves earlier
+        if (!REC.active) return;
+        ms = ms || REC_POST_MS;
+        var at = Date.now() + ms;
+        if (REC.stopAt && REC.stopAt <= at) return;
+        REC.end = why; REC.stopAt = at;
+        if (REC.stopTimer) clearTimeout(REC.stopTimer);
+        REC.stopTimer = setTimeout(function () { recFinish(why); }, ms);
+    }
+    function vuPush(arr, v) { v = Math.max(0, Math.floor(v)); while (v > 127) { arr.push((v & 127) | 128); v = Math.floor(v / 128); } arr.push(v); }
+    function recFrame(fr) {
+        if (!REC.active) return;
+        try {
+            var now = performance.now(), key = !REC.prev || now - REC.lastKeyAt > REC_KEY_MS;
+            var t1 = performance.now(), seq = ++REC.seq, bytes = encodeFrame(fr, key ? null : REC.prev, seq, key ? 0 : REC.prevSeq);
+            REC.costMs = REC.costMs * 0.9 + (performance.now() - t1) * 0.1;
+            if (key) REC.lastKeyAt = now;
+            var t = Math.round(now - REC.t0), head = []; vuPush(head, t - REC.lastT); vuPush(head, bytes.length); REC.lastT = t;
+            REC.parts.push(new Uint8Array(head), bytes); REC.raw += head.length + bytes.length;
+            REC.prev = fr; REC.prevSeq = seq;
+            // the ball dead ends the play too (a play with no settle — the first down of a drive often has none — would
+            // otherwise run to the 30 s cap): at most 6 s more, as the settle (the result) comes about 4 s after the
+            // whistle; the settle, a hand-off or the ball set for the next snap ends it sooner
+            var bs = recTrack(t);
+            if (REC_DEAD[bs]) { REC.sawDead = true; recStopSoon('dead', 6000); }
+            else if (bs === 0 && REC.sawLive) recStopSoon('reset', 1200);
+            else if (bs > 0) REC.sawLive = true;
+            if (!REC.meta.cw) { REC.meta.cw = fr.cw; REC.meta.ch = fr.ch; REC.meta.aw = fr.aw; REC.meta.ah = fr.ah; }
+            REC.meta.n = (REC.meta.n || 0) + 1;
+            if (REC.raw > REC_MAX_RAW) recFinish('size');
+        } catch (e) { REC.failed = true; REC.active = false; try { if (window._rb2p_diagLog) window._rb2p_diagLog('PLAYREC stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} }
+    }
+    // V458 (the owner: "choose the top 5 most impressive ... juking a bunch of players, stiff arms breaking tackles, last
+    // moment hail marys"): what happened, each recorded frame — the ball (x, y, height, state, holder) and every player (x,
+    // y, action, who it is engaged with), plus the carrier's stiff arms and hurdles left and his tackle count (the engine
+    // spends one of each per stiff arm / hurdle; a tackle lands when the count passes his strength). Players by roster
+    // index (id, side O/D, position, surname — once per play). tools/highlights/features.js reads tackles broken, defenders
+    // beaten, stiff arms, hurdles, dives and a pass's air yards and hang time from it.
+    function recTrack(t) {   // returns the ball's state (-1: no ball)
+        var T = REC.trk; if (!T) return -1;
+        try {
+            var inst = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [], ball = null, pl = [];
+            for (var i = 0; i < inst.length; i++) {
+                var x = inst[i]; if (!x || x._HL2 || !x._eE2) continue;
+                var n = x._eE2._fE2;
+                if (n === 'obj_ball') { ball = x; continue; }
+                if (n !== 'obj_playerOF' && n !== 'obj_playerDF') continue;
+                if (!T.idx.has(x.id)) {
+                    var ln = ''; try { ln = String(_Ai(x._7j, 'lname') || ''); } catch (eN) {}
+                    T.idx.set(x.id, T.roster.length); T.roster.push([x.id, n === 'obj_playerOF' ? 'O' : 'D', Number(x._O01) || 0, ln]);
+                }
+                pl.push(x);
+            }
+            var ix = function (id) { return (typeof id === 'number' && T.idx.has(id)) ? T.idx.get(id) : -1; };
+            var row = [t];
+            if (ball) {
+                var hId = (ball._X_ && typeof ball._X_ === 'object') ? ball._X_.id : ball._X_, hk = ix(hId), h = null;
+                for (var hq = 0; hq < pl.length; hq++) if (pl[hq].id === hId) { h = pl[hq]; break; }
+                row.push(Math.round(ball.x), Math.round(ball.y), Math.round(Number(ball._Y11) || 0), Number(ball._kp) | 0, hk,
+                         h ? (Number(h._p51) || 0) : 0, h ? (Number(h._q51) || 0) : 0, h ? Math.round(Number(h.__51) || 0) : 0);
+            } else row.push(0, 0, 0, -1, -1, 0, 0, 0);
+            var ps = [];
+            for (var j = 0; j < pl.length; j++) { var p = pl[j]; ps.push(T.idx.get(p.id), Math.round(p.x), Math.round(p.y), Number(p._g21) | 0, ix(p._l31)); }
+            row.push(ps);
+            T.frames.push(row);
+            return ball ? (Number(ball._kp) | 0) : -1;
+        } catch (e) { return -1; }
+    }
+    function b64(u8) { var s = '', C = 0x8000; for (var i = 0; i < u8.length; i += C) s += String.fromCharCode.apply(null, u8.subarray(i, i + C)); return btoa(s); }
+    function recFinish(why) {
+        if (!REC.active) return;
+        REC.active = false; if (REC.stopTimer) { clearTimeout(REC.stopTimer); REC.stopTimer = null; }
+        var meta = REC.meta, parts = REC.parts, raw = REC.raw, res = REC.res, trk = REC.trk;
+        REC.parts = []; REC.prev = null; REC.trk = null;
+        if (!meta || !meta.n || meta.n < 3) { REC.skipped++; return; }
+        meta.end = REC.end || why; meta.ms = Math.round(REC.lastT); meta.fps = Math.round(1000 / recInterval()); if (res) meta.res = res;
+        var all = new Uint8Array(raw), o = 0; for (var i = 0; i < parts.length; i++) { all.set(parts[i], o); o += parts[i].length; }
+        REC.plays++;
+        var fmt = (ZF & 2) ? 'deflate-raw' : ((ZF & 4) ? 'deflate' : null);
+        REC.queue = REC.queue.then(function () { return new Promise(function (r) { setTimeout(r, 1500); }); })   // after the play's own hand-off
+            .then(function () { return fmt ? streamThrough(all, CompressionStream, fmt).then(function (z) { return { z: z, enc: fmt + '+b64' }; }, function () { return { z: all, enc: 'b64' }; }) : { z: all, enc: 'b64' }; })
+            .then(function (pk) {   // the track, the same way
+                if (!trk || !trk.frames.length) return pk;
+                var tj = new TextEncoder().encode(JSON.stringify({ v: trk.v, roster: trk.roster, frames: trk.frames }));
+                return (fmt ? streamThrough(tj, CompressionStream, fmt).then(function (z) { return { z: z, enc: fmt + '+b64' }; }, function () { return { z: tj, enc: 'b64' }; }) : Promise.resolve({ z: tj, enc: 'b64' }))
+                    .then(function (tk) { pk.zt = b64(tk.z); pk.encT = tk.enc; return pk; });
+            })
+            .then(function (pk) {
+                var body = Object.assign({ v: 1, ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), srv: { '.sv': 'timestamp' }, enc: pk.enc, raw: raw, z: b64(pk.z) }, meta);
+                if (pk.zt) { body.zt = pk.zt; body.encT = pk.encT; }
+                var path = 'rooms/' + meta.room + '/plays/' + meta.role + '/p' + meta.at;
+                var put = function () { return (typeof window._rb2p_fbRestPut === 'function') ? window._rb2p_fbRestPut(path, body) : Promise.resolve(false); };
+                return put().then(function (ok) { return ok ? ok : new Promise(function (r) { setTimeout(r, 5000); }).then(put); }).then(function (ok) {
+                    if (ok) { REC.uploads++; REC.upBytes += body.z.length; REC.last = { path: path, n: meta.n, ms: meta.ms, kb: Math.round(body.z.length / 1024), end: meta.end }; }
+                    else REC.upFails++;
+                    try { if (window._rb2p_diagLog) window._rb2p_diagLog('PLAYREC ' + (ok ? 'stored' : 'FAILED to store') + ' Q' + meta.q + ' ' + Math.floor(meta.clk / 60) + ':' + ('0' + (meta.clk % 60)).slice(-2) + ' ' + meta.n + ' frames, ' + Math.round(body.z.length / 1024) + ' KB (' + meta.end + ')'); } catch (eD) {}
+                });
+            }).catch(function () { REC.upFails++; });
+    }
+    function recOnAudit(k, f) {
+        if (k === 'snap') { recFlagRefresh(false); recStart(f || {}); }
+        else if (!REC.active) return;
+        else if (k === 'settle') { REC.res = { type: f.type, name: f.name, gain: f.gain, d: f.d, tg: f.tg, y: f.y, clk: f.clk, su: f.su, so: f.so }; recStopSoon('settle'); }
+        else if (k === 'send') {   // the ball changed hands on this play (a turnover, a punt, a score): that is its result
+            if (!REC.res) REC.res = { type: 'handoff', handoff: f && f.type, y: f && f.y, clk: f && f.clk, su: f && f.su, so: f && f.so };
+            else REC.res.handoff = f && f.type;
+            recStopSoon('send ' + (f && f.type || ''));
+        }
+    }
+    (function hookAudit() {   // every snap, settle and hand-off already passes through the audit
+        var tries = 0, iv = setInterval(function () {
+            var a = window._rb2p_audit;
+            if (typeof a === 'function' && !a.__rbRec) {
+                var w = function (k, f) { try { recOnAudit(k, f); } catch (e) {} return a.apply(this, arguments); };
+                w.__rbRec = true; window._rb2p_audit = w; clearInterval(iv);
+            } else if (a && a.__rbRec) clearInterval(iv);
+            if (++tries > 600) clearInterval(iv);
+        }, 100);
+    })();
+    try { if (sessionStorage.getItem('rb_room')) recFlagRefresh(true); } catch (eRF) {}
     function onAck(seq) { if (seq > SND.acked) SND.acked = seq; }
     function onWant(flags) { SND.wantUntil = Date.now() + 3000; SND.caps = (flags | 0) & 6; if (flags & 1) { SND.forceKey = true; SND.acked = 0; } }
 
@@ -15604,7 +15776,7 @@
 
     var API = window._rb2p_view = {
         audit: false, off: false, prewarm: prewarm,
-        attachNet: function (net) { NET = net; installCapture(); },
+        attachNet: function (net) { NET = net; installCapture(); recFlagRefresh(true); },
         onPacket: onPacket, onAck: onAck, onWant: onWant,
         stats: function () {
             return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed },
@@ -15622,6 +15794,23 @@
         lastSeqs: function () { return RCV.frames.map(function (f) { return f.seq; }); },
         Writer: Writer, Reader: Reader, encodeFrame: encodeFrame, decodeHeader: decodeHeader, decodeFrame: decodeFrame,
         _asQuad: function (op) { return asQuad(op); }, _litSize: function (op) { var w = new Writer(256); writeLiteral(w, op, null, 0); return w.n; },
+        rec: function () { return { active: REC.active, enabled: recEnabled(), flag: REC.enabledFlag, flagAt: REC.flagAt, plays: REC.plays, uploads: REC.uploads, upKB: Math.round(REC.upBytes / 1024), upFails: REC.upFails, skipped: REC.skipped, costMs: Math.round(REC.costMs * 10) / 10, failed: REC.failed, last: REC.last }; },
+        // V458: a stored play back into frames — [{ t: ms from the snap, f: a decoded frame }] (the video tool draws them)
+        decodePlay: function (play) {
+            var bin = atob(play.z), u8 = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            var fmt = /^deflate-raw/.test(play.enc) ? 'deflate-raw' : (/^deflate/.test(play.enc) ? 'deflate' : null);
+            return (fmt ? streamThrough(u8, DecompressionStream, fmt) : Promise.resolve(u8)).then(function (all) {
+                var out = [], o = 0, t = 0, prev = null;
+                var vu = function () { var v = 0, m = 1, b; do { b = all[o++]; v += (b & 127) * m; m *= 128; } while (b & 128); return v; };
+                while (o < all.length) {
+                    t += vu(); var n = vu(), bytes = all.subarray(o, o + n); o += n;
+                    var h = decodeHeader(bytes), f = decodeFrame(h, h.key ? null : prev);
+                    prev = f; out.push({ t: t, f: f });
+                }
+                return out;
+            });
+        },
         installCapture: installCapture, encStats: function (on) { var r = ENC_STATS; ENC_STATS = on ? {} : null; return r; }, CAP: CAP, Renderer: Renderer, lerpPositions: lerpPositions, lerpFrame: lerpFrame, assignMatchKeys: assignMatchKeys
     };
 })();

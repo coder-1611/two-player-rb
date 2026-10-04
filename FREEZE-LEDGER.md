@@ -1213,3 +1213,56 @@ v410-lobby failed only in the batch). None was the game:
   (down 1–4). Fixed test on V455's game: 3/3 twice (the punt spot, 1st & 10, LIVE ~4 s after rejoining).
 - New: `e2e/run-it-back-both.js` (suites.txt) — both players tap RUN IT BACK within a second: B1 passes (game 2 on both
   ~11 s after the taps, no guard reload).
+
+## V458 (2026-10-04): every play is recorded as the opponent's-screen numbers — stored 24 h, archived 30 days, videos on demand; the day's top 5 picked by Sonnet 5.5 at 6 pm
+
+The owner (after asking for a video of AWSK's Kittle touchdown, Q2 0:50 — never recorded): "store the numerical
+representation of every play for 24 hours then take it out of firebase and store just the numerical representation in
+local file somewhere and then delete it every 30 days" — chosen: every play, with a guard on the free plan's downloads.
+
+- **The phone with the ball** records each play from its `snap` audit (a pass, a run, a kick) until it settles or the
+  ball changes hands (`settle` / `send`), + 1.5 s — or the ball is set for the next snap (+1.2 s), or at most 6 s after
+  the ball is dead (the first down of a drive often has no settle: it ran to the 30 s cap before; the settle itself comes
+  ~4 s after the whistle) — at 15 frames a second (10 if encoding runs long): the V450 capture,
+  its own chain (a keyframe every 4 s, deltas between), packed (time step, length, frame), deflate-raw, base64 —
+  uploaded AFTER the play by REST to `rooms/{code}/plays/{role}/p{ms}` with the snap's facts and the result. A real 6–13 s
+  play: 88–167 frames, 35–43 KB. The capture serves the live link and the recorder from one frame (CAP.forLink /
+  CAP.forRec); the recorder never touches the link's chain.
+- **The guard:** the phones record only while `embedcode/playrec` (public read, admin write) says `on` and is fresh
+  (< 26 h). `tools/plays-archive.js` (LaunchAgent com.rb2p.plays-archive, hourly) publishes it; it turns off at this
+  month's budget of play downloads (3000 MB of the 10 GB plan) — and if the Mac stops running the job, the recording stops
+  within 26 h, so Firebase never fills. A test run never records unless the test forces it (`_rb2p_recForce`).
+- **The Mac:** each hour, plays older than 24 h move to `~/Projects/two-player-rb/.rb2p/plays-archive/{day}/{CODE}/` —
+  written, read back, then that node deleted from Firebase; day folders older than 30 days are deleted; the month's
+  downloads are counted in `ledger.json`.
+- **Videos:** `node tools/play-video.js CODE --q 2 --clk 50 [--name KITTLE]` (or `--file`) renders a play with the game's
+  own replay renderer (gliding at 60 fps, like the live opponent's screen) to H.264 in `~/Projects/two-player-rb/highlight
+  plays/` (git-ignored, never deployed). 1080p: ~22 s to render an 8 s play.
+- **Tests:** `e2e/play-rec.js` P1–P7 (a real down stored after the play with its facts and result; the whole play at
+  15 fps, every frame decodes; the last frame is a real picture; under 250 KB; nothing recorded without the flag; the
+  live opponent's screen unaffected; the video tool's MP4 at 60 fps and the play's length); `e2e/plays-archive.js` A1–A5.
+- **The track** (`zt`, deflated JSON beside the picture numbers): what happened, each recorded frame — the ball (x, y,
+  height, `_kp` state, holder) and every player (x, y, action `_g21`, engaged-with `_l31`), the holder's stiff arms and
+  hurdles left (`_p51`, `_q51`: the engine spends one per stiff arm / hurdle) and tackle count (`__51`); the roster once
+  (id, side, position `_O01`, surname). ~6–10 KB a play.
+- **The daily highlights** (the owner: "everyday at 6 pm a sonnet 5.5 to look at all the plays that happened in the 24 hr
+  period and choose the top 5 most impressive ... not just normal 50 yard touch downs ... juking a bunch of players,
+  stiff arms breaking tackles, last moment hail marys ... Also make sure it actually runs"): `tools/highlights/daily.js`
+  (LaunchAgent com.rb2p.highlights, 18:00 and 18:30; `tools/install-highlights.sh`). Every play of the 24 h (the archive,
+  and Firebase — its copy kept in the archive, which the hourly mover then reuses: one download per play) is measured by
+  `features.js` with the engine's own rules (20 px a yard, midfield x 1300; ball states 4 tackled, 6 TD, 7 incomplete,
+  8 out, 9 intercepted, 11 sack, 13 fumble; actions 3 engaged, 4 down, 5 dive, 8 hurdle, 9 stiff arm): broken tackles,
+  defenders who dove and missed or were left behind, stiff arms, hurdles, yards after contact, air yards and hang time,
+  late clock, lead change — with each play's story in words. Up to 24 are short-listed and drawn as contact sheets (nine
+  captioned frames, `render.js`); `claude -p --model claude-sonnet-5-5` reads `JUDGE.md`, every play's numbers and
+  stories, looks at every sheet and writes `top5.json`; a judge that fails twice leaves the measured order, said so.
+  The five become 1080p60 MP4s (the headline over the first seconds, trimmed to the play) in `highlight plays/YYYY-MM-DD/`
+  with README.md, and a Mac notification. Run files: `.rb2p/highlights/runs/YYYY-MM-DD/`; log `.rb2p/highlights.log`.
+  Proven under launchd on a harness game's real plays: exit 0 in 175 s, Sonnet 5.5's five with reasons citing the frames
+  ("Stiff Arm!" labels), five 1920×1080 60 fps videos. The play detector was checked against the game's own on-screen
+  labels in the frames, and the gain from positions alone against the engine's settle (e2e H2).
+- **Tests:** `e2e/plays-archive.js` A6 (a play the highlights copied is not downloaded again) and A7 (their downloads
+  count toward the budget); `e2e/highlights.js` H1–H7 (the track and the end at the dead ball; positions to yards and
+  the carrier vs the settle; a day's run: measured, short-listed, drawn; the judge's picks → README and videos in rank
+  order; a failing judge → the measured order, said so; a day without plays; a finished day not redone).
+- **For the detector:** `PLAYREC stored|FAILED` diag lines; `rooms/{code}/plays` is the recorder's, never read by the game.

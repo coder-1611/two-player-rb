@@ -167,5 +167,8 @@
  "window._rb2p_qtrHoldLoggedQ": "V453 diag dedupe: the quarter whose end-of-quarter pause already logged its QTR-HOLD line; it only limits a log line to one per quarter and never gates play",
  "storage:rb2p_runItBack": "V454 RUN IT BACK: this tab's player tapped RUN IT BACK on the stats screen; after the reload the room presses this page's READY once (the engine up, the partner in the room), then it is removed — expires after 10 min, cleared on LEAVE; it never holds play",
  "room:again": "V454 RUN IT BACK notice (rooms/{code}/again/{role}): the partner's stats screen says 'X wants to run it back'; judged against this game's start on the server clock, it never starts, holds or gates anything",
- "storage:rb2p_a2hs_v457": "V457 the iPhone Add-to-Home-Screen popup was dismissed in this browser (shown once); a notice only, it never holds or gates play"
+ "storage:rb2p_a2hs_v457": "V457 the iPhone Add-to-Home-Screen popup was dismissed in this browser (shown once); a notice only, it never holds or gates play",
+ "window._rb2p_audit": "V458 the play recorder wraps the audit function (chained, like the flow module) to see each snap, settle and hand-off; it only starts and stops a recording and never gates play",
+ "window._rb2p_recForce": "V458 test seam: forces the play recorder on (or off) on a test page; the game never sets it",
+ "room:plays": "V458 recorded plays (rooms/{code}/plays/{role}/p{ms}): written once after each play, moved to the Mac's archive after 24 h; the game never reads them"
 }

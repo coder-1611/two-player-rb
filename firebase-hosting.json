@@ -1,6 +1,6 @@
 {
   "hosting": {
     "public": ".",
-    "ignore": ["firebase-hosting.json", "firebase/**", "**/.*", "**/.*/**", "**/node_modules/**", "*.md", "**/*.md", "*.zip", "docs/**", "e2e/**", "plays/**", "audits/**", "build/**", "tools/**", "game-transcripts/**", "*.py", "scenario.js", "test_*.js", "timelapser.js"]
+    "ignore": ["firebase-hosting.json", "firebase/**", "**/.*", "**/.*/**", "**/node_modules/**", "*.md", "**/*.md", "*.zip", "docs/**", "e2e/**", "plays/**", "audits/**", "build/**", "tools/**", "game-transcripts/**", "*.py", "scenario.js", "test_*.js", "timelapser.js", "highlight plays/**"]
   }
 }
