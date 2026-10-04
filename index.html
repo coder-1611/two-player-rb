@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V449<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V450<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V449</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V450</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -14423,6 +14423,1059 @@
         })();
     </script>
 
+    <!-- ===== V450: THE OPPONENT'S SCREEN ON THE WAIT SCREEN =====
+         The owner: "I want the wait screen to display opponent screen ... get characteristics of each sprite and have
+         an instantaneous stream of numbers ... The stream should be HYPER smooth" and "the screen should look as if it
+         is a 1080p replication, e.g. almost exactly the same". Asked: the game's real art; phone to phone with a
+         Firebase backup.
+         The phone with the ball records what its engine DRAWS each frame: every vertex batch it hands the WebGL batcher
+         (_Xg2._8j2: position, colour, texture coordinate) and every state change between them (render target, viewport,
+         clear, view/projection/world matrices, the team-colour shader and its uniforms, blend). It sends only what changed
+         since the last frame the waiting phone confirmed. The waiting phone replays those exact triangles with the same
+         texture pages and the game's own sh_ColorReplaceBlend on a canvas of its own: the field into a 480x270 picture
+         scaled up like the real one, then the HUD. Its own engine and game state are never touched. It plays at 60 fps
+         behind a small jitter buffer, gliding every piece (keyed by the object that drew it) and the camera between
+         frames. Measured: a replayed frame is 99.995% pixel-identical to the engine's own. -->
+    <script>
+(function () {
+    'use strict';
+    if (window._rb2p_view) return;
+
+    // ---------------------------------------------------------------- bytes
+    function Writer(cap) { this.b = new Uint8Array(cap || 4096); this.n = 0; this.dv = new DataView(this.b.buffer); }
+    Writer.prototype.room = function (k) {
+        if (this.n + k <= this.b.length) return;
+        var nb = new Uint8Array(Math.max(this.b.length * 2, this.n + k + 1024)); nb.set(this.b.subarray(0, this.n)); this.b = nb; this.dv = new DataView(nb.buffer);
+    };
+    Writer.prototype.u8 = function (v) { this.room(1); this.b[this.n++] = v & 255; };
+    Writer.prototype.vu = function (v) {   // unsigned varint, any safe integer
+        this.room(10);
+        while (v >= 128) { this.b[this.n++] = (v % 128) | 128; v = Math.floor(v / 128); }
+        this.b[this.n++] = v;
+    };
+    Writer.prototype.vs = function (v) { this.vu(v < 0 ? -2 * v - 1 : 2 * v); };   // zigzag
+    Writer.prototype.f32 = function (v) { this.room(4); this.dv.setFloat32(this.n, v, true); this.n += 4; };
+    Writer.prototype.f64 = function (v) { this.room(8); this.dv.setFloat64(this.n, v, true); this.n += 8; };
+    Writer.prototype.i32 = function (v) { this.room(4); this.dv.setInt32(this.n, v, true); this.n += 4; };
+    Writer.prototype.str = function (s) { s = String(s); this.vu(s.length); this.room(s.length); for (var i = 0; i < s.length; i++) this.b[this.n++] = s.charCodeAt(i) & 255; };
+    Writer.prototype.out = function () { return this.b.slice(0, this.n); };
+    function Reader(u8) { this.b = u8; this.n = 0; this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength); }
+    Reader.prototype.u8 = function () { return this.b[this.n++]; };
+    Reader.prototype.vu = function () { var v = 0, m = 1, c; do { c = this.b[this.n++]; v += (c & 127) * m; m *= 128; } while (c & 128); return v; };
+    Reader.prototype.vs = function () { var v = this.vu(); return (v % 2) ? -(v + 1) / 2 : v / 2; };
+    Reader.prototype.f32 = function () { var v = this.dv.getFloat32(this.n, true); this.n += 4; return v; };
+    Reader.prototype.f64 = function () { var v = this.dv.getFloat64(this.n, true); this.n += 8; return v; };
+    Reader.prototype.i32 = function () { var v = this.dv.getInt32(this.n, true); this.n += 4; return v; };
+    Reader.prototype.str = function () { var l = this.vu(), s = ''; for (var i = 0; i < l; i++) s += String.fromCharCode(this.b[this.n++]); return s; };
+
+    // ---------------------------------------------------------------- ops
+    // A frame is a list of ops in draw order. Kinds:
+    //   S shader (id: 0 default, 1+ the game's shaders)        U uniform (name, vals Float32Array)
+    //   V viewport (x,y,w,h ×16)                              M matrix (type 0 view / 1 projection / 2 world, m[16])
+    //   C clear (mask, colour)                                T target (0 the 480x270 picture / 1 the screen / 2 other)
+    //   B blend (src, dst — GameMaker bm_* constants)          D draw (key, prim, tex, n, v Int32Array n*5: x16 y16 col u v)
+    // tex: 0/1 the texture pages, 2 white, 3 the 480x270 picture, 4 other. u/v ×65536.
+    var Q = 16, UVQ = 65536;
+    function opEqual(a, b) {
+        if (a.k !== b.k) return false;
+        switch (a.k) {
+            case 'D':
+                if (a.prim !== b.prim || a.tex !== b.tex || a.n !== b.n) return false;
+                var av = a.v, bv = b.v; for (var i = 0; i < av.length; i++) if (av[i] !== bv[i]) return false; return true;
+            case 'M': case 'U':
+                if (a.k === 'M' && a.type !== b.type) return false;
+                if (a.k === 'U' && a.name !== b.name) return false;
+                var am = a.m || a.vals, bm = b.m || b.vals; if (am.length !== bm.length) return false;
+                for (var j = 0; j < am.length; j++) if (am[j] !== bm[j]) return false; return true;
+            case 'S': return a.id === b.id;
+            case 'V': return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+            case 'C': return a.mask === b.mask && a.col === b.col;
+            case 'T': return a.t === b.t;
+            case 'B': return a.a === b.a && a.b === b.b;
+        }
+        return false;
+    }
+    // match keys live on the FRAME (decoded frames share unchanged op objects with earlier frames)
+    // a shader set or a uniform belongs to the draw it precedes (a player's team colours go with that player), so a
+    // respawned formation does not shift every later uniform out of line; other state ops match by their order
+    function assignMatchKeys(fr) {
+        if (fr.idx) return;
+        var ops = fr.ops, n = ops.length, cnt = {}, idx = new Map(), mks = new Array(n), nextD = new Array(n), nd = 'end';
+        for (var j = n - 1; j >= 0; j--) { if (ops[j].k === 'D') nd = ops[j].key; nextD[j] = nd; }
+        for (var i = 0; i < n; i++) {
+            var op = ops[i], mk;
+            if (op.k === 'D') mk = 'd' + op.key;
+            else if (op.k === 'U') mk = 'u' + op.name + '@' + nextD[i];
+            else if (op.k === 'S') mk = 's' + op.id + '@' + nextD[i];
+            else mk = op.k + (cnt[op.k] = (cnt[op.k] || 0) + 1);
+            if (idx.has(mk)) { var dup = (cnt[mk] = (cnt[mk] || 1) + 1); mk = mk + '#' + dup; }
+            mks[i] = mk;
+            idx.set(mk, i);
+        }
+        fr.idx = idx; fr.mks = mks;
+    }
+    function shapeHash(v) {   // FNV over the shape relative to its first vertex (for instancing within a frame)
+        var h = 2166136261, x0 = v[0], y0 = v[1];
+        for (var i = 0; i < v.length; i += 5) {
+            h = Math.imul(h ^ (v[i] - x0), 16777619); h = Math.imul(h ^ (v[i + 1] - y0), 16777619);
+            h = Math.imul(h ^ v[i + 2], 16777619); h = Math.imul(h ^ v[i + 3], 16777619); h = Math.imul(h ^ v[i + 4], 16777619);
+        }
+        return (h >>> 0) + ':' + v.length;
+    }
+    function baseShape(base, op) {
+        var m = base.shapeIdx;
+        if (!m) {
+            m = base.shapeIdx = new Map();
+            for (var i = 0; i < base.ops.length; i++) { var o = base.ops[i]; if (o.k === 'D' && o.n >= 6) { var h = shapeHash(o.v) + ':' + o.prim + ':' + o.tex; if (!m.has(h)) m.set(h, i); } }
+        }
+        var j = m.get(shapeHash(op.v) + ':' + op.prim + ':' + op.tex);
+        if (j === undefined) return -1;
+        return sameShape(op.v, base.ops[j].v) ? j : -1;
+    }
+    function sameShape(a, b) {
+        if (a.length !== b.length) return false;
+        var dx = a[0] - b[0], dy = a[1] - b[1];
+        for (var i = 0; i < a.length; i += 5)
+            if (a[i] - b[i] !== dx || a[i + 1] - b[i + 1] !== dy || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3] || a[i + 4] !== b[i + 4]) return false;
+        return true;
+    }
+    function writeVerts(w, v, ref) {   // per-vertex deltas (against the previous vertex, or a reference op's vertices)
+        var px = 0, py = 0, pc = 0, pu = 0, pv = 0;
+        for (var i = 0; i < v.length; i += 5) {
+            if (ref) { px = ref[i]; py = ref[i + 1]; pc = ref[i + 2]; pu = ref[i + 3]; pv = ref[i + 4]; }
+            w.vs(v[i] - px); w.vs(v[i + 1] - py); w.vs((v[i + 2] - pc) | 0); w.vs(v[i + 3] - pu); w.vs(v[i + 4] - pv);
+            if (!ref) { px = v[i]; py = v[i + 1]; pc = v[i + 2]; pu = v[i + 3]; pv = v[i + 4]; }
+        }
+    }
+    function readVerts(r, n, ref) {
+        var v = new Int32Array(n * 5), px = 0, py = 0, pc = 0, pu = 0, pv = 0;
+        for (var i = 0; i < v.length; i += 5) {
+            if (ref) { px = ref[i]; py = ref[i + 1]; pc = ref[i + 2]; pu = ref[i + 3]; pv = ref[i + 4]; }
+            v[i] = px + r.vs(); v[i + 1] = py + r.vs(); v[i + 2] = (pc + r.vs()) | 0; v[i + 3] = pu + r.vs(); v[i + 4] = pv + r.vs();
+            if (!ref) { px = v[i]; py = v[i + 1]; pc = v[i + 2]; pu = v[i + 3]; pv = v[i + 4]; }
+        }
+        return v;
+    }
+
+    // ---- sprite quads: the engine's axis-aligned quad (_Be5 vertex order TL TR BR BR BL TL) as a rectangle, its
+    // texture as an index into the texture-page-entry table (identical on both phones), and its corner colours
+    // pattern 0 (sprites, _Be5): TL TR BR BR BL TL; pattern 1 (rectangles): TL BL BR BR TR TL. q[12] = the pattern.
+    function asQuad(op) {
+        if (op.prim !== 0 || op.n !== 6) return null;
+        if (op.quad !== undefined) return op.quad;
+        var v = op.v, L = v[0], T = v[1], uL = v[3], vT = v[4], R, B, uR, vB;
+        // pattern 0
+        R = v[5]; B = v[11]; uR = v[8]; vB = v[14];
+        if (v[10] === R && v[15] === R && v[20] === L && v[25] === L && v[6] === T && v[16] === B && v[21] === B && v[26] === T &&
+            v[13] === uR && v[18] === uR && v[23] === uL && v[28] === uL && v[9] === vT && v[19] === vB && v[24] === vB && v[29] === vT &&
+            v[17] === v[12] && v[27] === v[2])
+            return (op.quad = [L, T, R, B, uL, vT, uR, vB, v[2], v[7], v[12], v[22], 0]);
+        // pattern 1
+        R = v[10]; B = v[6]; uR = v[13]; vB = v[9];
+        if (v[5] === L && v[15] === R && v[20] === R && v[25] === L && v[11] === B && v[16] === B && v[21] === T && v[26] === T &&
+            v[8] === uL && v[18] === uR && v[23] === uR && v[28] === uL && v[14] === vB && v[19] === vB && v[24] === vT && v[29] === vT &&
+            v[17] === v[12] && v[27] === v[2])
+            return (op.quad = [L, T, R, B, uL, vT, uR, vB, v[2], v[7], v[12], v[22], 1]);
+        return (op.quad = null);
+    }
+    function quadVerts(q) {
+        var L = q[0], T = q[1], R = q[2], B = q[3], uL = q[4], vT = q[5], uR = q[6], vB = q[7], c0 = q[8], c1 = q[9], c2 = q[10], c3 = q[11];
+        if (q[12] === 1) return new Int32Array([L, T, c0, uL, vT, L, B, c1, uL, vB, R, B, c2, uR, vB, R, B, c2, uR, vB, R, T, c3, uR, vT, L, T, c0, uL, vT]);
+        return new Int32Array([L, T, c0, uL, vT, R, T, c1, uR, vT, R, B, c2, uR, vB, R, B, c2, uR, vB, L, B, c3, uL, vB, L, T, c0, uL, vT]);
+    }
+    var TPE_MAP = null, TPE_LIST = null;
+    function tpeTable() {
+        if (TPE_MAP) return TPE_MAP;
+        TPE_MAP = new Map(); TPE_LIST = [];
+        try {
+            var arr = (typeof _yG4 !== 'undefined' && _yG4) ? _yG4 : [];
+            for (var i = 0; i < arr.length; i++) {
+                var t = arr[i]; if (!t || !t._0e2 || !t._0e2.width) continue;
+                var pg = -1; for (var p = 0; p < _Xd2.length; p++) if (_Xd2[p] === t._0e2) pg = p;
+                if (pg < 0) continue;
+                var W = t._0e2.width, H = t._0e2.height;
+                var uL = Math.round(t.x / W * UVQ), vT = Math.round(t.y / H * UVQ), uR = Math.round((t.x + t._a2) / W * UVQ), vB = Math.round((t.y + t._b2) / H * UVQ);
+                var k = pg + ':' + uL + ':' + vT + ':' + uR + ':' + vB;
+                if (!TPE_MAP.has(k)) { TPE_MAP.set(k, TPE_LIST.length); TPE_LIST.push([uL, vT, uR, vB]); }
+            }
+        } catch (e) {}
+        return TPE_MAP;
+    }
+    function tpeIndex(tex, q) { var m = tpeTable(), j = m.get(tex + ':' + q[4] + ':' + q[5] + ':' + q[6] + ':' + q[7]); return j === undefined ? -1 : j; }
+    function writeQuadUV(w, tex, q, bq) {   // mode 0 same as base, 1 entry index, 2 raw
+        if (bq && q[4] === bq[4] && q[5] === bq[5] && q[6] === bq[6] && q[7] === bq[7]) { w.u8(0); return; }
+        var j = tpeIndex(tex, q);
+        if (j >= 0) { w.u8(1); w.vu(j); return; }
+        w.u8(2); w.vs(q[4]); w.vs(q[5]); w.vs(q[6]); w.vs(q[7]);
+    }
+    function readQuadUV(r, q, bq) {
+        var m = r.u8();
+        if (m === 0) { q[4] = bq[4]; q[5] = bq[5]; q[6] = bq[6]; q[7] = bq[7]; }
+        else if (m === 1) { tpeTable(); var t = TPE_LIST[r.vu()]; q[4] = t[0]; q[5] = t[1]; q[6] = t[2]; q[7] = t[3]; }
+        else { q[4] = r.vs(); q[5] = r.vs(); q[6] = r.vs(); q[7] = r.vs(); }
+    }
+    function writeQuadCol(w, q, bq) {   // 0 same as base, 1 one colour, 2 four
+        if (bq && q[8] === bq[8] && q[9] === bq[9] && q[10] === bq[10] && q[11] === bq[11]) { w.u8(0); return; }
+        if (q[8] === q[9] && q[8] === q[10] && q[8] === q[11]) { w.u8(1); w.i32(q[8]); return; }
+        w.u8(2); w.i32(q[8]); w.i32(q[9]); w.i32(q[10]); w.i32(q[11]);
+    }
+    function readQuadCol(r, q, bq) {
+        var m = r.u8();
+        if (m === 0) { q[8] = bq[8]; q[9] = bq[9]; q[10] = bq[10]; q[11] = bq[11]; }
+        else if (m === 1) { q[8] = q[9] = q[10] = q[11] = r.i32(); }
+        else { q[8] = r.i32(); q[9] = r.i32(); q[10] = r.i32(); q[11] = r.i32(); }
+    }
+
+    // ---- ellipses (player shadows): rebuilt from their parameters with the engine's own tables (_ge5/_he5) and the
+    // same float32 store and quantisation as the capture — so the vertices come back exactly
+    function ellVerts(e, colC, colE, n) {
+        var v = new Int32Array(n * 5), G = _ge5, Hh = _he5, P = e.P, k = 0, A;
+        if (e.o) {
+            for (A = 0; A <= P && k < v.length; A++, k += 5) { v[k] = Math.round(Math.fround(e.y + e.f * G[A]) * Q); v[k + 1] = Math.round(Math.fround(e.h + e.u * Hh[A]) * Q); v[k + 2] = colE; }
+        } else {
+            var cx = Math.round(Math.fround(e.y) * Q), cy = Math.round(Math.fround(e.h) * Q);
+            for (A = 0; A < P && k < v.length; A++) {
+                v[k] = cx; v[k + 1] = cy; v[k + 2] = colC; k += 5;
+                v[k] = Math.round(Math.fround(e.y + e.f * G[A]) * Q); v[k + 1] = Math.round(Math.fround(e.h + e.u * Hh[A]) * Q); v[k + 2] = colE; k += 5;
+                v[k] = Math.round(Math.fround(e.y + e.f * G[A + 1]) * Q); v[k + 1] = Math.round(Math.fround(e.h + e.u * Hh[A + 1]) * Q); v[k + 2] = colE; k += 5;
+            }
+        }
+        return v;
+    }
+    function ellOk(op) {   // the parameters really rebuild this op's vertices
+        if (!op.ell || op.tex !== 2) return false;
+        if (op.ellOk !== undefined) return op.ellOk;
+        var e = op.ell, want = e.o ? e.P + 1 : 3 * e.P;
+        if (want !== op.n) return (op.ellOk = false);
+        var cC = op.v[2], cE = e.o ? op.v[2] : op.v[7], r = ellVerts(e, cC, cE, op.n), v = op.v;
+        for (var i = 0; i < v.length; i++) if (v[i] !== r[i]) return (op.ellOk = false);
+        return (op.ellOk = true);
+    }
+    function writeLiteral(w, op, shapes, i) {
+        switch (op.k) {
+            case 'S': w.u8(0x21); w.u8(op.id); return;
+            case 'U': {
+                var ni = uniIndex(op.name);
+                if (ni >= 0) { w.u8(0x29); w.vu(ni); } else { w.u8(0x22); w.str(op.name); }
+                // the same values an earlier uniform op of this frame carried (the two teams' colours repeat per player)
+                var back = shapes ? shapes.uni : null, key = op.name + ':' + Array.prototype.join.call(op.vals, ',');
+                if (back && back.has(key)) { w.u8(1); w.vu(i - back.get(key)); }
+                else { w.u8(0); w.vu(op.vals.length); for (var a = 0; a < op.vals.length; a++) w.f32(op.vals[a]); }
+                if (back) back.set(key, i);
+                return;
+            }
+            case 'V': w.u8(0x23); w.vs(op.x); w.vs(op.y); w.vs(op.w); w.vs(op.h); return;
+            case 'M': w.u8(0x24); w.u8(op.type); for (var b = 0; b < 16; b++) w.f32(op.m[b]); return;
+            case 'C': w.u8(0x25); w.u8(op.mask); w.i32(op.col); return;
+            case 'T': w.u8(0x26); w.u8(op.t); return;
+            case 'B': w.u8(0x27); w.u8(op.a); w.u8(op.b); return;
+            case 'D':
+                if (ellOk(op)) {
+                    var el = op.ell;
+                    w.u8(0x2C); w.vu(op.key); w.u8(op.prim); w.vu(op.n); w.u8(el.o); w.vu(el.P);
+                    w.f64(el.y); w.f64(el.h); w.f64(el.f); w.f64(el.u); w.i32(op.v[2]); w.i32(el.o ? op.v[2] : op.v[7]);
+                    return;
+                }
+                var qd = asQuad(op);
+                if (qd) {
+                    w.u8(0x2B); w.vu(op.key); w.u8(op.tex | (qd[12] << 7));
+                    w.vs(qd[0]); w.vs(qd[1]); w.vs(qd[2] - qd[0]); w.vs(qd[3] - qd[1]);
+                    writeQuadUV(w, op.tex, qd, null); writeQuadCol(w, qd, null);
+                    return;
+                }
+                w.u8(0x28); w.vu(op.key); w.u8(op.prim); w.u8(op.tex); w.vu(op.n);
+                if (op.n >= 12 && shapes) {
+                    var hsh = shapeHash(op.v), j = shapes.get(hsh);
+                    if (j !== undefined && sameShape(op.v, shapes.op[j].v)) { w.u8(1); w.vu(j); w.vs(op.v[0] - shapes.op[j].v[0]); w.vs(op.v[1] - shapes.op[j].v[1]); return; }
+                    shapes.set(hsh, i);
+                }
+                w.u8(0); writeVerts(w, op.v, null); return;
+        }
+    }
+    function readLiteral(r, ops) {
+        var t = r.u8(), op;
+        switch (t) {
+            case 0x21: return { k: 'S', id: r.u8() };
+            case 0x22: case 0x29: {
+                var name = t === 0x29 ? uniNames()[r.vu()] : r.str(), vals;
+                if (r.u8() === 1) { var src = ops[ops._i - r.vu()]; vals = src.vals; }
+                else { var c = r.vu(); vals = new Float32Array(c); for (var a = 0; a < c; a++) vals[a] = r.f32(); }
+                return { k: 'U', name: name, vals: vals };
+            }
+            case 0x23: return { k: 'V', x: r.vs(), y: r.vs(), w: r.vs(), h: r.vs() };
+            case 0x24: { var ty = r.u8(), m = new Float32Array(16); for (var b = 0; b < 16; b++) m[b] = r.f32(); return { k: 'M', type: ty, m: m }; }
+            case 0x25: return { k: 'C', mask: r.u8(), col: r.i32() };
+            case 0x26: return { k: 'T', t: r.u8() };
+            case 0x27: return { k: 'B', a: r.u8(), b: r.u8() };
+            case 0x2C: {
+                var ek = r.vu(), ep = r.u8(), en = r.vu(), eo = r.u8(), eP = r.vu();
+                var ell = { o: eo, P: eP, y: r.f64(), h: r.f64(), f: r.f64(), u: r.f64() }, cC = r.i32(), cE = r.i32();
+                return { k: 'D', key: ek, prim: ep, tex: 2, n: en, v: ellVerts(ell, cC, cE, en), ell: ell, ellOk: true };
+            }
+            case 0x2B: {
+                var qk = r.vu(), qt0 = r.u8(), qt = qt0 & 127, q = new Array(13); q[12] = qt0 >> 7;
+                q[0] = r.vs(); q[1] = r.vs(); q[2] = q[0] + r.vs(); q[3] = q[1] + r.vs();
+                readQuadUV(r, q, null); readQuadCol(r, q, null);
+                return { k: 'D', key: qk, prim: 0, tex: qt, n: 6, v: quadVerts(q) };
+            }
+            case 0x28: {
+                op = { k: 'D', key: r.vu(), prim: r.u8(), tex: r.u8(), n: r.vu() };
+                if (r.u8() === 1) {
+                    var src = ops[r.vu()].v, dx = r.vs(), dy = r.vs(), v = new Int32Array(src.length);
+                    for (var i = 0; i < v.length; i += 5) { v[i] = src[i] + dx; v[i + 1] = src[i + 1] + dy; v[i + 2] = src[i + 2]; v[i + 3] = src[i + 3]; v[i + 4] = src[i + 4]; }
+                    op.v = v;
+                } else op.v = readVerts(r, op.n, null);
+                return op;
+            }
+        }
+        throw new Error('bad literal ' + t);
+    }
+    var UNI_NAMES = null, UNI_IDX = null;
+    function uniNames() {
+        if (UNI_NAMES) return UNI_NAMES;
+        var set = {};
+        try {
+            for (var i = 0; i < _Y._X1.length; i++) {
+                var src = String(_Y._X1[i]._Y1) + '\n' + String(_Y._X1[i]._Z1), re = /uniform\s+\w+\s+(\w+)/g, m;
+                while ((m = re.exec(src))) set[m[1]] = 1;
+            }
+        } catch (e) {}
+        UNI_NAMES = Object.keys(set).sort(); UNI_IDX = {};
+        for (var j = 0; j < UNI_NAMES.length; j++) UNI_IDX[UNI_NAMES[j]] = j;
+        return UNI_NAMES;
+    }
+    function uniIndex(name) { uniNames(); return UNI_IDX.hasOwnProperty(name) ? UNI_IDX[name] : -1; }
+    // delta of a keyed op against its base op
+    function writeDelta(w, op, bop, shapes, i) {
+        if (op.k === 'D' && bop.k === 'D' && ellOk(op) && ellOk(bop) && op.n === bop.n && op.prim === bop.prim && op.ell.o === bop.ell.o && op.ell.P === bop.ell.P) {
+            var e1 = op.ell, e0 = bop.ell, c1 = op.v[2], c0b = bop.v[2], d1 = e1.o ? c1 : op.v[7], d0 = e0.o ? c0b : bop.v[7];
+            var em = (e1.y !== e0.y ? 1 : 0) | (e1.h !== e0.h ? 2 : 0) | (e1.f !== e0.f ? 4 : 0) | (e1.u !== e0.u ? 8 : 0) | (c1 !== c0b ? 16 : 0) | (d1 !== d0 ? 32 : 0);
+            w.u8(0x17); w.u8(em);
+            if (em & 1) w.f64(e1.y); if (em & 2) w.f64(e1.h); if (em & 4) w.f64(e1.f); if (em & 8) w.f64(e1.u);
+            if (em & 16) w.i32(c1); if (em & 32) w.i32(d1);
+            return;
+        }
+        if (op.k === 'D' && bop.k === 'D' && op.tex === bop.tex) {
+            var q1 = asQuad(op), q0 = q1 && asQuad(bop);
+            if (q1 && q0 && q1[12] === q0[12]) {
+                // position: 0 same, 1 every edge shifted (dx, dy), 2 a new rectangle (each edge's change)
+                var ddx = q1[0] - q0[0], ddy = q1[1] - q0[1];
+                var pmq = (q1[2] - q0[2] === ddx && q1[3] - q0[3] === ddy) ? ((ddx || ddy) ? 1 : 0) : 2;
+                w.u8(0x16); w.u8(pmq);
+                if (pmq === 1) { w.vs(ddx); w.vs(ddy); } else if (pmq === 2) { w.vs(ddx); w.vs(ddy); w.vs(q1[2] - q0[2]); w.vs(q1[3] - q0[3]); }
+                writeQuadUV(w, op.tex, q1, q0); writeQuadCol(w, q1, q0);
+                return;
+            }
+        }
+        if (op.k === 'D' && bop.k === 'D' && op.prim === bop.prim && op.tex === bop.tex && op.n === bop.n) {
+            // channel by channel — position, colour, texture coordinates — each unchanged (0), the same for every
+            // vertex (1: one shift / one colour) or per vertex (2)
+            var v = op.v, bv = bop.v, dx = v[0] - bv[0], dy = v[1] - bv[1], c0 = v[2], du = v[3] - bv[3], dvv = v[4] - bv[4];
+            var pU = true, cSame = true, cOne = true, uU = true;
+            for (var j = 0; j < v.length; j += 5) {
+                if (pU && (v[j] - bv[j] !== dx || v[j + 1] - bv[j + 1] !== dy)) pU = false;
+                if (v[j + 2] !== bv[j + 2]) cSame = false;
+                if (v[j + 2] !== c0) cOne = false;
+                if (uU && (v[j + 3] - bv[j + 3] !== du || v[j + 4] - bv[j + 4] !== dvv)) uU = false;
+            }
+            var pm = pU ? ((dx || dy) ? 1 : 0) : 2, cm = cSame ? 0 : (cOne ? 1 : 2), um = uU ? ((du || dvv) ? 1 : 0) : 2;
+            w.u8(0x15); w.u8(pm | (cm << 2) | (um << 4));
+            if (pm === 1) { w.vs(dx); w.vs(dy); } else if (pm === 2) for (var a = 0; a < v.length; a += 5) { w.vs(v[a] - bv[a]); w.vs(v[a + 1] - bv[a + 1]); }
+            if (cm === 1) w.i32(c0); else if (cm === 2) for (var b = 0; b < v.length; b += 5) w.vs((v[b + 2] - bv[b + 2]) | 0);
+            if (um === 1) { w.vs(du); w.vs(dvv); } else if (um === 2) for (var c = 0; c < v.length; c += 5) { w.vs(v[c + 3] - bv[c + 3]); w.vs(v[c + 4] - bv[c + 4]); }
+            return;
+        }
+        if (op.k === 'M' && bop.k === 'M' && op.type === bop.type) {
+            var mask = 0; for (var a = 0; a < 16; a++) if (op.m[a] !== bop.m[a]) mask |= (1 << a);
+            w.u8(0x12); w.vu(mask); for (var b = 0; b < 16; b++) if (mask & (1 << b)) w.f32(op.m[b]); return;
+        }
+        w.u8(0x13); writeLiteral(w, op, shapes, i);
+    }
+    function readDelta(r, bop, ops) {
+        var t = r.u8();
+        if (t === 0x17) {
+            var em2 = r.u8(), e0d = bop.ell, ne = { o: e0d.o, P: e0d.P, y: e0d.y, h: e0d.h, f: e0d.f, u: e0d.u };
+            if (em2 & 1) ne.y = r.f64(); if (em2 & 2) ne.h = r.f64(); if (em2 & 4) ne.f = r.f64(); if (em2 & 8) ne.u = r.f64();
+            var cc0 = bop.v[2], ce0 = e0d.o ? bop.v[2] : bop.v[7];
+            if (em2 & 16) cc0 = r.i32(); if (em2 & 32) ce0 = r.i32();
+            return { k: 'D', key: bop.key, prim: bop.prim, tex: 2, n: bop.n, v: ellVerts(ne, cc0, ce0, bop.n), ell: ne, ellOk: true };
+        }
+        if (t === 0x16) {
+            var q0d = asQuad(bop), qn = q0d.slice(), pm6 = r.u8();
+            if (pm6 === 1) { var sx6 = r.vs(), sy6 = r.vs(); qn[0] += sx6; qn[1] += sy6; qn[2] += sx6; qn[3] += sy6; }
+            else if (pm6 === 2) { qn[0] += r.vs(); qn[1] += r.vs(); qn[2] += r.vs(); qn[3] += r.vs(); }
+            readQuadUV(r, qn, q0d); readQuadCol(r, qn, q0d);
+            return { k: 'D', key: bop.key, prim: 0, tex: bop.tex, n: 6, v: quadVerts(qn) };
+        }
+        if (t === 0x15) {
+            var fl = r.u8(), pm = fl & 3, cm = (fl >> 2) & 3, um = (fl >> 4) & 3, bv0 = bop.v, v0 = new Int32Array(bv0), q;
+            if (pm === 1) { var sx = r.vs(), sy = r.vs(); for (q = 0; q < v0.length; q += 5) { v0[q] += sx; v0[q + 1] += sy; } }
+            else if (pm === 2) for (q = 0; q < v0.length; q += 5) { v0[q] += r.vs(); v0[q + 1] += r.vs(); }
+            if (cm === 1) { var cc = r.i32(); for (q = 0; q < v0.length; q += 5) v0[q + 2] = cc; }
+            else if (cm === 2) for (q = 0; q < v0.length; q += 5) v0[q + 2] = (v0[q + 2] + r.vs()) | 0;
+            if (um === 1) { var su = r.vs(), sv = r.vs(); for (q = 0; q < v0.length; q += 5) { v0[q + 3] += su; v0[q + 4] += sv; } }
+            else if (um === 2) for (q = 0; q < v0.length; q += 5) { v0[q + 3] += r.vs(); v0[q + 4] += r.vs(); }
+            return { k: 'D', key: bop.key, prim: bop.prim, tex: bop.tex, n: bop.n, v: v0 };
+        }
+        if (t === 0x10) {
+            var dx = r.vs(), dy = r.vs(), du = r.vs(), dv = r.vs(), bv = bop.v, v = new Int32Array(bv.length);
+            for (var i = 0; i < v.length; i += 5) { v[i] = bv[i] + dx; v[i + 1] = bv[i + 1] + dy; v[i + 2] = bv[i + 2]; v[i + 3] = bv[i + 3] + du; v[i + 4] = bv[i + 4] + dv; }
+            return { k: 'D', key: bop.key, prim: bop.prim, tex: bop.tex, n: bop.n, v: v };
+        }
+        if (t === 0x11) return { k: 'D', key: bop.key, prim: bop.prim, tex: bop.tex, n: bop.n, v: readVerts(r, bop.n, bop.v) };
+        if (t === 0x12) {
+            var mask = r.vu(), m = new Float32Array(bop.m);
+            for (var b = 0; b < 16; b++) if (mask & (1 << b)) m[b] = r.f32();
+            return { k: 'M', type: bop.type, m: m };
+        }
+        if (t === 0x13) return readLiteral(r, ops);
+        throw new Error('bad delta ' + t);
+    }
+    // packet: 'V' 1 | flags | seq | baseSeq | t | cw | ch | aw | ah | nops | ops…
+    //   op records: 1 RUN n (copy n base ops in order) | 2 REF zz(skip) + delta | 3 NEW literal
+    var ENC_STATS = null;
+    function stat(k, bytes) { if (!ENC_STATS) return; var e = ENC_STATS[k] || (ENC_STATS[k] = { n: 0, b: 0 }); e.n++; e.b += bytes; }
+    function encodeFrame(fr, base, seq, baseSeq) {
+        assignMatchKeys(fr); if (base) assignMatchKeys(base);
+        var w = new Writer(base ? 2048 : 65536), ops = fr.ops;
+        w.u8(0x56); w.u8(base ? 0 : 1); w.vu(seq); w.vu(base ? baseSeq : 0); w.vu(Math.max(0, Math.round(fr.t))); w.vu(fr.cw); w.vu(fr.ch); w.vu(fr.aw); w.vu(fr.ah); w.vu(ops.length);
+        var last = -1, run = 0, shapes = new Map(); shapes.op = ops; shapes.uni = new Map();
+        for (var i = 0; i < ops.length; i++) {
+            var op = ops[i], j = base ? base.idx.get(fr.mks[i]) : undefined;
+            if (j !== undefined && j === last + 1 && opEqual(op, base.ops[j])) { run++; last = j; continue; }
+            if (run) { w.u8(1); w.vu(run); run = 0; stat('run', 2); }
+            var n0 = w.n;
+            if (j !== undefined) {
+                w.u8(2); w.vs(j - (last + 1));
+                if (opEqual(op, base.ops[j])) { w.u8(0x14); stat('ref-same-' + op.k, w.n - n0); }
+                else { var t0 = w.n; writeDelta(w, op, base.ops[j], shapes, i); stat('ref-' + op.k + '-' + w.b[t0].toString(16), w.n - n0); }
+                last = j;
+            } else {
+                var bj = (op.k === 'D' && base && op.n >= 6) ? baseShape(base, op) : -1;
+                if (bj >= 0) {   // a new piece shaped exactly like one of the base frame's (a respawned player): clone + shift
+                    var bo = base.ops[bj];
+                    w.u8(4); w.vu(op.key); w.vu(bj); w.vs(op.v[0] - bo.v[0]); w.vs(op.v[1] - bo.v[1]);
+                    stat('clone-D', w.n - n0);
+                } else { w.u8(3); writeLiteral(w, op, shapes, i); stat('new-' + op.k, w.n - n0); }
+            }
+        }
+        if (run) { w.u8(1); w.vu(run); }
+        return w.out();
+    }
+    function decodeHeader(u8) {
+        var r = new Reader(u8);
+        if (r.u8() !== 0x56) throw new Error('not a view packet');
+        var key = r.u8() & 1; return { r: r, key: key, seq: r.vu(), baseSeq: r.vu(), t: r.vu(), cw: r.vu(), ch: r.vu(), aw: r.vu(), ah: r.vu(), nops: r.vu() };
+    }
+    function decodeFrame(h, base) {
+        var r = h.r, ops = new Array(h.nops), last = -1, i = 0;
+        while (i < h.nops) {
+            ops._i = i;
+            var tag = r.u8();
+            if (tag === 1) { var n = r.vu(); for (var c = 0; c < n; c++) ops[i++] = base.ops[++last]; }
+            else if (tag === 2) {
+                var j = last + 1 + r.vs(), bop = base.ops[j], dt = r.b[r.n];
+                if (dt === 0x14) { r.n++; ops[i++] = bop; } else ops[i++] = readDelta(r, bop, ops);
+                last = j;
+            } else if (tag === 3) ops[i++] = readLiteral(r, ops);
+            else if (tag === 4) {
+                var key = r.vu(), bo = base.ops[r.vu()], dx = r.vs(), dy = r.vs(), bv = bo.v, v = new Int32Array(bv.length);
+                for (var q = 0; q < v.length; q += 5) { v[q] = bv[q] + dx; v[q + 1] = bv[q + 1] + dy; v[q + 2] = bv[q + 2]; v[q + 3] = bv[q + 3]; v[q + 4] = bv[q + 4]; }
+                ops[i++] = { k: 'D', key: key, prim: bo.prim, tex: bo.tex, n: bo.n, v: v };
+            }
+            else throw new Error('bad tag ' + tag);
+        }
+        return { seq: h.seq, t: h.t, cw: h.cw, ch: h.ch, aw: h.aw, ah: h.ah, ops: ops };
+    }
+
+    // ---------------------------------------------------------------- capture (the phone with the ball)
+    var CAP = { installed: false, failed: false, on: false, frame: null, pend: null, inst: null, evt: 0, k: 0, kgLast: null, kgK: 0, freeK: 0,
+                appFb: null, appTex: null, progs: null, curProg: null, t0: performance.now() };
+    function capFail(where, e) {
+        if (CAP.failed) return; CAP.failed = true; CAP.on = false;
+        try { console.warn('[2P VIEW] capture stopped (' + where + ')', e); if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW capture stopped: ' + where + ' ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {}
+    }
+    function texCode(tex) {
+        if (!tex) return 2;
+        if (tex === CAP.appTex) return 3;
+        try { for (var i = 0; i < _Xd2.length; i++) if (_Xd2[i] && _Xd2[i]._1j2 === tex) return i; } catch (e) {}
+        return 4;
+    }
+    function progId(p) {
+        if (!p) return 0;
+        try { for (var i = 0; i < _cE4.length; i++) if (_cE4[i] && _cE4[i]._FI3 === p) return i + 1; } catch (e) {}
+        return 0;
+    }
+    // a uniform's name from its handle: the program's table _KI3 is keyed by the GLSL name (and by number);
+    // _KI3._LI3[handle] is the key the engine itself looks up
+    var uniNameCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+    function uniformName(prog, handle) {
+        try {
+            var m = prog && prog._KI3; if (!m) return null;
+            var c = uniNameCache && uniNameCache.get(prog);
+            if (!c) { c = {}; if (uniNameCache) uniNameCache.set(prog, c); }
+            if (c[handle] !== undefined) return c[handle];
+            var name = null, key = m._LI3 ? m._LI3[handle] : undefined;
+            if (typeof key === 'string' && isNaN(+key)) name = key;
+            if (!name) for (var nm in m) if (m.hasOwnProperty(nm) && isNaN(+nm) && nm !== '_LI3' && m[nm] && m[nm].index === handle) { name = nm; break; }
+            c[handle] = name;
+            return name;
+        } catch (e) {}
+        return null;
+    }
+    function flushPend() {
+        var p = CAP.pend; if (!p) return; CAP.pend = null;
+        var buf = p.buf, A = buf._cj2() >> 2, n = p.n, b0 = A * p.start, f = buf._fj2, h = buf._hj2, g = buf._jj2, v = new Int32Array(n * 5);
+        var white = p.op.tex === 2;   // untextured: the UVs are whatever the buffer held before (the ellipse never writes them)
+        for (var i = 0, b = b0, o = 0; i < n; i++, b += A, o += 5) {
+            v[o] = Math.round(f[b] * Q); v[o + 1] = Math.round(f[b + 1] * Q); v[o + 2] = h[b] | 0;
+            if (!white) { v[o + 3] = Math.round(g[b] * UVQ); v[o + 4] = Math.round(g[b + 1] * UVQ); }
+        }
+        p.op.v = v;
+    }
+    function drawKey() {
+        var inst = CAP.inst;
+        if (inst && inst.id != null) return inst.id * 100000 + (CAP.evt % 100) * 1000 + Math.min(999, CAP.k++);
+        var kg = null; try { kg = (typeof _Kg2 !== 'undefined') ? _Kg2 : null; } catch (e) {}
+        if (kg && kg !== CAP.kgStart && kg.id != null) {
+            if (kg !== CAP.kgLast) { CAP.kgLast = kg; CAP.kgK = 0; }
+            return kg.id * 100000 + 99000 + Math.min(999, CAP.kgK++);
+        }
+        return 99999 * 1000 + Math.min(999, CAP.freeK++);
+    }
+    function rec(op) { if (CAP.frame) CAP.frame.ops.push(op); }
+    function installCapture() {
+        if (CAP.installed || CAP.failed) return CAP.installed;
+        try {
+            if (typeof _Xg2 === 'undefined' || !_Xg2 || typeof _Xg2._8j2 !== 'function' || typeof _EG4 !== 'function' || typeof _HG4 !== 'function') return false;
+            if (typeof _Xh5 === 'undefined' || _Xh5 !== 3) return false;
+            var X = _Xg2;
+            var o8 = X._8j2, ol43 = X._l43, oaI3 = X._aI3, ocK3 = X._cK3, oiz2 = X._iz2, ooz2 = X._oz2, oSJ3 = X._SJ3, o0J3 = X._0J3, obz2 = X._bz2, oFJ3 = X._FJ3;
+            X._8j2 = function (prim, tex, fmt, n) {
+                if (CAP.on) { try { flushPend(); } catch (e) { capFail('read', e); } }
+                var r = o8.apply(this, arguments);
+                if (CAP.on) {
+                    try {
+                        var op = { k: 'D', key: drawKey(), prim: prim | 0, tex: texCode(tex), n: n | 0, v: null };
+                        if (CAP.nextEll) { op.ell = CAP.nextEll; CAP.nextEll = null; }
+                        rec(op); CAP.pend = { op: op, buf: r, start: r._dj2, n: n | 0 };
+                    }
+                    catch (e) { capFail('alloc', e); }
+                }
+                return r;
+            };
+            X._l43 = function (fb) {
+                if (CAP.on) { try { flushPend(); rec({ k: 'T', t: fb === CAP.appFb ? 0 : (fb == null ? 1 : 2) }); } catch (e) { capFail('target', e); } }
+                return ol43.apply(this, arguments);
+            };
+            X._aI3 = function (x, y, w, h) {
+                if (CAP.on) { try { flushPend(); rec({ k: 'V', x: Math.round(x * Q), y: Math.round(y * Q), w: Math.round(w * Q), h: Math.round(h * Q) }); } catch (e) { capFail('viewport', e); } }
+                return oaI3.apply(this, arguments);
+            };
+            X._cK3 = function (c, d, s, col) {
+                if (CAP.on) { try { flushPend(); rec({ k: 'C', mask: (c ? 1 : 0) | (d ? 2 : 0), col: col | 0 }); } catch (e) { capFail('clear', e); } }
+                return ocK3.apply(this, arguments);
+            };
+            function matWrap(orig, type) {
+                return function (m) {
+                    if (CAP.on) { try { flushPend(); rec({ k: 'M', type: type, m: new Float32Array(m._wf2) }); } catch (e) { capFail('matrix', e); } }
+                    return orig.apply(this, arguments);
+                };
+            }
+            X._iz2 = matWrap(oiz2, 0); X._oz2 = matWrap(ooz2, 1); X._SJ3 = matWrap(oSJ3, 2);
+            X._0J3 = function (a, b) {
+                if (CAP.on) { try { flushPend(); rec({ k: 'B', a: a | 0, b: b | 0 }); } catch (e) { capFail('blend', e); } }
+                return o0J3.apply(this, arguments);
+            };
+            X._bz2 = function (p) {
+                if (CAP.on) { try { flushPend(); CAP.curProg = p; rec({ k: 'S', id: progId(p) }); } catch (e) { capFail('shader', e); } }
+                else CAP.curProg = p;
+                return obz2.apply(this, arguments);
+            };
+            X._FJ3 = function (hd, vals) {
+                if (CAP.on) {
+                    try {
+                        flushPend();
+                        var nm = uniformName(CAP.curProg, hd);
+                        if (nm) rec({ k: 'U', name: nm, vals: new Float32Array(vals) });
+                    } catch (e) { capFail('uniform', e); }
+                }
+                return oFJ3.apply(this, arguments);
+            };
+            if (typeof _1M2 !== 'undefined' && _1M2.prototype && typeof _1M2.prototype._2f2 === 'function') {
+                var o2f2 = _1M2.prototype._2f2;
+                // every argument passes through untouched (the 5th is the parent object event_inherited dispatches from)
+                _1M2.prototype._2f2 = function (evt, sub, self) {
+                    if (!CAP.on) return o2f2.apply(this, arguments);
+                    var pi = CAP.inst, pe = CAP.evt, pk = CAP.k;
+                    CAP.inst = self; CAP.evt = (typeof evt === 'number' ? evt : 0) * 10 + ((sub | 0) % 10); CAP.k = 0;
+                    try { return o2f2.apply(this, arguments); }
+                    finally { CAP.inst = pi; CAP.evt = pe; CAP.k = pk; }
+                };
+            }
+            // draw_ellipse(_colour) / draw_circle: the parameters of the ellipse, so the other phone can rebuild it
+            if (typeof _Pe5 === 'function') {
+                var ellWrap = function (orig) {
+                    var w = function (x1, y1, x2, y2, c1, c2, outline) {
+                        if (!CAP.on) return orig.apply(this, arguments);
+                        try {
+                            var a = yyGetReal(x1), b = yyGetReal(y1), c = yyGetReal(x2), d = yyGetReal(y2);
+                            if (0 != _ie5) { a += _ie5; b += _ie5; c += _ie5; d += _ie5; }
+                            CAP.nextEll = { y: (a + c) / 2, h: (b + d) / 2, f: Math.abs((a - c) / 2), u: Math.abs((b - d) / 2), o: yyGetBool(outline) ? 1 : 0, P: _fe5 };
+                        } catch (e) { CAP.nextEll = null; }
+                        try { return orig.apply(this, arguments); } finally { CAP.nextEll = null; }
+                    };
+                    w._rb2pView = true; return w;
+                };
+                var oPe5 = _Pe5;
+                window._Pe5 = ellWrap(oPe5);
+                if (window._8K2 === oPe5) window._8K2 = window._Pe5;
+                if (window._6Q1 === oPe5) window._6Q1 = window._Pe5;
+            }
+            var oE = _EG4, oH = _HG4;
+            window._EG4 = function () {
+                try { if (CAP.wantFrame && !CAP.failed && CAP.wantFrame()) startFrame(); } catch (e) { capFail('start', e); }
+                return oE.apply(this, arguments);
+            };
+            window._HG4 = function () {
+                if (CAP.on) {
+                    var fr = null;
+                    try { flushPend(); fr = CAP.frame; } catch (e) { capFail('end', e); }
+                    CAP.on = false; CAP.frame = null; CAP.inst = null;
+                    if (fr && CAP.onFrame) { try { CAP.onFrame(fr); } catch (e2) { console.warn('[2P VIEW] frame handler', e2); } }
+                }
+                var rr = oH.apply(this, arguments);
+                if (SND.shotSeq) { try { SND.shot = { seq: SND.shotSeq, png: document.getElementById('canvas').toDataURL('image/png') }; } catch (e3) {} SND.shotSeq = 0; }
+                return rr;
+            };
+            CAP.installed = true;
+            return true;
+        } catch (e) { capFail('install', e); return false; }
+    }
+    function startFrame() {
+        var cv = document.getElementById('canvas');
+        try { var sr = __r2._Ue2(_K33); CAP.appFb = sr ? sr._543 : null; CAP.appTex = sr && sr._0e2 ? sr._0e2._1j2 : null; CAP.aw = sr && sr._0e2 ? sr._0e2.width : 480; CAP.ah = sr && sr._0e2 ? sr._0e2.height : 270; } catch (e) { CAP.appFb = null; CAP.appTex = null; }
+        try { CAP.kgStart = (typeof _Kg2 !== 'undefined') ? _Kg2 : null; } catch (e) { CAP.kgStart = null; }
+        CAP.kgLast = null; CAP.kgK = 0; CAP.freeK = 0; CAP.inst = null; CAP.k = 0; CAP.pend = null;
+        CAP.frame = { t: performance.now() - CAP.t0, cw: cv ? cv.width : 0, ch: cv ? cv.height : 0, aw: CAP.aw || 480, ah: CAP.ah || 270, ops: [] };
+        // the shader in force when the frame starts
+        if (CAP.curProg) CAP.frame.ops.push({ k: 'S', id: progId(CAP.curProg) });
+        CAP.on = true;
+    }
+
+    // ---------------------------------------------------------------- the replay renderer (the waiting phone)
+    var GLSL_VS = 'attribute vec3 in_Position;attribute vec4 in_Colour;attribute vec2 in_TextureCoord;uniform mat4 gm_Matrices[5];' +
+                  'varying vec2 v_vTexcoord;varying vec4 v_vColour;void main(){gl_Position=gm_Matrices[4]*vec4(in_Position,1.0);v_vColour=in_Colour;v_vTexcoord=in_TextureCoord;}';
+    var GLSL_FS = 'precision mediump float;varying vec2 v_vTexcoord;varying vec4 v_vColour;uniform sampler2D gm_BaseTexture;' +
+                  'void main(){gl_FragColor=v_vColour*texture2D(gm_BaseTexture,v_vTexcoord);}';
+    function Renderer(canvas, keep) {
+        this.cv = canvas;
+        var gl = this.gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: !!keep });
+        if (!gl) throw new Error('no webgl');
+        this.progs = [this.prog(GLSL_VS, GLSL_FS, 'default')];
+        try { for (var i = 0; i < _Y._X1.length; i++) this.progs.push(this.prog(_Y._X1[i]._Y1, _Y._X1[i]._Z1, _Y._X1[i].name)); } catch (e) { console.warn('[2P VIEW] game shader', e); }
+        this.tex = [];
+        for (var p = 0; p < 2; p++) this.tex[p] = this.texFromImage(_Xd2[p]);
+        this.white = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.white);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+        this.nearest();
+        this.fbo = null; this.fboTex = null; this.fboW = 0; this.fboH = 0;
+        this.vbo = gl.createBuffer(); this.vcap = 0; this.vf = null; this.vu = null;
+        this.mats = [new _Vy2(), new _Vy2(), new _Vy2(), new _Vy2(), new _Vy2()];
+        this.m80 = new Float32Array(80);
+    }
+    Renderer.prototype.nearest = function () {
+        var gl = this.gl;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    };
+    Renderer.prototype.texFromImage = function (img) {
+        var gl = this.gl, t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img); this.nearest(); return t;
+    };
+    Renderer.prototype.prog = function (vs, fs, name) {
+        var gl = this.gl, p = gl.createProgram();
+        function sh(type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(name + ': ' + gl.getShaderInfoLog(s)); return s; }
+        if (fs.indexOf('precision ') < 0) fs = 'precision mediump float;\n' + fs;
+        gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+        gl.bindAttribLocation(p, 0, 'in_Position'); gl.bindAttribLocation(p, 1, 'in_Colour'); gl.bindAttribLocation(p, 2, 'in_TextureCoord');
+        gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(name + ' link: ' + gl.getProgramInfoLog(p));
+        return { p: p, name: name, loc: {}, mat: gl.getUniformLocation(p, 'gm_Matrices'), base: gl.getUniformLocation(p, 'gm_BaseTexture') };
+    };
+    Renderer.prototype.ensureFbo = function (w, h) {
+        var gl = this.gl;
+        if (this.fbo && this.fboW === w && this.fboH === h) return;
+        if (!this.fbo) { this.fbo = gl.createFramebuffer(); this.fboTex = gl.createTexture(); }
+        gl.bindTexture(gl.TEXTURE_2D, this.fboTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); this.nearest();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fboTex, 0);
+        this.fboW = w; this.fboH = h;
+    };
+    var BM = null;
+    function blendGL(gl, b) {
+        if (!BM) BM = { 1: gl.ZERO, 2: gl.ONE, 3: gl.SRC_COLOR, 4: gl.ONE_MINUS_SRC_COLOR, 5: gl.SRC_ALPHA, 6: gl.ONE_MINUS_SRC_ALPHA, 7: gl.DST_ALPHA,
+                        8: gl.ONE_MINUS_DST_ALPHA, 9: gl.DST_COLOR, 10: gl.ONE_MINUS_DST_COLOR, 11: gl.SRC_ALPHA_SATURATE };
+        return BM[b] != null ? BM[b] : gl.ONE;
+    }
+    // draw one frame (ops, with optional per-op position overrides from interpolation)
+    Renderer.prototype.draw = function (fr, pos) {
+        var gl = this.gl, cv = this.cv, ops = fr.ops;
+        this.ensureFbo(fr.aw || 480, fr.ah || 270);
+        // vertex buffer for every draw op
+        var nv = 0; for (var i = 0; i < ops.length; i++) if (ops[i].k === 'D') nv += ops[i].n;
+        if (nv > this.vcap) { this.vcap = Math.max(nv, this.vcap * 2, 8192); this.ab = new ArrayBuffer(this.vcap * 24); this.vf = new Float32Array(this.ab); this.vu = new Uint32Array(this.ab); }
+        var vf = this.vf, vu = this.vu, o = 0;
+        for (var a = 0; a < ops.length; a++) {
+            var op = ops[a]; if (op.k !== 'D') continue;
+            var v = (pos && pos[a]) || op.v; op._first = o / 6;
+            for (var j = 0; j < v.length; j += 5) { vf[o] = v[j] / Q; vf[o + 1] = v[j + 1] / Q; vf[o + 2] = 0; vu[o + 3] = v[j + 2] >>> 0; vf[o + 4] = v[j + 3] / UVQ; vf[o + 5] = v[j + 4] / UVQ; o += 6; }
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(this.ab, 0, o * 4), gl.STREAM_DRAW);
+        gl.enableVertexAttribArray(0); gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0); gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 24, 12); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 24, 16);
+        gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.SCISSOR_TEST); gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        var sx = cv.width / (fr.cw || cv.width), sy = cv.height / (fr.ch || cv.height);
+        var target = 1, prog = null, M = this.mats, matDirty = true, uniVals = {}, PRIMS = [gl.TRIANGLES, gl.TRIANGLE_FAN, gl.TRIANGLE_STRIP, gl.LINES, gl.LINE_STRIP, gl.POINTS];
+        var self = this;
+        function useProg(id) {
+            var p = self.progs[id] || self.progs[0];
+            if (p !== prog) { prog = p; gl.useProgram(p.p); if (p.base) gl.uniform1i(p.base, 0); matDirty = true; var uv = uniVals[id]; if (uv) for (var nm in uv) setUni(nm, uv[nm]); }
+        }
+        function setUni(name, vals) {
+            var l = prog.loc[name]; if (l === undefined) l = prog.loc[name] = gl.getUniformLocation(prog.p, name);
+            if (!l) return;
+            if (vals.length === 1) gl.uniform1fv(l, vals); else if (vals.length === 2) gl.uniform2fv(l, vals); else if (vals.length === 3) gl.uniform3fv(l, vals); else if (vals.length === 4) gl.uniform4fv(l, vals); else gl.uniform4fv(l, vals);
+        }
+        function upMats() {
+            M[3].Multiply(M[2], M[0]); M[4].Multiply(M[3], M[1]);
+            for (var t = 0; t < 5; t++) self.m80.set(M[t]._wf2, 16 * t);
+            if (prog.mat) gl.uniformMatrix4fv(prog.mat, false, self.m80);
+            matDirty = false;
+        }
+        function setTarget(t) {
+            target = t;
+            if (t === 0) gl.bindFramebuffer(gl.FRAMEBUFFER, self.fbo); else gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        function viewport(x, y, w, h) {
+            if (target === 0) { gl.viewport(x, y, w, h); gl.scissor(x, y, w, h); }
+            else { var X = Math.round(x * sx), Y = Math.round(y * sy), W = Math.round(w * sx), H = Math.round(h * sy); gl.viewport(X, Y, W, H); gl.scissor(X, Y, W, H); }
+        }
+        setTarget(1); viewport(0, 0, fr.cw || cv.width, fr.ch || cv.height); useProg(0);
+        gl.activeTexture(gl.TEXTURE0);
+        var curTex = null;
+        for (var q = 0; q < ops.length; q++) {
+            var op2 = ops[q];
+            switch (op2.k) {
+                case 'S': useProg(op2.id); break;
+                case 'U': { var pid = self.progs.indexOf(prog); (uniVals[pid] = uniVals[pid] || {})[op2.name] = op2.vals; setUni(op2.name, op2.vals); break; }
+                case 'V': viewport(op2.x / Q, op2.y / Q, op2.w / Q, op2.h / Q); break;
+                case 'M': M[op2.type === 0 ? 0 : op2.type === 1 ? 1 : 2]._wf2.set(op2.m); matDirty = true; break;
+                case 'C': { var c = op2.col >>> 0; gl.clearColor((c & 255) / 255, (c >>> 8 & 255) / 255, (c >>> 16 & 255) / 255, (c >>> 24 & 255) / 255); if (op2.mask & 1) gl.clear(gl.COLOR_BUFFER_BIT); break; }
+                case 'T': setTarget(op2.t === 0 ? 0 : 1); break;
+                case 'B': gl.blendFunc(blendGL(gl, op2.a), blendGL(gl, op2.b)); break;
+                case 'D': {
+                    if (op2.tex === 3 && target === 0) break;   // never sample the picture while drawing into it
+                    var tx = op2.tex === 0 || op2.tex === 1 ? self.tex[op2.tex] : (op2.tex === 3 ? self.fboTex : self.white);
+                    if (tx !== curTex) { gl.bindTexture(gl.TEXTURE_2D, tx); curTex = tx; }
+                    if (matDirty) upMats();
+                    // batch the following draws with the same texture and primitive (no state change in between)
+                    var first = op2._first, count = op2.n, prim = op2.prim;
+                    while (prim === 0 && q + 1 < ops.length && ops[q + 1].k === 'D' && ops[q + 1].prim === 0 && ops[q + 1].tex === op2.tex && !(ops[q + 1].tex === 3 && target === 0)) { q++; count += ops[q].n; }
+                    gl.drawArrays(PRIMS[prim] || gl.TRIANGLES, first, count);
+                    break;
+                }
+            }
+        }
+    };
+
+    // ---------------------------------------------------------------- interpolation
+    function lerpPositions(A, B, alpha) {
+        // positions of B's draws moved back toward A's by (1-alpha); returns per-op Int32Array overrides (or null)
+        if (!A || !B || alpha >= 1) return null;
+        assignMatchKeys(A); assignMatchKeys(B);
+        var pos = new Array(B.ops.length), any = false;
+        for (var i = 0; i < B.ops.length; i++) {
+            var b = B.ops[i]; if (b.k !== 'D') continue;
+            var j = A.idx.get(B.mks[i]); if (j === undefined) continue;
+            var a = A.ops[j]; if (a.k !== 'D' || a.n !== b.n || a === b) continue;
+            var av = a.v, bv = b.v, dx0 = bv[0] - av[0], dy0 = bv[1] - av[1];
+            if (Math.abs(dx0) > 6400 || Math.abs(dy0) > 6400) continue;   // a jump of more than 400 units is a cut, not motion
+            var v = new Int32Array(bv), t = 1 - alpha;
+            for (var k = 0; k < v.length; k += 5) { v[k] = Math.round(bv[k] - (bv[k] - av[k]) * t); v[k + 1] = Math.round(bv[k + 1] - (bv[k + 1] - av[k + 1]) * t); }
+            pos[i] = v; any = true;
+        }
+        return any ? pos : null;
+    }
+    function lerpFrame(A, B, alpha) {
+        // matrices (the camera) glide too: a new frame object sharing B's ops except the moved matrices
+        if (!A || !B || alpha >= 1) return B;
+        assignMatchKeys(A); assignMatchKeys(B);
+        var ops = null;
+        for (var i = 0; i < B.ops.length; i++) {
+            var b = B.ops[i]; if (b.k !== 'M') continue;
+            var j = A.idx.get(B.mks[i]); if (j === undefined) continue;
+            var a = A.ops[j]; if (a.k !== 'M' || a.type !== b.type || a === b) continue;
+            var m = new Float32Array(16), ok = true;
+            for (var e = 0; e < 16; e++) { var d = b.m[e] - a.m[e]; if (e !== 12 && e !== 13 && d !== 0) { ok = false; break; } m[e] = a.m[e] + d * alpha; }
+            if (!ok || Math.abs(b.m[12] - a.m[12]) > 400 || Math.abs(b.m[13] - a.m[13]) > 400) continue;
+            if (!ops) ops = B.ops.slice();
+            ops[i] = { k: 'M', type: b.type, m: m };
+        }
+        if (!ops) return B;
+        return { seq: B.seq, t: B.t, cw: B.cw, ch: B.ch, aw: B.aw, ah: B.ah, ops: ops, idx: B.idx, mks: B.mks };
+    }
+
+
+    // ---------------------------------------------------------------- compression (keyframes and big deltas)
+    // 0x5A + deflate-raw, or 0x5B + deflate (zlib) — whichever this browser has. A phone says which it can OPEN in
+    // its "watching" message; the sender only compresses for a phone that can.
+    var ZF = (function () {
+        var f = 0;
+        try { if (typeof CompressionStream === 'function' && typeof DecompressionStream === 'function') { new CompressionStream('deflate-raw'); new DecompressionStream('deflate-raw'); f |= 2; } } catch (e) {}
+        try { if (typeof CompressionStream === 'function' && typeof DecompressionStream === 'function') { new CompressionStream('deflate'); new DecompressionStream('deflate'); f |= 4; } } catch (e) {}
+        return f;
+    })();
+    function streamThrough(u8, ctor, fmt) {
+        var t = new ctor(fmt), w = t.writable.getWriter(); w.write(u8); w.close();
+        return new Response(t.readable).arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+    }
+    function compress(u8, theirCaps) {
+        var fmt = (theirCaps & 2) && (ZF & 2) ? 'deflate-raw' : ((theirCaps & 4) && (ZF & 4) ? 'deflate' : null);
+        if (!fmt || u8.length < 1200) return Promise.resolve(u8);
+        return streamThrough(u8, CompressionStream, fmt).then(function (z) {
+            if (z.length + 1 >= u8.length) return u8;
+            var o = new Uint8Array(z.length + 1); o[0] = fmt === 'deflate-raw' ? 0x5A : 0x5B; o.set(z, 1); return o;
+        }, function () { return u8; });
+    }
+    function expand(u8) {
+        if (u8[0] === 0x5A) return streamThrough(u8.subarray(1), DecompressionStream, 'deflate-raw');
+        if (u8[0] === 0x5B) return streamThrough(u8.subarray(1), DecompressionStream, 'deflate');
+        return Promise.resolve(u8);
+    }
+
+    // ---------------------------------------------------------------- the live link (sender + receiver)
+    // NET is attached by the Firebase module (WebRTC data channel, Firebase fallback):
+    //   NET.mode() -> 'p2p' | 'fb' | null      NET.send(bytes) -> true if sent      NET.canSend(queued) -> room for one more
+    //   NET.ack(seq)                           NET.want(key)  (the waiting phone asks for frames / a keyframe)
+    var NET = null;
+    var SND = { costMs: 0, shotWanted: false, shot: null, seq: 0, ring: [], acked: 0, wantUntil: 0, forceKey: true, lastKeyAt: 0, lastKeySeq: 0, lastCapAt: 0, bytes: 0, sent: 0, keys: 0, since: 0, failed: false,
+                caps: 0, chain: Promise.resolve(), inFlight: 0 };
+    var RCV = { chain: Promise.resolve(), queued: 0, frames: [], bySeq: new Map(), lastRxAt: 0, offs: [], gaps: [], lastT: -1, delay: 120, cv: null, R: null, chip: null, raf: 0,
+                showing: false, lastWantAt: 0, needKey: true, rx: 0, rxBytes: 0, drawn: 0, starved: 0, decodeFail: 0, lastAckSent: 0, mode: null, failed: false };
+    function amWaiting() { return window._rb2p_userIsWaitingForOpponent === true; }
+    function inMatch() { try { return !!(window.RB && RB.isEngineInMatchRoom()); } catch (e) { return false; } }
+    // 30 frames a second on the direct link (the replay glides between them), 5-6 on Firebase; a phone whose capture +
+    // encode runs long gives up frames rather than its own smoothness
+    function capInterval() { var base = NET && NET.mode() === 'fb' ? 166 : 33; return SND.costMs > 6 ? Math.max(base, 66) : (SND.costMs > 4 ? Math.max(base, 50) : base); }
+    CAP.wantFrame = function () {
+        if (SND.failed || !NET) return false;
+        var now = performance.now();
+        if (now - SND.lastCapAt < capInterval() - 4) return false;
+        if (Date.now() > SND.wantUntil || !NET.mode() || amWaiting() || !inMatch() || document.hidden) return false;
+        SND.lastCapAt = now;
+        return true;
+    };
+    // the base of a delta: on the direct link (packets can be lost) the last frame the other phone CONFIRMED; on Firebase
+    // (in order, nothing lost while connected) the previous frame SENT — a broken chain costs one keyframe, asked for
+    CAP.onFrame = function (fr) {
+        try {
+            var mode = NET && NET.mode(); if (!mode) return;
+            if (!NET.canSend(SND.inFlight)) return;   // decided BEFORE encoding: a frame that cannot go is not built
+            var base = null, baseSeq = 0, now = performance.now();
+            if (!SND.forceKey) {
+                if (mode === 'fb') {
+                    if (SND.lastSent && SND.lastSent.mode === 'fb' && now - SND.lastSent.at < 4000) { base = SND.lastSent.fr; baseSeq = SND.lastSent.seq; }
+                } else {
+                    for (var i = SND.ring.length - 1; i >= 0; i--) if (SND.ring[i].seq === SND.acked) { base = SND.ring[i].fr; baseSeq = SND.acked; break; }
+                    // nothing confirmed yet: build on the last keyframe while it is fresh (it is probably there)
+                    if (!base && SND.lastKeySeq && now - SND.lastKeyAt < 700)
+                        for (var k = SND.ring.length - 1; k >= 0; k--) if (SND.ring[k].seq === SND.lastKeySeq) { base = SND.ring[k].fr; baseSeq = SND.lastKeySeq; break; }
+                }
+            }
+            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) return;   // a keyframe at most every half second
+            var tEnc = performance.now();
+            var seq = ++SND.seq, bytes = encodeFrame(fr, base, seq, baseSeq);
+            SND.costMs = SND.costMs * 0.9 + (performance.now() - tEnc + (fr.capMs || 0)) * 0.1;
+            if (SND.shotWanted) { SND.shotWanted = false; SND.shotSeq = seq; }
+            if (!base) { SND.lastKeyAt = now; SND.lastKeySeq = seq; SND.forceKey = false; SND.keys++; }
+            SND.ring.push({ seq: seq, fr: fr }); if (SND.ring.length > 90) SND.ring.shift();
+            SND.lastSent = { fr: fr, seq: seq, at: now, mode: mode };
+            SND.inFlight++;
+            SND.chain = SND.chain.then(function () { return compress(bytes, SND.caps); }).then(function (out) {
+                SND.inFlight--;
+                if (NET && NET.send(out)) { SND.bytes += out.length; SND.sent++; }
+                else if (mode === 'fb') SND.forceKey = true;   // the chain broke here: start again from a keyframe
+            }, function () { SND.inFlight--; SND.forceKey = true; });
+        } catch (e) { SND.failed = true; console.warn('[2P VIEW] sender stopped', e); try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW sender stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} }
+    };
+    function onAck(seq) { if (seq > SND.acked) SND.acked = seq; }
+    function onWant(flags) { SND.wantUntil = Date.now() + 3000; SND.caps = (flags | 0) & 6; if (flags & 1) { SND.forceKey = true; SND.acked = 0; } }
+
+    // receiver: decode, keep ~3 s of frames, ack, play behind a jitter buffer
+    function onPacket(u8, via) {
+        if (RCV.failed || !u8 || !u8.length) return;
+        if (u8[0] === 0x5A || u8[0] === 0x5B || RCV.queued) {
+            RCV.queued++;
+            RCV.chain = RCV.chain.then(function () { return expand(u8); }).then(function (x) { RCV.queued--; onPacketNow(x, via); }, function () { RCV.queued--; RCV.needKey = true; });
+            return;
+        }
+        onPacketNow(u8, via);
+    }
+    function onPacketNow(u8, via) {
+        if (RCV.failed) return;
+        var h;
+        try { h = decodeHeader(u8); } catch (e) { return; }
+        if (RCV.bySeq.has(h.seq)) return;
+        var base = h.key ? null : RCV.bySeq.get(h.baseSeq);
+        if (!h.key && !base) { RCV.needKey = true; RCV.decodeFail++; return; }
+        var fr;
+        try { fr = decodeFrame(h, base); } catch (e) { RCV.needKey = true; RCV.decodeFail++; return; }
+        var now = performance.now();
+        fr.rx = now; RCV.rx++; RCV.rxBytes += u8.length; RCV.lastRxAt = now; RCV.needKey = false; RCV.mode = via;
+        RCV.bySeq.set(fr.seq, fr);
+        // timing: the smallest transit seen recently is the clock offset; the rest is jitter
+        RCV.offs.push([now, now - fr.t]); while (RCV.offs.length && now - RCV.offs[0][0] > 4000) RCV.offs.shift();
+        if (RCV.lastT >= 0 && fr.t > RCV.lastT) { RCV.gaps.push(fr.t - RCV.lastT); if (RCV.gaps.length > 40) RCV.gaps.shift(); }
+        RCV.lastT = Math.max(RCV.lastT, fr.t);
+        // keep in time order
+        var fs = RCV.frames, i = fs.length;
+        while (i > 0 && fs[i - 1].t > fr.t) i--;
+        fs.splice(i, 0, fr);
+        while (fs.length > 2 && now - fs[0].rx > 3000) { RCV.bySeq.delete(fs[0].seq); fs.shift(); }
+        if (NET) { NET.ack(fr.seq); RCV.lastAckSent = now; }
+        if (!RCV.showing && amWaiting() && inMatch()) show();
+    }
+    function traceDraw(F, pos, now) {   // one exact piece (the first one of the traced object seen), every replay
+        var T = RCV.trace; if (T.pts.length > 4000) return;
+        if (T.camera) {   // the x translation of every view matrix drawn (the field camera is the one that moves)
+            var xs = []; for (var c = 0; c < F.ops.length; c++) if (F.ops[c].k === 'M' && F.ops[c].type === 0) xs.push(F.ops[c].m[12]);
+            T.pts.push([Math.round(now), xs]); return;
+        }
+        for (var i = 0; i < F.ops.length; i++) {
+            var op = F.ops[i];
+            if (op.k !== 'D' || op.key < T.lo || op.key >= T.hi) continue;
+            if (T.key == null) { if (!op.ell && T.wantEll && T.skip++ < 400) continue; T.key = op.key; }   // prefer the shadow: its centre is the player's place
+            if (op.key !== T.key) continue;
+            var v = (pos && pos[i]) || op.v; T.pts.push([Math.round(now), v[0] / Q, v[1] / Q, F.seq]); return;
+        }
+    }
+    function median(a) { if (!a.length) return 33; var b = a.slice().sort(function (x, y) { return x - y; }); return b[b.length >> 1]; }
+    function pctl(a, p) { if (!a.length) return 0; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * p))]; }
+    function ensureCanvas() {
+        if (RCV.cv) return true;
+        try {
+            var cv = document.createElement('canvas');
+            cv.id = 'rb-oppview';
+            cv.setAttribute('aria-label', "The opponent's screen, live");
+            cv.style.cssText = 'position:fixed;left:0;top:0;width:10px;height:10px;z-index:1600;display:none;pointer-events:none;image-rendering:pixelated;background:#000;';
+            document.body.appendChild(cv);
+            var chip = document.createElement('div');
+            chip.id = 'rb-oppview-chip';
+            chip.textContent = "LIVE · OPPONENT'S SCREEN";
+            chip.style.cssText = 'position:fixed;z-index:1601;display:none;pointer-events:none;left:50%;transform:translateX(-50%);' +
+                'font:bold 9px "Press Start 2P",monospace;letter-spacing:1px;color:#fff;background:rgba(10,24,56,.72);border:2px solid rgba(255,255,255,.85);' +
+                'padding:5px 8px 4px;border-radius:4px;white-space:nowrap;';
+            document.body.appendChild(chip);
+            RCV.cv = cv; RCV.chip = chip;
+            RCV.R = new Renderer(cv);
+            return true;
+        } catch (e) {
+            RCV.failed = true; console.warn('[2P VIEW] receiver unavailable', e);
+            try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW receiver unavailable: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {}
+            return false;
+        }
+    }
+    function place() {
+        var ec = document.getElementById('canvas'), cv = RCV.cv; if (!ec || !cv) return;
+        var r = ec.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height);
+        // the opponent's picture keeps ITS aspect inside this phone's game rectangle
+        var f = RCV.frames.length ? RCV.frames[RCV.frames.length - 1] : null, asp = f && f.cw && f.ch ? f.cw / f.ch : w / h;
+        var W = w, H = w / asp; if (H > h) { H = h; W = h * asp; }
+        var L = r.left + (w - W) / 2, T = r.top + (h - H) / 2;
+        cv.style.left = Math.round(L) + 'px'; cv.style.top = Math.round(T) + 'px'; cv.style.width = Math.round(W) + 'px'; cv.style.height = Math.round(H) + 'px';
+        var dpr = Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+        if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+        if (RCV.chip) RCV.chip.style.top = Math.round(T + H - 26) + 'px';
+    }
+    function show() {
+        if (RCV.showing || !ensureCanvas()) return;
+        RCV.showing = true; place();
+        RCV.cv.style.display = 'block'; RCV.chip.style.display = 'block';
+        try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW showing the opponent\'s screen (' + (RCV.mode || '?') + ')'); } catch (e) {}
+        if (!RCV.raf) RCV.raf = requestAnimationFrame(tick);
+    }
+    function hide() {
+        if (!RCV.showing) return;
+        RCV.showing = false;
+        if (RCV.cv) RCV.cv.style.display = 'none';
+        if (RCV.chip) RCV.chip.style.display = 'none';
+    }
+    function tick() {
+        RCV.raf = 0;
+        try {
+            var now = performance.now();
+            if (!amWaiting() || !inMatch() || now - RCV.lastRxAt > 2000 || !RCV.frames.length) { hide(); return; }
+            place();
+            // the clock: transit floor over the last 4 s, then a delay that covers the packet spacing and the jitter
+            var minOff = Infinity, offs = RCV.offs, jit = [];
+            for (var i = 0; i < offs.length; i++) if (offs[i][1] < minOff) minOff = offs[i][1];
+            for (var j = 0; j < offs.length; j++) jit.push(offs[j][1] - minOff);
+            var target = Math.max(50, Math.min(900, median(RCV.gaps) * 1.6 + pctl(jit, 0.9) + 10));
+            RCV.delay += Math.max(-1.5, Math.min(1.5, target - RCV.delay));
+            var playT = now - minOff - RCV.delay, fs = RCV.frames, A = null, B = null;
+            for (var k = fs.length - 1; k >= 0; k--) if (fs[k].t <= playT) { A = fs[k]; B = fs[k + 1] || null; break; }
+            if (!A) A = fs[0];
+            if (!B) { RCV.starved++; RCV.delay = Math.min(900, RCV.delay + 4); RCV.R.draw(A, null); }
+            else {
+                var alpha = Math.max(0, Math.min(1, (playT - A.t) / Math.max(1, B.t - A.t)));
+                var F = lerpFrame(A, B, alpha), pos = lerpPositions(A, B, alpha);
+                RCV.R.draw(F, pos);
+                if (RCV.trace) traceDraw(F, pos, now);
+            }
+            RCV.drawn++;
+        } catch (e) {
+            RCV.failed = true; hide(); console.warn('[2P VIEW] receiver stopped', e);
+            try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW receiver stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {}
+            return;
+        }
+        RCV.raf = requestAnimationFrame(tick);
+    }
+    // the waiting phone asks for frames once a second (and for a keyframe when it has nothing to build on)
+    setInterval(function () {
+        try {
+            if (!NET || RCV.failed) return;
+            if (amWaiting() && inMatch() && !document.hidden) NET.want((RCV.needKey || !RCV.frames.length ? 1 : 0) | ZF);
+            if (RCV.showing && !amWaiting()) hide();
+        } catch (e) {}
+    }, 1000);
+    window.addEventListener('resize', function () { if (RCV.showing) place(); });
+
+    window._rb2p_view = {
+        attachNet: function (net) { NET = net; installCapture(); },
+        onPacket: onPacket, onAck: onAck, onWant: onWant,
+        stats: function () {
+            return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed },
+                     rcv: { rx: RCV.rx, bytes: RCV.rxBytes, frames: RCV.frames.length, showing: RCV.showing, drawn: RCV.drawn, starved: RCV.starved, delay: Math.round(RCV.delay),
+                            decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed }, net: NET ? NET.mode() : null };
+        },
+        // test seams: render one decoded frame (no interpolation) to a canvas of the sender's size
+        testRender: function (seq) { var f = RCV.bySeq.get(seq); if (!f) return null; var cv = document.createElement('canvas'); cv.width = f.cw; cv.height = f.ch; new Renderer(cv, true).draw(f, null); return cv.toDataURL('image/png'); },
+        // test seams: the sender's own canvas right after the next frame it sends; where a piece was drawn on each replay
+        testShotNext: function () { SND.shotWanted = true; SND.shot = null; },
+        testShot: function () { return SND.shot; },
+        traceKeys: function (lo, hi, wantEll) { RCV.trace = { lo: lo, hi: hi, pts: [], wantEll: !!wantEll, skip: 0 }; },
+        traceCamera: function () { RCV.trace = { camera: true, pts: [] }; },
+        trace: function () { return RCV.trace ? RCV.trace.pts : null; },
+        lastSeqs: function () { return RCV.frames.map(function (f) { return f.seq; }); },
+        Writer: Writer, Reader: Reader, encodeFrame: encodeFrame, decodeHeader: decodeHeader, decodeFrame: decodeFrame,
+        _asQuad: function (op) { return asQuad(op); }, _litSize: function (op) { var w = new Writer(256); writeLiteral(w, op, null, 0); return w.n; },
+        installCapture: installCapture, encStats: function (on) { var r = ENC_STATS; ENC_STATS = on ? {} : null; return r; }, CAP: CAP, Renderer: Renderer, lerpPositions: lerpPositions, lerpFrame: lerpFrame, assignMatchKeys: assignMatchKeys
+    };
+})();
+    </script>
+
     <script type="module">
         // [two-player Retro Bowb] Lobby + Firebase RTDB pairing.
         //
@@ -18271,9 +19324,169 @@
         // Idempotent: a session installs it once (fresh XOR resume), but the
         // guard stops a stray double-call from stacking intervals/badges.
         var _rb2pFbSyncInstalled = false;
+        // ===== V450: the opponent's screen — the link =====
+        // A WebRTC data channel between the two phones (unordered, no retransmits: a late frame is worth nothing),
+        // signalled through rooms/{code}/rtc (A offers, B answers; a reload on either side renegotiates). When no
+        // direct path opens (school networks often block one), the waiting phone asks over Firebase and the phone with
+        // the ball overwrites ONE node, rooms/{code}/view/{role}, about 6 times a second — the database never grows.
+        var viewLinkInstalled = false;
+        function installViewLink() {
+            if (viewLinkInstalled || !window._rb2p_view || !myRoom || !myRole) return;
+            viewLinkInstalled = true;
+            var V = window._rb2p_view, me = myRole, other = me === 'a' ? 'b' : 'a', root = 'rooms/' + myRoom;
+            var sid = Math.random().toString(36).slice(2, 10);
+            var pc = null, dc = null, nid = null, answeredNid = null, remoteSet = false, pendingIce = [], lastPong = 0, upSaid = false;
+            var tries = 0, retryT = null, theirSid = null, hasRTC = typeof RTCPeerConnection === 'function' && !window._rb2p_viewNoP2P;
+            var theirFbWantAt = 0, fbInFlight = 0, lastFbSend = 0, lastFbWant = 0, pendingAck = 0;
+            var ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+            function diag(m) { try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW ' + m); } catch (e) {} }
+            function p2pUp() { return !!(dc && dc.readyState === 'open' && performance.now() - lastPong < 4000); }
+            function vu(n) { var o = []; while (n >= 128) { o.push((n % 128) | 128); n = Math.floor(n / 128); } o.push(n); return o; }
+            function rvu(u8, i) { var v = 0, m = 1, c; do { c = u8[i++]; v += (c & 127) * m; m *= 128; } while (c & 128); return v; }
+            function b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); }
+            function unb64(s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+            function dcSend(u8) { try { if (dc && dc.readyState === 'open' && dc.bufferedAmount < 262144) { dc.send(u8); return true; } } catch (e) {} return false; }
+            // ---- the data channel: 1 frame | 2 ack | 3 want | 4 ping | 5 pong
+            function onDc(ev) {
+                var u8 = new Uint8Array(ev.data); if (!u8.length) return;
+                switch (u8[0]) {
+                    case 1: V.onPacket(u8.subarray(1), 'p2p'); break;
+                    case 2: V.onAck(rvu(u8, 1)); break;
+                    case 3: V.onWant(u8[1] | 0); break;
+                    case 4: { var r = new Uint8Array(u8); r[0] = 5; dcSend(r); break; }
+                    case 5: lastPong = performance.now(); if (!upSaid) { upSaid = true; diag('direct link open (' + nid + ')'); } break;
+                }
+            }
+            setInterval(function () {
+                if (dc && dc.readyState === 'open') dcSend(new Uint8Array([4, 0, 0, 0, 0]));
+                if (upSaid && !p2pUp()) { upSaid = false; diag('direct link lost — Firebase carries the picture'); }
+            }, 1000);
+            function closePc() {
+                try { if (dc) dc.close(); } catch (e) {} try { if (pc) pc.close(); } catch (e2) {}
+                pc = null; dc = null; remoteSet = false; pendingIce = []; upSaid = false;
+            }
+            function newPc() {
+                closePc();
+                pc = new RTCPeerConnection({ iceServers: ICE });
+                dc = pc.createDataChannel('view', { negotiated: true, id: 3, ordered: false, maxRetransmits: 0 });
+                dc.binaryType = 'arraybuffer';
+                dc.onmessage = onDc;
+                dc.onopen = function () { dcSend(new Uint8Array([4, 0, 0, 0, 0])); };
+                var myPc = pc;
+                pc.onicecandidate = function (e) {
+                    if (!e.candidate || myPc !== pc) return;
+                    var tag = me === 'a' ? nid : answeredNid; if (!tag) return;
+                    FB.set(FB.push(FB.ref(db, root + '/rtc/c' + me)), { n: tag, c: JSON.stringify(e.candidate) }).catch(function () {});
+                };
+                pc.onconnectionstatechange = function () {
+                    if (myPc !== pc) return;
+                    var st = pc.connectionState;
+                    if ((st === 'failed' || st === 'disconnected') && me === 'a') retry(st === 'failed' ? 2000 : 8000);
+                };
+            }
+            function flushIce() { var q = pendingIce; pendingIce = []; q.forEach(function (c) { try { pc.addIceCandidate(c).catch(function () {}); } catch (e) {} }); }
+            function retry(ms) {
+                if (retryT) return;
+                var wait = ms != null ? ms : Math.min(120000, 15000 * Math.pow(2, Math.max(0, tries - 1)));
+                retryT = setTimeout(function () { retryT = null; if (!p2pUp()) offer(); }, wait);
+            }
+            async function offer() {
+                if (!hasRTC || me !== 'a') return;
+                try {
+                    newPc();
+                    nid = sid + '.' + (++tries);
+                    var myPc = pc;
+                    await FB.remove(FB.ref(db, root + '/rtc/ca')).catch(function () {});
+                    var o = await myPc.createOffer(); await myPc.setLocalDescription(o);
+                    if (myPc !== pc) return;
+                    await FB.set(FB.ref(db, root + '/rtc/a'), { sid: sid, n: nid, sdp: myPc.localDescription.sdp, ts: Date.now() });
+                    retry();   // no link by then: try again (backing off)
+                } catch (e) { diag('offer failed: ' + String(e && e.message || e).slice(0, 60)); retry(30000); }
+            }
+            async function answer(v) {
+                if (!hasRTC) return;
+                try {
+                    newPc();
+                    answeredNid = v.n;
+                    var myPc = pc;
+                    await FB.remove(FB.ref(db, root + '/rtc/cb')).catch(function () {});
+                    await myPc.setRemoteDescription({ type: 'offer', sdp: v.sdp }); remoteSet = true; flushIce();
+                    var a = await myPc.createAnswer(); await myPc.setLocalDescription(a);
+                    if (myPc !== pc) return;
+                    await FB.set(FB.ref(db, root + '/rtc/b'), { sid: sid, n: v.n, ans: myPc.localDescription.sdp, ts: Date.now() });
+                } catch (e) { diag('answer failed: ' + String(e && e.message || e).slice(0, 60)); }
+            }
+            if (hasRTC) {
+                if (me === 'b') FB.set(FB.ref(db, root + '/rtc/b'), { sid: sid, hello: 1, ts: Date.now() }).catch(function () {});
+                FB.onValue(FB.ref(db, root + '/rtc/' + other), function (snap) {
+                    var v = snap.val(); if (!v) return;
+                    if (me === 'b') { if (v.sdp && v.n && v.n !== answeredNid) answer(v); return; }
+                    if (v.sid && v.sid !== theirSid) { theirSid = v.sid; tries = 0; offer(); return; }   // B is (back) on the page
+                    if (v.ans && v.n === nid && pc && !remoteSet) {
+                        pc.setRemoteDescription({ type: 'answer', sdp: v.ans }).then(function () { remoteSet = true; flushIce(); }).catch(function () {});
+                    }
+                });
+                FB.onChildAdded(FB.ref(db, root + '/rtc/c' + other), function (snap) {
+                    var v = snap.val(); if (!v || !pc) return;
+                    var want = me === 'a' ? nid : answeredNid; if (v.n !== want) return;
+                    var c; try { c = JSON.parse(v.c); } catch (e) { return; }
+                    if (remoteSet) { try { pc.addIceCandidate(c).catch(function () {}); } catch (e) {} } else pendingIce.push(c);
+                });
+            }
+            // ---- the Firebase path
+            var fbFirstWant = true;
+            FB.onValue(FB.ref(db, root + '/view/w' + other), function (snap) {
+                if (fbFirstWant) { fbFirstWant = false; return; }   // an old record from before this page
+                var v = snap.val(); if (!v) return;
+                theirFbWantAt = Date.now();
+                V.onWant(v.k | 0);
+                if (v.a) V.onAck(Number(v.a));
+            });
+            FB.onValue(FB.ref(db, root + '/view/' + other), function (snap) {
+                var v = snap.val(); if (!v || !v.d) return;
+                try { V.onPacket(unb64(v.d), 'fb'); } catch (e) {}
+            });
+            function fbWant(key, ack) {
+                var now = Date.now();
+                if (!(key & 1) && !ack && now - lastFbWant < 900) return;
+                if (ack && now - lastFbWant < 150) { pendingAck = ack; return; }
+                lastFbWant = now;
+                var rec = { t: now, k: key | 0 };
+                if (ack || pendingAck) rec.a = Math.max(ack || 0, pendingAck); pendingAck = 0;
+                FB.set(FB.ref(db, root + '/view/w' + me), rec).catch(function () {});
+            }
+            V.attachNet({
+                mode: function () { return p2pUp() ? 'p2p' : (Date.now() - theirFbWantAt < 3500 ? 'fb' : null); },
+                canSend: function (queued) {
+                    if (p2pUp()) return !dc || dc.bufferedAmount < 131072;
+                    return Date.now() - theirFbWantAt < 3500 && fbInFlight + (queued | 0) < 2 && Date.now() - lastFbSend >= 190;
+                },
+                send: function (bytes) {
+                    if (p2pUp()) { var u = new Uint8Array(bytes.length + 1); u[0] = 1; u.set(bytes, 1); return dcSend(u); }
+                    // two writes in flight at most (one connection, applied in order); about 5 a second
+                    if (Date.now() - theirFbWantAt >= 3500 || fbInFlight >= 2) return false;
+                    var now = Date.now(); if (now - lastFbSend < 190) return false;
+                    if (bytes.length > 60000) return false;
+                    fbInFlight++; lastFbSend = now;
+                    FB.set(FB.ref(db, root + '/view/' + me), { d: b64(bytes), t: now }).then(function () { fbInFlight--; }, function () { fbInFlight--; });
+                    return true;
+                },
+                ack: function (seq) {
+                    if (p2pUp()) { dcSend(new Uint8Array([2].concat(vu(seq)))); return; }
+                    fbWant(false, seq);
+                },
+                want: function (key) {
+                    if (p2pUp()) { dcSend(new Uint8Array([3, key | 0])); return; }
+                    fbWant(key, 0);
+                }
+            });
+            diag('link ready (' + me + (hasRTC ? ', direct + Firebase' : ', Firebase only') + ')');
+        }
+
         function installFirebaseMatchSync() {
             if (_rb2pFbSyncInstalled) return;
             _rb2pFbSyncInstalled = true;
+            installViewLink();   // V450: the opponent's screen on the WAIT screen
             var staleBadge = document.getElementById('rb-fb-badge');
             if (staleBadge && staleBadge.parentNode) staleBadge.parentNode.removeChild(staleBadge);
 
