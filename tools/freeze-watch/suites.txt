@@ -66,3 +66,4 @@ final-scroll
 v449-ready-left
 drive-dir
 opp-view
+qtr-tap

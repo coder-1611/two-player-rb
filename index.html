@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V452<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V453<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V452</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V453</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16620,6 +16620,71 @@
                 }
             } catch (eK) {}
 
+            // ===== V453: THE END-OF-QUARTER PAUSE NEVER CONTINUES ON ITS OWN (LQOB, NPRA, VZLC; KAFA, NSZC, TCUE) =====
+            // At a quarter's end the engine parks at Vy=13 (case 19: "End of …", the line score, its Continue button —
+            // "Kick Off"/"Receive" at the half). In commentary mode ANY tap, not only that button, re-enters
+            // s_update_commentary (_17 calls the GLOBAL _Ib1 — the script-table hook never sees it) and runs e20, the
+            // single-player continuation: the clock reset, the saved stage, a kickoff at the half, the coin at Q5. In
+            // this build the bridge owns that moment (the keep, the Q3 law, the final, the OT flip; HORN-RESEARCH: "e20
+            // never runs"). Since V434 the pause lasts ~2 s and every tap in it ran e20 anyway:
+            //   * 16 of 16 tapped keeps re-spawned the play three times (keep, keep, "fresh spawn, routes reset") — the
+            //     owner's "infinite play glitch, one time, only on quarter boundaries"; 7 of 7 untapped keeps were clean;
+            //   * after a touchdown hand-off at 0:00 the tap started the engine's kickoff — the receiver kicked the ball
+            //     to the scorer and the bridge shipped it as a PUNT at the new quarter's full clock (LQOB Q1, NPRA Q3,
+            //     VZLC Q3: "q1 to q2 there was no punt").
+            // In a 2P match the pause holds: e20 does nothing at Vy=13 (a tap, the button, a proceed), and the button
+            // is never drawn. The bridge's own paths leave Vy=13 by writing the stage, never through e20.
+            function rb2pQtrPause2P(c) {
+                try {
+                    if (!(window._rb2p_myFirebaseRole === 'a' || window._rb2p_myFirebaseRole === 'b')) return false;
+                    if (!RB.isEngineInMatchRoom()) return false;
+                    var m = c || (RB.engineState() && RB.engineState().rawEngineMatch);
+                    return !!(m && Number(m._Vy) === 13);
+                } catch (e) { return false; }
+            }
+            window._rb2p_qtrPause2P = rb2pQtrPause2P;
+            try {
+                if (typeof _Ib1 === 'function' && !_Ib1.__rb2pQtrHold) {
+                    var __origIb1Q = _Ib1;
+                    _Ib1 = function (_, t) {
+                        try {
+                            if (_ && rb2pQtrPause2P(_)) {
+                                _._7z = 0;
+                                var qH = Number(_._Wy) || 0;
+                                if (window._rb2p_qtrHoldLoggedQ !== qH) {
+                                    window._rb2p_qtrHoldLoggedQ = qH;
+                                    diagLog('QTR-HOLD the end-of-quarter pause ignored a tap (Q' + qH + ') — the bridge starts the quarter');
+                                    if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'qtr-hold', q: qH });
+                                }
+                                return;
+                            }
+                        } catch (eQH) {}
+                        return __origIb1Q.apply(this, arguments);
+                    };
+                    _Ib1.__rb2pQtrHold = true;
+                }
+                if (typeof _Iy === 'function' && !_Iy.__rb2pQtrHold) {
+                    var __origIyQ = _Iy;
+                    _Iy = function (_, t) {
+                        var rIy = __origIyQ.apply(this, arguments);
+                        try {
+                            // the end-of-quarter button (spawned by case 19 while Vy is 12, before it sets 13): never drawn
+                            if (_ && (Number(_._Vy) === 12 || Number(_._Vy) === 13) &&
+                                (window._rb2p_myFirebaseRole === 'a' || window._rb2p_myFirebaseRole === 'b') && RB.isEngineInMatchRoom()) {
+                                var allQ = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [], nQ = 0;
+                                for (var iQ = 0; iQ < allQ.length; iQ++) {
+                                    var bQ = allQ[iQ];
+                                    if (bQ && !bQ._HL2 && bQ._eE2 && bQ._eE2._fE2 === 'obj_btn_kickoff') { bQ._g2 = 0; bQ.x = -2000; bQ.y = -2000; nQ++; }
+                                }
+                                if (nQ) diagLog('QTR-HOLD end-of-quarter button parked (Q' + (Number(_._Wy) || 0) + ', x' + nQ + ')');
+                            }
+                        } catch (eQB) {}
+                        return rIy;
+                    };
+                    _Iy.__rb2pQtrHold = true;
+                }
+            } catch (eQI) {}
+
             // V234: any obj_btn_kickoff instance, live or corpse (_HL2 ghost)
             function anyKickoffButtons() {
                 var out = [];
@@ -16727,6 +16792,9 @@
                         // controller. Gated to the staging state (a corpse
                         // exists) so it can never disturb a live drive.
                         var ghosts = anyKickoffButtons();
+                        // V453: a tap in the end-of-quarter pause is not a stuck kickoff — the bridge starts the quarter
+                        // (forcing a drive here raced the keep: another re-spawn of the play)
+                        if (ghosts.length && rb2pQtrPause2P()) return;
                         if (ghosts.length) {
                             for (var gi = 0; gi < ghosts.length; gi++) {
                                 try { ghosts[gi]._g2 = 0; ghosts[gi].x = -2000; ghosts[gi].y = -2000; } catch (eG) {}

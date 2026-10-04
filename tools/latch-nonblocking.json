@@ -163,5 +163,6 @@
  "window._rb2p_view": "V450: the opponent's-screen module (capture, codec, replay renderer, playback) — an API object; it holds no game state and nothing waits on it",
  "window._rb2p_viewNoLink": "V451 test seam: the opponent's-screen link is never installed on this page (bisecting a slowdown); the game never sets it",
  "window._rb2p_viewNoP2P": "V450 test seam: forces the opponent's-screen link onto its Firebase path; the game never sets it",
- "storage:rb2p_readyGuardNote": "V452 telemetry: the READY guard's read (the partner's heartbeat age/vis, its final's age) carried across the guard's reload so the resumed page can audit it at bind; read once and removed; nothing waits on it"
+ "storage:rb2p_readyGuardNote": "V452 telemetry: the READY guard's read (the partner's heartbeat age/vis, its final's age) carried across the guard's reload so the resumed page can audit it at bind; read once and removed; nothing waits on it",
+ "window._rb2p_qtrHoldLoggedQ": "V453 diag dedupe: the quarter whose end-of-quarter pause already logged its QTR-HOLD line; it only limits a log line to one per quarter and never gates play"
 }

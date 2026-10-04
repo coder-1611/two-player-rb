@@ -1139,3 +1139,35 @@ beacon 80 s old, so not the guard). Its fix plan stays in OPEN #1.
 
 Shipped as V452 by the owner's session (3 Oct, night), ahead of the run's other held commits: RUN IT BACK (V454)
 starts a rematch from both stats screens within seconds, which is exactly this guard's case.
+
+## V453 (2026-10-03): the end-of-quarter pause never continues on its own — the phantom punt and the one-time "play change"
+
+The owner, on LQOB's transcript: "q1 to q2 there was no punt" and "the infinite play glitch sometimes still happens but
+only one time and only on quarter boundaries".
+
+**What happened.** At a quarter's end the engine parks at Vy=13 (case 19: "End of …", the line score, its Continue
+button — "Kick Off"/"Receive" at the half). In commentary mode (kp 1) the controller step `_17` re-enters
+`s_update_commentary` on ANY tap (`mouse_check_button_pressed` sets `a`), not only on that button, and runs e20 — the
+single-player continuation (clock reset, `_Vy = _0d1`, a kickoff at the half, the coin at Q5). The bridge owns that
+moment (the keep, the Q3 law, the final, the OT flip; HORN-RESEARCH: "e20 never runs"). Before V434 the sweeper's kp=2
+write kept the pause short; since V434 (C5) the park lasts ~2 s at kp 1 and every tap in it ran e20:
+- **The triple keep.** Real V434+ games: 16 of 16 quarter changes the holder tapped through re-spawned the play three
+  times (`QTR-KEEP resume` ×2, then "QTR-KEEP #3 — fresh spawn … routes reset", the snap at ~6 s); 7 of 7 untapped ones
+  kept once. (V380–V433: 89 of 213 tapped, 78 of 761 untapped.)
+- **The phantom punt.** After a touchdown hand-off at 0:00 (the receiver's horn), e20 handed the engine's possession to
+  its gutted AI stage (Vy 23); the receiver's next tap kicked the ball to the scorer and the bridge shipped a PUNT at the
+  new quarter's full clock: LQOB b Q1→Q2 (V447), NPRA a Q3→Q4 (V444), VZLC b Q3→Q4 (V435). Of the 7 real 0:00 hand-offs
+  into Q2/Q4 since V434, the 4 untapped ones started the quarter right.
+- The bridge's own `hookEngineCommentaryScript` wraps the SCRIPT-TABLE entry (`_Y._PU1[900]`); `_17` calls the global
+  `_Ib1` by name. Measured: 7 calls of the global, 0 of the table entry. Anything that must see the per-frame commentary
+  step has to wrap the global (the clamp's OT/game-over branches only run on the table path).
+
+**The fix (index.html, next to the `_Ky` hook):** in a 2P match (`_rb2p_myFirebaseRole`, engine in the match room) the
+global `_Ib1` returns at Vy=13 and clears `_7z` (diag `QTR-HOLD … ignored a tap`, audit `guard {what:'qtr-hold'}`,
+once per quarter); `_Iy` parks the end-of-quarter button it just spawned (Vy 12/13: invisible, off-screen); the mobile
+tap-bridge's dead-button path stands down in the pause. The bridge leaves Vy=13 by writing the stage, never through e20.
+Single-player (vs KC) is unchanged.
+
+**Test:** `e2e/qtr-tap.js` (suites.txt), real downs and real taps. Live V450: K0 (e20 ran), K1 (keeps 1,2,3 + a fresh
+spawn), T0, T1 (`b PUNT clk120` — LQOB exactly), T2 FAIL, 2 passed; V453: 7/7 (one keep at 1.6 s, the snap at 1.7 s;
+the receiver's first Q2 snap at the hand-off spot).
