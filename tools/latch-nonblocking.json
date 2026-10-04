@@ -148,6 +148,7 @@
  "var:bothStuckSince": "when the monitor first saw both phones parked with no decision — the start of its 5s grace, telemetry only",
  "room:clock": "a scratch server-time probe the resume writes and reads once ({.sv} then GET) to judge 'game in progress' on the server's clock; nothing waits on it",
  "storage:rb2p_auditOutbox_": "the audit outbox (V419): telemetry entries waiting to upload; nothing in the game waits on them",
+ "storage:rb2p_driveDir": "V449: the player's chosen drive direction for their own screen (+1 right / -1 left); read at match launch only, never a gate",
  "window._rb2p_convChoice": "the last 1 PT / 2 PT choice {pts, at}, stamped where the engine dispatches the button (V424); the overtime try's set-up net acts only on a choice newer than the touchdown — it enables a set-up, it never holds one up",
  "window._rb2p_engErrSeen": "V430 telemetry: the engine errors already written to the audit stream (one 'engerr' entry per distinct error); only decides whether to log, never read by game logic",
  "window._rb2p_lastFrameThrewMs": "V430 telemetry: when a frame last threw; read only to word the can-act monitor's label ('the match never started (engine error)'), never gates play",
@@ -156,5 +157,6 @@
  "window._rb2p_hornQ": "the quarter whose horn this phone last ended through the engine's time-up (5: a drive refused after regulation; with _rb2p_hornMs it only throttles that log line); nothing waits on it",
  "window._rb2p_hornMs": "when this phone last ended a quarter through the engine's time-up (diagnostic); nothing waits on it",
  "window._rb2p_convWallChoiceFor": "V438: remembers which conversion offer the 'wall waits — the player chose and is lining up the try' diag line was already written for; gates only that log line",
+ "window._rb2p_fixedDir": "V449: this player's held drive direction (+1/-1), seeded at every launch from rb2p_driveDir; _Sc1 is skipped and a stray _501 is put back to it — it corrects which way the field faces, never refuses or waits",
  "window._rb2p_lastPressMs": "V438: the time of this page's last in-match press (canvas pointerdown); the 35 s conversion wall reads it to wait 20 s from a player lining up its try, always within 90 s of the offer — a time, never a flag anything waits on"
 }

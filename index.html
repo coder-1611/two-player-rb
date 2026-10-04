@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V448<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V449<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1676,6 +1676,13 @@
                 <button class="diff-btn" data-dif="hard">HARD</button>
                 <button class="diff-btn" data-dif="max">MAX</button>
             </div>
+            <!-- V449: the way this player drives on their own screen, held the whole game -->
+            <div class="diff-row">
+                <span class="diff-label">DRIVE:</span>
+                <button class="diff-btn drive-btn" data-drive="-1" title="Drive toward the left end zone all game">&#9664; LEFT</button>
+                <button class="diff-btn drive-btn" data-drive="1" title="Drive toward the right end zone all game">RIGHT &#9654;</button>
+                <span class="diff-label shared">(all game)</span>
+            </div>
             <div class="diff-row">
                 <span class="diff-label">QUARTER:</span>
                 <button class="diff-btn len-btn" data-len="1">1 MIN</button>
@@ -1692,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V448</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V449</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2153,6 +2160,44 @@
                 try { if (window._rb2p_diagLog) window._rb2p_diagLog('DIFF healed ' + v + ' -> max'); } catch (e3) {}
             }
             return 'max';
+        };
+
+        // V449 (the owner: "let the user choose the drive direction in the very beginning while on the screen to
+        // choose teams"; asked: each player for their own screen, the SAME WAY ALL GAME). +1 attacks screen-right
+        // (left to right), -1 screen-left. It is this phone's picture only: every hand-off, spot and score is in the
+        // offense's own frame (_6F), so the other phone never sees it. Before a choice: the engine's own phone default
+        // (left — what phones have always played: s_create_map_options sets op_drivedir -1 on iOS/Android), right
+        // elsewhere.
+        // The pick is kept per tab (sessionStorage — two tabs on one computer can drive opposite ways) and remembered
+        // for the next visit (localStorage).
+        window._rb2p_driveDirPref = function () {
+            try { var t = Number(sessionStorage.getItem('rb2p_driveDir')); if (t === 1 || t === -1) return t; } catch (e0) {}
+            try { var v = Number(localStorage.getItem('rb2p_driveDir')); if (v === 1 || v === -1) return v; } catch (e) {}
+            try { if (document.documentElement.classList.contains('rb-mobile')) return -1; } catch (e2) {}
+            return 1;
+        };
+        // The engine pins _501 to op_drivedir at match creation (_Z6) and re-pins it in _Sc1 (s_switch_drivedirection,
+        // run by case 19 into Q2, Q4 and overtime) — but _Sc1 still turns every live player around (_L11, _4e1), so a
+        // formation the bridge reuses would face the wrong end: a touchdown scored at the wrong goal line, a field goal
+        // kicked backwards. With a held direction a quarter change changes nothing: _Sc1 does not run at all.
+        window._rb2p_hookDriveDir = function () {
+            try {
+                if (typeof window._Sc1 !== 'function' || window._Sc1._rb2pDirHold) return;
+                var origSc1 = window._Sc1;
+                var heldSc1 = function (_, t) {
+                    var fd = Number(window._rb2p_fixedDir);
+                    if (fd === 1 || fd === -1) {
+                        try { var cs = _si(71); for (var k in cs) if (cs.hasOwnProperty(k) && cs[k]) cs[k]._501 = fd; } catch (eC) {}
+                        try { if (window._rb2p_diagLog) window._rb2p_diagLog('DIR-HOLD a quarter change kept the field (dir ' + fd + ')'); } catch (eD) {}
+                        return;
+                    }
+                    return origSc1.apply(this, arguments);
+                };
+                heldSc1._rb2pDirHold = true;
+                heldSc1._rb2pOrig = origSc1;
+                window._Sc1 = heldSc1;
+                try { if (typeof RB !== 'undefined' && RB.setEngineScript) RB.setEngineScript('gml_Script_s_switch_drivedirection', heldSc1); } catch (eS) {}
+            } catch (e) {}
         };
 
         // getters/setters delegate to the obfuscated keys on the engineMatch
@@ -2746,7 +2791,11 @@
                         // difficulty toggle so max/ULTRA get the harder defender AI.
                         if (typeof window._rb2p_applyOpDifficulty === 'function') window._rb2p_applyOpDifficulty();
                     } catch (e) {}
-                    if (engineMatch.engineDriveDirection == null || engineMatch.engineDriveDirection === 0) engineMatch.engineDriveDirection = 1;
+                    // V449: a held direction is the only direction (it was always 1 here)
+                    var fixedDirF = Number(window._rb2p_fixedDir);
+                    if (fixedDirF === 1 || fixedDirF === -1) {
+                        if (Number(engineMatch.engineDriveDirection) !== fixedDirF) engineMatch.engineDriveDirection = fixedDirF;
+                    } else if (engineMatch.engineDriveDirection == null || engineMatch.engineDriveDirection === 0) engineMatch.engineDriveDirection = 1;
                     engineMatch.engineDriveFsmStage = 2;
                     // CRITICAL: controllerKp = 2 is the "active play" state.
                     // Verified empirically:
@@ -2812,6 +2861,22 @@
                             ofTot++;
                             if ((Number(xg.x) - Number(engineMatch.engineScrimmagePx)) *
                                 Number(engineMatch.engineDriveDirection) > 4) ofAhead++;
+                        }
+                        // V449: with a held direction, a formation facing the wrong way is respawned too (its
+                        // positions can be right while its players face the other end zone — nothing else sees it)
+                        var fixedDirG = Number(window._rb2p_fixedDir), facingWrong = 0;
+                        if (fixedDirG === 1 || fixedDirG === -1) {
+                            for (var jf = 0; jf < allInstances.length; jf++) {
+                                var xf = allInstances[jf];
+                                if (!xf || xf._HL2 || !xf._eE2) continue;
+                                if (xf._eE2._fE2 === 'obj_playerOF' && Number(xf._L11) === -fixedDirG) facingWrong++;
+                            }
+                        }
+                        if (facingWrong > 0) {
+                            console.warn('[2p-rb] force: adopted formation faces the wrong way (' + facingWrong +
+                                         ' OF, held dir ' + fixedDirG + ') — respawning fresh');
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('force FACING ' + facingWrong + ' OF wrong way — respawn');
+                            ofAhead = ofTot;   // the same fresh respawn as an inside-out field
                         }
                         if (ofTot >= 6 && ofAhead > ofTot / 2) {
                             console.warn('[2p-rb] force: adopted formation is INSIDE-OUT (' +
@@ -5737,6 +5802,22 @@
                     // without a TEAM_ROSTERS entry keep the engine default.
                     applyCustomRoster(st, userUid);
 
+                    // ===== V449: this player's drive direction, held the whole game =====
+                    // op_drivedir is the engine's own setting (its Options: Left / Both / Right): obj_controller's
+                    // create (_Z6) seeds _501 from it on EVERY launch — fresh, rematch and reload — so the field
+                    // comes back the same way after a reload too. The _Sc1 hold keeps every quarter change from
+                    // turning the players around.
+                    try {
+                        var fixedDir = window._rb2p_driveDirPref ? window._rb2p_driveDirPref() : 0;
+                        if (fixedDir === 1 || fixedDir === -1) {
+                            if (st && st._Gn != null) _Yi(st._Gn, 'op_drivedir', fixedDir);
+                            window._rb2p_fixedDir = fixedDir;
+                            window._rb2p_stableDir = fixedDir;
+                            if (window._rb2p_hookDriveDir) window._rb2p_hookDriveDir();
+                            console.log('[2p-rb] drive direction ' + (fixedDir === 1 ? 'RIGHT' : 'LEFT') + ' — held all game');
+                        }
+                    } catch (eDir) { console.warn('[2p-rb] drive direction not applied', eDir); }
+
                     if (st) st._fx = 0;
                     _Hj(STATE_MATCH);
 
@@ -8483,7 +8564,10 @@
                     // it had not driven yet, and the Q3-LAW restore then skipped;
                     // proven by e2e/v345-halfdir. The waiting-side risk is carried
                     // by the DIR-GUARD's contradiction gate instead.)
-                    if (clockRunning && (dirNow === 1 || dirNow === -1))
+                    // V449: a held direction is the stable direction — nothing is learned from the engine
+                    var fixedDirL = Number(window._rb2p_fixedDir);
+                    if (fixedDirL === 1 || fixedDirL === -1) window._rb2p_stableDir = fixedDirL;
+                    else if (clockRunning && (dirNow === 1 || dirNow === -1))
                         window._rb2p_stableDir = dirNow;
 
                     // V345: remember the last time the drive FSM showed the TD
@@ -8634,6 +8718,26 @@
                     if (!emIO || emIO.engineUserTeamIdx == null ||
                         emIO.enginePossessingTeamIdx !== emIO.engineUserTeamIdx) { insideOutStreak = 0; return; }
                     var dirIO = Number(emIO.engineDriveDirection);
+                    // V449: a held direction. _Sc1 never runs, so the field cannot turn inside-out by a quarter
+                    // roll; anything else that wrote _501 is put back (positions and _B01 were built for the held
+                    // direction) — never by calling _Sc1, which would turn the players around.
+                    var fixedIO = Number(window._rb2p_fixedDir);
+                    if (fixedIO === 1 || fixedIO === -1) {
+                        if (dirIO === fixedIO) { insideOutStreak = 0; return; }
+                        var allFx = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [], ballFx = null;
+                        for (var fx = 0; fx < allFx.length && !ballFx; fx++)
+                            if (allFx[fx] && !allFx[fx]._HL2 && allFx[fx]._eE2 && allFx[fx]._eE2._fE2 === 'obj_ball') ballFx = allFx[fx];
+                        if (ballFx && Number(ballFx._kp) !== 0) { insideOutStreak = 0; return; }   // never mid-play
+                        if (++insideOutStreak < 2) return;
+                        insideOutStreak = 0;
+                        if (Date.now() - insideOutHealedMs < 1500) return;
+                        insideOutHealedMs = Date.now();
+                        console.warn('[2P DIR-HOLD] drive direction was ' + dirIO + ', held ' + fixedIO + ' — put back');
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('DIR-HOLD put back ' + dirIO + ' -> ' + fixedIO);
+                        emIO.engineDriveDirection = fixedIO;
+                        resyncScrimmage(emIO, 'dir-hold');
+                        return;
+                    }
                     if (dirIO !== 1 && dirIO !== -1) { insideOutStreak = 0; return; }
                     // V347 (Opus review #3): heal a CONTRADICTION, not a snapshot.
                     // After a sack/TFL the new line moves behind the whole front,
@@ -12706,6 +12810,7 @@
                     hookEngineAk1Script();
                     hookEngineEndMatchScript();   // V116: block engine native game-over during OT
                     hookEngineSetUpPlayScript();   // V183: players only spawn in possession
+                    if (window._rb2p_hookDriveDir) window._rb2p_hookDriveDir();   // V449: a held direction never flips
                     var engineMatch = RB.engineState();
                     if (!engineMatch) { hideWait(); return; }
                     rb2pStarDefenders();   // V88: star the opponent's named D each tick
@@ -14933,6 +15038,25 @@
             });
         });
         renderUserDifficultyButtons();
+
+        // ---- V449: drive direction (LOCAL ONLY — this player's own screen, held the whole game) ----
+        // Stored as rb2p_driveDir (+1 right / -1 left); startTwoPlayerMatch seeds the engine's op_drivedir from it at
+        // every launch, so a change here takes effect at the next kickoff (a reload brings the same field back).
+        var $driveBtns = lobby.querySelectorAll('.drive-btn[data-drive]');
+        function renderDriveButtons() {
+            var cur = window._rb2p_driveDirPref ? window._rb2p_driveDirPref() : 1;
+            $driveBtns.forEach(function (b) { b.classList.toggle('selected', Number(b.dataset.drive) === cur); });
+        }
+        $driveBtns.forEach(function (b) {
+            b.addEventListener('click', function () {
+                var v = Number(b.dataset.drive);
+                if (v !== 1 && v !== -1) return;
+                try { sessionStorage.setItem('rb2p_driveDir', String(v)); } catch (e0) {}
+                try { localStorage.setItem('rb2p_driveDir', String(v)); } catch (e) {}
+                renderDriveButtons();
+            });
+        });
+        renderDriveButtons();
 
         // ---- Difficulty mode: SAME vs DIFFERENT (V209) ----
         // Chosen on the ENTRY page (where the room code is typed) and SHARED
@@ -20514,6 +20638,7 @@
             // would clamp this fresh Q1 straight up to Q4 (and the q<=1 reset would
             // then never fire). These are also reset reactively when q<=1.
             window._rb2p_lastStableQuarter = 1;
+            window._rb2p_stableDir = null;   // V449: the launch seeds it from this player's held direction
             window._rb2p_qToppedEver = {};   // V354: a rematch's quarters get their fresh clocks back
             window._rb2p_wireQuarter       = 0;
             window._rb2p_qBackLogMs        = 0;
