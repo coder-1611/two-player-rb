@@ -1266,3 +1266,24 @@ local file somewhere and then delete it every 30 days" — chosen: every play, w
   the carrier vs the settle; a day's run: measured, short-listed, drawn; the judge's picks → README and videos in rank
   order; a failing judge → the measured order, said so; a day without plays; a finished day not redone).
 - **For the detector:** `PLAYREC stored|FAILED` diag lines; `rooms/{code}/plays` is the recorder's, never read by the game.
+
+## V459 (2026-10-04): MAX — DBs returning a turnover run 1.2x HARD (they ran 1.75–2.5x); the defender boost no longer compounds
+
+The owner: "after an interception ... the DBs are comically fast" — "in max mode, it is currently 2x of hard, make it
+1.2x of hard in max mode after int. Only touch max mode" — "keep the speed unless they're returning turnover".
+
+- **Measured on real interceptions** (two-player games, the engine's own catch): HARD's DBs run at 0.13–0.145 accel
+  (`_j51`; average 0.138 — the bridge never touches HARD). MAX: the engine's own tier gives every DB 0.16, the V139 boost
+  makes it 0.24 (1.5x) — and it stayed on through every return: the V140/V141 latch waits for drive stage 8, which a live
+  return never reaches (the stage stays 2 throughout). The returner was worse: the engine tires a ball carrier every
+  frame (`_j51 *= ~0.9997`, retrobowl.js:66786), which the bump took for a fresh engine value — it re-captured its own
+  boosted output and boosted it again, every frame — so he hit the 0.35 cap at once. After a pick MAX ran 1.75x HARD
+  (the other DBs) and 2.5x (the returner); top speeds 29.8 yd/s for the returner against 8–13 for the chasers.
+- **Now (MAX only — HARD/MED/EASY never reach this code):** while the ball is a returned turnover — intercepted (`_kp`
+  9) or a fumble a defender recovered (`_kp` 10), read off the ball itself the instant it happens — every DB runs at
+  0.165 (1.2x HARD's average), tiring as the engine tires the returner. In coverage and on every other play the DBs keep
+  MAX's 1.5x; linemen and linebackers keep their +0.03.
+- **No compounding:** a small decay of the bridge's own output (0.99–1x) is fatigue — the captured base tires with it.
+- Measured after: the DBs 0.24 → 0.165 at the pick; the returner 0.165 → 0.159 over a 5 s pick-six (top 19 yd/s).
+- Tests: `e2e/max-return-speed.js` R1–R4 (a MAX interception; a MAX fumble recovered by a DB; the engine's fatigue step
+  on a boosted linebacker and DB never climbs; HARD untouched), in suites.txt.

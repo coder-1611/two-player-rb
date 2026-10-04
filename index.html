@@ -1642,7 +1642,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V458<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V459<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1731,7 +1731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V458</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V459</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5642,6 +5642,18 @@
             // V139: DBs (CB = _O01 8, Safety = _O01 9) instead get a MULTIPLIER on
             // their base accel (default 1.5x) for tighter coverage — tunable via
             // window._rb2p_setDbSpeedMult(n). DL/LB keep the flat increment.
+            // V459 (the owner: "after an interception ... DBs are comically fast" — "make it 1.2x of hard in max mode
+            // after int. Only touch max mode" — "keep the speed unless they're returning turnover"): while the defense
+            // RETURNS a turnover — the ball intercepted (_kp 9) or a fumble recovered by a defender (_kp 10), read off
+            // the ball itself the instant it happens — every DB runs at 1.2x HARD's DB accel: 0.165 (HARD's DBs measured
+            // 0.13–0.145, average 0.138; the engine's own MAX tier gives every DB 0.16), not 1.5x (0.24). Measured
+            // before: the V140/V141 latch below waits for drive stage 8, which a live return never reaches (the stage
+            // stays 2), so MAX's 1.5x ran through every return — 1.75x HARD.
+            // And the bump no longer COMPOUNDS: the engine tires a ball carrier every frame (_j51 *= ~0.9997,
+            // retrobowl.js:66786), which looked like a fresh engine value, so the base was re-captured from our own
+            // boosted output and boosted again every frame — a returner hit the 0.35 cap at once (2.5x HARD). A small
+            // decay of our own output is now fatigue: the base decays with it.
+            var DB_TURNOVER_RETURN_ACCEL = 0.165;
             function rb2pBumpDefenderSpeed() {
                 try {
                     if (!RB.isEngineInMatchRoom()) return;
@@ -5688,19 +5700,32 @@
                     var runNormal = window._rb2p_intReturnActive === true ||
                                     window._rb2p_pickSixPatCascadeActive === true;
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    // V459: a turnover being returned right now (a defender carries the ball)
+                    var returning = false;
+                    for (var bi = 0; bi < all.length; bi++) {
+                        var bo = all[bi];
+                        if (bo && !bo._HL2 && bo._eE2 && bo._eE2._fE2 === 'obj_ball') { returning = (bo._kp === 9 || bo._kp === 10); break; }
+                    }
                     for (var i = 0; i < all.length; i++) {
                         var d = all[i];
                         if (!d || d._HL2 || !d._eE2 || d._eE2._fE2 !== 'obj_playerDF') continue;
                         if (typeof d._j51 !== 'number') continue;
-                        // engine wrote a fresh accel since our last frame → recapture base
-                        if (d._rb2p_j51out !== d._j51) d._rb2p_j51base = d._j51;
+                        // the engine changed the accel since our last frame: a small decay of our own output is the ball
+                        // carrier tiring (the base tires with it); anything else is a fresh engine value → recapture
+                        if (d._rb2p_j51out !== d._j51) {
+                            var tired = (typeof d._rb2p_j51out === 'number' && d._rb2p_j51out > 0) ? d._j51 / d._rb2p_j51out : 0;
+                            if (tired > 0.99 && tired < 1 && typeof d._rb2p_j51base === 'number') d._rb2p_j51base *= tired;
+                            else { d._rb2p_j51base = d._j51; d._rb2p_j51spawn = d._j51; }
+                        }
                         var target;
                         if (runNormal) {
                             target = d._rb2p_j51base;        // V140/V153: normal speed on the return + PAT cascade
                         } else {
-                            // DBs (CB/Safety) get the multiplier; DL/LB get the flat bump.
+                            // DBs (CB/Safety) get the multiplier; DL/LB get the flat bump. V459: DBs returning a
+                            // turnover run 1.2x HARD (tiring as the engine tires the carrier).
                             var isDB = (d._O01 >= 8 && d._O01 <= 9);
-                            target = isDB ? (d._rb2p_j51base * dbMult) : (d._rb2p_j51base + inc);
+                            if (isDB && returning) target = DB_TURNOVER_RETURN_ACCEL * (d._rb2p_j51base / (d._rb2p_j51spawn || d._rb2p_j51base));
+                            else target = isDB ? (d._rb2p_j51base * dbMult) : (d._rb2p_j51base + inc);
                         }
                         if (target > 0.35) target = 0.35;    // runaway guard
                         d._j51 = target;
