@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V453<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V454<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V453</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V454</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15762,17 +15762,24 @@
                       '<div style="position:absolute;top:50%;left:50%;width:min(760px,90vw);height:260px;transform:translate(-50%,-42%);' +
                         'pointer-events:none;border-radius:50%;background:radial-gradient(ellipse,' + (win ? 'rgba(79,224,140,.22)' : lose ? 'rgba(255,107,124,.2)' : 'rgba(255,207,77,.18)') + ' 0%,transparent 70%);"></div>' +
                       '<span style="position:relative;font-weight:600;font-size:13px;letter-spacing:12px;color:' + CHALK + ';opacity:.7;">◆ FINAL ◆</span>' +
-                      '<span style="position:relative;font-family:\'Anton\',sans-serif;font-size:clamp(58px,9vw,128px);letter-spacing:2px;' +
+                      '<span class="rb-fin-title" style="position:relative;font-family:\'Anton\',sans-serif;font-size:clamp(58px,9vw,128px);letter-spacing:2px;' +
                         'line-height:.95;text-transform:uppercase;color:' + rColor + ';text-shadow:' + rShadow + ',0 6px 0 rgba(0,0,0,.4);">' +
                         (win ? 'YOU WIN' : lose ? 'YOU LOSE' : 'TIE GAME') + '</span>' +
                     '</div>' +
                     // scoreline
-                    '<div style="display:flex;align-items:center;justify-content:center;gap:clamp(14px,2.4vw,32px);margin-top:34px;flex-wrap:wrap;">' +
+                    '<div class="rb-fin-scoreline" style="display:flex;align-items:center;justify-content:center;gap:clamp(14px,2.4vw,32px);margin-top:34px;flex-wrap:wrap;">' +
                       '<span style="font-family:\'Anton\',sans-serif;font-size:clamp(22px,2.6vw,36px);letter-spacing:1px;text-transform:uppercase;color:' + CHALK + ';">' + esc(myTeam) + '</span>' +
-                      '<span style="' + jersey(youC, 'clamp(74px,10vw,142px)') + '">' + myScore + '</span>' +
+                      '<span class="rb-fin-num" style="' + jersey(youC, 'clamp(74px,10vw,142px)') + '">' + myScore + '</span>' +
                       '<span style="font-family:\'Anton\',sans-serif;font-size:clamp(30px,4vw,56px);color:' + GOLD + ';opacity:.8;">/</span>' +
-                      '<span style="' + jersey(oppC, 'clamp(74px,10vw,142px)') + '">' + oppScore + '</span>' +
+                      '<span class="rb-fin-num" style="' + jersey(oppC, 'clamp(74px,10vw,142px)') + '">' + oppScore + '</span>' +
                       '<span style="font-family:\'Anton\',sans-serif;font-size:clamp(22px,2.6vw,36px);letter-spacing:1px;text-transform:uppercase;color:' + CHALK + ';">' + esc(oppTeam) + '</span>' +
+                    '</div>' +
+                    // V454: RUN IT BACK — the rematch on the same code, the screen's first action
+                    '<div class="rb-fin-again" style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:30px;">' +
+                      '<button id="rb-final-again" type="button">' +
+                        '<svg aria-hidden="true" viewBox="0 0 24 24" width="0.9em" height="0.9em" style="flex:none"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 1 1-2.6-5.9M20 3.5v5.2h-5.2"/></svg>' +
+                        '<span>RUN IT BACK</span></button>' +
+                      '<div id="rb-final-again-note" aria-live="polite">SAME CODE · ' + esc(myRoom || '') + ' — STARTS WHEN ' + esc(oppTeam) + ' TAPS IT TOO</div>' +
                     '</div>' +
                     // box cards
                     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,540px));gap:24px;margin-top:36px;width:100%;justify-content:center;">' +
@@ -15780,9 +15787,9 @@
                       teamColumnHtml(opp, oppC) +
                     '</div>' +
                     // button
-                    '<button id="rb-final-leave" style="margin-top:42px;font-family:\'Anton\',sans-serif;font-size:clamp(17px,2vw,22px);' +
-                      'letter-spacing:2px;text-transform:uppercase;color:#0b120d;background:' + GOLD + ';border:none;border-radius:3px;' +
-                      'padding:15px 40px;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.45),0 0 30px ' + GOLD + '3a;">BACK TO LOBBY</button>' +
+                    '<button id="rb-final-leave" style="margin-top:42px;font-family:\'Anton\',sans-serif;font-size:clamp(16px,1.8vw,20px);' +
+                      'letter-spacing:2px;text-transform:uppercase;color:' + CHALK + ';background:transparent;border:2px solid rgba(243,239,226,.55);border-radius:3px;' +
+                      'padding:12px 34px;cursor:pointer;">BACK TO LOBBY</button>' +
                     // V412: bring a new player next time, and never lose the game to a search result
                     '<button id="rb-final-share" style="margin:14px 0 0 12px;font-family:\'Anton\',sans-serif;font-size:clamp(15px,1.7vw,19px);letter-spacing:2px;color:' + GOLD + ';background:transparent;border:2px solid ' + GOLD + ';border-radius:3px;padding:11px 26px;cursor:pointer;">SHARE THE GAME WITH A FRIEND</button>' +
                     ((function () { try { return localStorage.getItem('rb2p_bookmarkHint') ? '' : '<div id="rb-final-bookmark" style="margin-top:16px;font-size:14px;letter-spacing:1px;color:' + CHALK + ';opacity:.9">TIP: PRESS <b>CTRL + D</b> TO BOOKMARK THIS PAGE &mdash; THEN YOU CAN ALWAYS GET BACK HERE, EVEN IF SEARCH DOESN\'T SHOW IT.</div>'; } catch (e) { return ''; } })()) +
@@ -15801,6 +15808,39 @@
                 try { navigator.clipboard.writeText(site).then(function () { shb.textContent = 'LINK COPIED — SEND IT TO A FRIEND'; }, function () { shb.textContent = site; }); } catch (eS) { shb.textContent = site; }
                 if (window._rb2p_audit) try { window._rb2p_audit('guard', { what: 'share' }); } catch (eA) {}
             });
+            // V454: RUN IT BACK
+            if (!document.getElementById('rb-final-again-style')) {
+                var agSt = document.createElement('style'); agSt.id = 'rb-final-again-style';
+                agSt.textContent =
+                    '#rb-final-again{display:inline-flex;align-items:center;gap:.45em;font-family:\'Anton\',sans-serif;font-size:clamp(26px,3.6vw,42px);' +
+                    'letter-spacing:3px;line-height:1;text-transform:uppercase;color:#0b120d;background:' + GOLD + ';border:none;border-radius:4px;' +
+                    'padding:.5em 1.25em .48em;cursor:pointer;box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.22);' +
+                    'animation:rbAgainPulse 2s ease-in-out infinite;-webkit-tap-highlight-color:transparent;touch-action:manipulation}' +
+                    '#rb-final-again:hover{filter:brightness(1.06)}#rb-final-again:active{transform:translateY(2px)}' +
+                    '#rb-final-again:focus-visible{outline:3px solid ' + CHALK + ';outline-offset:5px}' +
+                    '#rb-final-again[disabled]{cursor:default;animation:none;filter:saturate(.7)}' +
+                    '#rb-final-again.hot{animation-duration:.9s}' +
+                    '@keyframes rbAgainPulse{0%,100%{box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.22),0 0 0 0 rgba(255,207,77,.55)}' +
+                    '60%{box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 -4px 0 rgba(0,0,0,.22),0 0 0 16px rgba(255,207,77,0)}}' +
+                    '#rb-final-again-note{font-family:\'IBM Plex Mono\',monospace;font-weight:600;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:' + CHALK + ';opacity:.8;text-align:center;max-width:36em;text-wrap:balance}' +
+                    '#rb-final-again-note.hot{color:' + GOLD + ';opacity:1}' +
+                    '@media (prefers-reduced-motion:reduce){#rb-final-again,#rb-final-again.hot{animation:none}}' +
+                    // a phone held sideways (~390 px tall): the result, the score, RUN IT BACK and its note on the first screen
+                    '@media (max-height:520px){#rb-final .rb-scroll{padding-top:16px!important}' +
+                    '#rb-final .rb-fin-title{font-size:clamp(38px,6.4vw,60px)!important}#rb-final .rb-fin-scoreline{margin-top:8px!important}' +
+                    '#rb-final .rb-fin-num{font-size:clamp(46px,7vw,68px)!important}#rb-final .rb-fin-again{margin-top:12px!important;gap:8px!important}' +
+                    '#rb-final-again{font-size:26px}}';
+                document.head.appendChild(agSt);
+            }
+            var agB = document.getElementById('rb-final-again');
+            if (agB) agB.addEventListener('click', function () {
+                if (agB.disabled) return;
+                agB.disabled = true;
+                var agL = agB.querySelector('span'); if (agL) agL.textContent = 'RUNNING IT BACK…';
+                runItBack(agB);
+            });
+            watchAgain();
+            paintAgain();
             var lv = document.getElementById('rb-final-leave');
             if (lv) lv.addEventListener('click', function () {
                 finalOverlay.style.display = 'none';
@@ -15814,6 +15854,40 @@
             });
         }
         function hideFinal() { finalOverlay.style.display = 'none'; }
+
+        // V454: the partner tapped RUN IT BACK (rooms/{code}/again/{role}) — this game's, by the server's clock
+        var oppAgain = null, unsubscribeAgain = null, againRoom = null;
+        function againIsThisGames(v) {
+            if (!v) return false;
+            var gSrv = (typeof window._rb2p_flowGameSrv === 'function') ? Number(window._rb2p_flowGameSrv()) || 0 : 0;
+            if (typeof v.srv === 'number' && gSrv) return v.srv > gSrv;
+            var startMs = Number(window._rb2p_matchStartMs) || 0;
+            return !!(startMs && Number(v.ts) > startMs);
+        }
+        function watchAgain() {
+            try {
+                if (!myRoom || !myRole) return;
+                if (unsubscribeAgain && againRoom === myRoom) return;
+                if (unsubscribeAgain) { unsubscribeAgain(); unsubscribeAgain = null; }
+                againRoom = myRoom;
+                unsubscribeAgain = FB.onValue(FB.ref(db, 'rooms/' + myRoom + '/again/' + (myRole === 'a' ? 'b' : 'a')), function (snap) {
+                    var v = snap.val();
+                    oppAgain = againIsThisGames(v) ? v : null;
+                    if (oppAgain && window._rb2p_diagLog) window._rb2p_diagLog('RUN IT BACK — the partner tapped it');
+                    paintAgain();
+                });
+            } catch (e) {}
+        }
+        function paintAgain() {
+            try {
+                var note = document.getElementById('rb-final-again-note'), btn = document.getElementById('rb-final-again');
+                if (!note || !btn || !oppAgain) return;
+                var who = String(oppAgain.name || '').trim() ||
+                          (localFinalReport && localFinalReport.oppTeam) || (oppFinalReport && oppFinalReport.team) || 'YOUR OPPONENT';
+                note.textContent = who.toUpperCase() + ' WANTS TO RUN IT BACK — TAP TO START';
+                note.classList.add('hot'); btn.classList.add('hot');
+            } catch (e) {}
+        }
 
         // ===== V62: overtime coordination =====
         // The bridge detects a regulation tie and calls requestOtKickoff. The
@@ -18096,15 +18170,74 @@
         var lastPlayers = null;
         function clearMySeatReady(why) {
             try {
-                if (!myRoom || !myRole) return;
-                FB.runTransaction(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole), function (cur) {
+                if (!myRoom || !myRole) return Promise.resolve();
+                return FB.runTransaction(FB.ref(db, 'rooms/' + myRoom + '/players/' + myRole), function (cur) {
                     return (cur && cur.ready === true) ? Object.assign({}, cur, { ready: false }) : undefined;
                 }).then(function (r) {
                     if (r && r.committed && window._rb2p_diagLog) window._rb2p_diagLog('READY cleared (' + why + ')');
                 }).catch(function () {});
-            } catch (e) {}
+            } catch (e) { return Promise.resolve(); }
         }
         window._rb2p_spendReady = function () { myReady = false; clearMySeatReady('the game is over'); };
+        var seatClearP = null;   // V454: the room entry's READY clear (RUN IT BACK's READY waits for it)
+
+        // ===== V454: RUN IT BACK — a rematch on the same code from the stats screen =====
+        // The stats screen's RUN IT BACK reloads into the same room (the BACK TO LOBBY path: no resume of the finished
+        // game) with a note in this tab; here, once the room is up, the engine has booted and the partner is in the
+        // room, this page presses its own READY — still V428's rule: a READY belongs to the page that pressed it, and
+        // this page's player pressed it, on the stats screen. The game starts when the partner taps RUN IT BACK too (or
+        // READY in the lobby). The partner's stats screen hears it through rooms/{code}/again/{role}.
+        var runItBackTimer = null, runItBackMode = false;
+        function stopRunItBack() {
+            if (runItBackTimer) { clearInterval(runItBackTimer); runItBackTimer = null; }
+            try { sessionStorage.removeItem('rb2p_runItBack'); } catch (e) {}
+        }
+        function armRunItBack() {
+            var rib = null;
+            try { rib = JSON.parse(sessionStorage.getItem('rb2p_runItBack') || 'null'); } catch (e) {}
+            if (!rib) return;
+            if (rib.code !== myRoom || rib.role !== myRole || !(Date.now() - Number(rib.at) < 10 * 60000)) { stopRunItBack(); return; }
+            runItBackMode = true;
+            if (runItBackTimer) clearInterval(runItBackTimer);
+            var t0 = Date.now(), busy = false, engineUpMs = 0;
+            runItBackTimer = setInterval(function () {
+                try {
+                    if (myRoom !== rib.code || myRole !== rib.role || gameStarted || myReady || Date.now() - t0 > 10 * 60000) { stopRunItBack(); return; }
+                    if (busy) return;
+                    // the engine has booted and runs (startTwoPlayerMatch needs its instances), for a second already —
+                    // a reloaded page sits in its menu room (2), never the home room, while the lobby shows
+                    var up = false;
+                    try { up = window.__rbEngineBooted === true && typeof _ft !== 'undefined' && _ft._gt() >= 0 && !!(_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2 && _Sc2._GL2._oq2.length); } catch (eU) {}
+                    if (!up) { engineUpMs = 0; return; }
+                    if (!engineUpMs) engineUpMs = Date.now();
+                    if (Date.now() - engineUpMs < 1000) return;
+                    if ($ready.disabled) return;                                                      // the partner is not in the room (yet)
+                    busy = true;
+                    Promise.race([seatClearP || Promise.resolve(), new Promise(function (res) { setTimeout(res, 3000); })]).then(function () {
+                        busy = false;
+                        if (myRoom !== rib.code || gameStarted || myReady || $ready.disabled) return;
+                        stopRunItBack();
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('RUN IT BACK — READY pressed for this page (its player tapped RUN IT BACK on the stats screen)');
+                        if (window._rb2p_audit) try { window._rb2p_audit('guard', { what: 'run-it-back-ready', room: myRoom }); } catch (eA) {}
+                        $ready.click();
+                    });
+                } catch (e) {}
+            }, 300);
+        }
+        function runItBack(btn) {
+            var code = myRoom, role = myRole, done = false;
+            function go() { if (done) return; done = true; try { location.reload(); } catch (e) {} }
+            try { sessionStorage.setItem('rb2p_runItBack', JSON.stringify({ code: code, role: role, at: Date.now() })); } catch (e) {}
+            // the BACK TO LOBBY path (V266): never resume the finished game this reload leaves
+            try { sessionStorage.setItem('rb2p_skipResumeOnce', '1'); } catch (e) {}
+            try { sessionStorage.removeItem('rb2p_matchLive'); } catch (e) {}
+            if (window._rb2p_diagLog) window._rb2p_diagLog('RUN IT BACK pressed — back to ' + code + ', READY once the room is up');
+            if (window._rb2p_audit) try { window._rb2p_audit('guard', { what: 'run-it-back', room: code }); } catch (eA) {}
+            if (!code || !role) { go(); return; }
+            // tell the partner's stats screen first (a dead socket never holds the player: 1.5 s at most)
+            try { FB.set(FB.ref(db, 'rooms/' + code + '/again/' + role), { ts: Date.now(), srv: { '.sv': 'timestamp' }, name: rb2pName() || '' }).then(go, go); } catch (eS) { go(); }
+            setTimeout(go, 1500);
+        }
         var unsubscribePlayers = null;
         var unsubscribeOutcomes = null;
         var unsubscribeConfig = null;
@@ -19083,7 +19216,7 @@
             try { FB.set(FB.ref(db, 'rooms/' + code + '/names/' + role), rb2pName() || '?').catch(function () {}); } catch (eNm) {}   // V387
             myReady = false;
             gameStarted = false;
-            clearMySeatReady(restoring ? 'kept from an earlier page' : 'entering the room');   // V428
+            seatClearP = clearMySeatReady(restoring ? 'kept from an earlier page' : 'entering the room');   // V428
             sessionStorage.setItem('rb_room', code);
             sessionStorage.setItem('rb_role_' + code, role);
 
@@ -19403,6 +19536,7 @@
             FB.onDisconnect(FB.ref(db, 'rooms/' + code + '/players/' + role)).remove();
 
             showView('room');
+            armRunItBack();   // V454
         }
 
         function renderPlayers(players) {
@@ -19434,7 +19568,8 @@
                 (myRole === 'a' && a.ready) ||
                 (myRole === 'b' && b.ready)
             ) {
-                $status.textContent = 'Waiting for opponent to ready up…';
+                $status.textContent = runItBackMode ? 'Running it back on ' + myRoom + ' — the game starts when your opponent taps RUN IT BACK too.'   // V454
+                                                    : 'Waiting for opponent to ready up…';
             } else {
                 $status.textContent = 'Both players in — ready up to start.';
             }
@@ -19472,6 +19607,7 @@
         });
 
         async function leaveRoom() {
+            stopRunItBack(); runItBackMode = false;   // V454
             if (unsubscribePlayers) { unsubscribePlayers(); unsubscribePlayers = null; }
             if (unsubscribeOutcomes) { unsubscribeOutcomes(); unsubscribeOutcomes = null; }
             if (unsubscribeConfig) { unsubscribeConfig(); unsubscribeConfig = null; }
