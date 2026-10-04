@@ -1302,3 +1302,28 @@ The owner: "after an interception ... the DBs are comically fast" — "in max mo
   — a snap audit that never became a play, ended by the ball reset after 0.4–1.2 s, no result. A recording with no
   result that never saw the ball dead and is under 2.5 s is not stored (a real play always ends dead: tackled, scored,
   incomplete, out of bounds, sacked).
+
+## V461 (2026-10-04): a fumble's popup says FUMBLE (it said INTERCEPTED); no takeaway popup on a drive that did not end in one
+
+The owner: "also when a fumble happens, the interception pop up happens. Try to fix please".
+
+- **Reproduced on the live V460** (`e2e/fumble-popup.js` against the main tree): a real lost fumble — the engine's own
+  fumble (`_W31`), a defender's recovery (ball 3 → 13 → 10) — popped **INTERCEPTED** on the other phone; and a fumble
+  the offense KEPT, followed by a turnover on downs, popped a takeaway too (`BLAST@possession INT/FUM`).
+- **Why:** the kind was a guess — "a fumble was detected in the last 5 s" (on the sender for the event; on the receiver,
+  off the fumble feed, for the hand-off's blast) — and a lost fumble's real timeline (loose ball, recovery, return, the
+  whistle, the engine's turnover stage) runs past 5 s; the hand-off popup (V348) always passed 'INT' and leaned on that
+  window. Its licence was "the drive's interception/fumble count moved", which a fumble the offense recovered moves too.
+- **Now:** the carrier's phone decides the takeaway the moment a defender has the ball: FUMBLE when the offense fumbled on
+  this play (its roster's fumble count moved since the snap — the engine calls a fumble a defender catches in the air
+  "intercepted", ball state 9), else the ball's own word (9 intercepted, 10 a loose ball the defense recovered). It rides
+  the hand-off (`takeaway`) and the event (its kind, marked `exact`: no relabel on the receiver). From a V461+ sender
+  the receiver shows exactly that, and no takeaway popup on a hand-off without one (or without the turnover stamp).
+  A fumble returned for a touchdown says SCOOP & SCORE, not PICK 6. A new drive (and each snap) clears it.
+- Tests: `e2e/fumble-popup.js` U1–U3 (a lost fumble → FUMBLE; a kept fumble then 4th & 99 → no popup; an interception →
+  INTERCEPTED, or PICK 6 when returned for a score). On V460: U1 INTERCEPTED, U3's popup fired.
+- Seen once while testing, not changed: a fumble the OFFENSE caught in the air and ran in counted +6 for the defense and
+  started the pick-six cascade (forced by the probe standing players on the ball; not seen in a real game).
+- **The highlights' play detector** (`tools/highlights/features.js`) reads a play only up to the frame it ended: a
+  recording runs on past the whistle, sometimes into the next snap, whose QB read as the last ball carrier — the first
+  real 6 pm run's #1 (Kelce, 43 yd, room VOHK) was labelled "Mahomes 43 yd" (the judge's headline was right).

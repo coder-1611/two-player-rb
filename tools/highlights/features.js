@@ -23,6 +23,7 @@ const A = { RUN: 2, ENGAGED: 3, DOWN: 4, DIVE: 5, HURDLE: 8, STIFF: 9, THROW: 11
 const FLIGHT = new Set([3]);
 const LIVE = new Set([1, 2, 5, 9, 10, 19]);   // the ball in a player's hands, the play on
 const STOPPED = new Set([4, 8, 11]);          // tackled, out of bounds, sacked
+const ENDED = new Set([4, 6, 7, 8, 11, 12, 14, 15, 16, 17]);   // every way a play ends (the recording runs on past it)
 const POS = { 1: 'QB', 2: 'RB', 3: 'WR', 4: 'TE', 5: 'OL', 6: 'DL', 7: 'LB', 8: 'DB', 9: 'DB' };
 
 function inflate(b64, enc) {
@@ -61,7 +62,11 @@ function features(play) {
     out.lateInHalf = (out.q === 2 || out.q >= 4) && out.clk <= 10;
     if (!tr || !tr.frames || tr.frames.length < 3) { out.td = Number(res.d) === 6 || res.handoff === 'TD'; finish(out); return out; }
 
-    const R = tr.roster || [], F = parseFrames(tr);
+    // the play itself: up to the frame it ended (a recording runs on past the whistle, sometimes into the next snap —
+    // whose QB would read as the play's last ball carrier)
+    const R = tr.roster || [], F0 = parseFrames(tr);
+    const endI = F0.findIndex((fr, i) => i > 0 && ENDED.has(fr.bs));
+    const F = endI > 0 ? F0.slice(0, endI + 1) : F0;
     const side = k => (R[k] ? R[k][1] : '?');
     const pos = k => (R[k] ? (POS[R[k][2]] || '') : '');
     const nm = k => (R[k] ? (R[k][3] || pos(k) || 'player') : '?');                       // a surname, else his position

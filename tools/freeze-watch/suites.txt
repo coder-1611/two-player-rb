@@ -74,3 +74,4 @@ play-rec
 plays-archive
 highlights
 max-return-speed
+fumble-popup

@@ -1642,7 +1642,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V460<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V461<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1731,7 +1731,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V460</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V461</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4878,6 +4878,11 @@
                 return s;
             }
             window._rb2p_offTurnoverStats = rb2pOffTurnoverStats;
+            // V461: the takeaway on this device's latest play ('INT' | 'FUMBLE'), or null — see the observer
+            window._rb2p_takeawayKind = function () {
+                var tk = window._rb2p_playTakeaway;
+                return (tk && Date.now() - Number(tk.at) < 60000) ? tk.kind : null;
+            };
             // Deltas since the current drive's start. known:false = the baseline was
             // never captured (we haven't seen a tick of our own offense yet) — the
             // callers fall back to the legacy signals then, so an exotic first-tick
@@ -4906,6 +4911,8 @@
                             var v350S = rb2pOffTurnoverStats();
                             window._rb2p_driveIntBase = v350S.ints;
                             window._rb2p_driveFumBase = v350S.fums;
+                            // V461: a new drive of ours — the last drive's takeaway is history
+                            window._rb2p_playTakeaway = null; window._rb2p_playFumBase = v350S.fums;
                         }
                         window._rb2p_driveBasePrevWait = v350Wait;
                     } catch (eBase) {}
@@ -4941,10 +4948,11 @@
                                 Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
                                 typeof window._rb2p_sendEventBlast === 'function') {
                                 window._rb2p_lastIntEvtMs = Date.now();
-                                window._rb2p_sendEventBlast(
-                                    (isFinite(Number(window._rb2p_lastFumbleMs)) &&
-                                     Date.now() - Number(window._rb2p_lastFumbleMs) < 5000)
-                                    ? 'FUMBLE' : 'INT');
+                                var tkV8 = window._rb2p_takeawayKind();   // V461: the ball says which
+                                window._rb2p_sendEventBlast(tkV8 ||
+                                    ((isFinite(Number(window._rb2p_lastFumbleMs)) &&
+                                      Date.now() - Number(window._rb2p_lastFumbleMs) < 5000)
+                                     ? 'FUMBLE' : 'INT'), '', !!tkV8);
                             }
                         }
                     } catch (eV8) {}
@@ -4955,6 +4963,26 @@
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
+                    // V461 (the owner: "when a fumble happens, the interception pop up happens"): what the defense did
+                    // with the ball on THIS play, decided the moment a defender has it (the ball's 9 = intercepted, 10 =
+                    // a loose ball the defense recovered): a FUMBLE when the offense fumbled on this play — its roster's
+                    // fumble count moved since the snap (the engine pops the ball loose, and a defender who grabs it
+                    // before it lands is "intercepted" to the engine) — else the ball's own word. The takeaway popups
+                    // name it from here: the old "a fumble was detected in the last 5 s" windows were shorter than a lost
+                    // fumble's real timeline (loose ball, recovery, return, whistle, the engine's turnover stage), so it
+                    // shipped INTERCEPTED. The first takeaway of a play stands; the next snap clears it.
+                    if (bkp === 9 || bkp === 10) {
+                        if (!window._rb2p_playTakeaway) {
+                            var fb461 = Number(window._rb2p_playFumBase);
+                            var fumbled461 = isFinite(fb461) && rb2pOffTurnoverStats().fums > fb461;
+                            window._rb2p_playTakeaway = { kind: (bkp === 10 || fumbled461) ? 'FUMBLE' : 'INT', at: Date.now() };
+                        }
+                    } else if ((bkp === 1 || bkp === 2 || bkp === 19) && (prev === 0 || prev == null || prev === 4)) {
+                        window._rb2p_playTakeaway = null;
+                        window._rb2p_playFumBase = rb2pOffTurnoverStats().fums;
+                    } else if (bkp === 0 && prev !== 0) {
+                        window._rb2p_playFumBase = rb2pOffTurnoverStats().fums;   // between plays (a snap the poll missed)
+                    }
                     // V419 (F5, BHZJ): a run starts by pressing near the back (ball kp 19) and never
                     // passes through 1/2, so it left no snap on record — the play settled with
                     // nothing before it and looked like a stuck player. Recorded for the audit.
@@ -6824,10 +6852,11 @@
                             Date.now() - (Number(window._rb2p_lastIntEvtMs) || 0) > 5000 &&
                             typeof window._rb2p_sendEventBlast === 'function') {
                             window._rb2p_lastIntEvtMs = Date.now();
-                            var evKind335 = (isFinite(Number(window._rb2p_lastFumbleMs)) &&
+                            var tk335 = window._rb2p_takeawayKind();   // V461: the ball says which
+                            var evKind335 = tk335 || ((isFinite(Number(window._rb2p_lastFumbleMs)) &&
                                              Date.now() - Number(window._rb2p_lastFumbleMs) < 5000)
-                                            ? 'FUMBLE' : 'INT';
-                            window._rb2p_sendEventBlast(evKind335);
+                                            ? 'FUMBLE' : 'INT');
+                            window._rb2p_sendEventBlast(evKind335, '', !!tk335);
                         }
 
                         // ===== V57: B's post-PAT send becomes PAT_RESULT =====
@@ -7155,8 +7184,8 @@
                     window._rb2p_p6Id = String(Date.now());   // V366: the cascade id, carried in the PICK6 record
                     window._rb2p_p6Local = {}; window._rb2p_p6ResultAppliedMs = 0; window._rb2p_p6AwaitDriveMs = 0;
                     if (window._rb2p_p6Step) window._rb2p_p6Step('detected', { src: String(source) });
-                    if (typeof window._rb2p_sendEventBlast === 'function')
-                        window._rb2p_sendEventBlast('PICK6');   // V335: the scorer's popup fires NOW
+                    if (typeof window._rb2p_sendEventBlast === 'function')   // V335: the scorer's popup fires NOW
+                        window._rb2p_sendEventBlast(window._rb2p_takeawayKind() === 'FUMBLE' ? 'FUMBLE6' : 'PICK6');   // V461: a fumble return TD is no pick-six
                     if (window._rb2p_pick6MonitorArm) window._rb2p_pick6MonitorArm('THROWER', source);
                     // ===== V57: deferred PICK6 send =====
                     // The engine credits the pick-6 +6 in s_action_result
@@ -11526,6 +11555,9 @@
                     built.intDelta = d350.intDelta;
                     built.fumDelta = d350.fumDelta;
                 }
+                // V461: the takeaway that ended this drive, read off the ball on its last play ('INT' | 'FUMBLE')
+                var tkBuilt = window._rb2p_takeawayKind ? window._rb2p_takeawayKind() : null;
+                if (tkBuilt) built.takeaway = tkBuilt;
                 return built;
             }
             // V350 test hooks: the licence logic is closure-local; e2e drives it
@@ -11911,6 +11943,12 @@
                         // not enough — it rode on kickoffs after a touchdown (a transient
                         // Vy=8 in the cascade). Without deltas, only an INT-typed outcome.
                         : (outcome.type === 'INT');
+                    // V461: a V461+ sender names the takeaway itself (the ball on the drive's last play). Blast exactly
+                    // that — and nothing on a drive that did not end in one: its fumble count also moves for a fumble
+                    // the OFFENSE recovered, and that popped INTERCEPTED on later punts and scores.
+                    var v461Kind = (outcome.takeaway === 'INT' || outcome.takeaway === 'FUMBLE') ? outcome.takeaway : null;
+                    if (Number(window._rb2p_oppVer) >= 461)
+                        v350Takeaway = !!v461Kind || (outcome.turnover === true && v350Takeaway);
                     if (v350Takeaway && !rb2pGameOver) {
                         try {
                             var v348Eb = window._rb2p_evtBlastedAt || {};
@@ -11922,8 +11960,8 @@
                                 typeof window._rb2p_waitFeedBig === 'function') {
                                 if (!window._rb2p_evtBlastedAt) window._rb2p_evtBlastedAt = {};
                                 window._rb2p_evtBlastedAt.INT = Date.now();
-                                window._rb2p_waitFeedBig('INT', outcome.message);
-                                if (window._rb2p_diagLog) window._rb2p_diagLog('BLAST@possession INT/FUM');
+                                window._rb2p_waitFeedBig(v461Kind || 'INT', outcome.message, v461Kind ? { exact: true } : null);
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('BLAST@possession ' + (v461Kind || 'INT/FUM'));
                             }
                         } catch (eV348) {}
                     }
@@ -12629,12 +12667,13 @@
             };
             // BIG: a scoring / turnover blast. Called from applyOpponentOutcome
             // (read-only). Mapped from the DEFENSE device's perspective.
-            window._rb2p_waitFeedBig = function (type, message) {
+            window._rb2p_waitFeedBig = function (type, message, opts) {
                 try {
                     // The engine buckets INT and fumble into one turnover (INT). If a
                     // fumble was just detected on the field, this INT-typed turnover is
                     // really a fumble recovery — re-label the blast so it matches.
-                    if (type === 'INT' && isFinite(Number(window._rb2p_lastFumbleMs)) &&
+                    // V461: never when the sender read the kind off the ball (opts.exact).
+                    if (type === 'INT' && !(opts && opts.exact) && isFinite(Number(window._rb2p_lastFumbleMs)) &&
                         (Date.now() - Number(window._rb2p_lastFumbleMs)) < 5000) {
                         type = 'FUMBLE';
                     }
@@ -12653,6 +12692,7 @@
                         INT:    { t: 'INTERCEPTED',acc: youAcc, eye: '● DEFENSE',                sub: youNm + ' BALL',       conf: true  },
                         FUMBLE: { t: 'FUMBLE',     acc: youAcc, eye: '● DEFENSE',                sub: youNm + ' BALL',       conf: true  },
                         PICK6:  { t: 'PICK 6',     acc: youAcc, eye: '● PICK SIX · DEFENSE SCORES', sub: youNm + ' · TAKEN TO THE HOUSE', conf: true },
+                        FUMBLE6: { t: 'SCOOP & SCORE', acc: youAcc, eye: '● FUMBLE RETURN · DEFENSE SCORES', sub: youNm + ' · TAKEN TO THE HOUSE', conf: true },   // V461
                         SAFETY: { t: 'SAFETY',     acc: youAcc, eye: '● DEFENSE',                sub: youNm + ' · +2', conf: true }
                     };
                     var m = map[type];
@@ -20862,11 +20902,12 @@
             // outcome-driven blast stands down when the opponent is on >= V335
             // (it stays for older opponents — e2e/v317-intblast covers it).
             var evtBlastSeq = 0;
-            window._rb2p_sendEventBlast = function (kind, sub) {
+            window._rb2p_sendEventBlast = function (kind, sub, exact) {
                 try {
                     if (!myRoom || !myRole || !kind) return;
                     var rec = { kind: String(kind), sub: sub == null ? '' : String(sub),
                                 seq: ++evtBlastSeq, ts: Date.now() };
+                    if (exact) rec.exact = true;   // V461: the kind was read off the ball — the receiver shows it as is
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/evt/' + myRole), rec).catch(function () {});
                     if (window._rb2p_diagLog) window._rb2p_diagLog('EVT-> ' + rec.kind);
                 } catch (e) {}
@@ -20902,13 +20943,13 @@
                         // within 6s of a PICK6 is swallowed, and a PICK6 always
                         // paints even if the INT just did.
                         if ((evt.kind === 'INT' || evt.kind === 'FUMBLE') &&
-                            Date.now() - (Number(window._rb2p_evtBlastedAt.PICK6) || 0) < 6000) {
+                            Date.now() - Math.max(Number(window._rb2p_evtBlastedAt.PICK6) || 0, Number(window._rb2p_evtBlastedAt.FUMBLE6) || 0) < 6000) {
                             if (window._rb2p_diagLog) window._rb2p_diagLog('EVT<- ' + evt.kind + ' swallowed (PICK6 owns it)');
                             return;
                         }
                         window._rb2p_evtBlastedAt[evt.kind] = Date.now();
                         if (window._rb2p_diagLog) window._rb2p_diagLog('EVT<- ' + evt.kind);
-                        if (window._rb2p_waitFeedBig) window._rb2p_waitFeedBig(evt.kind, evt.sub || '');
+                        if (window._rb2p_waitFeedBig) window._rb2p_waitFeedBig(evt.kind, evt.sub || '', evt.exact ? { exact: true } : null);
                     } catch (e) {}
                 }
             );
