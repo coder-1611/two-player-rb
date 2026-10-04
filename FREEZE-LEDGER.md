@@ -1050,3 +1050,92 @@ turnover, so the receiver started at a kickoff return. Now only the try's own dr
 the offer (runs included), a hand-off taken, or one sent (other than a pick-six scorer's PAT_RESULT) keeps OTHER.
 e2e/v441-retype.js (in v434-horn-outcomes, R1): V440 0/2 (the turnover shipped TD; the partner started at its own 28),
 V441 2/2 (OTHER; the partner at the turnover spot).
+
+## V452 (2026-10-03): a rematch READY no longer reloads into a resume because the partner's page said it LEFT (OPEN #3)
+
+Freeze-watch run 20261003-1500. The brief had **no new frozen game**: the 5 "real games played since noon" were all tabs
+left open on V414–V429 (KDZI, OHGZ, QQZQ, VDEJ, XRZO — no snap, send or game entry since 12:00), stuck-scan found no
+episode, no player wrote in. V446 (the repo move, game code = the label) had no real game yet; all three doors serve it
+and `/.git/config` answers 404 on each. So the run took OPEN.md's top item that is not horn code: #3 (the V266 READY
+guard), which is also the cause of #1's QFJK variant.
+
+**What happened (VZLC, 2 Oct 8:17 pm, V435 — the same as QFJK, 2:35 pm, V433).** Game 1 ended at the stats screen.
+A pressed BACK TO LOBBY at 14:01.8; B stayed on the stats screen and pressed it at 14:26.4. Both pressed READY about
+12 s later. B started game 2 (`14:38.6 b game`); A did not: `14:39.5 a RESUME the TD I took before the reload is newer
+than my live record — taking it again`, `14:39.8 a bind`, `FLOW my record was the previous game's … flow-stale`.
+A's page had reloaded into a resume of the game its own READY had just started, and took game 1's last touchdown
+(B's, sent 13:48.2, 51 s old) again. It cost nothing there only because A was game 2's opening receiver anyway; the
+same take-again on B (a hand-off A sent last) would give B the ball while A kicks off as the opening receiver.
+
+**Why, five times.**
+1. *Why did A's game 2 begin with a reload and a resume?* The V266 READY guard in `maybeStartMatch` reloaded it
+   ("READY blocked — opponent mid-match; resuming" — logged in the lobby, whose audit entries die with the reload, so
+   it was never in the archive).
+2. *Why did the guard think B was mid-match?* `hb/b` was under 15 s old and B had no `final` under 60 s old.
+3. *Why was `hb/b` fresh?* It was B's V403 pagehide beacon, `{vis:'X'}`, written by the BACK TO LOBBY reload 12 s
+   earlier — "this page LEFT", the opposite of mid-match. The guard (V266/V268) predates V403 and reads only `ts`.
+4. *Why didn't B's `final` exempt it (the guard's "rematch" test)?* A's own lobby page had deleted it: a page that has
+   started no match takes any partner final as a leftover and removes it (index.html ~17835, V296 / V422 F27). So for
+   the phone that went back first, the exemption can never hold, and the reload is not a race — it happens every time
+   the partner's beacon is under 15 s old.
+5. **Root: two features gave one record opposite meanings.** V403 made the heartbeat also say "I left"; the V266 guard
+   still takes any fresh heartbeat as "alive in a match", and its fallback evidence (the partner's final) is removed
+   by V296's lobby sweep before it is read.
+
+**How often (whole archive, 1,114 game starts).** 37 starts had one phone start and the other join by a reload within
+90 s; in **26 rematch joins the starter's "left" beacon was under 18 s old** when the joiner's READY took the guard (22
+under 15 s; the rest within the two phones' clock offset). What it cost: before V432 the joiner kept game 1's flow
+record and dropped game 2's first hand-offs as moot (OKYW, YISX ×2, FMBV; three of them ended in a TURN-RESCUE guess at
+the joiner's own 25 — V432 ledger); since V432, **both** beacon joins (QFJK, VZLC) took game 1's last hand-off again.
+Every one of them also lost the joiner a page reload at the start of the game.
+
+**The fix (index.html `maybeStartMatch`).** A fresh heartbeat with `vis:'X'` is not "mid-match" **when this tab's own
+flow record says its last game in this room is over** (`sessionStorage rb2p_flow_<room>_<role>`, `final: true` — kept
+across BACK TO LOBBY and a reload; both real joiners had it: their resumed pages logged `FLOW restored from this tab …
+ep H`, then V432's `flow-stale`, which needs `final`). Coverage in the archive: every beacon join on a build that keeps
+the tab record (V422+) restored the PREVIOUS game's record from the tab — 18 of 18 (17 epoch H, QXCA OT5); the other 8
+are V405–V421 builds, before the tab record existed. Then the phone starts the game itself (diag `READY guard: the
+partner's heartbeat is its "left" beacon (N s old) and my last game here is over — not mid-match; starting`, audit
+`guard ready-left` with the age). Every other case keeps the guard as it was. Telemetry: when the guard does reload,
+it carries its read (`age`, `vis`, the final's age, `tabFinal`) in sessionStorage to the resumed page, which audits it
+at bind (`guard ready-reload`) — the archive had never seen the guard's read. Nothing moves the ball, the score or
+possession, and nothing parks a phone: the rematch starts on both phones the normal way (`startMatch`, V402's barrier
+on A).
+
+**Why it cannot start a second match under a live one.** The guard's real case is a phone in the lobby while its
+partner's game is live. If this tab's last game in this room ended, the partner's last game ended with it, and a new
+game starts only from a READY pressed on the page that starts it (V428) — so the only live game the partner can be in
+is the one this READY pair is starting. Why the tab condition is needed at all: `X` alone is not "gone" — of 1,114
+archived pagehides with a next entry, 66 were followed by the SAME page coming back (back-forward cache, iOS), and a
+partner page that reloads mid-game writes `X` while its resume re-claims its seat with `ready: inProgress` for a moment
+(~17228) — a fresh tab in the lobby could meet both. That case keeps the old guard (`V450_CONTROL=1` below).
+Residual: OPEN #3's second route (JCTW: the partner started a game alone off this tab's re-claimed READY) plus the
+partner's page reloading within 15 s of this READY — not seen in the archive.
+
+**Tests.**
+- `e2e/v449-ready-left.js` (new, in suites.txt): a real game 1 through the engine's own final path, A back to the lobby
+  first, B 66 s later with the stats screen's own button, both READY right after B's new page is up. **Live build
+  (V446 main tree, temporary copy, port 8802): L1 L2 L3 FAIL** — `game entries a 0 b 1; A's page kept its marker
+  false` (A reloaded into the resume). **V452: 4/4** — `game entries a 1 b 1; marker true; guard ready-left`.
+  `V450_CONTROL=1` (A's tab record removed — a fresh tab's view): the guard still reloads A, and the resumed page audits
+  `guard ready-reload vis X tabFinal false` (2/2). Logs: `.rb2p/freeze-watch/runs/20261003-1500/proof/`.
+  - Drafts that did not count: the first pressed READY on B's old page before its BACK TO LOBBY reload (the test now
+    waits for the new page); in one live run B's page took ~13 s to come back under load, so the beacon was past
+    15 s before READY and the live build passed. A phone reloads in seconds (VZLC B: BACK TO LOBBY to game 2 in 12 s,
+    both READY presses included), so the test re-stamps B's own beacon record with the current time once B's new
+    page is up (printed: 9.2–9.3 s old in the runs above).
+- The guard's real job: `e2e/v432-rematch-join.js` (A in game 2 for 7 s; B's READY must reload into the resume). With
+  a debug print of what B's guard read: **V452 4/4** (`hb/a {vis:'V'}` 0.4 s old → reload → resume → flow-stale). Its
+  R1/R4 failed once on V452 and once on the LIVE build in the same hour, both with `hb/a null`: under load A's first
+  in-match heartbeat came later than the test's 7 s, so there was nothing for the guard to read (a harness timing,
+  the same on both builds).
+- On V452: v403-endings 6/6 (the left beacon / OPPONENT LEFT), v425-rematch 3/3, v428-ready 3/3 (the live build 3/3
+  beside it; a first run with four browsers at load 24 missed E3 with both seats un-READY — the guard never ran).
+- `node tools/latch-check.js`: 0 unclassified (`storage:rb2p_readyGuardNote` registered as non-blocking telemetry).
+
+**Still open:** OPEN #1's take-again itself (a resume that takes a hand-off from the PREVIOUS game) can still be
+reached by the other join route — a page that reloads just before its partner's start (JCTW, TYHC: the starter's
+beacon 80 s old, so not the guard). Its fix plan stays in OPEN #1.
+
+Shipped as V452 by the owner's session (3 Oct, night), ahead of the run's other held commits: RUN IT BACK (V454)
+starts a rematch from both stats screens within seconds, which is exactly this guard's case.

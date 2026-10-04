@@ -22,8 +22,10 @@ The owner's 6:10 pm note froze the quarter-end code while V434's C10 is proven. 
 
 ## 1. Leftovers of the reload-ball resume (V430) after V438 fixed its input (V438: committed, not shipped yet)
 V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from before the hand-off. What is left:
-- **A hand-off taken again in the NEXT game (QFJK, 2 Oct 2:35 pm, V433, harmless) or after the final (ATUZ, 9:15 am,
-  neutral).** QFJK's A reloaded into game 2 through the resume and took game 1's TD again (A was game 2's opening
+- **A hand-off taken again in the NEXT game (QFJK, 2 Oct 2:35 pm, V433, harmless; VZLC, 2 Oct 8:17 pm, V435, the same,
+  harmless) or after the final (ATUZ, 9:15 am, neutral).** V452 removes the route both took (the READY guard's
+  reload); the take-again can still be reached by #3's second route. Harmful variant to test for: the joiner is B and
+  game 1's last hand-off went A → B within 120 s — B would take the ball while A kicks off as the opening receiver. QFJK's A reloaded into game 2 through the resume and took game 1's TD again (A was game 2's opening
   receiver anyway, so nothing changed). Never take a hand-off again — or apply one — once this game's `final` is on
   record, or when the hand-off's game is not the one being resumed (the flow record's `gid`).
 - **Both records stale** (a throttled tab whose 500 ms live push also lagged — V430's original theory; not shown in any
@@ -39,25 +41,36 @@ V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from be
   whole time (`FLOW restored from this tab pending ep K0`). B sat on "waiting" on screen 77 s and left (16:59.5).
 - **Detector:** R-POSS saw 13 s of it; R-FREEZE counted nothing — a `send` deletes the open both-waiting interval and
   only an act/vis event reopens it, so a send that never lands excuses the rest. R-REOPEN needs ONE starter.
+- **The score part, read on the timeline (run 20261003-1500):** A's page booted at 15:23.9, resumed into the FINISHED
+  game (`FLOW restored … ep H`, `score 42-40 q=5`, `final` 15:32.2), and at `15:41.8 a game` started game 2 from that
+  same page — no boot, no bind in between. The V346 floor (index.html ~7238) re-arms only when its 100 ms sampler sees
+  the engine OUTSIDE the match room ("a genuine rematch passes through the lobby"); a page resumed into a finished game
+  stays in the match room, so the floor still held 42-40 and `15:41.9 SCORE-FLOOR 0-0 -> 42-40` put game 1's score on
+  game 2. **Fix plan:** re-arm the floor at the game boundary, not on a sampled room change — key it to the game
+  (`_rb2p_matchStartMs`, or the engine's match instance) so a new game starts at 0-0. Mind the race: a plain reset in
+  `startMatch` can be re-raised by a 100 ms tick that still reads the OLD match's 42-40 before the engine builds the
+  new one. Test: game 1 to the final, reload one phone into the finished game (stats screen), start game 2 from it:
+  game 2 must start 0-0 on both (live build: 42-40).
 - **Questions (read before fixing):** why did both phones start (both READY, or the V266 guard, #3)? Why does the score
-  floor (index.html ~7126) carry a finished game's score into a new one (it has no game boundary)? Why did B drop A's
+  floor (index.html ~7238) carry a finished game's score into a new one (it has no game boundary — see above)? Why did B drop A's
   KICKOFF (B's `matchStartMs` vs A's ts, or the "pending" flow record)? V432's `flow-stale` reset does not cover two
   starters. Tied to #3.
 
-## 3. The V266 READY guard reads a partner's "left" beacon as "mid-match" — a READY reloads into a resume (OKYW)
-- **What happened:** the guard (`maybeStartMatch`) takes a fresh `hb/<partner>` with no fresh final as "the partner is
-  mid-match" and reloads. Since V403, a page that LEAVES writes `hb {vis:'X'}` with a fresh ts.
-  - When both press READY seconds after one of them reloaded, the starter's own match start has already removed
-    `final`, and the beacon is under 15 s old. So the second phone reloads into a resume of a game it should have
-    started.
-  - This happened in 16 of 17 archived starts where the second phone joined through the resume (V432 ledger).
-- **What V432 did:** V432 made such a join harmless: the old flow record is reset (`flow-stale`).
-- **Fix still needed:** the needless reload. The guard should ignore `vis:'X'`, and better, should not take a partner
-  whose match started from this READY pair as "mid-match".
-- **Second variant (JCTW 3:07 pm):** a page reloaded 1.6 s before the partner's start and resumed into the FINISHED game
-  (Q5, stats screen) while the partner played game 2. B only joined after another reload.
-- **Test:** both phones press READY within a second of one having reloaded. Both must run startMatch (a `game` audit
-  entry on both), with no reload.
+## 3. DONE in V452 (see Done) — the V266 READY guard no longer reads the partner's "left" beacon as "mid-match"
+- **Still open from #3: the second join route (JCTW 3:07 pm, TYHC 9:41 am):** a page that reloads 1.6–3 s before the
+  partner's start resumes into the FINISHED game (Q5, stats screen) while the partner plays game 2 (the starter's
+  beacon was 80 s old — not the guard). B only joined after another reload. Read why tryRestore's `inProgress` holds
+  for a finished game there (`flowLive`? `oppFresh`?) before changing it.
+  - **Lead (run 20261003-1500, JCTW timeline, not yet tested):** B's page reloaded at `20:07.4` (its third page since
+    the final; the second had resumed into the finished game at 19:18.0). A had pressed READY and was waiting. B's new
+    page bound at `20:10.5` — `FLOW restored … ep H`, the "final soon" cover — and **A's `game` is at the same
+    `20:10.5`**. The resume re-claims a seat that onDisconnect removed with `ready: inProgress ? true : false`
+    (index.html ~17228, the slot transaction), and `inProgress` was true for the finished game; V428's
+    `clearMySeatReady('kept from an earlier page')` runs only after, in `enterRoom`. In between A saw two READY seats,
+    and A's start was its own READY (V428's rule holds on A's side), so A played game 2 alone (snaps 20:13.5, 20:27.3)
+    while B sat on game 1's stats cover. Test first: game 1 to the final, A in the lobby READY, B reloads into the
+    resume → A must not start. Candidate fix: the reclaim writes `ready: false` (a page's READY is only ever its own
+    press, V428) — read what else reads the reclaimed `ready` before changing it.
 
 ## 4. Audit V434's horn law in real games (the first 24 hours after the release)
 - V434 ends every quarter through the engine's own time-up (FREEZE-LEDGER.md V434, `~/Projects/two-player-rb/.rb2p/research/HORN-RESEARCH.md`
@@ -212,6 +225,15 @@ V438 fixed FXTE's root (Done, below): the resume read a WAITING snapshot from be
   - Until then, add nothing that grows the database much (see item 5).
 
 ## Done
+- **V452 (run 20261003-1500; shipped by the owner's session with RUN IT BACK) — OPEN #3: a rematch READY reloaded into a resume because the partner's page
+  said it LEFT** (QFJK, VZLC, OKYW; 26 rematch joins in the archive with the starter's beacon under 18 s old). The
+  guard took the V403 pagehide beacon (`vis:'X'`) as "mid-match", and its "fresh final" exemption never holds for the
+  phone that went back first (its own lobby page deletes the partner's final as a leftover, ~17835). Now `X` is not
+  mid-match when this tab's own flow record says its last game here is final (`guard ready-left`); otherwise the guard
+  is unchanged, and a guard reload carries its read to the resumed page (`guard ready-reload`). `e2e/v449-ready-left.js`:
+  live L1–L3 FAIL (A reloaded), V452 4/4, control (a fresh tab) still reloads. FREEZE-LEDGER.md V452.
+  **Next runs: audit it** — every `guard ready-left` must be followed by a `game` entry on BOTH phones within ~15 s and
+  no `taking it again`; every `guard ready-reload` is the guard's read on a real reload (read `vis`, `age`, `tabFinal`).
 - **V441 — the blue circle** (the owner: "sometimes just clicking on the blue circle didn't work";
   ~/Projects/two-player-rb/.rb2p/research/BLUE-CIRCLE.md): a left mouse press arms the tap latch (a Chromebook tap-to-click shorter than a frame
   was lost: e2e/blue-circle.js T1 V440 0/3 → 3/3); _m01/_o01 divide by the display scale; the landscape-phone dead zone

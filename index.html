@@ -1610,7 +1610,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V451<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V452<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1699,7 +1699,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V451</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V452</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -18970,13 +18970,34 @@
                             var hbRawG = hbSg.val();
                             var hbVg = typeof hbRawG === 'number'
                                 ? hbRawG : Number(hbRawG && hbRawG.ts) || 0;
-                            if (hbVg && Date.now() - hbVg < 15000) {
+                            // V452 (OPEN #3; QFJK, VZLC, OKYW): vis 'X' is the partner's pagehide beacon (V403) — its
+                            // game page is GONE, not mid-match. It is fresh for 15 s after every BACK TO LOBBY, so a
+                            // rematch READY inside that window reloaded into a resume of the game the partner had just
+                            // started from this same READY pair. The "fresh final" test below never saves the phone that
+                            // went back first: its own lobby removed the partner's final as a leftover (~17835) — 26
+                            // rematch joins in the archive, and the resume then took the last game's hand-off again
+                            // (QFJK, VZLC). So X counts as "not mid-match" only when THIS tab's own flow record says its
+                            // last game in this room is over (final — kept in sessionStorage across BACK TO LOBBY and a
+                            // reload): then the only game the partner can be in is the one this READY pair starts. A
+                            // fresh tab, or one whose game is still live, keeps the guard as it was (a partner page that
+                            // reloads mid-game also writes X, and its re-claimed seat is READY for a moment).
+                            var hbLeftG = !!(hbRawG && typeof hbRawG === 'object' && hbRawG.vis === 'X');
+                            var tabFinalG = false;
+                            try { var tfG = JSON.parse(sessionStorage.getItem('rb2p_flow_' + code + '_' + myRole) || 'null'); tabFinalG = !!(tfG && tfG.final === true); } catch (eTF) {}
+                            if (hbVg && Date.now() - hbVg < 15000 && hbLeftG && tabFinalG) {
+                                if (window._rb2p_diagLog) window._rb2p_diagLog(
+                                    'READY guard: the partner\'s heartbeat is its "left" beacon (' + Math.round((Date.now() - hbVg) / 1000) + ' s old) and my last game here is over — not mid-match; starting');
+                                if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'ready-left', age: Date.now() - hbVg });
+                            } else if (hbVg && Date.now() - hbVg < 15000) {
                                 var fSg = await FB.get(FB.ref(db, 'rooms/' + code + '/final/' + oRsg));
                                 var fVg = fSg.val();
                                 if (!(fVg && fVg.ts && Date.now() - fVg.ts < 60000)) {
                                     console.log('[2P GUARD] READY while opponent mid-match — resuming, not restarting');
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(
                                         'READY blocked — opponent mid-match; resuming');
+                                    // V452: the lobby's audit entries die with this reload (the stream binds in a match),
+                                    // so the guard's read never reached the archive — carry it to the resumed page's bind.
+                                    try { sessionStorage.setItem('rb2p_readyGuardNote', JSON.stringify({ age: Date.now() - hbVg, vis: (hbRawG && hbRawG.vis) || '', fin: fVg && fVg.ts ? Date.now() - fVg.ts : -1, tabFinal: tabFinalG })); } catch (eGN) {}
                                     try { location.reload(); } catch (eRl) {}
                                     return;
                                 }
@@ -19664,6 +19685,11 @@
             if (window._rb2p_auditBind) window._rb2p_auditBind(myRoom, myRole);   // V365
             if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '', uid: (window._rb2p_uid ? window._rb2p_uid() : ''),
                 name: (function () { try { return String(localStorage.getItem('rb2p_name') || '').trim().slice(0, 40); } catch (eN) { return ''; } })() }; } catch (e) { return {}; } })()));   // V388: which door; V392: which device; V444: under which username (the device profiles)
+            try {   // V452: the READY guard's read that reloaded this tab (age/vis of the partner's heartbeat, its final's age)
+                var rgN = JSON.parse(sessionStorage.getItem('rb2p_readyGuardNote') || 'null');
+                sessionStorage.removeItem('rb2p_readyGuardNote');
+                if (rgN && window._rb2p_audit) window._rb2p_audit('guard', { what: 'ready-reload', age: rgN.age, vis: rgN.vis, fin: rgN.fin, tabFinal: rgN.tabFinal });
+            } catch (eRG) {}
             var origSend = window._twoPlayer.send.bind(window._twoPlayer);
             window._twoPlayer.send = function (outcome) {
                 // V208: stamp the moment we hand the ball to the opponent via a
