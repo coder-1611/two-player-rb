@@ -126,12 +126,18 @@ async function playEndsAtHalf(page) {
     const bIn = await until(async () => ({ ok: (await inMatch(B.page)) === true && (await waiting(B.page)) === true }), 60000, 500);
     await sleep(8000);                                    // B settles in A's game (and its record meets A's)
     const dB0 = await diag(B.page);
-    const restored = (dB0.match(/FLOW restored from this tab (g\d+) ep (\w+)/) || []);
+    let restored = (dB0.match(/FLOW restored from this tab (g\d+) ep (\w+)/) || []);
+    // V454: the diag ring keeps 11 lines and since V450 a waiting phone also logs the opponent's-screen lines, so the
+    // restore line can be gone by now — the audit stream keeps everything: the flow-stale reset names the record the
+    // resume restored, and a 'game' entry from B would mean B started a game of its own (no resume)
+    const auB0 = Object.values(await TP.fbGet('rooms/' + code + '/audit/b') || {}).filter(e => e.t >= tB - 1000);
+    if (!restored[1]) { const fsG = auB0.find(e => e.k === 'guard' && e.what === 'flow-stale'); const m = fsG && String(fsG.was || '').match(/^(g\d+) ep (\w+)/); if (m) restored = [m[0], m[1], m[2]]; }
+    const bStarted = /GAME-START/.test(dB0) || auB0.some(e => e.k === 'game');
     const games = Object.keys(await TP.fbGet('rooms/' + code + '/games') || {});
     console.log('  game 2: A in a match ' + (aIn.ms !== null) + '; B in it ' + (bIn.ms !== null ? Math.round((Date.now() - tB) / 1000) + ' s after its READY' : 'never') + '; games ' + games.length + '; B restored ' + (restored[1] || '-') + ' ep ' + (restored[2] || '-'));
     check('R1 (setup) B joined game 2 through the resume with game 1\'s record restored from its tab (OKYW\'s state)',
-          aIn.ms !== null && bIn.ms !== null && restored[1] === gid1 && restored[2] === 'H' && !/GAME-START/.test(dB0),
-          JSON.stringify({ aIn: aIn.ms, bIn: bIn.ms, restored: restored.slice(1), gid1 }));
+          aIn.ms !== null && bIn.ms !== null && restored[1] === gid1 && restored[2] === 'H' && !bStarted,
+          JSON.stringify({ aIn: aIn.ms, bIn: bIn.ms, restored: restored.slice(1), gid1, bStarted }));
 
     // ---- A's first drive ends: a punt ----
     const aSt0 = await st(A.page);

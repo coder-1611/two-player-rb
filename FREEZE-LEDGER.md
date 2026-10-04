@@ -1171,3 +1171,24 @@ Single-player (vs KC) is unchanged.
 **Test:** `e2e/qtr-tap.js` (suites.txt), real downs and real taps. Live V450: K0 (e20 ran), K1 (keeps 1,2,3 + a fresh
 spawn), T0, T1 (`b PUNT clk120` — LQOB exactly), T2 FAIL, 2 passed; V453: 7/7 (one keep at 1.6 s, the snap at 1.7 s;
 the receiver's first Q2 snap at the hand-off spot).
+
+## V455 (2026-10-03): the waiting phone's own game canvas is not composited under the opponent's screen
+
+V450's replay (the opponent's screen on the wait screen) put a second full-screen WebGL layer over the engine's canvas.
+On a GPU-less browser (the gate's SwiftShader Chrome) that stalled the receiving page — and its partner — for over a
+second at a quarter-end hand-off: `OUTCOME held (OTHER) — the engine is not drawing frames (fps 0)`, then TURN-RESCUE
+applied it (the right drive every time). The V450 gate: v434-horn M4 and v434-horn-outcomes M3/M6/M6b H3 ("a rescuer
+acted at the horn"), batch and alone; V449 had none (3/3); bisect: the link alone no, the rendering yes. Not seen on real
+phones (GRRL, V450: 11 hand-offs each way, no hold).
+
+**The fix (the replay's show/hide):** while the replay covers it, the engine canvas is `visibility: hidden` — the engine
+keeps running and drawing, the compositor skips the layer; `hide()` restores it in the same step the replay goes away (the
+hand-off, a stale link, the match's end). Taps during the replay already went to the engine canvas under a
+`pointer-events: none` replay; on a waiting phone nothing there needs one.
+
+**Measured:** the punt-at-the-Q1-horn probe 4/4 with no hold (about half the runs held before); v434-horn 7/7 (V453
+without it: M4 H3 FAIL); opp-view 6/6 (fidelity ≥ 99.9 %, smoothness, W4 "the waiting phone's own game is untouched").
+
+Also: `e2e/v432-rematch-join.js` R1 reads the resume's restored record from the audit's `flow-stale` guard when the
+11-line diag ring has already dropped `FLOW restored …` (since V450 a waiting phone logs the replay's VIEW lines too —
+R1 failed on V453 with R2–R4 green).
