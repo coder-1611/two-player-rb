@@ -17,7 +17,8 @@
 //  5. the five as MP4s (1080p, 60 fps, the headline over the first seconds) in
 //     ~/Projects/two-player-rb/highlight plays/YYYY-MM-DD/, with README.md; a notification on the Mac
 //
-//   node tools/highlights/daily.js            what the LaunchAgent runs at 18:00 (and 18:30: a day already done exits)
+//   node tools/highlights/daily.js            what the LaunchAgent runs at 18:00 (18:30 and 20:00: a day already done and
+//                                             judged exits; one the judge failed is tried again)
 //   --force                 run again even if today's highlights exist
 //   --until MS / --hours N  the window (default: the 24 h up to now)
 //   --archive DIR --out DIR --runs DIR --no-firebase --no-video --height N --include-test   (tests, proofs)
@@ -237,7 +238,12 @@ async function guardState() {
     const t0 = Date.now();
     const dayDir = path.join(OUT, DATE), runDir = path.join(RUNS, DATE);
     log('=== highlights ' + DATE + ': the plays from ' + new Date(SINCE).toLocaleString() + ' to ' + new Date(UNTIL).toLocaleString() + ' ===');
-    if (!FORCE && fs.existsSync(path.join(dayDir, 'README.md'))) { log('today\'s highlights are already there — nothing to do (' + dayDir + ')'); process.exit(0); }
+    // a day is done when its README is written and judged (a day the judge failed — a usage limit, say — gets its
+    // second and third chances at 18:30 and 20:00)
+    const prev = loadJson(path.join(runDir, 'status.json'), null);
+    const judgedBefore = prev && prev.ok && !/FAILED/.test(String(prev.judge));
+    if (!FORCE && fs.existsSync(path.join(dayDir, 'README.md')) && (judgedBefore || !prev)) { log('today\'s highlights are already there — nothing to do (' + dayDir + ')'); process.exit(0); }
+    if (!FORCE && prev && !judgedBefore) log('the earlier run today was not judged (' + prev.judge + ') — trying again');
     // one run at a time (a lock older than 3 h is a crashed run)
     const lock = path.join(RUNS, '..', 'lock');
     fs.mkdirSync(path.dirname(lock), { recursive: true });

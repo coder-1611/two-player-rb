@@ -6,8 +6,9 @@
 // Every hour (LaunchAgent com.rb2p.plays-archive — tools/install-plays-archive.sh):
 //   1. MOVES each play older than 24 h from Firebase (rooms/{code}/plays/{role}/p{ms}) to
 //      ~/Projects/two-player-rb/.rb2p/plays-archive/{YYYY-MM-DD}/{CODE}/{role}-p{ms}.json — written, read back, and only
-//      then deleted from Firebase (only that play's node). Rooms checked: the ones played in the last 10 days (the
-//      audit watcher's state), the live list, and every room this job has seen plays in until it is empty;
+//      then deleted from Firebase (only that play's node). Rooms checked: the ones active since 26 h before this job's
+//      last run (the audit watcher's state: a play is recorded at a snap, which the audit sees — so a Mac that was off
+//      looks back over the gap), the live list, and every room this job has seen plays in until it is empty;
 //   2. deletes archived plays older than 30 days (whole day folders);
 //   3. publishes the guard, embedcode/playrec {on, at, usedMB, budgetMB}: the phones record only while it is on and
 //      fresh (< 26 h) — off once this month's play downloads reach the budget (default 3000 MB of the plan's 10 GB),
@@ -56,7 +57,7 @@ const dayKey = ms => { const d = new Date(ms); return d.getFullYear() + '-' + pa
 function candidateRooms(ledger) {
     if (ONLY) return [ONLY];
     const set = new Set(Object.keys(ledger.rooms || {}));
-    const since = Date.now() - 10 * 86400e3;
+    const since = Math.min(Date.now(), Number(ledger.lastRun) || 0) - 26 * 3600e3;   // ~470 rooms on a busy day
     const st = loadJson(path.join(RB2P, 'audit-watch-state.json'), {});
     for (const [code, v] of Object.entries((st && st.rooms) || {})) if (v && Number(v.act) >= since) set.add(code);
     const live = loadJson(path.join(RB2P, 'live-rooms.json'), {});
@@ -136,7 +137,7 @@ function candidateRooms(ledger) {
             fs.unlinkSync(tmp);
         } catch (e) { errors++; log('flag: ' + String(e.message || e).split('\n')[0]); }
     }
-    if (!DRY) fs.writeFileSync(LEDGER, JSON.stringify(ledger, null, 1));
+    if (!DRY) { if (!ONLY && !errors) ledger.lastRun = now; fs.writeFileSync(LEDGER, JSON.stringify(ledger, null, 1)); }
     log('rooms ' + scanned + ', moved ' + moved + ' plays (' + Math.round(movedBytes / 1024) + ' KB), ' + waiting + ' under 24 h, ' +
         purged + ' day(s) past ' + KEEP_DAYS + ' d, errors ' + errors + ' | month ' + ledger.month + ': ' + flag.usedMB + ' of ' + flag.budgetMB +
         ' MB, recording ' + (on ? 'ON' : 'OFF (budget reached)') + (NOFLAG ? ' (flag not published)' : ''));

@@ -10,8 +10,9 @@
 //       sheet per short-listed play — next to JUDGE.md, for the judge
 //   H4  the judge's top5.json becomes the day's README and videos (360p here), in rank order
 //   H5  a judge that writes nothing (asked twice) leaves the measured order — and the README and status say so
+//   H5b the day's next chance (18:30 / 20:00) tries the judge again on a day it failed, and then it is judged
 //   H6  a day with no plays: the README says so, with the recording guard's state
-//   H7  a day already done is not redone (the 6:30 pm second chance exits at once)
+//   H7  a day already done and judged is not redone (the next chance exits at once)
 const fs = require('fs'), os = require('os'), path = require('path');
 const { execFileSync } = require('child_process');
 const L = require('./horn-lib');
@@ -32,11 +33,14 @@ const TOOLS = path.join(__dirname, '..', 'tools');
     try {
         await sleep(6000);
         for (const P of [g.a, g.b]) await P.page.evaluate(() => { window._rb2p_recForce = true; });
-        // ---- three real downs: a run, a pass, a run ----
-        for (let i = 0; i < 3; i++) {
+        // ---- real downs: a run, a pass, a run — and more (up to 6) until one has the engine's settle with its yards (H2) ----
+        const settled = async () => { const all = await TP.fbGet('rooms/' + code + '/plays') || {};
+            return [].concat(...Object.values(all).map(r => Object.values(r || {}))).some(p => p.res && p.res.type && p.res.type !== 'handoff' && p.res.gain != null); };
+        for (let i = 0; i < 6; i++) {
+            if (i >= 3 && await settled()) break;
             const o = await L.offense(g, 40000); if (!o.ok) { console.log('  (down ' + i + ': nobody has the ball)'); continue; }
             const before = await rec(o.off.page);
-            const d = await L.realDown(o.off.page, { buttons: true, pass: i === 1 });
+            const d = await L.realDown(o.off.page, { buttons: true, pass: i % 3 === 1 });
             const st = await L.until(async () => { const r = await rec(o.off.page); return { ok: !!(r && before && r.uploads > before.uploads), r }; }, 30000, 500);
             console.log('  down ' + i + ': ' + JSON.stringify(d && { result: d.result, gain: d.gainYds }) + ' stored ' + JSON.stringify(st.r && st.r.last));
             await sleep(1500);
@@ -90,6 +94,11 @@ const TOOLS = path.join(__dirname, '..', 'tools');
         check('H5 a judge that writes nothing (asked twice) leaves the measured order — said in the README and the status',
               /FAILED/.test(String(st2.judge)) && st2.picks.length === want && /The judge failed/.test(readme2) && /measured/.test(readme2),
               JSON.stringify({ judge: st2.judge, picks: st2.picks, errors: st2.errors, tail: o2.trim().split('\n').slice(-3) }));
+        // ---- H5b: the next chance judges the day the judge failed ----
+        const o5b = daily(['--no-video', '--judge-cmd', 'node ' + path.join(__dirname, 'highlights-stub-judge.js')]);
+        const st5b = JSON.parse(fs.readFileSync(path.join(rd, 'status.json'), 'utf8'));
+        check('H5b the next chance tries the judge again on a day it failed — and the day is judged', /trying again/.test(o5b) && st5b.judge === 'test command' && st5b.ok === true,
+              JSON.stringify({ judge: st5b.judge, ok: st5b.ok, tail: o5b.trim().split('\n').slice(-3) }));
         // ---- H6: a day with no plays ----
         const out6 = path.join(tmp, 'out6'), runs6 = path.join(tmp, 'runs6');
         const o6 = (() => { try { return execFileSync('node', [path.join(TOOLS, 'highlights', 'daily.js'), '--archive', arch, '--out', out6, '--runs', runs6, '--no-firebase', '--include-test', '--judge-cmd', 'false', '--until', String(Date.now() - 10 * 86400e3)],
@@ -99,7 +108,7 @@ const TOOLS = path.join(__dirname, '..', 'tools');
               JSON.stringify({ readme6: readme6.slice(0, 300), tail: o6.trim().split('\n').slice(-2) }));
         // ---- H7: a finished day is not redone ----
         const t7 = Date.now(), o7 = daily(['--judge-cmd', 'false']);   // (never the real judge from a test)
-        check('H7 a day already done is not redone (the 6:30 pm second chance exits at once)', /already there/.test(o7) && Date.now() - t7 < 15000, o7.trim().split('\n').slice(-2).join(' | '));
+        check('H7 a day already done and judged is not redone (the next chance exits at once)', /already there/.test(o7) && Date.now() - t7 < 15000, o7.trim().split('\n').slice(-2).join(' | '));
     } finally {
         try { await g.cleanup(); } catch (e) {}
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}

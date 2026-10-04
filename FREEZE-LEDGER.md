@@ -1287,3 +1287,18 @@ The owner: "after an interception ... the DBs are comically fast" — "in max mo
 - Measured after: the DBs 0.24 → 0.165 at the pick; the returner 0.165 → 0.159 over a 5 s pick-six (top 19 yd/s).
 - Tests: `e2e/max-return-speed.js` R1–R4 (a MAX interception; a MAX fumble recovered by a DB; the engine's fatigue step
   on a boosted linebacker and DB never climbs; HARD untouched), in suites.txt.
+
+## V460 (2026-10-04): the daily highlights get a second and third chance at a day whose judge failed; the plays archive checks only the rooms that could hold plays; the recorder skips non-plays
+
+- **The highlights' chances:** a day is done when its README is written AND judged. A day whose judge failed (a usage
+  limit at 6 pm, say — the README then holds the measured order, said so) is judged again at 18:30 and at 20:00 (new in
+  the LaunchAgent); a crash before the README also gets those chances. `e2e/highlights.js` H5b.
+- **The plays archive** (`tools/plays-archive.js`, hourly) listed `rooms/{code}/plays` for every room the audit watcher
+  saw in 10 days: 1,728 requests at its first run. Now: the rooms active since 26 h before its last successful run
+  (a play is recorded at a snap, which the audit sees; a Mac that was off looks back over the gap; the first run after
+  this change checks every room once), the live list, and the rooms it still holds plays for. ~470 on a busy day.
+- **The H2 test** now plays until one down has the engine's settle with its yards (up to 6), instead of passing on none.
+- **The recorder skips non-plays:** the first real day (room ACIP, two games, 171 recordings) had 17 that were not plays
+  — a snap audit that never became a play, ended by the ball reset after 0.4–1.2 s, no result. A recording with no
+  result that never saw the ball dead and is under 2.5 s is not stored (a real play always ends dead: tackled, scored,
+  incomplete, out of bounds, sacked).
