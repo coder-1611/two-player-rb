@@ -12,26 +12,29 @@ The owner's words — this is your brief:
 > bunch of players, stiff arms breaking tackles, last moment hail marys, etc, I want an intelligent agent to see the plays
 > and be really good at choosing incredible plays."
 
-## What makes a play incredible — four things, weighed EQUALLY
+## What makes a play incredible — the owner's weighting (5 Oct)
 
-The owner, 4 Oct: "weigh game situation, difficulty mode, impact (sheer yardage), and unexpectedness (stiff arms jukes)
-equally". Score every candidate on each of the four (say 0–10 each, in your head) and rank by the total; no one of the
-four outranks the others.
+The owner, 5 Oct: "30% difficulty 40% spectacularness 20% situation and 10% impact"; "make max 12 points and hard 8 points
+and medium 3 and easy 1"; "don't choose interceptions unless they are EXTREMELY impressive". Score every candidate on the
+four and rank by the weighted total:
 
-1. **Game situation.** How much the moment mattered: the clock (the last seconds of a half or the game), the score (a
-   go-ahead or game-winning score, a comeback, a tie broken; a play in a blowout counts little), the down and distance
-   (a 4th-down conversion, a 3rd & long).
-2. **Difficulty mode.** The defense the player beat: `difficulty` in plays.tsv is the DEFENSE setting the offense faced —
-   MAX is the hardest (the defenders are fastest and smartest), then HARD, MED, EASY. The same play against MAX is worth
-   more than against EASY. (Blank = not recorded: judge it as MED.) For a defensive play (a pick-six, a fumble return),
-   it is the defense of the player who threw or fumbled — the returner beat that player's offense.
-3. **Impact — sheer yardage.** How far the play moved the ball: the gain, the return, the touchdown. A 60-yard play has
-   more impact than a 6-yard one, however it happened.
-4. **Unexpectedness.** What no one saw coming: defenders who dove and missed or were left behind (the game has no juke
-   button: elusiveness is the player steering past them), broken tackles, stiff arms that put a defender down, hurdles,
-   a catch in traffic, a deep ball that hangs, a pick returned all the way.
+1. **Spectacularness — 40%** (0-10). The moves no one saw coming: jukes (defenders who dove and missed or were left
+   behind — the game has no juke button: elusiveness is the player steering past them), broken tackles, stiff arms that
+   put a defender down, hurdles, a catch in traffic, a deep ball that hangs.
+2. **Difficulty — 30%** — NOT scored by you: fixed points from `difficulty` in plays.tsv (the DEFENSE setting the play
+   beat): **MAX 12, HARD 8, MED 3, EASY 1** (blank = not recorded: 3). For a defensive play (a pick-six, a fumble return)
+   it is the setting of the offense that threw or fumbled.
+3. **Game situation — 20%** (0-10). How much the moment mattered: the clock (the last seconds of a half or the game),
+   the score (a go-ahead or winning score, a comeback; a blowout counts little), the down and distance.
+4. **Impact — 10%** (0-10). Sheer yardage: the gain, the return, the touchdown.
 
-A play that is great on all four beats a play that is extreme on one. Use the frames to check what the numbers claim.
+**Total = 0.4 × spectacularness + 0.3 × difficulty points + 0.2 × situation + 0.1 × impact.**
+
+**Interceptions:** do NOT pick an interception or a pick-six unless it is EXTREMELY impressive — the return itself is
+spectacular (several defenders beaten, broken tackles, stiff arms or hurdles on the way) or it decides the game in its
+last seconds. A plain pick, or a pick-six that is a long run with nobody near, is not enough.
+
+Use the frames to check what the numbers claim.
 
 ## What is in this folder
 

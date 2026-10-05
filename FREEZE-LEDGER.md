@@ -1587,3 +1587,14 @@ each day into a viewable section".
   weighting. **`--tag NAME`** gives a second preview its own folders. Today's weighted preview went to the owner's
   Chromebook (KrwziFQu) at 13:08.
 - Tests: opp-view 7/7 (W3: exact frames at ~60/s).
+
+## V480 (2026-10-05): the judge's rules — 40/30/20/10, difficulty points 12/8/3/1, interceptions only when extreme
+- **The owner:** "30% difficulty 40% spectacularness 20% situation and 10% impact"; "make max 12 points and hard 8 points
+  and medium 3 and easy 1"; "don't choose interceptions unless they are EXTREMELY impressive".
+- **JUDGE.md:** total = 0.4 × spectacularness + 0.3 × difficulty points (fixed: MAX 12, HARD 8, MED 3, EASY 1; blank 3)
+  + 0.2 × situation + 0.1 × impact. A pick or pick-six only when the return itself is spectacular or it decides the game
+  in its last seconds. This replaces V465's equal weighting for the daily 5 am run too.
+- **The short list** (`features.js scoreOf`): no flat bonus for a pick (+2) or a pick-six (+6); difficulty bonus
+  12/8/3/1 scaled to 8/5.3/2/0.7 (unknown 2).
+- Today's re-pick (`--preview --to KrwziFQu --tag "picks 3"`) went to the owner's Chromebook.
+- Tests: highlights 8/8.

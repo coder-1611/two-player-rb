@@ -276,12 +276,12 @@ function scoreOf(f) {
         const a = f.pass.airYds || 0;
         if (f.pass.caught || f.pass.intercepted) s += a >= 50 ? 6 : a >= 40 ? 4.5 : a >= 30 ? 2.5 : a >= 20 ? 1 : 0;
         if (f.pass.caught) s += 1.5 * Math.min(2, f.pass.contested || 0) + ((f.pass.hangS || 0) >= 2.5 ? 1 : 0);
-        if (f.pass.intercepted) s += 2;
     }
-    if (f.pick6) s += 6;
+    // V480 (the owner: "don't choose interceptions unless they are EXTREMELY impressive"): no bonus for a pick itself — a
+    // return makes the list by its own moves (beaten, broken tackles) like any carry
     if (f.lateInHalf) s += f.td ? 10 : ((f.gain || 0) >= 20 ? 3 : 0);
     if (f.leadChange && f.q >= 4) s += 5;
-    s += ({ max: 3, ultramax: 3, hard: 2, medium: 1 }[String(f.dif || '').toLowerCase()] || 0);   // V465: the defense beaten counts
+    s += ({ max: 8, ultramax: 8, hard: 5.3, medium: 2, easy: 0.7 }[String(f.dif || '').toLowerCase()] || 2);   // V480: the owner's 12/8/3/1 (scaled), unknown as MED
     return Math.round(s * 10) / 10;
 }
 

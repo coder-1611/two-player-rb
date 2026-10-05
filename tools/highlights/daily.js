@@ -437,7 +437,7 @@ async function guardState() {
         if (WEIGHTS) {
             const w = {}; WEIGHTS.split(',').forEach(kv => { const [k, v] = kv.split('='); if (k && v) w[k.trim().toLowerCase()] = Number(v); });
             const line = (k, label, what) => (w[k] != null ? '- **' + label + ' — ' + w[k] + '%.** ' + what : '');
-            const head = ['# THIS RUN\'S WEIGHTING — it replaces "weighed EQUALLY" below', '',
+            const head = ['# THIS RUN\'S WEIGHTING — it replaces the weighting below', '',
                 'The owner asked for this weighting for this run. Score every candidate 0-10 on each of the four, multiply by these weights, and rank by the weighted total:', '',
                 line('spectacular', 'Spectacularness', 'the moves no one saw coming: jukes (defenders who dove and missed or were left behind), broken tackles, stiff arms that put a defender down, hurdles, a catch in traffic, a deep ball that hangs, a pick returned all the way.'),
                 line('difficulty', 'Difficulty mode', 'the defense the player beat (`difficulty` in plays.tsv): MAX highest, then HARD, MED, EASY.'),
