@@ -1491,3 +1491,21 @@ each day into a viewable section".
   message the creator (the reply's choice adds " (#N)"). Comments: #1's maker "★ PLAY OF THE DAY", #2/#3's "★ TOP 3".
 - Oct 4 was republished with the three uids (`--publish-only --until <Oct 4 run> --dif ...`).
 - Tests: `e2e/potd.js` D6b (#2's device, its own storage: TOP 3 — #2 and its headline) 12/12.
+
+## V474 (2026-10-05): a saved address (Home Screen, bookmark, shared link) does no harm
+- **The owner:** "when a phone saves to Home Screen ... they also save the full https://two-player-rb.vercel.app/?v=muv9020d
+  ... figure out a way so this doesn't affect anything negatively."
+- **The risk:**
+  - The once-per-session cache-bust redirect left any URL that already had `?v=` alone, and the engine loads as
+    `retrobowl.js?v=<the same token>`. A saved icon therefore asked for the same engine address on every launch:
+    GitHub Pages caches it 10 min and web.app 1 h, so after an update a launch could pair a new page with an old engine.
+    Vercel revalidates every time.
+  - A saved `?join=CODE` (an icon added at the name gate while holding an invite) auto-joined that old room on every
+    launch.
+- **The fix:**
+  - At a session's start, a `v` token that is missing, older than 10 min (it is Date.now() in base 36) or from the
+    future is replaced.
+  - A Home Screen launch (`navigator.standalone` / display-mode standalone) drops `join`.
+  - An invite code this device already joined (`rb2p_joins_used`, the last 30) fills the code box but does not join
+    by itself.
+- Tests: `e2e/home-screen.js` S1–S4 4/4; v410-lobby 4/4, a2hs 9/9, lobby-phone 12/12.

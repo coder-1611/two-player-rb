@@ -80,3 +80,4 @@ lobby-phone
 potd-layout
 game-dif
 inbox
+home-screen
