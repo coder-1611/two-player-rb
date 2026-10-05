@@ -1798,7 +1798,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V469<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V470<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1911,7 +1911,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V469</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V470</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -23084,13 +23084,31 @@
             try {
                 var gmMs = Number(window._rb2p_matchStartMs) || Date.now();
                 var gmVer = (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?');
+                // V470 (the owner: "clearly store the difficulty level in games so you can pick it out"): the game's record
+                // carries its difficulty — mode, a SAME game's dif, and difs/{role}: each device's own setting (the defense
+                // its offense faces). Role a writes the record; b finds it (keyed by a's start time) and adds its own. The
+                // room's config/sharedDifficulty holds only the LATEST setting — a rematch on another level overwrites it
+                // (WKAI, VOHK on 4 Oct) — so it can never say what an earlier game was played on.
+                var gmDif = ''; try { gmDif = String(window._rb2p_difficultyPref() || ''); } catch (eGD) {}
+                var gmMode = window._rb2p_diffMode === 'same' ? 'same' : 'different';
                 if (myRole === 'a') {
                     FB.remove(FB.ref(db, 'rooms/' + myRoom + '/audited')).catch(function () {});
                     FB.remove(FB.ref(db, 'rooms/' + myRoom + '/outcomes')).catch(function () {});
                     FB.remove(FB.ref(db, 'rooms/' + myRoom + '/p6')).catch(function () {});
-                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/games/' + gmMs), { ts: gmMs, by: myRole, qmins: currentQuarterMins, ver: gmVer }).catch(function () {});
+                    FB.set(FB.ref(db, 'rooms/' + myRoom + '/games/' + gmMs), { ts: gmMs, by: myRole, qmins: currentQuarterMins, ver: gmVer,
+                        mode: gmMode, dif: gmMode === 'same' ? gmDif : '', difs: { a: gmDif } }).catch(function () {});
+                } else {
+                    (function tagGameDif(room, tries) {   // b: this game's record is the newest one within 90 s of b's own start
+                        if (tries > 12 || !window._rb2p_fbRestGetX) return;
+                        window._rb2p_fbRestGetX('rooms/' + room + '/games', 4000).then(function (r) {
+                            var best = 0;
+                            Object.keys((r && r.ok && r.val) || {}).forEach(function (k) { var n = Number(k); if (Math.abs(n - gmMs) < 90000 && n > best) best = n; });
+                            if (!best) { setTimeout(function () { tagGameDif(room, tries + 1); }, 5000); return; }
+                            FB.set(FB.ref(db, 'rooms/' + room + '/games/' + best + '/difs/b'), gmDif).catch(function () {});
+                        }).catch(function () { setTimeout(function () { tagGameDif(room, tries + 1); }, 5000); });
+                    })(myRoom, 0);
                 }
-                if (window._rb2p_audit) window._rb2p_audit('game', { ms: gmMs, qmins: currentQuarterMins, ver: gmVer });
+                if (window._rb2p_audit) window._rb2p_audit('game', { ms: gmMs, qmins: currentQuarterMins, ver: gmVer, mode: gmMode, dif: gmDif });
                 if (window._rb2p_diagLog) window._rb2p_diagLog('GAME-START qmins=' + currentQuarterMins + ' — games in this room are checked apart');
             } catch (eGM) {}
             try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}

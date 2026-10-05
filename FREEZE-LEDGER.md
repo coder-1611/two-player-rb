@@ -1437,3 +1437,21 @@ each day into a viewable section".
   own `dif`.
 - **The #1 badge** sits beside the headline, as on the cards. On the big screen it covered the game's own scoreboard.
 - Tests: `e2e/potd.js` D10 (10/10).
+
+## V470 (2026-10-04): every game's record carries its difficulty; the highlights read only that; a pause; a preview
+- **The owner:** "#1 does not look like max. It is definitely hard mode. From now on clearly store the difficulty level
+  in games so you can pick it out" — and "don't run sonnet tmrw morning at all, start it day after", "at 12:15 pm submit
+  to me the top 5 so far".
+- **The game's record** `rooms/{code}/games/{start}`: `mode` ('same'|'different'), `dif` (a SAME game's level), and
+  `difs/{role}` (each device's own level, which is the defense its offense faces). Role a writes the record. Role b
+  finds it (the newest record within 90 s of its own start, retried every 5 s, up to a minute) and adds `difs/b`. The
+  'game' audit entry carries mode + dif too.
+- **The highlights** (`fillDifficulty`): the play's own `dif` (V465+), else its game's record (`difs[role]`, or a SAME
+  game's `dif`), else unknown. Never the room's config, which holds only the latest setting: it was wrong for VOHK and
+  for WKAI's first game. Today's #1 was republished as HARD (#2/#3 MAX).
+- **The pause:** `.rb2p/highlights/skip-until.json` (`until` ms). Runs before it do nothing (set: nothing on Mon 5 Oct;
+  Tue 6 Oct 5 am is the first run).
+- **`--preview`:** judged and rendered, never published, in its own folders (`highlight plays/DATE preview`,
+  `runs/DATE-preview`). It is not a day's run, so the next real run still judges its plays.
+- Tests: `e2e/game-dif.js` G1 (a SAME game on HARD: mode, dif, difs a+b). The two test pages share one browser's
+  storage, so a DIFFERENT game cannot give them two levels there. Highlights 8/8.

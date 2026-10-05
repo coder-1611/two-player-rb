@@ -78,3 +78,4 @@ fumble-popup
 potd
 lobby-phone
 potd-layout
+game-dif

@@ -60,6 +60,9 @@ function lastRunUntil() {
 }
 const SINCE = has('--hours') ? UNTIL - Number(opt('--hours', 24)) * 3600e3 : Math.max(UNTIL - 24 * 3600e3, lastRunUntil());
 const NOFB = has('--no-firebase'), NOVIDEO = has('--no-video'), FORCE = has('--force'), INCLUDE_TEST = has('--include-test');
+// V470: --preview — the owner's look at "the top 5 so far": judged and rendered like a real run, never published, in its
+// own folder ("YYYY-MM-DD preview"; runs/YYYY-MM-DD-preview), and not a day's run (the next real run still judges its plays)
+const PREVIEW = has('--preview');
 const HEIGHT = Number(opt('--height', 1080));
 const JUDGE_CMD = opt('--judge-cmd', null);
 const SHORT_MAX = 24;
@@ -246,25 +249,23 @@ function checkTop5(file, ids, want) {
 // play (the phone that recorded it), the defense's for a defender's (a pick or a fumble returned) — his name from the
 // room, his device (anonymous uid) from that phone's latest bind; that device gets the congrats.
 const FIREBASE = process.env.FIREBASE_BIN || 'firebase';
-// V467: a play recorded before V465 carries no difficulty: in a SAME-mode game it is the room's shared setting (a
-// DIFFERENT-mode game kept each player's own on his device: unknown). V468: the room keeps only its LATEST setting — a
-// RUN IT BACK rematch on another difficulty overwrites it (WKAI: game 1 on MAX, the rematch on HARD) — so it is used only
-// for the plays of the room's last game (rooms/{code}/games: each game's start); earlier games' plays stay unknown.
+// A play's difficulty (the defense its offense faced): the recorder's own (V465+), else its game's record (V470+:
+// rooms/{code}/games/{start}.difs/{role}, or a SAME game's .dif — the game is the newest record started by the play),
+// else unknown. Never the room's config: it holds only the LATEST setting (a rematch overwrites it), and was wrong for
+// both WKAI's first game and VOHK on 4 Oct. A wrong one is corrected with --publish-only --dif ID=level.
 async function fillDifficulty(plays) {
     const rooms = [...new Set(plays.filter(p => p && !p.dif && p.room).map(p => String(p.room)))];
     if (!rooms.length) return 0;
     const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
-    const get = async q => { try { const res = await fetch(DB + q + '.json?auth=' + tok, { cache: 'no-store' }); return res.ok ? await res.json() : null; } catch (e) { return null; } };
-    const cfg = {}, last = {};
-    for (const r of rooms) {
-        cfg[r] = await get('rooms/' + encodeURIComponent(r) + '/config');
-        const games = await get('rooms/' + encodeURIComponent(r) + '/games') || {};
-        last[r] = Math.max(0, ...Object.keys(games).map(Number).filter(Number.isFinite));
-    }
+    const games = {};
+    for (const r of rooms) { try { const res = await fetch(DB + 'rooms/' + encodeURIComponent(r) + '/games.json?auth=' + tok, { cache: 'no-store' }); games[r] = res.ok ? await res.json() || {} : {}; } catch (e) { games[r] = {}; } }
     let n = 0;
     for (const p of plays) {
-        const r = String(p && p.room), c = p && !p.dif && cfg[r];
-        if (c && c.diffMode === 'same' && c.sharedDifficulty && Number(p.at) >= last[r] - 5000) { p.dif = String(c.sharedDifficulty); n++; }
+        if (!p || p.dif) continue;
+        const gs = games[String(p.room)] || {}, at = Number(p.at) + 5000;
+        const key = Object.keys(gs).map(Number).filter(k => Number.isFinite(k) && k <= at).sort((x, y) => y - x)[0];
+        const g = key != null ? gs[key] : null, d = g && ((g.difs && g.difs[p.role]) || (g.mode === 'same' && g.dif));
+        if (d) { p.dif = String(d); n++; }
     }
     return n;
 }
@@ -344,9 +345,13 @@ async function guardState() {
         log('plays of the day ' + DATE + ' ' + await publishPotd(top, /sonnet|test/.test(String(st.judge))));
         process.exit(0);
     }
+    // V470: the owner can pause the run (".rb2p/highlights/skip-until.json": {"until": ms, "why": ...}) — "don't run sonnet
+    // tmrw morning at all, start it day after": a run before `until` does nothing (--force runs anyway)
+    const skip = loadJson(path.join(RUNS, '..', 'skip-until.json'), null);
+    if (!FORCE && !PREVIEW && skip && Date.now() < Number(skip.until)) { log('paused until ' + new Date(Number(skip.until)).toLocaleString() + ' (' + (skip.why || 'the owner') + ') — nothing to do'); process.exit(0); }
     const t0 = Date.now();
-    const dayDir = path.join(OUT, DATE), runDir = path.join(RUNS, DATE);
-    log('=== highlights ' + DATE + ': the plays from ' + new Date(SINCE).toLocaleString() + ' to ' + new Date(UNTIL).toLocaleString() + ' ===');
+    const dayDir = path.join(OUT, DATE + (PREVIEW ? ' preview' : '')), runDir = path.join(RUNS, DATE + (PREVIEW ? '-preview' : ''));
+    log('=== highlights ' + DATE + (PREVIEW ? ' (PREVIEW: not published)' : '') + ': the plays from ' + new Date(SINCE).toLocaleString() + ' to ' + new Date(UNTIL).toLocaleString() + ' ===');
     // a day is done when its README is written and judged (a day the judge failed — a usage limit, say — gets its
     // second and third chances at 18:30 and 20:00)
     const prev = loadJson(path.join(runDir, 'status.json'), null);
@@ -372,7 +377,7 @@ async function guardState() {
         log('archive: ' + plays.size + ' play(s) in the window');
         if (!NOFB) { try { await firebasePlays(plays); } catch (e) { status.errors.push('Firebase: ' + e.message); log('Firebase not read: ' + e.message); } }
         let all = [...plays.values()].filter(p => INCLUDE_TEST || !isTestRoom(String(p.room || '')));
-        if (!NOFB) { try { const n = await fillDifficulty(all); if (n) log('difficulty from the room settings: ' + n + ' play(s)'); } catch (e) { log('difficulty not read: ' + e.message); } }
+        if (!NOFB) { try { const n = await fillDifficulty(all); if (n) log('difficulty from the game records: ' + n + ' play(s)'); } catch (e) { log('difficulty not read: ' + e.message); } }
         // 2. measured
         const byId = new Map();
         const feats = all.map(p => { try { const f = F.features(p); byId.set(f.id, { f, play: p }); return f; } catch (e) { log('features ' + p.room + '/' + p.at + ': ' + e.message); return null; } })
@@ -444,7 +449,7 @@ async function guardState() {
         }
         status.picks = picks.map(p => p.id);
         // 5. the videos and the README
-        const lines = ['# Top ' + picks.length + ' plays — ' + new Date(UNTIL).toDateString(), '',
+        const lines = ['# Top ' + picks.length + ' plays' + (PREVIEW ? ' so far (a preview, ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ')' : '') + ' — ' + new Date(UNTIL).toDateString(), '',
             'The 24 hours to ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ': **' + feats.length + ' plays** in **' + status.games + ' game' + (status.games === 1 ? '' : 's') + '**. ' +
             (judged ? 'Picked by Claude ' + (JUDGE_CMD ? '(test judge)' : 'Sonnet 5.5') + ', which read every play\'s numbers and looked at the frames of the ' + short.length + ' short-listed ones.'
                     : '**The judge failed (' + judgeNote + '), so these are the five with the highest measured score, unjudged.**'), ''];
@@ -469,9 +474,10 @@ async function guardState() {
         lines.push('---', '', '<sub>Every play\'s numbers, the short list and the contact sheets the judge saw: `' + runDir + '`. Run ' + Math.round((Date.now() - t0) / 1000) + ' s.</sub>', '');
         writeAtomic(path.join(dayDir, 'README.md'), lines.join('\n'));
         status.ok = NOVIDEO || status.videos.length === picks.length;
-        try { status.potd = await publishPotd(picks.slice(0, 3).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), judged); log('plays of the day ' + status.potd); }
+        if (PREVIEW) status.potd = 'preview: not published';
+        else try { status.potd = await publishPotd(picks.slice(0, 3).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), judged); log('plays of the day ' + status.potd); }
         catch (e) { status.potd = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('potd: ' + status.potd); log('play of the day ' + status.potd); }
-        notify('Retro Bowl 2P — today\'s top ' + picks.length, (judged ? '' : '(unjudged) ') + picks.map(p => p.rank + '. ' + p.headline).join('  ').slice(0, 170));
+        notify(PREVIEW ? 'Retro Bowl 2P — the top ' + picks.length + ' so far (preview)' : 'Retro Bowl 2P — today\'s top ' + picks.length, (judged ? '' : '(unjudged) ') + picks.map(p => p.rank + '. ' + p.headline).join('  ').slice(0, 170));
         log('done: ' + dayDir);
     } catch (e) {
         status.errors.push('FATAL ' + (e && e.message || e)); log('FATAL ' + (e && e.stack || e));
