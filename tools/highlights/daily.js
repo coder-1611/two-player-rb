@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// tools/highlights/daily.js — V458: the day's five most incredible plays, chosen by Claude Sonnet 5.5 at 6 pm. The owner:
+// tools/highlights/daily.js — V458: the day's five most incredible plays, chosen by Claude Sonnet 5.5 (at 5 am since V469; 6 pm before). The owner:
 // "I want everyday at 6 pm a sonnet 5.5 to look at all the plays that happened in the 24 hr period and choose the top 5
 // most impressive, and no I don't just want normal 50 yard touch downs, the plays need to be incredible like juking a
 // bunch of players, stiff arms breaking tackles, last moment hail marys, etc, I want an intelligent agent to see the plays
@@ -17,7 +17,7 @@
 //  5. the five as MP4s (1080p, 60 fps, the headline over the first seconds) in
 //     ~/Projects/two-player-rb/highlight plays/YYYY-MM-DD/, with README.md; a notification on the Mac
 //
-//   node tools/highlights/daily.js            what the LaunchAgent runs at 18:00 (18:30 and 20:00: a day already done and
+//   node tools/highlights/daily.js            what the LaunchAgent runs at 05:00 (05:30 and 07:00: a day already done and
 //                                             judged exits; one the judge failed is tried again)
 //   --force                 run again even if today's highlights exist
 //   --until MS / --hours N  the window (default: the 24 h up to now)
@@ -46,7 +46,19 @@ const EFFORT = process.env.HL_EFFORT || 'high';
 const JUDGE_MS = (Number(process.env.HL_JUDGE_MIN) || 25) * 60000;
 const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 const UNTIL = Number(opt('--until', Date.now()));
-const SINCE = UNTIL - Number(opt('--hours', 24)) * 3600e3;
+// V469 (the run moved from 6 pm to 5 am): a window starts where the last judged run ended, never re-judging its plays —
+// the first 5 am run after the 6 pm ones covers 6 pm -> 5 am; then 24 h (--hours N: exactly N hours, the tests)
+function lastRunUntil() {
+    try {
+        const days = fs.readdirSync(RUNS).filter(d => /^\d{4}-\d\d-\d\d$/.test(d)).sort().reverse();
+        for (const d of days) {
+            let st = null; try { st = JSON.parse(fs.readFileSync(path.join(RUNS, d, 'status.json'), 'utf8')); } catch (e) {}
+            if (st && Number(st.until) < UNTIL - 3600e3 && (st.ok || (st.picks && st.picks.length))) return Number(st.until);
+        }
+    } catch (e) {}
+    return 0;
+}
+const SINCE = has('--hours') ? UNTIL - Number(opt('--hours', 24)) * 3600e3 : Math.max(UNTIL - 24 * 3600e3, lastRunUntil());
 const NOFB = has('--no-firebase'), NOVIDEO = has('--no-video'), FORCE = has('--force'), INCLUDE_TEST = has('--include-test');
 const HEIGHT = Number(opt('--height', 1080));
 const JUDGE_CMD = opt('--judge-cmd', null);

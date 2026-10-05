@@ -1,9 +1,10 @@
 #!/bin/bash
-# tools/install-highlights.sh — V458: the daily highlights on this Mac (LaunchAgent com.rb2p.highlights): every day at
-# 6 pm, tools/highlights/daily.js has Claude Sonnet 5.5 choose the five most incredible plays of the last 24 hours and
-# writes them as videos to ~/Projects/two-player-rb/highlight plays/YYYY-MM-DD/ (with README.md). 6:30 pm and 8 pm are
+# tools/install-highlights.sh — V458: the daily highlights on this Mac (LaunchAgent com.rb2p.highlights): V469 (the owner:
+# "make the sonnet run every morning at 5 am") every day at 5 am, tools/highlights/daily.js has Claude Sonnet 5.5 choose
+# the five most incredible plays since the last run (24 h) and writes them as videos to
+# ~/Projects/two-player-rb/highlight plays/YYYY-MM-DD/ (with README.md); the top 3 go on the front page. 5:30 and 7 am are
 # second chances (a day already done and judged exits at once; one whose judge failed is tried again); a Mac asleep at
-# 6 pm runs it when it wakes.
+# 5 am runs it when it wakes.
 #
 #   bash tools/install-highlights.sh            install (or update) and print the schedule launchd now holds
 #   bash tools/install-highlights.sh --now      also start one run right away (it will not redo a finished day)
@@ -33,9 +34,9 @@ cat > "$PLIST" <<EOF
   </dict>
   <key>WorkingDirectory</key><string>$REPO</string>
   <key>StartCalendarInterval</key><array>
-    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
   </array>
   <key>Nice</key><integer>5</integer>
   <key>StandardOutPath</key><string>$LOG</string>
@@ -45,6 +46,6 @@ EOF
 plutil -lint "$PLIST" >/dev/null
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
-echo "installed $LABEL: every day at 18:00 (and 18:30, 20:00) -> $LOG"
+echo "installed $LABEL: every day at 05:00 (and 05:30, 07:00) -> $LOG"
 launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | grep -E "state =|program =|Hour|Minute|path =" | head -12 || true
 if [ "$1" = "--now" ]; then launchctl kickstart "gui/$(id -u)/$LABEL" && echo "started one run now"; fi
