@@ -1861,7 +1861,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V478<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V479<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1974,7 +1974,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V478</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V479</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15401,7 +15401,7 @@
                     if (fr && CAP.onFrame) { try { CAP.onFrame(fr); } catch (e2) { console.warn('[2P VIEW] frame handler', e2); } }
                 }
                 var rr = oH.apply(this, arguments);
-                if (SND.shotGrab) { SND.shotGrab = false; try { SND.shot = { seq: SND.shotSeqNow || 0, png: document.getElementById('canvas').toDataURL('image/png') }; } catch (e3) {} SND.shotSeqNow = 0; }   // this frame's pixels (a test seam)
+                if (SND.shotGrab) { SND.shotGrab = false; try { SND.shotPng = document.getElementById('canvas').toDataURL('image/png'); } catch (e3) {} }   // this frame's pixels (a test seam); its number comes when it is encoded
                 if (CAP.fT0) { var fd = performance.now() - CAP.fT0; CAP.fT0 = 0;
                     if (fd < 200) { if (captured) CAP.capFrameMs = CAP.capFrameMs ? CAP.capFrameMs * 0.9 + fd * 0.1 : fd;
                                     else CAP.plainFrameMs = CAP.plainFrameMs ? CAP.plainFrameMs * 0.95 + fd * 0.05 : fd; } }
@@ -15657,7 +15657,11 @@
     // V476 (the owner: "too freaking choppy, literally bring back the first ever graphics we came up with"): the V450
     // opponent's screen — its rate (30 a second on the direct link), each frame encoded in its own frame as V450 did (V475's
     // after-the-paint encode could bunch frames on a busy laptop), the waiting phone at full resolution with V450's delay
-    function capInterval() { var base = NET && NET.mode() === 'fb' ? 166 : 33; return SND.costMs > 6 ? Math.max(base, 66) : (SND.costMs > 4 ? Math.max(base, 50) : base); }
+    // V479 (the owner: "it's way more laggy while viewing, the blending issue is gone though, try to make it less laggy"):
+    // with no blending (V478) the viewer sees exactly the frames that arrive, so the direct link sends EVERY frame the game
+    // draws (60 a second, the game's own rate; was 30, and 15-20 on a slow phone) — encoded after the paint, so the
+    // sender's game is untouched. Firebase (the fallback) stays about 5 a second (the free plan's downloads).
+    function capInterval() { return NET && NET.mode() === 'fb' ? 166 : 16; }
     // the per-frame encoding (the link's delta + the recorder's) runs in the task after the paint: the engine's frame
     // presents first; the encode fills the idle time before the next one
     var AP = { q: [], ch: null };
@@ -15692,11 +15696,12 @@
             var mode = NET && NET.mode(); if (!mode) return;
             if (!NET.canSend(SND.inFlight)) return;   // decided BEFORE encoding: a frame that cannot go is not built
             var shot = SND.shotWanted; if (shot) { SND.shotWanted = false; SND.shotGrab = true; }
-            linkSend(fr, mode, shot);   // V476: in the frame, as V450
+            SND.inFlight++;   // V479: its place is held now; it is built after the paint
+            afterPaint(function () { SND.inFlight--; linkSend(fr, mode, shot); });
         } catch (e) { SND.failed = true; console.warn('[2P VIEW] sender stopped', e); }
     };
     function linkSend(fr, mode, shot) {
-        if (SND.failed || !NET) { if (shot) { SND.shotWanted = true; SND.shotGrab = false; } return; }
+        if (SND.failed || !NET) { if (shot) { SND.shotWanted = true; SND.shotPng = null; } return; }
         try {
             var base = null, baseSeq = 0, now = performance.now();
             if (!SND.forceKey) {
@@ -15709,11 +15714,11 @@
                         for (var k = SND.ring.length - 1; k >= 0; k--) if (SND.ring[k].seq === SND.lastKeySeq) { base = SND.ring[k].fr; baseSeq = SND.lastKeySeq; break; }
                 }
             }
-            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) { if (shot) { SND.shotWanted = true; SND.shotGrab = false; } return; }   // a keyframe at most every half second
+            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) { if (shot) { SND.shotWanted = true; SND.shotPng = null; } return; }   // a keyframe at most every half second
             var tEnc = performance.now();
             var seq = ++SND.seq, bytes = encodeFrame(fr, base, seq, baseSeq);
             SND.costMs = SND.costMs * 0.9 + (performance.now() - tEnc + (fr.capMs || 0)) * 0.1;
-            if (shot) SND.shotSeqNow = seq;   // V476: the pixels are taken in this frame's end (below), with this number
+            if (shot) { SND.shot = { seq: seq, png: SND.shotPng }; SND.shotPng = null; }   // the pixels were taken in the frame's end
             if (!base) { SND.lastKeyAt = now; SND.lastKeySeq = seq; SND.forceKey = false; SND.keys++; }
             SND.ring.push({ seq: seq, fr: fr }); if (SND.ring.length > 90) SND.ring.shift();
             SND.lastSent = { fr: fr, seq: seq, at: now, mode: mode };
@@ -15788,8 +15793,8 @@
         if (!REC.active) return;
         try {
             var now = performance.now(), t = Math.round(now - REC.t0);
-            // V476: the frame's numbers encoded in the frame again (as V458-V461)
-            (function () {
+            // V479: the frame's numbers encoded after the paint (in order); what the engine is doing is read now
+            afterPaint(function () {
                 if (!REC.active) return;
                 try {
                     var key = !REC.prev || now - REC.lastKeyAt > REC_KEY_MS;
@@ -15801,7 +15806,7 @@
                     REC.prev = fr; REC.prevSeq = seq;
                     if (REC.raw > REC_MAX_RAW) recFinish('size');
                 } catch (eA) { REC.failed = true; REC.active = false; }
-            })();
+            });
             // the ball dead ends the play too (a play with no settle — the first down of a drive often has none — would
             // otherwise run to the 30 s cap): at most 6 s more, as the settle (the result) comes about 4 s after the
             // whistle; the settle, a hand-off or the ball set for the next snap ends it sooner

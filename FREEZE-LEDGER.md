@@ -1572,3 +1572,18 @@ each day into a viewable section".
   Recordings are 15 a second.
 - Tests: opp-view 7/7 (W3 rewritten: 197 distinct camera positions in 406 draws for 200 frames received, i.e. only
   frames the other phone drew).
+
+## V479 (2026-10-05): the direct link sends every frame (60 a second); a weighted judging option
+- **The owner:** "it's way more laggy while viewing, the blending issue is gone though, try to make it less laggy";
+  "find a better top 5, 30% difficulty 40% spectacularness 20% situation and 10% impact".
+- **The live view:**
+  - With no blending (V478) the viewer sees exactly the frames that arrive. The direct link now captures every frame
+    the game draws (`capInterval` 16 ms on p2p; was 33, and V450's back-off dropped a slow phone to 15-20). Each frame
+    is encoded after the paint (`afterPaint`), as is the recorder's.
+  - Measured: the viewer gets 58.7 frames a second (drawn 60.2/s, starved 0%, max gap 35 ms), under 40 KB/s. The
+    sender at CPU x4 had 3 late frames of 830 (0.4%; V474 1.1%, capture-off 1.2%).
+  - Firebase (the fallback, 6 of the owner's 8 views today) stays ~5 a second: the free plan's downloads.
+- **`daily.js --weights difficulty=30,spectacular=40,situation=20,impact=10`** heads the judge's brief with this run's
+  weighting. **`--tag NAME`** gives a second preview its own folders. Today's weighted preview went to the owner's
+  Chromebook (KrwziFQu) at 13:08.
+- Tests: opp-view 7/7 (W3: exact frames at ~60/s).

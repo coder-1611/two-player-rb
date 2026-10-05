@@ -118,7 +118,7 @@ async function directGame() {
         const distinct = new Set(pts.map(p => p[1].toFixed(3))).size;
         console.log('  W3 exact: ' + JSON.stringify({ distinctCameraPositions: distinct, draws: pts.length, framesReceived: sent }));
         check('W3 exact frames through a real down (no blending): only positions the other phone drew, 15+ new frames a second, a redraw on nearly every animation frame, few waits',
-              !!(r && pts.length > 20 && distinct <= sent + 3 && distinct < 0.75 * pts.length && sent / secs >= 15 && drawn >= 0.85 * rafN && starved / Math.max(1, drawn) < 0.10), JSON.stringify(Object.assign({ distinct }, w3)));
+              !!(r && pts.length > 20 && distinct <= sent + 3 && sent / secs >= 15 && drawn >= 0.85 * rafN && starved / Math.max(1, drawn) < 0.10), JSON.stringify(Object.assign({ distinct }, w3)));   // V479: 60 a second — a frame per draw
         const errs = (DEF.errors || []).filter(e => !/_GL2/.test(e));
         check('W4 the direct link carries under 40 KB/s, and the waiting phone\'s own game is untouched',
               bps < 40960 && defAfter.wait === true && defBefore.wait === true && defAfter.q === defBefore.q && defAfter.su === defBefore.su && defAfter.so === defBefore.so && errs.length === 0,

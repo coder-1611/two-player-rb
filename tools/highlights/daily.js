@@ -25,7 +25,9 @@
 //   --judge-cmd "CMD"       (tests) run CMD with the bundle folder as its last argument instead of Claude
 //   --publish-only [--dif ID=max,...] [--to DEVICE]   publish a finished day's top 3 again (V468: --dif corrects a play's
 //                           difficulty; V471: --to sends its top 5 to one device's inbox instead)
-//   --preview [--to DEVICE]  the top 5 so far, not published (V471: --to sends them to that device's inbox)
+//   --preview [--to DEVICE] [--tag NAME] [--weights difficulty=30,spectacular=40,situation=20,impact=10]
+//                           the top 5 so far, not published (V471: --to sends them to that device's inbox; V479: --tag a
+//                           second preview's folders, --weights this run's judging weights)
 // Env: HL_CLAUDE (the claude CLI), HL_MODEL (claude-sonnet-5-5), HL_EFFORT (high), HL_JUDGE_MIN (25), RB_E2E_PORT (8803)
 'use strict';
 const fs = require('fs');
@@ -376,7 +378,8 @@ async function guardState() {
     const skip = loadJson(path.join(RUNS, '..', 'skip-until.json'), null);
     if (!FORCE && !PREVIEW && skip && Date.now() < Number(skip.until)) { log('paused until ' + new Date(Number(skip.until)).toLocaleString() + ' (' + (skip.why || 'the owner') + ') — nothing to do'); process.exit(0); }
     const t0 = Date.now();
-    const dayDir = path.join(OUT, DATE + (PREVIEW ? ' preview' : '')), runDir = path.join(RUNS, DATE + (PREVIEW ? '-preview' : ''));
+    const TAG = String(opt('--tag', '')).replace(/[^\w -]/g, '').trim();   // V479: a second preview of a day, in its own folders
+    const dayDir = path.join(OUT, DATE + (PREVIEW ? ' preview' + (TAG ? ' ' + TAG : '') : '')), runDir = path.join(RUNS, DATE + (PREVIEW ? '-preview' + (TAG ? '-' + TAG.replace(/ /g, '-') : '') : ''));
     log('=== highlights ' + DATE + (PREVIEW ? ' (PREVIEW: not published)' : '') + ': the plays from ' + new Date(SINCE).toLocaleString() + ' to ' + new Date(UNTIL).toLocaleString() + ' ===');
     // a day is done when its README is written and judged (a day the judge failed — a usage limit, say — gets its
     // second and third chances at 18:30 and 20:00)
@@ -428,6 +431,22 @@ async function guardState() {
         // 3. the bundle the judge reads, outside ~/Projects (no project instructions get in its way)
         work = fs.mkdtempSync(path.join(os.tmpdir(), 'rb2p-highlights-' + DATE + '-'));
         fs.copyFileSync(path.join(__dirname, 'JUDGE.md'), path.join(work, 'JUDGE.md'));
+        // V479 (the owner: "find a better top 5, 30% difficulty 40% spectacularness 20% situation and 10% impact"): --weights
+        // puts this run's weighting at the top of the brief, over the equal weighting below
+        const WEIGHTS = opt('--weights', '');
+        if (WEIGHTS) {
+            const w = {}; WEIGHTS.split(',').forEach(kv => { const [k, v] = kv.split('='); if (k && v) w[k.trim().toLowerCase()] = Number(v); });
+            const line = (k, label, what) => (w[k] != null ? '- **' + label + ' — ' + w[k] + '%.** ' + what : '');
+            const head = ['# THIS RUN\'S WEIGHTING — it replaces "weighed EQUALLY" below', '',
+                'The owner asked for this weighting for this run. Score every candidate 0-10 on each of the four, multiply by these weights, and rank by the weighted total:', '',
+                line('spectacular', 'Spectacularness', 'the moves no one saw coming: jukes (defenders who dove and missed or were left behind), broken tackles, stiff arms that put a defender down, hurdles, a catch in traffic, a deep ball that hangs, a pick returned all the way.'),
+                line('difficulty', 'Difficulty mode', 'the defense the player beat (`difficulty` in plays.tsv): MAX highest, then HARD, MED, EASY.'),
+                line('situation', 'Game situation', 'the clock, the score, the down and distance.'),
+                line('impact', 'Impact', 'sheer yardage: how far the play moved the ball.'),
+                '', 'Everything else in this brief (how to look at the sheets, the output format, the fan line) still applies.', '', '---', ''].filter(x => x !== null).join('\n');
+            fs.writeFileSync(path.join(work, 'JUDGE.md'), head + fs.readFileSync(path.join(work, 'JUDGE.md'), 'utf8'));
+            log('judge weighting for this run: ' + WEIGHTS);
+        }
         fs.writeFileSync(path.join(work, 'plays.tsv'), tsv(feats, short));
         fs.writeFileSync(path.join(work, 'candidates.md'), '# The short list: ' + short.length + ' of ' + feats.length + ' plays (best measured first)\n\n' + short.map(candidateText).join('\n'));
         log('short list: ' + short.length + ' — drawing the contact sheets');
