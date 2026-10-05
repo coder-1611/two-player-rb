@@ -1623,3 +1623,15 @@ each day into a viewable section".
 ## V483 (2026-10-05): a defensive play gets a flat 10, not the difficulty points
 - The owner: "in defensive plays no difficulty boost, maybe just +10" — `points()`: a pick or a fumble return (the hero on
   defense) scores difficulty 10 whatever the setting; the brief says so. Re-picked as pool D on the owner's Chromebook.
+
+## V484 (2026-10-05): the difficulty in the replay's corner; the points formula is the daily standard (MAX 55, 1/3 a yard)
+- The owner: "give the difficulty in bottom right corner. I like this formula, maybe reduce yardage weight to 1/3 but
+  the top 5 is good for now, but from tomorrow make offense max +55"
+- **The corner badge:** the front page's replay (`#rb-potd-difc`) and the device inbox's (`#rb-inbox-difc`) show the
+  defense level (EASY/MED/HARD/MAX, the lobby's chip colors) bottom right on the screen itself, bigger in full screen;
+  the replay notes keep 72 px clear of it. `render.js video({difficulty})` draws the same badge into every MP4 frame
+  (`daily.js` passes the play's `dif`).
+- **The formula:** `daily.js` runs `--formula points` by default (from the 5 am run of Tue 6 Oct; `--formula weights`
+  gives the 40/30/20/10 brief). `points()`: offense MAX 55 (HARD 8, MED 2, EASY 0, unknown 2; defense flat 10),
+  yardage 1/3 a yard (was 0.5). The brief says so. Today's pool D stays as it is on the owner's Chromebook.
+- Tests: potd 9/9, inbox 4/4, highlights 8/8.

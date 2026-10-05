@@ -69,7 +69,7 @@ const NOFB = has('--no-firebase'), NOVIDEO = has('--no-video'), FORCE = has('--f
 const PREVIEW = has('--preview');
 // V481: --formula points — the owner's points formula (features.js points()): the judge scores only "spectacularness"
 // (0-16) for every candidate; the code adds the measured points and ranks by the total (x1.2 in overtime)
-const FORMULA = opt('--formula', '');
+const FORMULA = opt('--formula', 'points');   // V484 (the owner: "I like this formula"): the standard from 6 Oct; --formula weights: JUDGE.md's 40/30/20/10
 const ptsText = p => 'difficulty ' + p.difficulty + ' + TD ' + p.td + ' + first down ' + p.firstDown + ' + 4th-down ' + p.fourth + ' + yards ' + p.yards +
     ' + situation ' + p.situation + ' + moves ' + p.moves + ' (' + p.stiffArms + ' stiff arm' + (p.stiffArms === 1 ? '' : 's') + ', ' + p.jukes + ' juke' + (p.jukes === 1 ? '' : 's') + ') = ' + p.base + (p.ot ? ', OVERTIME x1.2' : '');
 const HEIGHT = Number(opt('--height', 1080));
@@ -456,9 +456,9 @@ async function guardState() {
         if (FORMULA === 'points') {
             const head = ['# THIS RUN\'S SCORING — the owner\'s points formula (it replaces the weighting below)', '',
                 'Every play\'s BASE points are already computed from the game\'s own numbers (`base_points` and `points_breakdown` in plays.tsv; the breakdown under each candidate in candidates.md):', '',
-                '- Difficulty (the defense beaten): MAX 40, HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
+                '- Difficulty (the defense beaten): MAX 55, HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
                 '- Touchdown +20; first down +5 (a converted 4th down gets it too); a converted 4th down +10 + the yards needed (4th & 19 converted: +29, plus the +5)',
-                '- Yardage: +0.5 per yard',
+                '- Yardage: +1/3 point per yard',
                 '- Situation: a game-winner (a go-ahead score) in the last 20 s of the 4th quarter, or any go-ahead score in overtime, +20; a game-tyer in the last 20 s +12; a go-ahead or tying score earlier in the 4th +6; a score as the clock hits 0:00 +5; a blowout (a 21+ point margin before the play) -5',
                 '- Moves: +2 per stiff arm and per juke (a defender who dove and missed, or was left behind)', '',
                 '**Your part: a raw SPECTACULARNESS score from 0 to 16 for every short-listed play** — how incredible it looks in the frames: jukes, broken tackles, stiff arms that put a defender down, hurdles, a catch in traffic, a ball that hangs.', '',
@@ -550,7 +550,7 @@ async function guardState() {
                     // from the snap to two seconds past the whistle (a recording runs on a little after the play)
                     const ends = f.events.filter(e => e.kind === 'td' || e.kind === 'end').map(e => e.t);
                     const toMs = (ends.length ? Math.max(...ends) : Math.max(0, ...f.events.map(e => e.t))) + 2500;
-                    await renderer.video(byId.get(p.id).play, path.join(dayDir, vname), { height: HEIGHT, caption: '#' + p.rank + '  ' + p.headline, toMs });
+                    await renderer.video(byId.get(p.id).play, path.join(dayDir, vname), { height: HEIGHT, caption: '#' + p.rank + '  ' + p.headline, toMs, difficulty: (byId.get(p.id).play || {}).dif || f.dif });
                     status.videos.push(vname); log('video ' + p.rank + ': ' + vname);
                 } catch (e) { status.errors.push('video ' + p.id + ': ' + e.message); log('video ' + p.id + ' failed: ' + e.message); vname = ''; }
             }

@@ -69,15 +69,15 @@ async function video(page, play, file, opts) {
     const FPS = opts.fps || 60, HEIGHT = opts.height || 1080, log = opts.log || (() => {});
     const aspect = (play.cw && play.ch) ? play.cw / play.ch : 16 / 9;
     const W = Math.round(HEIGHT * aspect / 2) * 2, Ht = Math.round(HEIGHT / 2) * 2;
-    const info = await page.evaluate(async (pl, W, Ht, caption) => {
+    const info = await page.evaluate(async (pl, W, Ht, caption, dif) => {
         const V = window._rb2p_view;
         const frames = await V.decodePlay(pl);
         const cv = document.createElement('canvas'); cv.width = W; cv.height = Ht;
         let out = cv, x = null;
-        if (caption) { out = document.createElement('canvas'); out.width = W; out.height = Ht; x = out.getContext('2d'); }
-        window.__pv = { frames, cv, out, x, caption, R: new V.Renderer(cv, true), V };
+        if (caption || dif) { out = document.createElement('canvas'); out.width = W; out.height = Ht; x = out.getContext('2d'); }
+        window.__pv = { frames, cv, out, x, caption, dif, R: new V.Renderer(cv, true), V };
         return { n: frames.length, lastT: frames[frames.length - 1].t };
-    }, play, W, Ht, opts.caption || '');
+    }, play, W, Ht, opts.caption || '', String(opts.difficulty || '').toLowerCase());
     const endT = opts.toMs ? Math.min(info.lastT, opts.toMs) : info.lastT;
     const total = Math.max(1, Math.floor(endT / (1000 / FPS)) + 1);
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -96,7 +96,17 @@ async function video(page, play, file, opts) {
                 if (P.x) {   // the caption, over the first 3.5 s (fading out over the last half second)
                     const W = P.out.width, Hh = P.out.height, x = P.x;
                     x.drawImage(P.cv, 0, 0);
-                    const alpha = t < 3000 ? 1 : Math.max(0, 1 - (t - 3000) / 500);
+                    // V484 (the owner: "give the difficulty in bottom right corner"): the defense's level, the whole video
+                    const DL = { easy: ['EASY', '#36e07a'], medium: ['MED', '#ffd23f'], hard: ['HARD', '#ff9a1f'], max: ['MAX', '#ff5d6c'], ultramax: ['MAX', '#ff5d6c'] }[P.dif];
+                    if (DL) {
+                        const fz2 = Math.round(Hh * 0.04), pad = Math.round(fz2 * 0.5);
+                        x.font = 'bold ' + fz2 + 'px Helvetica, Arial, sans-serif';
+                        const w2 = x.measureText(DL[0]).width + pad * 2, h2 = Math.round(fz2 * 1.6), bx2 = Math.round(W - w2 - W * 0.025), by2 = Math.round(Hh - h2 - Hh * 0.035);
+                        x.fillStyle = '#0a1838'; x.fillRect(bx2 - 3, by2 - 3, w2 + 6, h2 + 6);
+                        x.fillStyle = DL[1]; x.fillRect(bx2, by2, w2, h2);
+                        x.fillStyle = '#0a1838'; x.textBaseline = 'middle'; x.fillText(DL[0], bx2 + pad, by2 + h2 / 2 + 1);
+                    }
+                    const alpha = !P.caption ? 0 : t < 3000 ? 1 : Math.max(0, 1 - (t - 3000) / 500);
                     if (alpha > 0) {
                         const fz = Math.round(Hh * 0.045);
                         x.font = 'bold ' + fz + 'px Helvetica, Arial, sans-serif';
