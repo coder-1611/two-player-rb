@@ -1861,7 +1861,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V475<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V476<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1974,7 +1974,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V475</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V476</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15401,7 +15401,7 @@
                     if (fr && CAP.onFrame) { try { CAP.onFrame(fr); } catch (e2) { console.warn('[2P VIEW] frame handler', e2); } }
                 }
                 var rr = oH.apply(this, arguments);
-                if (SND.shotGrab) { SND.shotGrab = false; try { SND.shotPng = document.getElementById('canvas').toDataURL('image/png'); } catch (e3) {} }   // V475: this frame's pixels (a test seam); its number comes when it is encoded
+                if (SND.shotGrab) { SND.shotGrab = false; try { SND.shot = { seq: SND.shotSeqNow || 0, png: document.getElementById('canvas').toDataURL('image/png') }; } catch (e3) {} SND.shotSeqNow = 0; }   // this frame's pixels (a test seam)
                 if (CAP.fT0) { var fd = performance.now() - CAP.fT0; CAP.fT0 = 0;
                     if (fd < 200) { if (captured) CAP.capFrameMs = CAP.capFrameMs ? CAP.capFrameMs * 0.9 + fd * 0.1 : fd;
                                     else CAP.plainFrameMs = CAP.plainFrameMs ? CAP.plainFrameMs * 0.95 + fd * 0.05 : fd; } }
@@ -15664,7 +15664,10 @@
     // days but try to remove lag without compromising quality"): the full rate again — 30 frames a second on the direct link
     // whatever the phone (V462's back-off sent a slow phone's opponent 10-20, the replay gliding over long gaps). The lag is
     // cut instead by encoding each frame AFTER it is on screen (afterPaint below), not inside the engine's frame.
-    function capInterval() { return NET && NET.mode() === 'fb' ? 166 : 33; }
+    // V476 (the owner: "too freaking choppy, literally bring back the first ever graphics we came up with"): the V450
+    // opponent's screen — its rate (30 a second on the direct link), each frame encoded in its own frame as V450 did (V475's
+    // after-the-paint encode could bunch frames on a busy laptop), the waiting phone at full resolution with V450's delay
+    function capInterval() { var base = NET && NET.mode() === 'fb' ? 166 : 33; return SND.costMs > 6 ? Math.max(base, 66) : (SND.costMs > 4 ? Math.max(base, 50) : base); }
     // the per-frame encoding (the link's delta + the recorder's) runs in the task after the paint: the engine's frame
     // presents first; the encode fills the idle time before the next one
     var AP = { q: [], ch: null };
@@ -15698,13 +15701,12 @@
         try {
             var mode = NET && NET.mode(); if (!mode) return;
             if (!NET.canSend(SND.inFlight)) return;   // decided BEFORE encoding: a frame that cannot go is not built
-            SND.inFlight++;   // V475: its place is held now; it is built after the paint
             var shot = SND.shotWanted; if (shot) { SND.shotWanted = false; SND.shotGrab = true; }
-            afterPaint(function () { SND.inFlight--; linkSend(fr, mode, shot); });
+            linkSend(fr, mode, shot);   // V476: in the frame, as V450
         } catch (e) { SND.failed = true; console.warn('[2P VIEW] sender stopped', e); }
     };
     function linkSend(fr, mode, shot) {
-        if (SND.failed || !NET) { if (shot) SND.shotWanted = true; return; }
+        if (SND.failed || !NET) { if (shot) { SND.shotWanted = true; SND.shotGrab = false; } return; }
         try {
             var base = null, baseSeq = 0, now = performance.now();
             if (!SND.forceKey) {
@@ -15717,11 +15719,11 @@
                         for (var k = SND.ring.length - 1; k >= 0; k--) if (SND.ring[k].seq === SND.lastKeySeq) { base = SND.ring[k].fr; baseSeq = SND.lastKeySeq; break; }
                 }
             }
-            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) { if (shot) SND.shotWanted = true; return; }   // a keyframe at most every half second
+            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) { if (shot) { SND.shotWanted = true; SND.shotGrab = false; } return; }   // a keyframe at most every half second
             var tEnc = performance.now();
             var seq = ++SND.seq, bytes = encodeFrame(fr, base, seq, baseSeq);
             SND.costMs = SND.costMs * 0.9 + (performance.now() - tEnc + (fr.capMs || 0)) * 0.1;
-            if (shot) { SND.shot = { seq: seq, png: SND.shotPng }; SND.shotPng = null; }
+            if (shot) SND.shotSeqNow = seq;   // V476: the pixels are taken in this frame's end (below), with this number
             if (!base) { SND.lastKeyAt = now; SND.lastKeySeq = seq; SND.forceKey = false; SND.keys++; }
             SND.ring.push({ seq: seq, fr: fr }); if (SND.ring.length > 90) SND.ring.shift();
             SND.lastSent = { fr: fr, seq: seq, at: now, mode: mode };
@@ -15796,8 +15798,8 @@
         if (!REC.active) return;
         try {
             var now = performance.now(), t = Math.round(now - REC.t0);
-            // V475: the frame's numbers are encoded after the paint (in order); what the engine is doing is read now
-            afterPaint(function () {
+            // V476: the frame's numbers encoded in the frame again (as V458-V461)
+            (function () {
                 if (!REC.active) return;
                 try {
                     var key = !REC.prev || now - REC.lastKeyAt > REC_KEY_MS;
@@ -15809,7 +15811,7 @@
                     REC.prev = fr; REC.prevSeq = seq;
                     if (REC.raw > REC_MAX_RAW) recFinish('size');
                 } catch (eA) { REC.failed = true; REC.active = false; }
-            });
+            })();
             // the ball dead ends the play too (a play with no settle — the first down of a drive often has none — would
             // otherwise run to the 30 s cap): at most 6 s more, as the settle (the result) comes about 4 s after the
             // whistle; the settle, a hand-off or the ball set for the next snap ends it sooner
@@ -16014,7 +16016,7 @@
         var W = w, H = w / asp; if (H > h) { H = h; W = h * asp; }
         var L = r.left + (w - W) / 2, T = r.top + (h - H) / 2;
         cv.style.left = Math.round(L) + 'px'; cv.style.top = Math.round(T) + 'px'; cv.style.width = Math.round(W) + 'px'; cv.style.height = Math.round(H) + 'px';
-        var dpr = (RCV.lite || (RCV.R && RCV.R.software)) ? 1 : Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+        var dpr = Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);   // V476: full resolution always, as V450
         if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
         if (RCV.frame) { var fs = RCV.frame.style; fs.left = cv.style.left; fs.top = cv.style.top; fs.width = cv.style.width; fs.height = cv.style.height; }
         if (RCV.chip) {
@@ -16061,7 +16063,7 @@
     function paced(now) {
         var gap = RCV.lastTickAt ? now - RCV.lastTickAt : 16; RCV.lastTickAt = now;
         RCV.rafGap = RCV.rafGap * 0.9 + Math.min(gap, 400) * 0.1;
-        var lite = !!(RCV.R && RCV.R.software) || RCV.rafGap > 34;
+        var lite = false;   // V476: always full resolution, as V450 (V451 drew a slow page's replay at CSS resolution)
         if (lite !== RCV.lite) { RCV.lite = lite; place(); }
         return true;
     }
@@ -16077,7 +16079,7 @@
             var minOff = Infinity, offs = RCV.offs, jit = [];
             for (var i = 0; i < offs.length; i++) if (offs[i][1] < minOff) minOff = offs[i][1];
             for (var j = 0; j < offs.length; j++) jit.push(offs[j][1] - minOff);
-            var target = Math.max(RCV.mode === 'fb' ? 160 : 100, Math.min(900, median(RCV.gaps) * 2.2 + pctl(jit, 0.95) + 20));
+            var target = Math.max(50, Math.min(900, median(RCV.gaps) * 1.6 + pctl(jit, 0.9) + 10));   // V476: V450's
             RCV.delay += Math.max(-1.5, Math.min(1.5, target - RCV.delay));
             var playT = now - minOff - RCV.delay, fs = RCV.frames, A = null, B = null;
             for (var k = fs.length - 1; k >= 0; k--) if (fs[k].t <= playT) { A = fs[k]; B = fs[k + 1] || null; break; }

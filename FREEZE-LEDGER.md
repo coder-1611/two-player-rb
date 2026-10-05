@@ -1532,3 +1532,17 @@ each day into a viewable section".
 - **The congrats "seen" record:** `rooms/~potd/seen/{date}/{rank}` (`potd-replies.js` shows it). The owner asked who
   saw the popup.
 - Tests: `e2e/potd.js` D11 (full screen, both ways); opp-view (pixel-for-pixel); play-rec (15 fps recordings).
+
+## V476 (2026-10-05): the opponent's screen as V450 drew it
+- **The owner:** "too freaking choppy, literally bring back the first ever graphics we came up with. Then deploy
+  immediately".
+- **Restored V450's live view:**
+  - The sender's rate formula (30 a second on the direct link, as V450-V461).
+  - Each frame encoded inside its own frame (V475's after-the-paint encode is gone: it could bunch frames on a busy
+    laptop).
+  - The waiting phone always at full resolution (V451's lite mode, CSS resolution on a slow or GPU-less page, is gone).
+  - V450's playback delay (`median(gaps)*1.6 + p90(jitter) + 10`, floor 50 ms).
+- **Kept** (not the picture): the recorder riding the link's frames (V462), no screenshots in play (V463), the own
+  canvas hidden under the replay (V455, a freeze fix), the LIVE tag and watermark (V457), the glide's never-stretch rule
+  (V451).
+- Tests: opp-view 7/7 (W2 >= 99.9% pixel-identical, W3 smooth).
