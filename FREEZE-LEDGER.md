@@ -1342,3 +1342,13 @@ The owner: "there is slight lag in second half offense ever since we added the p
   1.5 / 2 / 5 ms sends 20 / 15 / 10 frames a second instead of 30 (the replay glides between them). The recorder uses
   only frames the link captures anyway while the link is at least as fast. After: 6.8% late frames with everything on.
 - opp-view W1–W7 and play-rec P1–P7 green.
+
+## V463 (2026-10-04): no screenshots in play — the last offense lag
+
+The owner: "fix, with the lag being the number 1 concern". A CPU profile of the offense phone at Chromebook speed found
+two old diagnostic systems taking pictures of the game: the V277 tap record (every tap on a touch phone, at most once a
+second: a screenshot at the tap and 700 ms later — a WebGL read-back and a JPEG encode on the main thread — then up to
+eight of them, ~100+ KB, re-uploaded) and the V239 telemetry (a screenshot every 15 s). The tap record is now text only
+and never during a live play (stuck screens are dead-ball screens); the 15 s screenshot is gone. Touch phone, CPU x4,
+link + recorder on: late frames 7.0% (V462) -> 3.1% (the no-capture baseline), worst engine frame 41.8 -> 17.4 ms.
+qtr-tap 7/7, run.js 15/15.
