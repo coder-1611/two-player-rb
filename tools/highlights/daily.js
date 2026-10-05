@@ -23,7 +23,9 @@
 //   --until MS / --hours N  the window (default: the 24 h up to now)
 //   --archive DIR --out DIR --runs DIR --no-firebase --no-video --height N --include-test   (tests, proofs)
 //   --judge-cmd "CMD"       (tests) run CMD with the bundle folder as its last argument instead of Claude
-//   --publish-only [--dif ID=max,...]   publish a finished day's top 3 again (V468: --dif corrects a play's difficulty)
+//   --publish-only [--dif ID=max,...] [--to DEVICE]   publish a finished day's top 3 again (V468: --dif corrects a play's
+//                           difficulty; V471: --to sends its top 5 to one device's inbox instead)
+//   --preview [--to DEVICE]  the top 5 so far, not published (V471: --to sends them to that device's inbox)
 // Env: HL_CLAUDE (the claude CLI), HL_MODEL (claude-sonnet-5-5), HL_EFFORT (high), HL_JUDGE_MIN (25), RB_E2E_PORT (8803)
 'use strict';
 const fs = require('fs');
@@ -274,10 +276,8 @@ async function fillDifficulty(plays) {
 // top: [{ pick, f, play }] in rank order (the first three). #1 keeps its V465 places — embedcode/potd's top level,
 // potdPlays/{date}, potdIndex/{date}'s top level — so a page still on V465 shows it; `top` lists all three, and #2/#3's
 // replays are potdPlays/{date}~2 and ~3 (fetched only on WATCH). Only #1's device uid is published (its congrats, its flair).
-async function publishPotd(top, judged) {
-    if (process.env.HL_NO_PUBLISH === '1' || has('--no-publish')) return 'skipped (--no-publish)';
-    top = (top || []).filter(t => t && t.pick && t.f && t.play).slice(0, 3);
-    if (!top.length) return 'nothing to publish';
+async function buildEntries(top, n, keyOf) {   // the published words + numbers for each play (rank order)
+    top = (top || []).filter(t => t && t.pick && t.f && t.play).slice(0, n);
     const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
     const get = async p => { try { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
     // the front page's words: the judge's fan line, else its reason without the contact sheet's frame numbers — a
@@ -299,7 +299,7 @@ async function publishPotd(top, judged) {
         if (binds.length) { uid = binds[binds.length - 1].uid || ''; if (!name) name = binds[binds.length - 1].name || ''; }
         const ends = f.events.filter(e => e.kind === 'td' || e.kind === 'end').map(e => e.t);
         const toMs = Math.round((ends.length ? Math.max(...ends) : Math.max(0, ...f.events.map(e => e.t))) + 2500);
-        const e = { rank: i + 1, key: DATE + (i ? '~' + (i + 1) : ''), id: pick.id, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense',
+        const e = { rank: i + 1, key: keyOf(i), id: pick.id, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense',
                     name: String(name).slice(0, 40), hero: f.hero || '', headline: pick.headline, why: short(pick.fan || noFrames(pick.why)), q: play.q, clk: play.clk,
                     dif: play.dif || '', toMs };
         if (i === 0) e.uid = uid;
@@ -307,8 +307,14 @@ async function publishPotd(top, judged) {
         const body = {}; for (const k of Object.keys(play)) if (k !== 'zt' && k !== 'encT') body[k] = play[k];
         bodies.push(body);
     }
-    const setPath = (p, v) => { const tmp = path.join(os.tmpdir(), 'potd-' + process.pid + '-' + Math.random().toString(36).slice(2) + '.json');
+    return { entries, bodies };
+}
+const setPath = (p, v) => { const tmp = path.join(os.tmpdir(), 'potd-' + process.pid + '-' + Math.random().toString(36).slice(2) + '.json');
         fs.writeFileSync(tmp, JSON.stringify(v)); try { execFileSync(FIREBASE, ['database:set', p, tmp, '--project', 'realretrobowl2p', '--force'], { stdio: 'pipe', timeout: 90000 }); } finally { try { fs.unlinkSync(tmp); } catch (e) {} } };
+async function publishPotd(top, judged) {
+    if (process.env.HL_NO_PUBLISH === '1' || has('--no-publish')) return 'skipped (--no-publish)';
+    const { entries, bodies } = await buildEntries(top, 3, i => DATE + (i ? '~' + (i + 1) : ''));
+    if (!entries.length) return 'nothing to publish';
     const one = entries[0], at = { date: DATE, judged: !!judged, ts: Date.now() };
     // the replays first: WATCH works the moment the summary appears
     entries.forEach((e, i) => setPath('/embedcode/potdPlays/' + e.key, Object.assign({}, e, at, { play: bodies[i] })));
@@ -316,6 +322,24 @@ async function publishPotd(top, judged) {
     setPath('/embedcode/potdIndex/' + DATE, { headline: one.headline, why: one.why, name: one.name, side: one.side, hero: one.hero, uid: one.uid, q: one.q, clk: one.clk, dif: one.dif, top: entries.map(card) });
     setPath('/embedcode/potd', Object.assign({}, one, at, { top: entries.map(card) }));
     return 'published the top ' + entries.length + ': ' + entries.map(e => '#' + e.rank + ' ' + e.side + ' — ' + (e.name || '?') + (e.dif ? ' (' + e.dif + ')' : '')).join(', ') + (one.uid ? '' : ' (#1: no device found)');
+}
+
+// V471 (the owner: "at 12:15 pm submit to me the top 5 so far ... send it to the chromebook named soham"): a message to ONE
+// device — embedcode/inbox/{id} (id = the first 8 characters of its anonymous uid, as in the device profiles: "KrwziFQu"
+// is the Chromebook named soham) with the top 5's words, and each play's numbers at embedcode/inboxPlays/{id}/{rank}
+// (fetched on WATCH). The game on that device shows it in a popup (index.html, V471 inbox).
+async function publishInbox(top, to, judged) {
+    if (process.env.HL_NO_PUBLISH === '1' || has('--no-publish')) return 'skipped (--no-publish)';
+    if (!/^[A-Za-z0-9]{6,12}$/.test(String(to || ''))) return 'no device id';
+    const { entries, bodies } = await buildEntries(top, 5, i => String(i + 1));
+    if (!entries.length) return 'nothing to send';
+    entries.forEach(e => { delete e.uid; });
+    entries.forEach((e, i) => setPath('/embedcode/inboxPlays/' + to + '/' + e.key, Object.assign({}, e, { play: bodies[i] })));
+    setPath('/embedcode/inbox/' + to, { ts: Date.now(), date: DATE, since: SINCE, until: UNTIL, judged: !!judged, from: 'Soham',
+        title: PREVIEW ? 'THE TOP ' + entries.length + ' SO FAR' : 'THE TOP ' + entries.length + ' PLAYS',
+        note: PREVIEW ? 'A preview: the plays since ' + new Date(SINCE).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) + ' — not on the front page.' : '',
+        plays: entries.map(e => ({ rank: e.rank, key: e.key, side: e.side, name: e.name, hero: e.hero, headline: e.headline, why: e.why, dif: e.dif, toMs: e.toMs })) });
+    return 'sent the top ' + entries.length + ' to device ' + to;
 }
 
 // ---------- 5. the output ----------
@@ -330,7 +354,8 @@ async function guardState() {
 (async () => {
     if (has('--publish-only')) {   // V465/V467: publish a finished day's top 3 (its run folder's top5.json/status.json, the archived plays)
         const st = loadJson(path.join(RUNS, DATE, 'status.json'), null), t5 = loadJson(path.join(RUNS, DATE, 'top5.json'), null);
-        const ids = (st && st.picks || []).slice(0, 3); if (!ids.length) { log('no finished day ' + DATE + ' in ' + RUNS); process.exit(1); }
+        const TO = opt('--to', '');   // V471: --to ID sends the day's top 5 to that device's inbox instead of the front page
+        const ids = (st && st.picks || []).slice(0, TO ? 5 : 3); if (!ids.length) { log('no finished day ' + DATE + ' in ' + RUNS); process.exit(1); }
         const top = [];
         for (const id of ids) {
             const pick = (t5 && t5.picks || []).find(p => p.id === id) || { id, headline: id, why: '' };
@@ -342,7 +367,8 @@ async function guardState() {
         // --dif ID=max,ID=hard: the owner's correction of a play's difficulty (V468)
         for (const kv of String(opt('--dif', '')).split(',').filter(Boolean)) { const [id, d] = kv.split('='); const t = top.find(x => x.pick.id === id); if (t && d) t.play.dif = d.toLowerCase(); }
         top.forEach(t => { t.f = F.features(t.play); });
-        log('plays of the day ' + DATE + ' ' + await publishPotd(top, /sonnet|test/.test(String(st.judge))));
+        if (TO) log('inbox ' + DATE + ' ' + await publishInbox(top, TO, /sonnet|test/.test(String(st.judge))));
+        else log('plays of the day ' + DATE + ' ' + await publishPotd(top, /sonnet|test/.test(String(st.judge))));
         process.exit(0);
     }
     // V470: the owner can pause the run (".rb2p/highlights/skip-until.json": {"until": ms, "why": ...}) — "don't run sonnet
@@ -474,7 +500,13 @@ async function guardState() {
         lines.push('---', '', '<sub>Every play\'s numbers, the short list and the contact sheets the judge saw: `' + runDir + '`. Run ' + Math.round((Date.now() - t0) / 1000) + ' s.</sub>', '');
         writeAtomic(path.join(dayDir, 'README.md'), lines.join('\n'));
         status.ok = NOVIDEO || status.videos.length === picks.length;
-        if (PREVIEW) status.potd = 'preview: not published';
+        if (PREVIEW) {
+            status.potd = 'preview: not published';
+            if (opt('--to', '')) {   // V471: the owner's look, on his own device
+                try { status.inbox = await publishInbox(picks.slice(0, 5).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), opt('--to', ''), judged); log('inbox: ' + status.inbox); }
+                catch (e) { status.inbox = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('inbox: ' + status.inbox); log('inbox ' + status.inbox); }
+            }
+        }
         else try { status.potd = await publishPotd(picks.slice(0, 3).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), judged); log('plays of the day ' + status.potd); }
         catch (e) { status.potd = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('potd: ' + status.potd); log('play of the day ' + status.potd); }
         notify(PREVIEW ? 'Retro Bowl 2P — the top ' + picks.length + ' so far (preview)' : 'Retro Bowl 2P — today\'s top ' + picks.length, (judged ? '' : '(unjudged) ') + picks.map(p => p.rank + '. ' + p.headline).join('  ').slice(0, 170));

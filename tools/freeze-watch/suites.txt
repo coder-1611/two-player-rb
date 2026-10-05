@@ -79,3 +79,4 @@ potd
 lobby-phone
 potd-layout
 game-dif
+inbox

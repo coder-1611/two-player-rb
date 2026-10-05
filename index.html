@@ -1019,6 +1019,35 @@
         #rb-potd-congrats .row { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
         #rb-potd-congrats button { font: bold 11px 'Press Start 2P', monospace; padding: 12px 16px; border: 3px solid #0a1838; cursor: pointer; }
         #rb-potd-congrats .send { background: #ffd23f; color: #0a1838; } #rb-potd-congrats .later { background: #2e4a7d; color: #fff; }
+        /* V471: the owner's inbox (one device's popup: the top 5 so far) — and the popups' words in the game's own font */
+        #rb-inbox { position: fixed; inset: 0; z-index: 10002; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.88); }
+        #rb-inbox[hidden] { display: none; }
+        #rb-inbox .box { width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; padding: 18px;
+                         background: #0c2250; border: 5px solid #ffd23f; box-shadow: 6px 6px 0 #0a1838; color: #fff; display: flex; flex-direction: column; gap: 10px; }
+        #rb-inbox .ib-from { margin: 0; font-size: 9px; letter-spacing: 2px; color: #9fb3cc; }
+        #rb-inbox h2 { margin: 0; font: bold 15px 'Press Start 2P', monospace; color: #ffd23f; line-height: 1.5; }
+        #rb-inbox .ib-note { margin: 0; font-size: 9px; line-height: 1.8; color: #c9d4e6; }
+        #rb-inbox .ib-note:empty { display: none; }
+        #rb-inbox .ib-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; box-sizing: border-box; border: 2px solid #fff; overflow: hidden; background-color: #1e7a35;
+                              background-image: linear-gradient(90deg, #165f29 0 8.333%, transparent 8.333% 91.667%, #165f29 91.667%),
+                                                repeating-linear-gradient(90deg, transparent 0 calc(8.333% - 2px), rgba(255,255,255,.45) calc(8.333% - 2px) 8.333%); }
+        #rb-inbox .ib-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        #rb-inbox .ib-go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 18px; font: bold 12px 'Press Start 2P', monospace;
+                           background: #ffd23f; color: #0a1838; border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
+        #rb-inbox .ib-go[hidden] { display: none; }
+        #rb-inbox .ib-say { position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0; text-align: center; font-size: 9px; color: #fff; text-shadow: 1px 1px 0 #0a1838; }
+        #rb-inbox .ib-head { margin: 0; display: flex; gap: 10px; align-items: flex-start; font: bold 11px 'Press Start 2P', monospace; line-height: 1.7; }
+        #rb-inbox .ib-rank { flex: none; padding: 4px 6px; background: #ffd23f; color: #0a1838; border: 2px solid #0a1838; line-height: 1; }
+        #rb-inbox .ib-who { margin: 0; font-size: 10px; color: #ffd23f; line-height: 1.8; }
+        #rb-inbox .ib-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+        #rb-inbox .ib-list button { width: 100%; display: flex; gap: 10px; align-items: baseline; padding: 8px 10px; text-align: left; cursor: pointer; font: 9px/1.7 'Press Start 2P', monospace;
+                                    color: #e7edf6; background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.3); }
+        #rb-inbox .ib-list button.on { border-color: #ffd23f; background: rgba(255,210,63,.12); }
+        #rb-inbox .ib-list b { color: #ffd23f; flex: none; }
+        #rb-inbox .ib-list .potd-dif { margin-left: auto; flex: none; font-size: 7px; padding: 3px 4px; }
+        #rb-inbox .ib-close { align-self: center; padding: 12px 22px; font: bold 11px 'Press Start 2P', monospace; background: #2e4a7d; color: #fff; border: 3px solid #0a1838; cursor: pointer; }
+        #rb-potd-congrats .box, #rb-news .box, #rb-inbox .box { font-family: 'Press Start 2P', monospace; -webkit-font-smoothing: none; }
+        #rb-potd-congrats .box p, #rb-news .box p { font-size: 10px; line-height: 1.9; }
         #rb-news { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.84); }
         #rb-news[hidden] { display: none; }
         #rb-news .box { width: min(540px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #0d2a6b; border: 5px solid #fff;
@@ -1751,6 +1780,19 @@
             <button id="rb-news-later" type="button" style="background:#2e4a7d;color:#fff;margin-top:10px">LATER</button>
         </div>
     </div>
+    <!-- V471: the owner's inbox — a message to ONE device (embedcode/inbox/{the device's id}) -->
+    <div id="rb-inbox" hidden>
+        <div class="box" role="dialog" aria-labelledby="rb-inbox-title">
+            <p class="ib-from">&#9993; FROM <span id="rb-inbox-from">SOHAM</span></p>
+            <h2 id="rb-inbox-title"></h2>
+            <p class="ib-note" id="rb-inbox-note"></p>
+            <div class="ib-stage"><canvas id="rb-inbox-cv" width="854" height="480"></canvas><button class="ib-go" id="rb-inbox-go" type="button">&#9654; WATCH</button><p class="ib-say" id="rb-inbox-say"></p></div>
+            <p class="ib-head"><span class="ib-rank" id="rb-inbox-rank"></span><span id="rb-inbox-headline"></span></p>
+            <p class="ib-who"><span id="rb-inbox-who"></span> <i class="potd-dif" id="rb-inbox-dif"></i></p>
+            <ol class="ib-list" id="rb-inbox-list" aria-label="The plays"></ol>
+            <button class="ib-close" id="rb-inbox-close" type="button">CLOSE</button>
+        </div>
+    </div>
     <div id="rb-potd-congrats" hidden>
         <div class="box">
             <h2>&#127942; CONGRATS!</h2>
@@ -1798,7 +1840,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V470<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V471<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1911,7 +1953,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V470</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V471</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -19799,6 +19841,105 @@
             window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, fit: fit, cue: cue,
                 stage: function (rank) { var e = list[rank - 1]; if (e) stage(e); return !!e; },
                 state: function () { return { cur: cur && cur.date, rank: sel && sel.rank, n: list.length, playing: !!playing, winners: winners, wide: wide() }; } };
+        })();
+
+        // ===== V471: the owner's inbox (the owner: "at 12:15 pm submit to me the top 5 so far plays so I can check out ...
+        // send it to the chromebook named soham") — a message to ONE device: embedcode/inbox/{id}, id = the first 8
+        // characters of its anonymous uid (the device profiles' id). tools/highlights/daily.js --preview --to ID writes it
+        // (the plays' numbers at embedcode/inboxPlays/{id}/{rank}, fetched on WATCH). Checked on opening the game and every
+        // 3 minutes in the lobby; never over a game or another popup; CLOSE marks it seen (localStorage rb2p_inbox_seen). =====
+        (function () {
+            var PUB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
+            var el = function (id) { return document.getElementById(id); };
+            var $box = el('rb-inbox'), $cv = el('rb-inbox-cv'), $go = el('rb-inbox-go'), $list = el('rb-inbox-list'), $say = el('rb-inbox-say');
+            if (!$box || !$cv) return;
+            var $stage = $cv.parentNode;
+            var SRC = window._rb2p_inboxSource || null;   // test seam: { msg, plays: { key: data } }
+            var msg = null, myId = '', sel = null, R = null, playing = null, cache = {};
+            var DIF = { easy: 'EASY', medium: 'MED', hard: 'HARD', max: 'MAX', ultramax: 'MAX' };
+            function get(path) { return fetch(PUB + path + '.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
+            function chip(i, d) { var k = String(d || '').toLowerCase(); if (k === 'ultramax') k = 'max'; if (!DIF[k]) { i.hidden = true; return false; } i.hidden = false; i.textContent = DIF[k]; i.setAttribute('data-dif', k); return true; }
+            function who(p) { return (p.side === 'defense' ? 'DEFENSE · ' : 'OFFENSE · ') + (p.name || 'a player') + (p.hero ? '  (' + p.hero + ')' : ''); }
+            async function getId() {
+                if (window._rb2p_inboxId) return window._rb2p_inboxId;   // test seam
+                try { if (window._rb2p_fbAuthUrl) await window._rb2p_fbAuthUrl(PUB); } catch (e) {}   // the anonymous sign-in
+                try { return String(window._rb2p_uid ? window._rb2p_uid() || '' : '').slice(0, 8); } catch (e) { return ''; }
+            }
+            function pick(p) {
+                playing = null; sel = p;
+                if (R) { var fresh = $cv.cloneNode(false); $cv.parentNode.replaceChild(fresh, $cv); $cv = fresh; R = null; }   // WebGL: a fresh canvas per play
+                el('rb-inbox-rank').textContent = '#' + p.rank; el('rb-inbox-headline').textContent = p.headline || '';
+                el('rb-inbox-who').textContent = who(p); chip(el('rb-inbox-dif'), p.dif);
+                $go.textContent = '▶ WATCH #' + p.rank; $go.hidden = false; $say.textContent = '';
+                Array.prototype.forEach.call($list.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.key === String(p.key)); });
+            }
+            async function watch() {
+                var p = sel; if (!p) return;
+                $go.hidden = true; $say.textContent = '';
+                var data = cache[p.key] || (SRC ? (SRC.plays || {})[p.key] : await get('embedcode/inboxPlays/' + myId + '/' + p.key));
+                if (sel !== p) return;
+                var V = window._rb2p_view;
+                if (!data || !data.play || !V || !V.decodePlay || !V.Renderer) { $go.hidden = false; $say.textContent = 'The replay is not available right now.'; return; }
+                cache[p.key] = data;
+                var frames; try { frames = await V.decodePlay(data.play); } catch (e) { frames = null; }
+                if (sel !== p) return;
+                if (!frames || !frames.length) { $go.hidden = false; $say.textContent = 'The replay could not be read.'; return; }
+                $cv.width = data.play.cw || 854; $cv.height = data.play.ch || 480;
+                try { if (!R) R = new V.Renderer($cv, true); } catch (e) { $go.hidden = false; $say.textContent = 'This browser cannot draw the replay.'; return; }
+                var token = playing = {}, t0 = performance.now(), last = frames[frames.length - 1].t, end = Math.min(last, Number(data.toMs || p.toMs) || last);
+                (function step(now) {
+                    if (playing !== token || $box.hidden) { if (playing === token) playing = null; return; }
+                    var t = now - t0;
+                    if (t > end) { playing = null; $go.textContent = '↻ REPLAY #' + p.rank; $go.hidden = false; return; }
+                    var i = 0; while (i + 1 < frames.length && frames[i + 1].t <= t) i++;
+                    var A = frames[i], B = frames[i + 1];
+                    try {
+                        if (!B || B.t <= A.t) R.draw(A.f, null);
+                        else { var a = Math.min(1, Math.max(0, (t - A.t) / (B.t - A.t))); R.draw(V.lerpFrame(A.f, B.f, a), V.lerpPositions(A.f, B.f, a)); }
+                    } catch (e) { playing = null; $go.hidden = false; $say.textContent = 'The replay stopped.'; return; }
+                    requestAnimationFrame(step);
+                })(performance.now());
+            }
+            $go.addEventListener('click', watch);
+            function open(m) {
+                msg = m;
+                el('rb-inbox-from').textContent = String(m.from || 'SOHAM').toUpperCase();
+                el('rb-inbox-title').textContent = m.title || 'THE TOP PLAYS';
+                el('rb-inbox-note').textContent = m.note || '';
+                $list.textContent = '';
+                var plays = (m.plays || []).filter(Boolean);
+                plays.forEach(function (p) {
+                    var li = document.createElement('li'), b = document.createElement('button'), r = document.createElement('b'), h = document.createElement('span'), c = document.createElement('i');
+                    b.type = 'button'; b.dataset.key = String(p.key); r.textContent = '#' + p.rank; h.textContent = (p.headline || '') + ' — ' + (p.name || 'a player');
+                    c.className = 'potd-dif'; b.appendChild(r); b.appendChild(h); if (chip(c, p.dif)) b.appendChild(c);
+                    b.addEventListener('click', function () { pick(p); watch(); });
+                    li.appendChild(b); $list.appendChild(li);
+                });
+                if (plays[0]) pick(plays[0]);
+                $box.hidden = false;
+            }
+            el('rb-inbox-close').addEventListener('click', function () {
+                playing = null; $box.hidden = true;
+                try { if (msg) localStorage.setItem('rb2p_inbox_seen', String(msg.ts)); } catch (e) {}
+            });
+            async function check() {
+                try {
+                    if (!$box.hidden || document.documentElement.classList.contains('rb-in-match')) return;
+                    var lob = el('rb-lobby'); if (lob && lob.style.display === 'none') return;
+                    var busy = ['rb-news', 'rb-potd-congrats', 'rb-a2hs'].some(function (id) { var x = el(id); return x && !x.hidden; });
+                    if (busy) return;   // one popup at a time: the next check
+                    if (!myId) myId = await getId();
+                    if (!myId) return;
+                    var m = SRC ? SRC.msg : await get('embedcode/inbox/' + myId);
+                    if (!m || !m.ts || !m.plays) return;
+                    var seen = 0; try { seen = Number(localStorage.getItem('rb2p_inbox_seen')) || 0; } catch (e) {}
+                    if (Number(m.ts) <= seen) return;
+                    open(m);
+                } catch (e) {}
+            }
+            setTimeout(check, 3000);
+            setInterval(check, 3 * 60000);
+            window._rb2p_inbox = { check: check, state: function () { return { open: !$box.hidden, id: myId, rank: sel && sel.rank, playing: !!playing, n: msg && msg.plays ? msg.plays.length : 0 }; } };
         })();
 
         // ===== V457: iPhone — add the game to the Home Screen (the owner: "if the phone is an iphone, tell them to add it to

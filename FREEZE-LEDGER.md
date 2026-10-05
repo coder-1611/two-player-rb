@@ -1455,3 +1455,19 @@ each day into a viewable section".
   `runs/DATE-preview`). It is not a day's run, so the next real run still judges its plays.
 - Tests: `e2e/game-dif.js` G1 (a SAME game on HARD: mode, dif, difs a+b). The two test pages share one browser's
   storage, so a DIFFERENT game cannot give them two levels there. Highlights 8/8.
+
+## V471 (2026-10-04): a message to ONE device — the owner's "top 5 so far" on his Chromebook; the popups in the game's font
+- **The owner:** "at 12:15 pm submit to me the top 5 so far plays so I can check out ... send it to the chromebook named
+  soham". The game device profiles have it: id KrwziFQu (the first 8 characters of its anonymous uid), kind Chromebook,
+  name soham.
+- **The job:** `daily.js --preview --to ID` (and `--publish-only --to ID` for a finished day) writes
+  `embedcode/inbox/{ID}` (from, title, note, the 5 plays' words) and `embedcode/inboxPlays/{ID}/{rank}` (each play's
+  numbers, fetched on WATCH). `buildEntries()` is shared with the play-of-the-day publish.
+- **The page:** `#rb-inbox` checks `embedcode/inbox/{its uid's first 8}` on opening and every 3 min in the lobby, never
+  over a game or another popup. It shows FROM SOHAM, the title, a replay screen and the list (rank, headline, name,
+  difficulty chip). CLOSE marks it seen (`rb2p_inbox_seen`). Every other device's check reads `null`.
+- **The popups'** words (congrats, banner, inbox) now use the game's pixel font (they fell back to a serif).
+- **Monday 5 Oct:** the one-off LaunchAgent com.rb2p.highlights-preview runs `--preview --to KrwziFQu` at 11:57, then
+  removes itself.
+- Tests: `e2e/inbox.js` B1–B3 (the real publish path, a test device id, cleaned up after). `game-dif` G2 (a DIFFERENT
+  game on two devices with their own storage: difs.a easy, difs.b max). WebKit: iPhone sideways + iPad lobby pass.
