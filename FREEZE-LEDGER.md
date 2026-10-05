@@ -1391,3 +1391,14 @@ each day into a viewable section".
   equally; the recorder now stores the defense difficulty the offense faced (`dif`), in plays.tsv and the short list.
 - Tests: `e2e/potd.js` D1–D7 (the real published play), a2hs A1 (the banner first, then the popup), highlights (never
   publishes: `HL_NO_PUBLISH`).
+
+## V466 (2026-10-04): a sideways phone could not reach PLAY 2P or JOIN (a V465 regression)
+- **The fault:** the phone lobby centered its column (`justify-content:center`). V465's play of the day made the column
+  taller than a sideways phone's screen, so it overflowed at the TOP as well, where no scroll reaches: the live V465 at
+  844x390 had PLAY 2P at y=-485 and JOIN at y=-313, both unreachable. The entry view's focus on the code box then
+  scrolled the column further down.
+- **The fix:** the column is centered by its first/last child's auto margins (centered when it fits, top-anchored when
+  it does not), `max-height:100%`; the code box focuses with `preventScroll`; under 460 px of height the football goes
+  and the title sizes to the height, so the title, PLAY 2P and JOIN are on the first screen.
+- Tests: `e2e/lobby-phone.js` P1–P3 (five phone/tablet sizes: the buttons on the first screen, the column scrolls to its
+  end, a short column still centered). The other suites press PLAY 2P from code, which works off screen.
