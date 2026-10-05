@@ -1796,7 +1796,7 @@
     <div id="rb-potd-congrats" hidden>
         <div class="box">
             <h2>&#127942; CONGRATS!</h2>
-            <p>Your play is the <b>PLAY OF THE DAY</b>:</p>
+            <p id="rb-potd-congrats-what">Your play is the <b>PLAY OF THE DAY</b>:</p>
             <p id="rb-potd-congrats-head" style="color:#ffd23f"></p>
             <p>It's on the front page for everyone to watch. Want to say something to Soham, who made the game?</p>
             <textarea id="rb-potd-congrats-text" maxlength="500" placeholder="Type a message (optional)"></textarea>
@@ -1840,7 +1840,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V472<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V473<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1953,7 +1953,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V472</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V473</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -19642,9 +19642,12 @@
                 });
                 fit();
             }
+            function makers(s) {   // V473: { uid: rank } — each of the day's top 3 makers (V465/V467 days: #1 only)
+                var m = {}; entries(s).forEach(function (e) { if (e.uid && !m[e.uid]) m[e.uid] = e.rank; }); if (s.uid && !m[s.uid]) m[s.uid] = 1; return m;
+            }
             function show(s, rank) {
                 cur = s; list = entries(s);
-                if (s.uid) winners[s.date] = s.uid;
+                winners[s.date] = Object.assign(winners[s.date] || {}, makers(s));
                 $date.textContent = day(s.date);
                 $sec.hidden = false; $scr.classList.add('potd-on');
                 Array.prototype.forEach.call($days.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.d === s.date); });
@@ -19760,7 +19763,8 @@
                 if (!rows.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'No comments yet — be the first.'; $cmts.appendChild(n0); return; }
                 rows.forEach(function (c) {
                     var li = document.createElement('li');
-                    if (c.uid && winners[d] && c.uid === winners[d]) { var f = document.createElement('span'); f.className = 'potd-flair'; f.textContent = '★ PLAY OF THE DAY'; li.appendChild(f); }
+                    var rk = c.uid && winners[d] ? winners[d][c.uid] : 0;   // V473: #1 the PLAY OF THE DAY flair, #2/#3 TOP 3
+                    if (rk) { var f = document.createElement('span'); f.className = 'potd-flair'; f.textContent = rk === 1 ? '★ PLAY OF THE DAY' : '★ TOP 3'; li.appendChild(f); }
                     var b = document.createElement('b'); b.textContent = clean(c.name) || 'Player'; li.appendChild(b);
                     li.appendChild(document.createTextNode(clean(c.text)));
                     $cmts.appendChild(li);
@@ -19794,7 +19798,7 @@
                 if (!dates.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'Nothing yet.'; n0.style.fontSize = '9px'; n0.style.color = '#8fa1b3'; $days.appendChild(n0); return; }
                 dates.forEach(function (d) {
                     var s = idx[d]; if (!s) return;
-                    winners[d] = s.uid || winners[d];
+                    winners[d] = Object.assign(winners[d] || {}, makers(Object.assign({ date: d }, s)));
                     var li = document.createElement('li'), b = document.createElement('button'), tm = document.createElement('time');
                     b.type = 'button'; b.dataset.d = d; tm.textContent = day(d); b.appendChild(tm);
                     b.appendChild(document.createTextNode((s.headline || '') + (s.name ? ' — ' + s.name : '')));
@@ -19815,10 +19819,12 @@
                 el('rb-news-ok').onclick = function () { done(); if (sel && sel.rank !== 1 && list[0]) stage(list[0]); try { $sec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} watch(); };
                 el('rb-news-later').onclick = done;
             }
-            function congrats(s) {
+            function congrats(s, mine) {   // V473: the maker of #1, #2 or #3 (mine = his play)
                 try { if (localStorage.getItem('rb2p_potd_congrats') === s.date) return; } catch (e) {}
                 if (document.documentElement.classList.contains('rb-in-match')) return;
-                el('rb-potd-congrats-head').textContent = s.headline || '';
+                var rk = (mine && mine.rank) || 1, $what = el('rb-potd-congrats-what');
+                if ($what) { $what.textContent = rk === 1 ? 'Your play is the ' : 'Your play made today\'s '; var bb = document.createElement('b'); bb.textContent = rk === 1 ? 'PLAY OF THE DAY' : 'TOP 3 — #' + rk; $what.appendChild(bb); $what.appendChild(document.createTextNode(':')); }
+                el('rb-potd-congrats-head').textContent = (mine && mine.headline) || s.headline || '';
                 $cg.hidden = false;
                 var done = function () { try { localStorage.setItem('rb2p_potd_congrats', s.date); localStorage.setItem('rb2p_potd_seen', s.date); } catch (e) {} $cg.hidden = true; };
                 el('rb-potd-congrats-close').onclick = done;
@@ -19827,7 +19833,7 @@
                     if (!t) { done(); return; }
                     el('rb-potd-congrats-msg').textContent = 'Sending…';
                     try {
-                        if (SRC) window._rb2p_potdReply = t; else await window._rb2p_sendComplaint(t, ['PLAY OF THE DAY reply ' + s.date]);
+                        if (SRC) window._rb2p_potdReply = t; else await window._rb2p_sendComplaint(t, ['PLAY OF THE DAY reply ' + s.date + (rk === 1 ? '' : ' (#' + rk + ')')]);
                         el('rb-potd-congrats-msg').textContent = 'Sent — thank you!';
                         setTimeout(done, 1200);
                     } catch (e) { el('rb-potd-congrats-msg').textContent = 'Could not send — try again.'; }
@@ -19839,8 +19845,9 @@
                 show(s);
                 try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fit(); cue(); }); } catch (e) {}
                 if (!popups) return;
-                var me = s.uid ? await myUid() : '';
-                if (me && s.uid && me === s.uid) congrats(s); else banner(s);
+                var mk = makers(s), me = Object.keys(mk).length ? await myUid() : '';
+                var mine = me && mk[me] ? list.filter(function (e) { return e.rank === mk[me]; })[0] || { rank: mk[me], headline: s.headline } : null;
+                if (mine) congrats(s, mine); else banner(s);
             })();
             window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, fit: fit, cue: cue,
                 stage: function (rank) { var e = list[rank - 1]; if (e) stage(e); return !!e; },

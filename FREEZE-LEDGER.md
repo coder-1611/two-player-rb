@@ -1483,3 +1483,11 @@ each day into a viewable section".
 - **The backup:** the hourly plays-archive job copies `rooms/~potd/c` to `.rb2p/potd-comments-backup.json`, only ever
   adding. `node tools/potd-replies.js --restore DATE` puts back the missing ones.
 - Tests: `e2e/potd.js` D3b (the marker after a post) 11/11, plays-archive 7/7.
+
+## V473 (2026-10-05): each of the top 3's makers gets his own congrats; #2/#3 comments carry a TOP 3 flair
+- **The owner:** "how does the screen look for the top 3 players with plays of the day". Until now only #1's device got
+  the CONGRATS. The 5 am job publishes every top-3 maker's device uid (`top[i].uid`). The page: #1 gets "Your play is
+  the PLAY OF THE DAY"; #2/#3 get "Your play made today's TOP 3 — #N" with their own play's headline and the same box to
+  message the creator (the reply's choice adds " (#N)"). Comments: #1's maker "★ PLAY OF THE DAY", #2/#3's "★ TOP 3".
+- Oct 4 was republished with the three uids (`--publish-only --until <Oct 4 run> --dif ...`).
+- Tests: `e2e/potd.js` D6b (#2's device, its own storage: TOP 3 — #2 and its headline) 12/12.

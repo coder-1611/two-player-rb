@@ -302,7 +302,7 @@ async function buildEntries(top, n, keyOf) {   // the published words + numbers 
         const e = { rank: i + 1, key: keyOf(i), id: pick.id, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense',
                     name: String(name).slice(0, 40), hero: f.hero || '', headline: pick.headline, why: short(pick.fan || noFrames(pick.why)), q: play.q, clk: play.clk,
                     dif: play.dif || '', toMs };
-        if (i === 0) e.uid = uid;
+        e.uid = uid;   // V473: each of the top 3's makers gets the congrats (only #1's before)
         entries.push(e);
         const body = {}; for (const k of Object.keys(play)) if (k !== 'zt' && k !== 'encT') body[k] = play[k];
         bodies.push(body);
@@ -318,7 +318,7 @@ async function publishPotd(top, judged) {
     const one = entries[0], at = { date: DATE, judged: !!judged, ts: Date.now() };
     // the replays first: WATCH works the moment the summary appears
     entries.forEach((e, i) => setPath('/embedcode/potdPlays/' + e.key, Object.assign({}, e, at, { play: bodies[i] })));
-    const card = e => ({ rank: e.rank, key: e.key, side: e.side, name: e.name, hero: e.hero, headline: e.headline, why: e.why, q: e.q, clk: e.clk, dif: e.dif, toMs: e.toMs });
+    const card = e => ({ rank: e.rank, key: e.key, side: e.side, name: e.name, hero: e.hero, headline: e.headline, why: e.why, q: e.q, clk: e.clk, dif: e.dif, toMs: e.toMs, uid: e.uid || '' });
     setPath('/embedcode/potdIndex/' + DATE, { headline: one.headline, why: one.why, name: one.name, side: one.side, hero: one.hero, uid: one.uid, q: one.q, clk: one.clk, dif: one.dif, top: entries.map(card) });
     setPath('/embedcode/potd', Object.assign({}, one, at, { top: entries.map(card) }));
     return 'published the top ' + entries.length + ': ' + entries.map(e => '#' + e.rank + ' ' + e.side + ' — ' + (e.name || '?') + (e.dif ? ' (' + e.dif + ')' : '')).join(', ') + (one.uid ? '' : ' (#1: no device found)');

@@ -24,8 +24,8 @@ const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 const ROOT = 'rooms/~potdtest/c/';
 const LABEL = d => ({ easy: 'EASY', medium: 'MED', hard: 'HARD', max: 'MAX', ultramax: 'MAX' })[String(d || '').toLowerCase()] || '';
 
-async function open(browser, seams) {
-    const page = await browser.newPage();
+async function open(browser, seams, ownStorage) {
+    const page = ownStorage ? await (await browser.createBrowserContext()).newPage() : await browser.newPage();   // ownStorage: another device
     await page.evaluateOnNewDocument((sm) => { Object.assign(window, sm); try { localStorage.setItem('rb2p_a2hs_v457', '1'); localStorage.setItem('rb2p_name', 'PotdCheck'); } catch (e) {} }, Object.assign({ _rb2p_potdCommentsRoot: ROOT }, seams || {}));
     await page.goto(H.url(), { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForFunction(() => window._rb2p_potd && document.getElementById('rb-potd') && !document.getElementById('rb-potd').hidden, { timeout: 60000, polling: 300 }).catch(() => {});
@@ -149,6 +149,16 @@ async function open(browser, seams) {
         check('D6 on the maker\'s device: the congrats, not the banner — and the message goes to the creator',
               c1 && !banner6 && sent.sent && sent.sent.t === 'thanks for the game!' && /PLAY OF THE DAY reply/.test(sent.sent.ch[0]) && !sent.open, JSON.stringify({ c1, banner6, sent }));
         await p6.close();
+        // ---- D6b (V473): #2's maker gets his own congrats — TOP 3 — #2, his play's headline ----
+        const t2 = (potd.top || [])[1];
+        if (t2 && t2.uid) {
+            const p6b = await open(browser, { _rb2p_potdForce: true, _rb2p_potdUid: t2.uid }, true);
+            const c2 = await p6b.waitForFunction(() => !document.getElementById('rb-potd-congrats').hidden, { timeout: 15000, polling: 200 }).then(() => true).catch(() => false);
+            const w2 = await p6b.evaluate(() => ({ what: document.getElementById('rb-potd-congrats-what').textContent, head: document.getElementById('rb-potd-congrats-head').textContent, banner: !document.getElementById('rb-news').hidden }));
+            console.log('  D6b: ' + JSON.stringify(Object.assign({ c2 }, w2)));
+            check('D6b #2\'s maker gets his own congrats: TOP 3 — #2 and his play\'s headline, not the banner', c2 && /TOP 3 — #2/.test(w2.what) && w2.head === t2.headline && !w2.banner, JSON.stringify(w2));
+            await p6b.close();
+        } else check('D6b #2 has a published maker', false, JSON.stringify(t2));
     } finally {
         try { const tok = await TP.fbToken(); await fetch(DB + 'rooms/~potdtest.json?auth=' + tok, { method: 'DELETE' }); } catch (e) {}
         await browser.close();
