@@ -330,4 +330,36 @@ function keyMoments(f, n) {
     return pick.sort((a, b) => a.t - b.t);
 }
 
-module.exports = { decodeTrack, features, scoreOf, story, title, keyMoments, inflate, PX, MID };
+// V481 (the owner's points formula, 5 Oct): "max is 20 hard 8 med 2 easy 0. touchdown 20, first down 5, 4th down
+// conversion 10 + num of yards ... (4th down conversion also gets +5 and touchdown gets both), yardage is worth half a
+// point, ... the clutch things are 20 seconds, overtime plays get 1.2x boost and spectacularness is a raw score out of 16
+// ... + 2 times (stiff arms and jukes)". The numeric parts; the judge adds its raw spectacular score (0-16); an overtime
+// play's total is x1.2.
+const DIF_PTS = { max: 20, ultramax: 20, hard: 8, medium: 2, easy: 0 };
+function points(f) {
+    const dk = String(f.dif || '').toLowerCase(), difficulty = DIF_PTS[dk] != null ? DIF_PTS[dk] : 2;   // not recorded: as MED
+    const offense = f.heroSide !== 'D', kick = !!f.kick || /kick|punt|fg/i.test(String(f.via || ''));
+    const conv = offense && !kick && f.down >= 1 && f.down <= 4 && (f.td || (f.gain != null && f.toGo > 0 && f.gain >= f.toGo));
+    const td = f.td ? 20 : 0, firstDown = conv ? 5 : 0, fourth = conv && f.down === 4 ? 10 + Math.round(f.toGo) : 0;
+    const yards = 0.5 * Math.max(0, offense ? (f.gain || 0) : (f.returnYds || 0));
+    let situation = 0;
+    const late = f.endClk != null ? f.endClk : f.clk;
+    if (f.td && f.scoreBefore && f.scoreAfter) {
+        const b = f.scoreBefore, a = f.scoreAfter;
+        const m0 = offense ? b[0] - b[1] : b[1] - b[0], m1 = offense ? a[0] - a[1] : a[1] - a[0];   // the scoring side's margin
+        const goAhead = m0 <= 0 && m1 > 0, ties = m0 < 0 && m1 === 0;
+        if (f.q >= 5 && goAhead) situation += 20;                       // overtime: any go-ahead score wins it
+        else if (f.q === 4 && late <= 20 && goAhead) situation += 20;   // a game-winner in the last 20 s
+        else if (f.q === 4 && late <= 20 && ties) situation += 12;      // a game-tyer in the last 20 s
+        else if (f.q === 4 && (goAhead || ties)) situation += 6;        // go-ahead / tying earlier in the 4th
+        if ((f.q === 2 || f.q >= 4) && late === 0) situation += 5;      // scored as the clock hit 0:00
+    }
+    if (f.scoreBefore && Math.abs(f.scoreBefore[0] - f.scoreBefore[1]) >= 21) situation -= 5;   // a blowout
+    const jukes = (f.missedTackles || 0) + (f.beaten || 0);           // dove and missed + left behind (never both)
+    const moves = 2 * ((f.stiffArms || 0) + jukes);
+    const base = difficulty + td + firstDown + fourth + yards + situation + moves;
+    return { difficulty, td, firstDown, fourth, yards, situation, stiffArms: f.stiffArms || 0, jukes, moves, base: Math.round(base * 10) / 10, ot: f.q >= 5 };
+}
+const pointsTotal = (p, raw) => Math.round((p.base + Math.max(0, Math.min(16, Number(raw) || 0))) * (p.ot ? 1.2 : 1) * 10) / 10;
+
+module.exports = { decodeTrack, features, scoreOf, story, title, keyMoments, inflate, PX, MID, points, pointsTotal };

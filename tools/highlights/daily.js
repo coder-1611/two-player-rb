@@ -67,6 +67,11 @@ const NOFB = has('--no-firebase'), NOVIDEO = has('--no-video'), FORCE = has('--f
 // V470: --preview — the owner's look at "the top 5 so far": judged and rendered like a real run, never published, in its
 // own folder ("YYYY-MM-DD preview"; runs/YYYY-MM-DD-preview), and not a day's run (the next real run still judges its plays)
 const PREVIEW = has('--preview');
+// V481: --formula points — the owner's points formula (features.js points()): the judge scores only "spectacularness"
+// (0-16) for every candidate; the code adds the measured points and ranks by the total (x1.2 in overtime)
+const FORMULA = opt('--formula', '');
+const ptsText = p => 'difficulty ' + p.difficulty + ' + TD ' + p.td + ' + first down ' + p.firstDown + ' + 4th-down ' + p.fourth + ' + yards ' + p.yards +
+    ' + situation ' + p.situation + ' + moves ' + p.moves + ' (' + p.stiffArms + ' stiff arm' + (p.stiffArms === 1 ? '' : 's') + ', ' + p.jukes + ' juke' + (p.jukes === 1 ? '' : 's') + ') = ' + p.base + (p.ot ? ', OVERTIME x1.2' : '');
 const HEIGHT = Number(opt('--height', 1080));
 const JUDGE_CMD = opt('--judge-cmd', null);
 const SHORT_MAX = 24;
@@ -173,14 +178,14 @@ function tsv(allFeats, short) {
         : allFeats.filter(f => S.has(f.id)).concat(allFeats.filter(f => !S.has(f.id)).sort((a, b) => b.score - a.score).slice(0, TSV_MAX - S.size)).sort((a, b) => a.at - b.at);
     const cols = ['id', 'game', 'quarter', 'clock', 'down', 'difficulty', 'carrier', 'result', 'gain', 'td', 'broken_tackles', 'stiff_arms', 'hurdles',
                   'dove_and_missed', 'left_behind', 'yds_after_contact', 'air_yds', 'hang_s', 'catch', 'defenders_at_catch', 'late_in_half',
-                  'lead_change', 'score_before', 'measured_score', 'short_listed'];
+                  'lead_change', 'score_before', 'measured_score', 'short_listed'].concat(FORMULA === 'points' ? ['base_points', 'points_breakdown', 'overtime'] : []);
     const rows = feats.map(f => [f.id, f.room, f.q >= 5 ? 'OT' : f.q, clock(f.clk || 0), downText(f), String(f.dif || '').toUpperCase(), f.hero + (f.heroPos ? ' (' + f.heroPos + ')' : ''),
         f.kick ? 'kick' : f.sack ? 'sack' : f.pass ? (f.pass.intercepted ? 'interception' : f.pass.incomplete ? 'incomplete' : 'pass') : (f.fumble ? 'fumble' : 'run'),
         f.gain == null ? '' : Math.round(f.gain), f.td ? (f.defensiveTd ? 'DEF TD' : 'TD') : '', f.tacklesBroken || 0, f.stiffArms || 0, f.hurdles || 0,
         f.missedTackles || 0, f.beaten || 0, f.yardsAfterContact || 0, f.pass ? (f.pass.airYds == null ? '' : Math.round(f.pass.airYds)) : '',
         f.pass && f.pass.hangS != null ? f.pass.hangS : '', f.pass ? (f.pass.caught ? 'caught' : f.pass.intercepted ? 'picked' : 'no') : '',
         f.pass && f.pass.contested != null ? f.pass.contested : '', f.lateInHalf ? 'yes' : '', f.leadChange ? 'yes' : '',
-        f.scoreBefore ? f.scoreBefore.join('-') : '', f.score, S.has(f.id) ? 'yes' : ''].join('\t'));
+        f.scoreBefore ? f.scoreBefore.join('-') : '', f.score, S.has(f.id) ? 'yes' : ''].concat(FORMULA === 'points' && f.points ? [f.points.base, ptsText(f.points), f.points.ot ? 'yes' : ''] : []).join('\t'));
     return (allFeats.length > feats.length ? '# ' + allFeats.length + ' plays in the 24 hours: the ' + feats.length + ' with the highest measured scores are listed (the rest were routine by the numbers).\n' : '') +
         '# Every play of the 24 hours. carrier = who had the ball at the end; gain in yards for the offense; broken_tackles = a\n' +
         '# defender engaged him and he kept going; dove_and_missed = a defender dove at him and he got away; left_behind = a free\n' +
@@ -244,7 +249,7 @@ function checkTop5(file, ids, want) {
     if (picks.length < want) return { ok: false, why: picks.length + ' picks; ' + want + ' are needed' };
     picks.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
     return { ok: true, picks: picks.slice(0, want).map((p, i) => ({ rank: i + 1, id: p.id, headline: p.headline.trim().slice(0, 90), why: p.why.trim(),
-                                                                    fan: typeof p.fan === 'string' ? p.fan.trim().slice(0, 300) : '' })), notes: String(j.notes || '').trim() };
+                                                                    fan: typeof p.fan === 'string' ? p.fan.trim().slice(0, 300) : '', raw: p.raw })), notes: String(j.notes || '').trim(), scores: j.scores || null };
 }
 
 // ---------- 6. the play of the day (V465): the #1 on the game's front page ----------
@@ -333,15 +338,30 @@ async function publishPotd(top, judged) {
 async function publishInbox(top, to, judged) {
     if (process.env.HL_NO_PUBLISH === '1' || has('--no-publish')) return 'skipped (--no-publish)';
     if (!/^[A-Za-z0-9]{6,12}$/.test(String(to || ''))) return 'no device id';
-    const { entries, bodies } = await buildEntries(top, 5, i => String(i + 1));
+    // V481: --keep-pools keeps what is in the device's inbox as the earlier pool(s) (their plays' numbers stay where they
+    // are) and adds this run as the next pool, its plays keyed b1..b5 (c1.. after that); --pool names it
+    let pools = [];
+    if (has('--keep-pools')) {
+        try { const old = await (await fetch(DB + 'embedcode/inbox/' + to + '.json', { cache: 'no-store' })).json();
+              if (old) pools = Array.isArray(old.pools) ? old.pools : (Array.isArray(old.plays) ? [{ title: opt('--pool-a', 'POOL A'), plays: old.plays }] : []); } catch (e) {}
+    }
+    const letter = pools.length ? String.fromCharCode(97 + pools.length) : '';
+    const { entries, bodies } = await buildEntries(top, 5, i => letter + String(i + 1));
     if (!entries.length) return 'nothing to send';
     entries.forEach(e => { delete e.uid; });
+    const tops = (top || []).filter(t => t && t.pick && t.f && t.play);
     entries.forEach((e, i) => setPath('/embedcode/inboxPlays/' + to + '/' + e.key, Object.assign({}, e, { play: bodies[i] })));
-    setPath('/embedcode/inbox/' + to, { ts: Date.now(), date: DATE, since: SINCE, until: UNTIL, judged: !!judged, from: 'Soham',
-        title: PREVIEW ? 'THE TOP ' + entries.length + ' SO FAR' : 'THE TOP ' + entries.length + ' PLAYS',
+    const cards = entries.map((e, i) => { const pk = tops[i] && tops[i].pick || {};
+        return Object.assign({ rank: e.rank, key: e.key, side: e.side, name: e.name, hero: e.hero, headline: e.headline, why: e.why, dif: e.dif, toMs: e.toMs },
+                             pk.total != null ? { total: pk.total, raw: pk.raw, base: pk.base, breakdown: pk.breakdown } : {}); });
+    pools.push({ title: opt('--pool', pools.length ? 'POOL ' + letter.toUpperCase() : 'THE TOP ' + entries.length), plays: cards });
+    const msg = { ts: Date.now(), date: DATE, since: SINCE, until: UNTIL, judged: !!judged, from: 'Soham',
+        title: pools.length > 1 ? 'TWO POOLS — THE TOP 5 SO FAR' : (PREVIEW ? 'THE TOP ' + entries.length + ' SO FAR' : 'THE TOP ' + entries.length + ' PLAYS'),
         note: PREVIEW ? 'A preview: the plays since ' + new Date(SINCE).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) + ' — not on the front page.' : '',
-        plays: entries.map(e => ({ rank: e.rank, key: e.key, side: e.side, name: e.name, hero: e.hero, headline: e.headline, why: e.why, dif: e.dif, toMs: e.toMs })) });
-    return 'sent the top ' + entries.length + ' to device ' + to;
+        plays: pools[0].plays };
+    if (pools.length > 1) msg.pools = pools;
+    setPath('/embedcode/inbox/' + to, msg);
+    return 'sent the top ' + entries.length + ' to device ' + to + (pools.length > 1 ? ' as pool ' + pools.length + ' of ' + pools.length : '');
 }
 
 // ---------- 5. the output ----------
@@ -409,7 +429,7 @@ async function guardState() {
         if (!NOFB) { try { const n = await fillDifficulty(all); if (n) log('difficulty from the game records: ' + n + ' play(s)'); } catch (e) { log('difficulty not read: ' + e.message); } }
         // 2. measured
         const byId = new Map();
-        const feats = all.map(p => { try { const f = F.features(p); byId.set(f.id, { f, play: p }); return f; } catch (e) { log('features ' + p.room + '/' + p.at + ': ' + e.message); return null; } })
+        const feats = all.map(p => { try { const f = F.features(p); if (FORMULA === 'points') { f.points = F.points(f); f.score = f.points.base; } byId.set(f.id, { f, play: p }); return f; } catch (e) { log('features ' + p.room + '/' + p.at + ': ' + e.message); return null; } })
                          .filter(Boolean).sort((a, b) => a.at - b.at);
         status.plays = feats.length; status.games = new Set(feats.map(f => f.room)).size;
         log(feats.length + ' play(s) in ' + status.games + ' game(s)');
@@ -433,6 +453,21 @@ async function guardState() {
         fs.copyFileSync(path.join(__dirname, 'JUDGE.md'), path.join(work, 'JUDGE.md'));
         // V479 (the owner: "find a better top 5, 30% difficulty 40% spectacularness 20% situation and 10% impact"): --weights
         // puts this run's weighting at the top of the brief, over the equal weighting below
+        if (FORMULA === 'points') {
+            const head = ['# THIS RUN\'S SCORING — the owner\'s points formula (it replaces the weighting below)', '',
+                'Every play\'s BASE points are already computed from the game\'s own numbers (`base_points` and `points_breakdown` in plays.tsv; the breakdown under each candidate in candidates.md):', '',
+                '- Difficulty (the defense beaten): MAX 20, HARD 8, MED 2, EASY 0 (not recorded: 2)',
+                '- Touchdown +20; first down +5 (a converted 4th down gets it too); a converted 4th down +10 + the yards needed (4th & 19 converted: +29, plus the +5)',
+                '- Yardage: +0.5 per yard',
+                '- Situation: a game-winner (a go-ahead score) in the last 20 s of the 4th quarter, or any go-ahead score in overtime, +20; a game-tyer in the last 20 s +12; a go-ahead or tying score earlier in the 4th +6; a score as the clock hits 0:00 +5; a blowout (a 21+ point margin before the play) -5',
+                '- Moves: +2 per stiff arm and per juke (a defender who dove and missed, or was left behind)', '',
+                '**Your part: a raw SPECTACULARNESS score from 0 to 16 for every short-listed play** — how incredible it looks in the frames: jukes, broken tackles, stiff arms that put a defender down, hurdles, a catch in traffic, a ball that hangs.', '',
+                '**TOTAL = (base points + your raw score), x1.2 if the play is in overtime.** Pick the five with the highest TOTAL (interceptions only if EXTREMELY impressive, as below).', '',
+                'In top5.json give each pick a `"raw"` (your 0-16) and a `"total"`, and add `"scores": { "<id>": <raw>, ... }` with your raw score for EVERY short-listed play.', '',
+                'Everything else in this brief (looking at every sheet, the output format, the headline, the fan line) still applies.', '', '---', ''].join('\n');
+            fs.writeFileSync(path.join(work, 'JUDGE.md'), head + fs.readFileSync(path.join(work, 'JUDGE.md'), 'utf8'));
+            log('judging by the points formula');
+        }
         const WEIGHTS = opt('--weights', '');
         if (WEIGHTS) {
             const w = {}; WEIGHTS.split(',').forEach(kv => { const [k, v] = kv.split('='); if (k && v) w[k.trim().toLowerCase()] = Number(v); });
@@ -448,7 +483,8 @@ async function guardState() {
             log('judge weighting for this run: ' + WEIGHTS);
         }
         fs.writeFileSync(path.join(work, 'plays.tsv'), tsv(feats, short));
-        fs.writeFileSync(path.join(work, 'candidates.md'), '# The short list: ' + short.length + ' of ' + feats.length + ' plays (best measured first)\n\n' + short.map(candidateText).join('\n'));
+        fs.writeFileSync(path.join(work, 'candidates.md'), '# The short list: ' + short.length + ' of ' + feats.length + ' plays (best measured first)\n\n' +
+            short.map(f => candidateText(f) + (FORMULA === 'points' && f.points ? '\n**Base points (measured):** ' + ptsText(f.points) + '\n' : '')).join('\n'));
         log('short list: ' + short.length + ' — drawing the contact sheets');
         const { openRenderer } = require('./render.js');
         try { execFileSync('bash', [path.join(REPO, 'tools', 'freeze-watch', 'own-port.sh'), process.env.RB_E2E_PORT, REPO], { stdio: 'pipe' }); } catch (e) {}
@@ -483,6 +519,13 @@ async function guardState() {
         const judged = verdict.ok;
         if (judged) {
             picks = verdict.picks; notes = verdict.notes;
+            if (FORMULA === 'points') {   // V481: the total decides the order (the judge's raw score + the measured points)
+                const sc = verdict.scores || {};
+                picks.forEach(p => { const e = byId.get(p.id); const pt = e && e.f.points; if (!pt) return;
+                    const raw = p.raw != null ? Number(p.raw) : Number(sc[p.id]); p.raw = Math.max(0, Math.min(16, isFinite(raw) ? raw : 0)); p.base = pt.base; p.total = F.pointsTotal(pt, p.raw); p.breakdown = ptsText(pt); });
+                picks.sort((a, b) => (b.total || 0) - (a.total || 0)); picks.forEach((p, i) => { p.rank = i + 1; });
+                log('by the points: ' + picks.map(p => p.id + ' ' + p.total + ' (' + p.base + ' + ' + p.raw + ')').join(', '));
+            }
             status.judge = JUDGE_CMD ? 'test command' : MODEL;
             if (r.json) { status.judgeCostUsd = r.json.total_cost_usd; status.judgeMs = r.json.duration_ms; status.judgeSession = r.json.session_id; }
             log('the judge picked: ' + picks.map(p => p.id).join(', '));

@@ -1598,3 +1598,20 @@ each day into a viewable section".
   12/8/3/1 scaled to 8/5.3/2/0.7 (unknown 2).
 - Today's re-pick (`--preview --to KrwziFQu --tag "picks 3"`) went to the owner's Chromebook.
 - Tests: highlights 8/8.
+
+## V481 (2026-10-05): the owner's points formula; the inbox shows pools
+- **The owner:**
+  - "max is 20 hard 8 med 2 easy 0. touchdown 20, first down 5, 4th down conversion 10 + num of yards"
+  - "4th down conversion also gets +5 and touchdown gets both, yardage is worth half a point and the clutch things are
+    20 seconds"
+  - "overtime plays get 1.2x boost and spectacularness is raw score out of 16 ... + 2 times (stiff arms and jukes)"
+  - "keep old results, show the results as two different pools to ME only"
+- **`features.js points()`:** difficulty (MAX 20/HARD 8/MED 2/EASY 0; unknown 2) + TD 20 + first down 5 + 4th-down
+  conversion (10 + yards to go) + 0.5/yd + situation (go-ahead in the last 20 s of Q4 or any in OT +20, tying in the
+  last 20 s +12, go-ahead/tying earlier in Q4 +6, a score at 0:00 +5, a 21+ blowout -5) + 2 × (stiff arms + jukes =
+  dove-and-missed + left-behind, disjoint). Total = (base + the judge's raw 0-16) × 1.2 in OT (`pointsTotal`).
+- **`daily.js --formula points`:** base points on every play (the short list by them), in plays.tsv/candidates.md and
+  the brief. The judge gives a raw score per candidate; the code ranks the picks by the total.
+- **`--keep-pools` / `--pool` / `--pool-a`:** the device inbox keeps its earlier pool(s) and adds this run's
+  (keys b1..b5). The page's `#rb-inbox` shows each pool under its title, "B #1", and each play's points.
+- Tests: inbox B1-B4 4/4.
