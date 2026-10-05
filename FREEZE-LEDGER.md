@@ -1509,3 +1509,26 @@ each day into a viewable section".
   - An invite code this device already joined (`rb2p_joins_used`, the last 30) fills the code box but does not join
     by itself.
 - Tests: `e2e/home-screen.js` S1–S4 4/4; v410-lobby 4/4, a2hs 9/9, lobby-phone 12/12.
+
+## V475 (2026-10-05): the opponent's screen at 30 frames a second again (no slide), the lag cut another way; ⛶ full screen
+- **The owner:** "The graphics are pathetic, the ones before the lag fix were so much better. Bring it back ... remove lag
+  without compromising quality"; "the new graphics had a really SLIDING feel with the ball going everywhere ... like the
+  old one where it is almost a PIXEL by PIXEL match"; "add a full screen option for plays of the day".
+- **Why it slid:** V462 cut the link to 20/15/10 frames a second whenever a captured frame cost 1.5/2/5 ms more than a
+  plain one (most real phones). The waiting phone glides each sprite between frames (lerpPositions, unchanged since V450):
+  over 33 ms that is invisible, over 66-100 ms players skate (their animation flips at 10 fps while their bodies glide)
+  and the ball wanders. Pairing is by the drawing object (op.key), never draw order: not a pairing fault.
+- **The fix:**
+  - The link is 30 frames a second on the direct link again, always (6 on Firebase, as before). The recorder is 15
+    (every other link frame), as at V458.
+  - The lag is cut instead by encoding each frame after it is on screen: `afterPaint` (a MessageChannel task after the
+    paint) runs the link's `linkSend` and the recorder's encode. The recorder still reads the engine (its track) at the
+    frame itself.
+  - Measured at CPU x4 on a real 2P game (link + recorder): V474 1.1% late frames, falling back to 15 fps with 8.4% late
+    once capture got costly. V475: 0 late of 862, 30 fps throughout. A captured frame now costs ~0.6 ms over a plain one
+    (was 1-2).
+- **⛶ full screen** on the play-of-the-day and inbox replay screens: the Fullscreen API, else (an iPhone) the screen is
+  covered (`.rb-fs-on`); ⛶ / Esc back; the canvas keeps its shape (`object-fit: contain`).
+- **The congrats "seen" record:** `rooms/~potd/seen/{date}/{rank}` (`potd-replies.js` shows it). The owner asked who
+  saw the popup.
+- Tests: `e2e/potd.js` D11 (full screen, both ways); opp-view (pixel-for-pixel); play-rec (15 fps recordings).

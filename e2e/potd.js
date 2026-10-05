@@ -15,6 +15,9 @@
 //   D9  a card puts its play on the big screen (its rank, its words) and plays it; #1 becomes a card
 // V468 (the owner: "remove the 20 second rule for commenting, and also ban swear words"):
 //   D10 a second comment right away posts; a swear word (even spelled sh1t) is refused; a stored one is not shown
+// V475 (the owner: "add a full screen option for plays of the day"):
+//   D11 ⛶ makes the replay screen fill the whole screen (the Fullscreen API; an iPhone, which has none for a page element,
+//       gets the screen covered instead) and ⛶ again brings it back
 const H = require('./harness');
 const TP = require('./two-player');
 const sleep = H.sleep;
@@ -120,6 +123,31 @@ async function open(browser, seams, ownStorage) {
         d7.before = before7;
         console.log('  D7: ' + JSON.stringify(d7));
         check('D7 the archive loads when opened and lists the days, today\'s marked', d7.before === 0 && d7.n >= 1 && d7.on === 1 && /\w/.test(d7.first || ''), JSON.stringify(d7));
+        // ---- D11: full screen ----
+        const fsCheck = async (pg) => {
+            await pg.setViewport({ width: 1280, height: 720 });
+            await pg.waitForFunction(() => !document.getElementById('rb-potd').hidden, { timeout: 30000, polling: 300 }).catch(() => {});
+            await pg.evaluate(() => document.getElementById('rb-potd').scrollIntoView({ block: 'center' }));
+            await sleep(500);
+            const before = await pg.evaluate(() => { const r = document.querySelector('#rb-potd .potd-stage').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; });
+            await pg.click('#rb-potd .potd-stage .rb-fs');
+            await sleep(900);
+            const on = await pg.evaluate(() => { const st = document.querySelector('#rb-potd .potd-stage'), r = st.getBoundingClientRect(), cv = st.querySelector('canvas');
+                return { w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight, native: !!(document.fullscreenElement || document.webkitFullscreenElement), cover: st.classList.contains('rb-fs-on'), fit: getComputedStyle(cv).objectFit }; });
+            await pg.click('#rb-potd .potd-stage .rb-fs');
+            await sleep(900);
+            const off = await pg.evaluate(() => { const st = document.querySelector('#rb-potd .potd-stage'), r = st.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), native: !!document.fullscreenElement, cover: st.classList.contains('rb-fs-on') }; });
+            return { before, on, off };
+        };
+        const fsA = await fsCheck(page);
+        const pI = await open(browser, { _rb2p_noFsApi: true }, true);
+        await pI.evaluateOnNewDocument(() => {});
+        await pI.evaluate(() => { Element.prototype.requestFullscreen = undefined; Element.prototype.webkitRequestFullscreen = undefined; });
+        const fsB = await fsCheck(pI);
+        await pI.close();
+        console.log('  D11: ' + JSON.stringify({ api: fsA, iphone: fsB }));
+        const filled = x => x.on.w >= x.on.vw - 2 && x.on.h >= x.on.vh - 2 && x.on.fit === 'contain' && x.off.w === x.before.w && x.off.h === x.before.h && !x.off.native && !x.off.cover;
+        check('D11 ⛶ fills the screen (the Fullscreen API, or an iPhone\'s cover) and ⛶ again brings it back', filled(fsA) && fsA.on.native && filled(fsB) && fsB.on.cover && !fsB.on.native, JSON.stringify({ fsA, fsB }));
         await page.close();
         // ---- D5: the banner, once ----
         const p5 = await open(browser, { _rb2p_potdForce: true, _rb2p_potdUid: 'someone-else' });

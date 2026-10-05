@@ -28,6 +28,8 @@ const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
     const potd = await (await fetch(DB + 'embedcode/potd.json')).json();
     const d = day || (potd && potd.date);
     if (potd && (!day || day === potd.date)) console.log('\nPlay of the day ' + potd.date + ': ' + potd.headline + ' — ' + potd.side + ' · ' + potd.name);
+    const seen = d ? await get('rooms/~potd/seen/' + d) : null;   // V475: which makers' CONGRATS popups were shown
+    console.log('Congrats shown on ' + d + ': ' + (seen ? Object.keys(seen).map(r => '#' + r + ' ' + new Date(seen[r].ts).toLocaleString()).join(', ') : 'none recorded'));
     const cm = d ? await get('rooms/~potd/c/' + d) : null;
     const list = Object.values(cm || {}).sort((a, b) => a.ts - b.ts);
     console.log('Comments on ' + d + ': ' + list.length);

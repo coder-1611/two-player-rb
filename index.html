@@ -968,6 +968,18 @@
         #rb-potd .potd-go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 18px; font: bold 12px 'Press Start 2P', monospace;
                             letter-spacing: 1px; background: #ffd23f; color: #0a1838; border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
         #rb-potd .potd-go[hidden] { display: none; }
+        /* V475 (the owner: "add a full screen option for plays of the day"): ⛶ on the replay screens — the Fullscreen API
+           where the browser has it for an element, else (an iPhone) the screen covers the page; ⛶ / Esc goes back */
+        .rb-fs { position: absolute; right: 8px; top: 8px; z-index: 2; width: 34px; height: 34px; padding: 0; font: bold 18px/1 monospace; color: #fff;
+                 background: rgba(10,24,56,.72); border: 2px solid rgba(255,255,255,.85); cursor: pointer; }
+        .rb-fs:hover, .rb-fs:focus-visible { background: #0a1838; border-color: #ffd23f; outline: none; }
+        .potd-stage:fullscreen, .ib-stage:fullscreen, .potd-stage.rb-fs-on, .ib-stage.rb-fs-on {
+            width: 100vw !important; height: 100vh !important; max-width: none !important; aspect-ratio: auto !important; border: 0 !important; background: #000 !important; }
+        .potd-stage:-webkit-full-screen, .ib-stage:-webkit-full-screen { width: 100vw !important; height: 100vh !important; aspect-ratio: auto !important; border: 0 !important; background: #000 !important; }
+        .potd-stage.rb-fs-on, .ib-stage.rb-fs-on { position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; }
+        .potd-stage:fullscreen canvas, .ib-stage:fullscreen canvas, .potd-stage:-webkit-full-screen canvas, .ib-stage:-webkit-full-screen canvas,
+        .potd-stage.rb-fs-on canvas, .ib-stage.rb-fs-on canvas { object-fit: contain; }
+
         #rb-potd .potd-note { position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0; text-align: center; font-size: 9px; line-height: 1.6; color: #fff; text-shadow: 1px 1px 0 #0a1838; pointer-events: none; }
         #rb-potd .potd-info { display: flex; flex-direction: column; gap: 6px; }
         #rb-potd h3 { margin: 0; font: bold 12px 'Press Start 2P', monospace; color: #fff; line-height: 1.7; text-wrap: balance; }
@@ -1795,7 +1807,7 @@
             <p class="ib-from">&#9993; FROM <span id="rb-inbox-from">SOHAM</span></p>
             <h2 id="rb-inbox-title"></h2>
             <p class="ib-note" id="rb-inbox-note"></p>
-            <div class="ib-stage"><canvas id="rb-inbox-cv" width="854" height="480"></canvas><button class="ib-go" id="rb-inbox-go" type="button">&#9654; WATCH</button><p class="ib-say" id="rb-inbox-say"></p></div>
+            <div class="ib-stage"><canvas id="rb-inbox-cv" width="854" height="480"></canvas><button class="rb-fs" type="button" aria-label="Full screen" title="Full screen">&#x26F6;</button><button class="ib-go" id="rb-inbox-go" type="button">&#9654; WATCH</button><p class="ib-say" id="rb-inbox-say"></p></div>
             <p class="ib-head"><span class="ib-rank" id="rb-inbox-rank"></span><span id="rb-inbox-headline"></span></p>
             <p class="ib-who"><span id="rb-inbox-who"></span> <i class="potd-dif" id="rb-inbox-dif"></i></p>
             <ol class="ib-list" id="rb-inbox-list" aria-label="The plays"></ol>
@@ -1849,7 +1861,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V474<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V475<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1871,7 +1883,7 @@
             </div>
             <section id="rb-potd" hidden aria-labelledby="rb-potd-eye">
                 <p class="potd-eye" id="rb-potd-eye">&#9733; PLAYS OF THE DAY &middot; <span id="rb-potd-date"></span></p>
-                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button><p class="potd-note" id="rb-potd-note"></p></div>
+                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><button class="rb-fs" type="button" aria-label="Full screen" title="Full screen">&#x26F6;</button><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button><p class="potd-note" id="rb-potd-note"></p></div>
                 <div class="potd-body">
                     <div class="potd-info">
                         <div class="potd-head"><span class="potd-rank" id="rb-potd-rank">#1</span><h3 id="rb-potd-title"></h3></div>
@@ -1962,7 +1974,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V474</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V475</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15389,7 +15401,7 @@
                     if (fr && CAP.onFrame) { try { CAP.onFrame(fr); } catch (e2) { console.warn('[2P VIEW] frame handler', e2); } }
                 }
                 var rr = oH.apply(this, arguments);
-                if (SND.shotSeq) { try { SND.shot = { seq: SND.shotSeq, png: document.getElementById('canvas').toDataURL('image/png') }; } catch (e3) {} SND.shotSeq = 0; }
+                if (SND.shotGrab) { SND.shotGrab = false; try { SND.shotPng = document.getElementById('canvas').toDataURL('image/png'); } catch (e3) {} }   // V475: this frame's pixels (a test seam); its number comes when it is encoded
                 if (CAP.fT0) { var fd = performance.now() - CAP.fT0; CAP.fT0 = 0;
                     if (fd < 200) { if (captured) CAP.capFrameMs = CAP.capFrameMs ? CAP.capFrameMs * 0.9 + fd * 0.1 : fd;
                                     else CAP.plainFrameMs = CAP.plainFrameMs ? CAP.plainFrameMs * 0.95 + fd * 0.05 : fd; } }
@@ -15648,9 +15660,20 @@
     // backed off: on a Chromebook-slow phone 6% of frames ran late with the link, 18% with the recorder too). A slow phone
     // now sends fewer frames (the replay glides between them).
     function capOverMs() { return Math.max(SND.costMs, (CAP.capFrameMs && CAP.plainFrameMs) ? CAP.capFrameMs - CAP.plainFrameMs : 0); }
-    function capInterval() {
-        var base = NET && NET.mode() === 'fb' ? 166 : 33, over = capOverMs();
-        return over > 5 ? Math.max(base, 100) : over > 2 ? Math.max(base, 66) : over > 1.5 ? Math.max(base, 50) : base;
+    // V475 (the owner: "The graphics are pathetic, the ones before the lag fix were so much better. Bring it back to those
+    // days but try to remove lag without compromising quality"): the full rate again — 30 frames a second on the direct link
+    // whatever the phone (V462's back-off sent a slow phone's opponent 10-20, the replay gliding over long gaps). The lag is
+    // cut instead by encoding each frame AFTER it is on screen (afterPaint below), not inside the engine's frame.
+    function capInterval() { return NET && NET.mode() === 'fb' ? 166 : 33; }
+    // the per-frame encoding (the link's delta + the recorder's) runs in the task after the paint: the engine's frame
+    // presents first; the encode fills the idle time before the next one
+    var AP = { q: [], ch: null };
+    function runAP() { var q = AP.q; AP.q = []; for (var i = 0; i < q.length; i++) { try { q[i](); } catch (e) {} } }
+    function afterPaint(fn) {
+        AP.q.push(fn);
+        if (AP.q.length > 1) return;   // a task is coming already
+        if (AP.ch === null) { try { AP.ch = new MessageChannel(); AP.ch.port1.onmessage = runAP; } catch (e) { AP.ch = false; } }
+        if (AP.ch) AP.ch.port2.postMessage(0); else setTimeout(runAP, 0);
     }
     CAP.wantFrame = function () {
         var now = performance.now(), link = false, rec = false;
@@ -15675,6 +15698,14 @@
         try {
             var mode = NET && NET.mode(); if (!mode) return;
             if (!NET.canSend(SND.inFlight)) return;   // decided BEFORE encoding: a frame that cannot go is not built
+            SND.inFlight++;   // V475: its place is held now; it is built after the paint
+            var shot = SND.shotWanted; if (shot) { SND.shotWanted = false; SND.shotGrab = true; }
+            afterPaint(function () { SND.inFlight--; linkSend(fr, mode, shot); });
+        } catch (e) { SND.failed = true; console.warn('[2P VIEW] sender stopped', e); }
+    };
+    function linkSend(fr, mode, shot) {
+        if (SND.failed || !NET) { if (shot) SND.shotWanted = true; return; }
+        try {
             var base = null, baseSeq = 0, now = performance.now();
             if (!SND.forceKey) {
                 if (mode === 'fb') {
@@ -15686,11 +15717,11 @@
                         for (var k = SND.ring.length - 1; k >= 0; k--) if (SND.ring[k].seq === SND.lastKeySeq) { base = SND.ring[k].fr; baseSeq = SND.lastKeySeq; break; }
                 }
             }
-            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) return;   // a keyframe at most every half second
+            if (!base && SND.lastKeyAt && now - SND.lastKeyAt < 500) { if (shot) SND.shotWanted = true; return; }   // a keyframe at most every half second
             var tEnc = performance.now();
             var seq = ++SND.seq, bytes = encodeFrame(fr, base, seq, baseSeq);
             SND.costMs = SND.costMs * 0.9 + (performance.now() - tEnc + (fr.capMs || 0)) * 0.1;
-            if (SND.shotWanted) { SND.shotWanted = false; SND.shotSeq = seq; }
+            if (shot) { SND.shot = { seq: seq, png: SND.shotPng }; SND.shotPng = null; }
             if (!base) { SND.lastKeyAt = now; SND.lastKeySeq = seq; SND.forceKey = false; SND.keys++; }
             SND.ring.push({ seq: seq, fr: fr }); if (SND.ring.length > 90) SND.ring.shift();
             SND.lastSent = { fr: fr, seq: seq, at: now, mode: mode };
@@ -15701,7 +15732,7 @@
                 else if (mode === 'fb') SND.forceKey = true;   // the chain broke here: start again from a keyframe
             }, function () { SND.inFlight--; SND.forceKey = true; });
         } catch (e) { SND.failed = true; console.warn('[2P VIEW] sender stopped', e); try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW sender stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} }
-    };
+    }
     // ===== V458: THE PLAY RECORDER (the owner: "store the numerical representation of every play for 24 hours then take
     // it out of firebase and store just the numerical representation in local file somewhere and then delete it every 30
     // days"; with a guard so the free plan's downloads never run out) =====
@@ -15718,7 +15749,7 @@
     // the ball's states that end a play (the engine's obj_ball _kp): tackled, touchdown, incomplete, out of bounds, sack,
     // and the kicks' ends
     var REC_DEAD = { 4: 1, 6: 1, 7: 1, 8: 1, 11: 1, 12: 1, 14: 1, 15: 1, 16: 1, 17: 1 };
-    function recInterval() { return (REC.costMs > 8 || capOverMs() > 5) ? 100 : 66; }   // 15 frames a second; 10 on a slow phone
+    function recInterval() { return 66; }   // 15 frames a second (V475: always — every other frame of the 30 fps link)
     function recEnabled() {
         if (window._rb2p_recForce === true) return true;
         if (window._rb2p_recForce === false) return false;
@@ -15764,13 +15795,21 @@
     function recFrame(fr) {
         if (!REC.active) return;
         try {
-            var now = performance.now(), key = !REC.prev || now - REC.lastKeyAt > REC_KEY_MS;
-            var t1 = performance.now(), seq = ++REC.seq, bytes = encodeFrame(fr, key ? null : REC.prev, seq, key ? 0 : REC.prevSeq);
-            REC.costMs = REC.costMs * 0.9 + (performance.now() - t1) * 0.1;
-            if (key) REC.lastKeyAt = now;
-            var t = Math.round(now - REC.t0), head = []; vuPush(head, t - REC.lastT); vuPush(head, bytes.length); REC.lastT = t;
-            REC.parts.push(new Uint8Array(head), bytes); REC.raw += head.length + bytes.length;
-            REC.prev = fr; REC.prevSeq = seq;
+            var now = performance.now(), t = Math.round(now - REC.t0);
+            // V475: the frame's numbers are encoded after the paint (in order); what the engine is doing is read now
+            afterPaint(function () {
+                if (!REC.active) return;
+                try {
+                    var key = !REC.prev || now - REC.lastKeyAt > REC_KEY_MS;
+                    var t1 = performance.now(), seq = ++REC.seq, bytes = encodeFrame(fr, key ? null : REC.prev, seq, key ? 0 : REC.prevSeq);
+                    REC.costMs = REC.costMs * 0.9 + (performance.now() - t1) * 0.1;
+                    if (key) REC.lastKeyAt = now;
+                    var head = []; vuPush(head, t - REC.lastT); vuPush(head, bytes.length); REC.lastT = t;
+                    REC.parts.push(new Uint8Array(head), bytes); REC.raw += head.length + bytes.length;
+                    REC.prev = fr; REC.prevSeq = seq;
+                    if (REC.raw > REC_MAX_RAW) recFinish('size');
+                } catch (eA) { REC.failed = true; REC.active = false; }
+            });
             // the ball dead ends the play too (a play with no settle — the first down of a drive often has none — would
             // otherwise run to the 30 s cap): at most 6 s more, as the settle (the result) comes about 4 s after the
             // whistle; the settle, a hand-off or the ball set for the next snap ends it sooner
@@ -15780,7 +15819,6 @@
             else if (bs > 0) REC.sawLive = true;
             if (!REC.meta.cw) { REC.meta.cw = fr.cw; REC.meta.ch = fr.ch; REC.meta.aw = fr.aw; REC.meta.ah = fr.ah; }
             REC.meta.n = (REC.meta.n || 0) + 1;
-            if (REC.raw > REC_MAX_RAW) recFinish('size');
         } catch (e) { REC.failed = true; REC.active = false; try { if (window._rb2p_diagLog) window._rb2p_diagLog('PLAYREC stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} }
     }
     // V458 (the owner: "choose the top 5 most impressive ... juking a bunch of players, stiff arms breaking tackles, last
@@ -19840,6 +19878,8 @@
                 var rk = (mine && mine.rank) || 1, $what = el('rb-potd-congrats-what');
                 if ($what) { $what.textContent = rk === 1 ? 'Your play is the ' : 'Your play made today\'s '; var bb = document.createElement('b'); bb.textContent = rk === 1 ? 'PLAY OF THE DAY' : 'TOP 3 — #' + rk; $what.appendChild(bb); $what.appendChild(document.createTextNode(':')); }
                 el('rb-potd-congrats-head').textContent = (mine && mine.headline) || s.headline || '';
+                // V475: a record that this maker's popup was shown (the owner asked who saw it): rooms/~potd/seen/{date}/{rank}
+                if (!SRC) try { window._rb2p_fbRestPut('rooms/~potd/seen/' + s.date + '/' + rk, { ts: Date.now(), ver: (document.querySelector('.prompt') || { textContent: '' }).textContent.replace(/^.*(V\d+).*$/, '$1') }); } catch (eS) {}
                 $cg.hidden = false;
                 var done = function () { try { localStorage.setItem('rb2p_potd_congrats', s.date); localStorage.setItem('rb2p_potd_seen', s.date); } catch (e) {} $cg.hidden = true; };
                 el('rb-potd-congrats-close').onclick = done;
@@ -19867,6 +19907,27 @@
             window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, fit: fit, cue: cue,
                 stage: function (rank) { var e = list[rank - 1]; if (e) stage(e); return !!e; },
                 state: function () { return { cur: cur && cur.date, rank: sel && sel.rank, n: list.length, playing: !!playing, winners: winners, wide: wide() }; } };
+        })();
+
+        // ===== V475: full screen for the replay screens (the play of the day, the inbox) =====
+        (function () {
+            function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+            function toggle(stage) {
+                if (fsEl()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} return; }
+                if (stage.classList.contains('rb-fs-on')) { stage.classList.remove('rb-fs-on'); return; }
+                var req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+                var cover = function () { stage.classList.add('rb-fs-on'); };   // an iPhone: no element full screen
+                if (!req) { cover(); return; }
+                try { var p = req.call(stage); if (p && p.catch) p.catch(cover); } catch (e) { cover(); }
+            }
+            Array.prototype.forEach.call(document.querySelectorAll('.rb-fs'), function (b) {
+                b.addEventListener('click', function (e) { e.stopPropagation(); toggle(b.parentNode); });
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key !== 'Escape') return;
+                Array.prototype.forEach.call(document.querySelectorAll('.rb-fs-on'), function (st) { st.classList.remove('rb-fs-on'); });
+            });
+            window._rb2p_fullscreen = { toggle: toggle, on: function () { return !!fsEl() || !!document.querySelector('.rb-fs-on'); } };
         })();
 
         // ===== V471: the owner's inbox (the owner: "at 12:15 pm submit to me the top 5 so far plays so I can check out ...
