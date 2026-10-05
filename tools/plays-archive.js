@@ -113,6 +113,16 @@ function candidateRooms(ledger) {
         if (left) ledger.rooms[code] = now; else delete ledger.rooms[code];
     }
     ledger.bytes += listBytes;
+    // V472: the play-of-the-day comments (rooms/~potd) are copied here every run and only ever ADDED to — the first day's
+    // were deleted on 5 Oct by an old game build's room sweep and could not be recovered (no Firebase backups on Spark).
+    // `node tools/potd-replies.js --restore DATE` puts back any that are missing.
+    try {
+        const c = (await get(tok, 'rooms/~potd/c')).json || {};
+        const bf = path.join(RB2P, 'potd-comments-backup.json'), bk = loadJson(bf, {});
+        let added = 0;
+        for (const [d, list] of Object.entries(c)) for (const [k, v] of Object.entries(list || {})) { bk[d] = bk[d] || {}; if (!bk[d][k]) { bk[d][k] = v; added++; } }
+        if (added) { fs.writeFileSync(bf + '.tmp', JSON.stringify(bk, null, 1)); fs.renameSync(bf + '.tmp', bf); log('play-of-the-day comments: ' + added + ' new, backed up'); }
+    } catch (e) { log('comments backup: ' + e.message); }
     // 2. the 30-day local retention (whole day folders)
     let purged = 0;
     const cutoff = now - KEEP_DAYS * 86400e3;

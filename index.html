@@ -1840,7 +1840,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V471<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V472<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1953,7 +1953,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V471</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V472</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -19779,6 +19779,10 @@
                 var ok = null;
                 try { ok = SRC ? (window._rb2p_potdPosted = (window._rb2p_potdPosted || []).concat([rec]), true) : await window._rb2p_fbRestPost(CROOT + cur.date, rec); } catch (e3) { ok = null; }
                 if (!ok) { say('Could not post — try again.'); return; }
+                // V472: the comments' room carries an `audited` marker — game builds before V419, still open on some devices,
+                // sweep (DELETE) every room without audit/final/audited/flag 2 h after its newest entry; that is how the
+                // first day's comments were lost on 5 Oct. Each post puts the marker back in case the room was emptied.
+                if (!SRC && !window._rb2p_potdKeep) { window._rb2p_potdKeep = true; try { window._rb2p_fbRestPut(CROOT.replace(/c\/$/, '') + 'audited', { ts: Date.now(), keep: 'the play-of-the-day comments (the pre-V419 room sweep skips a room with this)' }); } catch (eK) {} }
                 if (SRC) { var k = 'comments/' + cur.date; SRC[k] = Object.assign({}, SRC[k] || {}); SRC[k]['z' + Date.now()] = rec; }
                 $input.value = ''; say('Posted.'); loadComments();
             });

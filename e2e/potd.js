@@ -98,6 +98,8 @@ async function open(browser, seams) {
         console.log('  D3 row: ' + JSON.stringify(peek));
         console.log('  D3/D4: ' + JSON.stringify(d3));
         check('D3 a comment posts and shows in the list (the COMMENTS row opens; it counts them and shows the newest)', d3.some(c => /what a run/.test(c.t) && !c.flair && c.vis) && /· 2/.test(peek.n) && /what a run/.test(peek.peek), JSON.stringify({ d3, peek }));
+        const kept = await TP.fbGet('rooms/~potdtest/audited');
+        check('D3b posting puts the keep marker on the comments\' room (the pre-V419 sweep skips it)', !!(kept && kept.ts), JSON.stringify(kept));
         check('D4 the play\'s maker carries the PLAY OF THE DAY flair; another player does not', d3.some(c => /TheMaker/.test(c.t) && c.flair) && d3.some(c => /what a run/.test(c.t) && !c.flair), JSON.stringify(d3));
         // ---- D10: no wait between comments; swear words refused and hidden ----
         await fetch(DB + ROOT + day + '/a1.json?auth=' + tok, { method: 'PUT', body: JSON.stringify({ uid: 'x', name: 'Rude', text: 'this game is $hit', ts: Date.now() - 4000 }) });

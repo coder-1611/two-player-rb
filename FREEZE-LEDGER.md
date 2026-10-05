@@ -1471,3 +1471,15 @@ each day into a viewable section".
   removes itself.
 - Tests: `e2e/inbox.js` B1–B3 (the real publish path, a test device id, cleaned up after). `game-dif` G2 (a DIFFERENT
   game on two devices with their own storage: difs.a easy, difs.b max). WebKit: iPhone sideways + iPad lobby pass.
+
+## V472 (2026-10-05): the play-of-the-day comments were deleted by an old build's room sweep — kept and backed up now
+- **What happened:** the first day's 8+ comments (`rooms/~potd/c/2026-10-04`) were gone on 5 Oct, along with the
+  whole `rooms/~potd`. Game rooms were untouched (2151). Game builds before V419 run `sweepStaleRooms` on every load and
+  every 20 min. It DELETEs every room without `audit`/`final`/`audited`/`flag` 2 h after its newest `ts` (48 h with
+  `names`). V419 emptied it, but old builds stay open on some devices (an old tab, a cached home-screen copy, the
+  version jumper). `~potd` had none of those keys. The Spark plan has no backups, so the comments could not be recovered.
+- **The fix:** `rooms/~potd/audited` (written now; every post puts it back once per page session). The old sweep skips
+  a room with it. audit-watch ignores rooms without an `audit` stream.
+- **The backup:** the hourly plays-archive job copies `rooms/~potd/c` to `.rb2p/potd-comments-backup.json`, only ever
+  adding. `node tools/potd-replies.js --restore DATE` puts back the missing ones.
+- Tests: `e2e/potd.js` D3b (the marker after a post) 11/11, plays-archive 7/7.

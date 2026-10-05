@@ -10,6 +10,14 @@ const DB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
 (async () => {
     const tok = await require(path.join(__dirname, 'fb-auth.js')).token();
     const get = async p => { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+    // V472: --restore DATE puts back the comments of DATE that the local backup has and Firebase lost
+    if (process.argv[2] === '--restore') {
+        const d = process.argv[3], bk = (() => { try { return JSON.parse(require('fs').readFileSync(path.join(require('os').homedir(), 'Projects/two-player-rb/.rb2p/potd-comments-backup.json'), 'utf8')); } catch (e) { return {}; } })()[d] || {};
+        const now = await get('rooms/~potd/c/' + d) || {}; let n = 0;
+        for (const [k, v] of Object.entries(bk)) if (!now[k]) { const r = await fetch(DB + 'rooms/~potd/c/' + d + '/' + k + '.json?auth=' + tok, { method: 'PUT', body: JSON.stringify(v) }); if (r.ok) n++; }
+        await fetch(DB + 'rooms/~potd/audited.json?auth=' + tok, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), keep: 'the play-of-the-day comments' }) });
+        console.log('restored ' + n + ' comment(s) of ' + d + ' (' + Object.keys(bk).length + ' in the backup)'); process.exit(0);
+    }
     const day = process.argv[2] || null;
     if (!day) {
         const c = await get('complaints') || {};
