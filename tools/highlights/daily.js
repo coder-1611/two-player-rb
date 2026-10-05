@@ -23,6 +23,7 @@
 //   --until MS / --hours N  the window (default: the 24 h up to now)
 //   --archive DIR --out DIR --runs DIR --no-firebase --no-video --height N --include-test   (tests, proofs)
 //   --judge-cmd "CMD"       (tests) run CMD with the bundle folder as its last argument instead of Claude
+//   --publish-only [--dif ID=max,...]   publish a finished day's top 3 again (V468: --dif corrects a play's difficulty)
 // Env: HL_CLAUDE (the claude CLI), HL_MODEL (claude-sonnet-5-5), HL_EFFORT (high), HL_JUDGE_MIN (25), RB_E2E_PORT (8803)
 'use strict';
 const fs = require('fs');
@@ -234,15 +235,25 @@ function checkTop5(file, ids, want) {
 // room, his device (anonymous uid) from that phone's latest bind; that device gets the congrats.
 const FIREBASE = process.env.FIREBASE_BIN || 'firebase';
 // V467: a play recorded before V465 carries no difficulty: in a SAME-mode game it is the room's shared setting (a
-// DIFFERENT-mode game kept each player's own on his device: unknown)
+// DIFFERENT-mode game kept each player's own on his device: unknown). V468: the room keeps only its LATEST setting — a
+// RUN IT BACK rematch on another difficulty overwrites it (WKAI: game 1 on MAX, the rematch on HARD) — so it is used only
+// for the plays of the room's last game (rooms/{code}/games: each game's start); earlier games' plays stay unknown.
 async function fillDifficulty(plays) {
     const rooms = [...new Set(plays.filter(p => p && !p.dif && p.room).map(p => String(p.room)))];
     if (!rooms.length) return 0;
     const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
-    const cfg = {};
-    for (const r of rooms) { try { const res = await fetch(DB + 'rooms/' + encodeURIComponent(r) + '/config.json?auth=' + tok, { cache: 'no-store' }); cfg[r] = res.ok ? await res.json() : null; } catch (e) { cfg[r] = null; } }
+    const get = async q => { try { const res = await fetch(DB + q + '.json?auth=' + tok, { cache: 'no-store' }); return res.ok ? await res.json() : null; } catch (e) { return null; } };
+    const cfg = {}, last = {};
+    for (const r of rooms) {
+        cfg[r] = await get('rooms/' + encodeURIComponent(r) + '/config');
+        const games = await get('rooms/' + encodeURIComponent(r) + '/games') || {};
+        last[r] = Math.max(0, ...Object.keys(games).map(Number).filter(Number.isFinite));
+    }
     let n = 0;
-    for (const p of plays) { const c = p && !p.dif && cfg[String(p.room)]; if (c && c.diffMode === 'same' && c.sharedDifficulty) { p.dif = String(c.sharedDifficulty); n++; } }
+    for (const p of plays) {
+        const r = String(p && p.room), c = p && !p.dif && cfg[r];
+        if (c && c.diffMode === 'same' && c.sharedDifficulty && Number(p.at) >= last[r] - 5000) { p.dif = String(c.sharedDifficulty); n++; }
+    }
     return n;
 }
 
@@ -315,6 +326,8 @@ async function guardState() {
             top.push({ pick, play });
         }
         if (!NOFB) { try { await fillDifficulty(top.map(t => t.play)); } catch (e) { log('difficulty not read: ' + e.message); } }
+        // --dif ID=max,ID=hard: the owner's correction of a play's difficulty (V468)
+        for (const kv of String(opt('--dif', '')).split(',').filter(Boolean)) { const [id, d] = kv.split('='); const t = top.find(x => x.pick.id === id); if (t && d) t.play.dif = d.toLowerCase(); }
         top.forEach(t => { t.f = F.features(t.play); });
         log('plays of the day ' + DATE + ' ' + await publishPotd(top, /sonnet|test/.test(String(st.judge))));
         process.exit(0);

@@ -952,8 +952,10 @@
                                                  repeating-linear-gradient(90deg, transparent 0 calc(8.333% - 2px), rgba(255,255,255,.45) calc(8.333% - 2px) 8.333%),
                                                  repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 4.1667%, transparent 4.1667% 8.333%); }
         #rb-potd .potd-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-        #rb-potd .potd-rank { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 6px 8px; font: bold 12px 'Press Start 2P', monospace; line-height: 1;
-                              background: #ffd23f; color: #0a1838; border: 2px solid #0a1838; box-shadow: 2px 2px 0 #0a1838; pointer-events: none; }
+        /* the rank beside the headline, as on the cards (on the big screen it covered the game's own scoreboard) */
+        #rb-potd .potd-head { display: flex; align-items: flex-start; gap: 10px; }
+        #rb-potd .potd-rank { flex: none; padding: 5px 7px; font: bold 12px 'Press Start 2P', monospace; line-height: 1;
+                              background: #ffd23f; color: #0a1838; border: 2px solid #0a1838; box-shadow: 2px 2px 0 #0a1838; }
         #rb-potd .potd-go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 18px; font: bold 12px 'Press Start 2P', monospace;
                             letter-spacing: 1px; background: #ffd23f; color: #0a1838; border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
         #rb-potd .potd-go[hidden] { display: none; }
@@ -1796,7 +1798,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V467<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V468<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1818,10 +1820,10 @@
             </div>
             <section id="rb-potd" hidden aria-labelledby="rb-potd-eye">
                 <p class="potd-eye" id="rb-potd-eye">&#9733; PLAYS OF THE DAY &middot; <span id="rb-potd-date"></span></p>
-                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><span class="potd-rank" id="rb-potd-rank">#1</span><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button><p class="potd-note" id="rb-potd-note"></p></div>
+                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button><p class="potd-note" id="rb-potd-note"></p></div>
                 <div class="potd-body">
                     <div class="potd-info">
-                        <h3 id="rb-potd-title"></h3>
+                        <div class="potd-head"><span class="potd-rank" id="rb-potd-rank">#1</span><h3 id="rb-potd-title"></h3></div>
                         <p class="potd-line"><span class="potd-who" id="rb-potd-who"></span><span class="potd-difl" id="rb-potd-difl" hidden>DIFFICULTY <i class="potd-dif" id="rb-potd-dif"></i></span></p>
                         <p class="potd-why" id="rb-potd-why"></p>
                     </div>
@@ -1909,7 +1911,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V467</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V468</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -19682,9 +19684,19 @@
             $scr.addEventListener('scroll', cue, { passive: true });
             window.addEventListener('resize', function () { fit(); cue(); });
             try { if (WIDE && WIDE.addEventListener) WIDE.addEventListener('change', function () { fit(); cue(); }); } catch (e) {}
-            // comments: the newest 60 of the day; the play of the day's maker carries the flair
-            var BAD = /\b(f+u+c+k+\w*|sh+i+t+\w*|b+i+t+c+h+\w*|c+u+n+t+\w*|d+i+c+k+\w*|p+u+s+s+y+\w*|n+i+g+g+\w*|f+a+g+\w*|r+e+t+a+r+d+\w*|w+h+o+r+e+\w*|s+l+u+t+\w*|a+s+s+h+o+l+e+\w*)\b/gi;
-            function clean(t) { return String(t || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140).replace(BAD, function (w) { return w.charAt(0) + '***'; }); }
+            // comments: the newest 60 of the day; the play of the day's maker carries the flair. V468 (the owner: "remove the
+            // 20 second rule for commenting, and also ban swear words"): no wait between comments; a comment with a swear word
+            // is refused (not starred out), and one already stored is not shown. Matched on the words with the tricks undone
+            // (sh1t, $hit, f*ck, f u c k) — whole words only, so "pass", "class" and "Dickerson" are fine.
+            var BAD = /\b(f+u+c+k+\w*|f+u+k+\w*|f+c+k+\w*|p+h+u+c+k+\w*|m+o+t+h+e+r+f+\w*|sh+i+t+\w*|b+i+t+c+h+\w*|b+a+s+t+a+r+d+s?|c+u+n+t+s?|d+i+c+k+s?|d+i+c+k+h+e+a+d+s?|c+o+c+k+s?|p+u+s+s+y+|p+u+s+s+i+e+s|a+s+s+|a+s+s+e+s|a+s+s+h+o+l+e+s?|d+u+m+b+a+s+s+\w*|j+a+c+k+a+s+s+\w*|n+i+g+g+\w*|n+i+g+a+s?|f+a+g+s?|f+a+g+g+o+t+s?|r+e+t+a+r+d+\w*|w+h+o+r+e+s?|s+l+u+t+s?|w+t+f+|s+t+f+u+|k+y+s+|p+o+r+n+\w*|p+e+n+i+s+\w*|v+a+g+i+n+a+s?|t+i+t+s+|b+o+o+b+s+|s+e+x+y?)\b/;
+            function unmask(t) {
+                var s = String(t || '').toLowerCase().replace(/[0]/g, 'o').replace(/[1!|]/g, 'i').replace(/3/g, 'e').replace(/[4@]/g, 'a').replace(/[5$]/g, 's').replace(/7/g, 't')
+                                       .replace(/(\w)[*._-]+(?=\w)/g, '$1');   // f*ck, f.u.c.k
+                return s + ' ' + s.replace(/\b(\w) (?=\w\b)/g, '$1');   // and f u c k, spelled out
+            }
+            function swears(t) { return BAD.test(unmask(t)); }
+            function clean(t) { return String(t || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140); }
+            window._rb2p_potdSwears = swears;   // tests
             async function loadComments() {
                 var d = cur && cur.date; if (!d) return;
                 var list2 = null;
@@ -19698,7 +19710,7 @@
                 } catch (e) { list2 = null; }
                 if (!cur || cur.date !== d) return;
                 $cmts.textContent = '';
-                var rows = list2 ? Object.keys(list2).sort().map(function (k) { return list2[k]; }).filter(function (c) { return c && c.text; })
+                var rows = list2 ? Object.keys(list2).sort().map(function (k) { return list2[k]; }).filter(function (c) { return c && c.text && !swears(c.text) && !swears(c.name); })
                                        .sort(function (a, b) { return (Number(a.ts) || 0) - (Number(b.ts) || 0); }) : [];   // oldest first, by when it was said
                 if ($ncmt) $ncmt.textContent = rows.length ? '· ' + (rows.length >= 60 ? '60+' : rows.length) : '';
                 var lastC = rows[rows.length - 1];
@@ -19717,15 +19729,14 @@
                 e.preventDefault();
                 if (!cur) return;
                 var txt = clean($input.value); if (!txt) return;
-                var lastPost = 0; try { lastPost = Number(localStorage.getItem('rb2p_potd_lastPost')) || 0; } catch (e2) {}
-                if (Date.now() - lastPost < 20000) { say('One comment every 20 seconds.'); return; }
+                if (swears(txt)) { say('Keep it clean — no swear words.'); return; }
+                if (swears(rb2pName())) { say('Your name has a word that is not allowed here — change it first.'); return; }
                 say('Posting…');
                 var uid = await myUid();
                 var rec = { uid: uid || '', name: (rb2pName() || 'Player').slice(0, 16), text: txt, ts: Date.now(), ver: (document.querySelector('.prompt') || { textContent: '' }).textContent.replace(/^.*(V\d+).*$/, '$1') };
                 var ok = null;
                 try { ok = SRC ? (window._rb2p_potdPosted = (window._rb2p_potdPosted || []).concat([rec]), true) : await window._rb2p_fbRestPost(CROOT + cur.date, rec); } catch (e3) { ok = null; }
                 if (!ok) { say('Could not post — try again.'); return; }
-                try { localStorage.setItem('rb2p_potd_lastPost', String(Date.now())); } catch (e4) {}
                 if (SRC) { var k = 'comments/' + cur.date; SRC[k] = Object.assign({}, SRC[k] || {}); SRC[k]['z' + Date.now()] = rec; }
                 $input.value = ''; say('Posted.'); loadComments();
             });

@@ -13,6 +13,8 @@
 // V467 (the owner: "make it top 3 but number 1 prominent and show difficulty"):
 //   D8  #2 and #3 are cards beside #1, each with its headline, its player and its difficulty
 //   D9  a card puts its play on the big screen (its rank, its words) and plays it; #1 becomes a card
+// V468 (the owner: "remove the 20 second rule for commenting, and also ban swear words"):
+//   D10 a second comment right away posts; a swear word (even spelled sh1t) is refused; a stored one is not shown
 const H = require('./harness');
 const TP = require('./two-player');
 const sleep = H.sleep;
@@ -97,6 +99,17 @@ async function open(browser, seams) {
         console.log('  D3/D4: ' + JSON.stringify(d3));
         check('D3 a comment posts and shows in the list (the COMMENTS row opens; it counts them and shows the newest)', d3.some(c => /what a run/.test(c.t) && !c.flair && c.vis) && /· 2/.test(peek.n) && /what a run/.test(peek.peek), JSON.stringify({ d3, peek }));
         check('D4 the play\'s maker carries the PLAY OF THE DAY flair; another player does not', d3.some(c => /TheMaker/.test(c.t) && c.flair) && d3.some(c => /what a run/.test(c.t) && !c.flair), JSON.stringify(d3));
+        // ---- D10: no wait between comments; swear words refused and hidden ----
+        await fetch(DB + ROOT + day + '/a1.json?auth=' + tok, { method: 'PUT', body: JSON.stringify({ uid: 'x', name: 'Rude', text: 'this game is $hit', ts: Date.now() - 4000 }) });
+        await page.evaluate(() => { document.getElementById('rb-potd-input').value = 'again right away'; document.getElementById('rb-potd-form').requestSubmit(); });
+        await page.waitForFunction(() => /Posted/.test(document.getElementById('rb-potd-msg').textContent) && /again right away/.test(document.getElementById('rb-potd-cmts').textContent), { timeout: 20000, polling: 300 }).catch(() => {});
+        await page.evaluate(() => { document.getElementById('rb-potd-input').value = 'that defense is sh1t'; document.getElementById('rb-potd-form').requestSubmit(); });
+        await sleep(1500);
+        const d10 = await page.evaluate(() => ({ msg: document.getElementById('rb-potd-msg').textContent, list: document.getElementById('rb-potd-cmts').textContent, input: document.getElementById('rb-potd-input').value }));
+        const stored10 = Object.values(await (await fetch(DB + ROOT + day + '.json?auth=' + tok)).json() || {}).map(c => c.text);
+        console.log('  D10: ' + JSON.stringify({ d10, stored10 }));
+        check('D10 a second comment right away posts; a swear word is refused (never stored); a stored one is not shown',
+              /again right away/.test(d10.list) && /Keep it clean/.test(d10.msg) && !stored10.some(t => /sh1t/.test(t)) && !/\$hit/.test(d10.list) && /sh1t/.test(d10.input), JSON.stringify({ d10, stored10 }));
         // ---- D7 ----
         const before7 = await page.evaluate(() => document.querySelectorAll('#rb-potd-days button').length);
         await page.evaluate(() => { document.querySelector('#rb-potd-past > summary').click(); });

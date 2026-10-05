@@ -1423,3 +1423,17 @@ each day into a viewable section".
   day the lobby is the one centered column it always was.
 - Tests: `e2e/potd-layout.js` L1–L3 (nine sizes), `e2e/potd.js` D1–D9 (D8 the cards, D9 a card on the big screen),
   `lobby-phone` P2 (a tablet held sideways scrolls nothing), `v387-names` T1 now points at potd D5.
+
+## V468 (2026-10-04): comments without the 20 s wait, swear words banned; #2/#3's difficulty corrected; the rank by the headline
+- **The owner:** "remove the 20 second rule for commenting, and also ban swear words. Also play number 2 HAS to be max
+  mode, check again."
+- **Comments:** no wait between comments. A comment with a swear word is refused ("Keep it clean"), never stored. One
+  already stored (or posted around the page) is not shown. The match undoes the usual tricks (sh1t, $hit, f*ck, f u c k)
+  on whole words only ("pass", "class", "Dickerson" are fine).
+- **Difficulty:** the room keeps only its latest setting. WKAI's first game was MAX; its RUN IT BACK rematch was HARD,
+  which overwrote the room's setting. Evidence: the DBs' top speed over the offense's was 1.45 in game 1 and 1.0 in the
+  rematch. So `fillDifficulty` uses the room setting only for plays of the room's last game (`rooms/{code}/games`).
+  `--publish-only --dif ID=max` corrects a play; today's #2/#3 were republished as MAX. Plays from V465 on carry their
+  own `dif`.
+- **The #1 badge** sits beside the headline, as on the cards. On the big screen it covered the game's own scoreboard.
+- Tests: `e2e/potd.js` D10 (10/10).
