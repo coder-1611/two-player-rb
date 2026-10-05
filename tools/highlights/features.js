@@ -50,7 +50,7 @@ function features(play) {
     const tr = decodeTrack(play), res = play.res || {};
     const dir = Number(play.dir) < 0 ? -1 : 1;
     const out = {
-        id: (play.room || '?') + '-' + (play.role || '?') + '-p' + play.at, room: play.room, role: play.role, at: play.at, ver: play.ver,
+        id: (play.room || '?') + '-' + (play.role || '?') + '-p' + play.at, room: play.room, role: play.role, at: play.at, ver: play.ver, dif: play.dif || '',
         q: Number(play.q), clk: Number(play.clk), down: Number(play.d), toGo: Number(play.tg), y0: Number(play.y), via: play.via || '',
         endClk: res.clk != null ? Number(res.clk) : null, result: res.type || null, handoff: res.handoff || null, name: res.name || '',
         gain: res.gain != null && isFinite(Number(res.gain)) ? Number(res.gain) : null, durS: play.ms ? Math.round(play.ms / 100) / 10 : null,
@@ -281,6 +281,7 @@ function scoreOf(f) {
     if (f.pick6) s += 6;
     if (f.lateInHalf) s += f.td ? 10 : ((f.gain || 0) >= 20 ? 3 : 0);
     if (f.leadChange && f.q >= 4) s += 5;
+    s += ({ max: 3, ultramax: 3, hard: 2, medium: 1 }[String(f.dif || '').toLowerCase()] || 0);   // V465: the defense beaten counts
     return Math.round(s * 10) / 10;
 }
 

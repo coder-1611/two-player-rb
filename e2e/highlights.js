@@ -29,7 +29,7 @@ const TOOLS = path.join(__dirname, '..', 'tools');
     const code = g.code;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'highlights-')), arch = path.join(tmp, 'archive'), out = path.join(tmp, 'out'), runs = path.join(tmp, 'runs');
     const daily = (extra, env) => { try { return execFileSync('node', [path.join(TOOLS, 'highlights', 'daily.js'), '--archive', arch, '--out', out, '--runs', runs, '--no-firebase', '--include-test'].concat(extra),
-        { env: Object.assign({}, process.env, env || {}), encoding: 'utf8', timeout: 600000 }); } catch (e) { return String(e.stdout || '') + String(e.stderr || '') + ' EXIT ' + e.status; } };
+        { env: Object.assign({}, process.env, { HL_NO_PUBLISH: '1' }, env || {}), encoding: 'utf8', timeout: 600000 }); } catch (e) { return String(e.stdout || '') + String(e.stderr || '') + ' EXIT ' + e.status; } };
     try {
         await sleep(6000);
         for (const P of [g.a, g.b]) await P.page.evaluate(() => { window._rb2p_recForce = true; });
@@ -102,7 +102,7 @@ const TOOLS = path.join(__dirname, '..', 'tools');
         // ---- H6: a day with no plays ----
         const out6 = path.join(tmp, 'out6'), runs6 = path.join(tmp, 'runs6');
         const o6 = (() => { try { return execFileSync('node', [path.join(TOOLS, 'highlights', 'daily.js'), '--archive', arch, '--out', out6, '--runs', runs6, '--no-firebase', '--include-test', '--judge-cmd', 'false', '--until', String(Date.now() - 10 * 86400e3)],
-            { encoding: 'utf8', timeout: 120000 }); } catch (e) { return String(e.stdout || '') + ' EXIT ' + e.status; } })();
+            { env: Object.assign({}, process.env, { HL_NO_PUBLISH: '1' }), encoding: 'utf8', timeout: 120000 }); } catch (e) { return String(e.stdout || '') + ' EXIT ' + e.status; } })();
         const d6 = fs.existsSync(out6) ? fs.readdirSync(out6)[0] : null, readme6 = d6 ? fs.readFileSync(path.join(out6, d6, 'README.md'), 'utf8') : '';
         check('H6 a day with no plays: the README says so, with the recording guard\'s state', /No plays were recorded/.test(readme6) && /recording guard/.test(readme6),
               JSON.stringify({ readme6: readme6.slice(0, 300), tail: o6.trim().split('\n').slice(-2) }));

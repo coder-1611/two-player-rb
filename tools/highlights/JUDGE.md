@@ -12,32 +12,31 @@ The owner's words — this is your brief:
 > bunch of players, stiff arms breaking tackles, last moment hail marys, etc, I want an intelligent agent to see the plays
 > and be really good at choosing incredible plays."
 
-## What makes a play incredible
+## What makes a play incredible — four things, weighed EQUALLY
 
-Rank by how hard a viewer's jaw drops. In rough order of what this owner values:
+The owner, 4 Oct: "weigh game situation, difficulty mode, impact (sheer yardage), and unexpectedness (stiff arms jukes)
+equally". Score every candidate on each of the four (say 0–10 each, in your head) and rank by the total; no one of the
+four outranks the others.
 
-1. **Elusiveness.** One ball carrier making several defenders miss: defenders who dove at him and whiffed, defenders who
-   had him lined up and got left behind, cutbacks across the field. Three or four in one run is special; one is normal.
-2. **Power.** Stiff arms that put a defender on the ground, broken tackles (a defender got hold of him and he kept
-   going), hurdles, and yards gained *after* the first contact. Several in one play beats one.
-3. **Improbability and drama.** A deep ball that hangs in the air and is caught (a "hail mary"), especially with
-   defenders all around the catch; a score with the clock at 0:0x at the end of a half or the game; a go-ahead or
-   game-winning touchdown late in the 4th quarter or in overtime; a pick-six; a fumble scooped and scored.
-4. **Combinations.** A deep catch followed by broken tackles and a touchdown beats any single trait. A big moment in a
-   close game beats the same play in a blowout.
+1. **Game situation.** How much the moment mattered: the clock (the last seconds of a half or the game), the score (a
+   go-ahead or game-winning score, a comeback, a tie broken; a play in a blowout counts little), the down and distance
+   (a 4th-down conversion, a 3rd & long).
+2. **Difficulty mode.** The defense the player beat: `difficulty` in plays.tsv is the DEFENSE setting the offense faced —
+   MAX is the hardest (the defenders are fastest and smartest), then HARD, MED, EASY. The same play against MAX is worth
+   more than against EASY. (Blank = not recorded: judge it as MED.) For a defensive play (a pick-six, a fumble return),
+   it is the defense of the player who threw or fumbled — the returner beat that player's offense.
+3. **Impact — sheer yardage.** How far the play moved the ball: the gain, the return, the touchdown. A 60-yard play has
+   more impact than a 6-yard one, however it happened.
+4. **Unexpectedness.** What no one saw coming: defenders who dove and missed or were left behind (the game has no juke
+   button: elusiveness is the player steering past them), broken tackles, stiff arms that put a defender down, hurdles,
+   a catch in traffic, a deep ball that hangs, a pick returned all the way.
 
-**Not incredible on its own:** a long gain or touchdown where nobody touched the runner because the defense was out of
-position (an open-field sprint), a routine completion, a long run that was mostly blocking, plays in garbage time. A long
-touchdown only belongs in the five if something special happened on the way: missed tackles, broken tackles, a stiff
-arm, a hurdle, a great catch, or the clock and the score made it huge.
-
-The engine itself has no "juke" button. Elusiveness in this game is the player steering the carrier past defenders who
-dive at him or close in on him. That is what "beaten" and "dove and missed" measure.
+A play that is great on all four beats a play that is extreme on one. Use the frames to check what the numbers claim.
 
 ## What is in this folder
 
-- `plays.tsv` — **every play** of the day (one row each) with its measured numbers. The columns are explained in its
-  header comment. Read it first to see the whole day.
+- `plays.tsv` — **every play** of the day (one row each) with its measured numbers, including `difficulty` (the defense
+  setting the offense faced). The columns are explained in its header comment. Read it first to see the whole day.
 - `candidates.md` — the short-listed plays, each with its game situation, its **story** (written from the engine's own
   frame-by-frame record of the play: who held the ball, who dove, who engaged whom, which stiff arms and hurdles the
   engine spent), and its numbers. The short list was made by a simple score. That score is a filter, not your verdict.
@@ -68,11 +67,15 @@ dive at him or close in on him. That is what "beaten" and "dove and missed" meas
   "picks": [
     { "rank": 1, "id": "<the play's id, exactly as in plays.tsv>",
       "headline": "<at most 70 characters, like a broadcast lower-third: who did what>",
-      "why": "<2-4 sentences: what makes it incredible, citing what you saw in the frames (frame numbers) and the situation>" }
+      "why": "<2-4 sentences: how it scores on the four (situation, difficulty, impact, unexpectedness), citing what you saw in the frames (frame numbers)>",
+      "fan": "<1-2 sentences for the game's FRONT PAGE, written for the players (kids who play it): what happened and why it is amazing — no frame numbers, no jargon>" }
   ],
   "notes": "<one or two sentences about the day: how many plays, what stood out, anything that looked wrong in the data>"
 }
 ```
+
+Your #1 becomes the **PLAY OF THE DAY** on the game's front page, with its `fan` line under the replay — write that one
+for the players.
 
 Headline examples, for the tone: "McCaffrey shrugs off 3 tacklers, stiff-arms a 4th for 15" ·
 "Purdy's 52-yard heave caught in triple coverage as time expires" · "Ramsey's pick-six turns a 7-point deficit into a lead".

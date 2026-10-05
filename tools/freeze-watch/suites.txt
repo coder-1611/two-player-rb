@@ -75,3 +75,4 @@ plays-archive
 highlights
 max-return-speed
 fumble-popup
+potd

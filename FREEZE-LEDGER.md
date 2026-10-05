@@ -1362,3 +1362,32 @@ destroyed the modal's two BUTTONS only (`_0G` 100367/100369). A conversion modal
 it a drive later, after the interception. The PAT-INV off-the-2 kill did the same. Now `_rb2p_killConversionModal()`
 destroys the whole modal, only when it is the conversion's (a 1 PT / 2 PT button is up), at both sites.
 `e2e/v352-conversion.js` T5 (no instance left) and T5b (the unwedge leaves nothing: 5 -> 0); v395-hidden 10/10.
+
+## V465 (2026-10-04): the PLAY OF THE DAY on the front page — the banner, the replay, comments, the archive, the maker's congrats
+
+The owner: "remove the banner we had for the NEW user name thing and replace it with a PLAY OF THE DAY banner and then a
+portion on the main page where the number one play is displayed along with offensive user name if offense play and
+defensive if defensive play. Also tell the sonnet agent from now on weigh game situation, difficulty mode, impact (sheer
+yardage), and unexpectedness (stiff arms jukes) equally and add a comments section. Also the device that did the play
+should get an alert saying congrats, and a way to respond back to me the creator next time they open the game and they
+should get a special flair if they comment in the play of the day section and the plays of the days should get archived
+each day into a viewable section".
+
+- **Published by the 6 pm job** (`tools/highlights/daily.js`, also `--publish-only` for a finished day): the judge's #1
+  to `embedcode/potd` (~1 KB: headline, the front-page line, OFFENSE/DEFENSE, the player's name, his device's uid),
+  `embedcode/potdIndex/{date}` (the archive) and `embedcode/potdPlays/{date}` (the play's numbers, ~50 KB, fetched only
+  on WATCH — every lobby downloading it would cost the free plan's downloads). The credited player: the offense's for an
+  offensive play, the defense's for a defender's (a pick, a fumble returned); the name from `rooms/{code}/names`, the
+  device from that phone's latest `bind` audit record.
+- **The front page** (`#rb-potd`, under the join row): the replay through the game's own renderer (the opponent's-screen
+  codec), the headline, OFFENSE/DEFENSE · name, the judge's `fan` line (frame numbers stripped from an older `why`);
+  comments at `rooms/~potd/c/{date}` (signed-in players; the newest 60; one per 20 s; a word filter); the maker's comments
+  carry a ★ PLAY OF THE DAY flair; PAST PLAYS OF THE DAY lists every day.
+- **The banner** (`#rb-news`, the V387 first-run news replaced): once per new play of the day; WATCH IT plays it. On the
+  maker's device (its uid) the CONGRATS box instead, with a message to the creator (it arrives with the complaints,
+  choice "PLAY OF THE DAY reply {date}"). Never in a test run unless forced (`_rb2p_potdForce`); the a2hs popup still
+  waits for it.
+- **The judge** (`JUDGE.md`): game situation, difficulty mode, impact (sheer yardage) and unexpectedness weighed
+  equally; the recorder now stores the defense difficulty the offense faced (`dif`), in plays.tsv and the short list.
+- Tests: `e2e/potd.js` D1–D7 (the real published play), a2hs A1 (the banner first, then the popup), highlights (never
+  publishes: `HL_NO_PUBLISH`).

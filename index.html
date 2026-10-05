@@ -150,6 +150,13 @@
         }
         window._rb2p_fbRestGetX = fbRestGetX;
         window._rb2p_fbRestPut = fbRestPut;
+        // V465: the play of the day's comments — a signed-in URL (for a query) and a POST (a new comment's own id)
+        window._rb2p_fbAuthUrl = fbAuthUrl;
+        window._rb2p_fbRestPost = async function (path, obj) {
+            var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+            var r = fbRestStatus(await fetchT(u, { method: 'POST', body: JSON.stringify(obj) }, 8000));
+            return r.ok ? r.json() : null;
+        };
         window._rb2p_fbRestPatch = fbRestPatch;
         window._rb2p_fbRestGet = fbRestGet;
 
@@ -932,6 +939,47 @@
         #rb-complain-choices input { margin: 1px 0 0; accent-color: #ffd23f; flex: none; }
         @media (max-width: 560px) { #rb-complain-choices { grid-template-columns: 1fr; } }
         /* ---- V387: first-run announcement ---- */
+        /* V465: the play of the day — on the main page, under the join row */
+        #rb-potd { margin: 22px auto 0; width: min(560px, 100%); box-sizing: border-box; border: 3px solid #ffd23f; background: rgba(8,20,52,.78);
+                   padding: 14px 14px 12px; box-shadow: 4px 4px 0 #0a1838; text-align: left; }
+        #rb-potd[hidden] { display: none; }
+        #rb-potd .potd-eye { margin: 0 0 10px; text-align: center; font: bold 11px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; line-height: 1.6; }
+        #rb-potd .potd-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #12571f; border: 2px solid #fff; overflow: hidden; }
+        #rb-potd .potd-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        #rb-potd .potd-go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 18px; font: bold 12px 'Press Start 2P', monospace;
+                            letter-spacing: 1px; background: #ffd23f; color: #0a1838; border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
+        #rb-potd .potd-go[hidden] { display: none; }
+        #rb-potd h3 { margin: 12px 0 6px; font: bold 12px 'Press Start 2P', monospace; color: #fff; line-height: 1.7; text-wrap: balance; }
+        #rb-potd .potd-who { margin: 0 0 6px; font-size: 13px; color: #ffd23f; letter-spacing: .04em; }
+        #rb-potd .potd-why { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: #c9d4e6; }
+        #rb-potd .potd-cmt-h { margin: 14px 0 8px; font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; color: #ffd23f; }
+        #rb-potd .potd-cmts { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+        #rb-potd .potd-cmts li { padding: 7px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: 13px; line-height: 1.45; color: #e7edf6; overflow-wrap: anywhere; }
+        #rb-potd .potd-cmts li b { color: #fff; margin-right: 6px; }
+        #rb-potd .potd-cmts .none { color: #8fa1b3; border-top: 0; }
+        .potd-flair { display: inline-block; margin-right: 6px; padding: 3px 5px; font: bold 8px 'Press Start 2P', monospace; letter-spacing: .5px; vertical-align: 1px;
+                      background: #ffd23f; color: #0a1838; box-shadow: 2px 2px 0 #0a1838; }
+        #rb-potd .potd-form { display: flex; gap: 8px; margin-top: 10px; }
+        #rb-potd .potd-form input { flex: 1; min-width: 0; padding: 10px; font-size: 14px; background: #fff; color: #0a1838; border: 3px solid #0a1838; }
+        #rb-potd .potd-form button { padding: 10px 12px; font: bold 10px 'Press Start 2P', monospace; background: #2e7de6; color: #fff; border: 3px solid #0a1838; cursor: pointer; }
+        #rb-potd .potd-msg { min-height: 1em; margin: 6px 0 0; font-size: 12px; color: #8fa1b3; }
+        #rb-potd details { margin-top: 14px; }
+        #rb-potd summary { cursor: pointer; font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; color: #ffd23f; padding: 6px 0; }
+        #rb-potd .potd-days { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+        #rb-potd .potd-days button { width: 100%; text-align: left; padding: 8px 10px; font-size: 12px; line-height: 1.4; color: #e7edf6; background: rgba(255,255,255,.06);
+                                     border: 2px solid rgba(255,255,255,.18); cursor: pointer; }
+        #rb-potd .potd-days button.on { border-color: #ffd23f; }
+        #rb-potd .potd-days time { color: #ffd23f; margin-right: 8px; font-variant-numeric: tabular-nums; }
+        #rb-potd-congrats { position: fixed; inset: 0; z-index: 10001; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.86); }
+        #rb-potd-congrats[hidden] { display: none; }
+        #rb-potd-congrats .box { width: min(520px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #0d2a6b; border: 5px solid #ffd23f; padding: 20px; color: #fff;
+                                  box-shadow: 6px 6px 0 #0a1838; text-align: center; }
+        #rb-potd-congrats h2 { margin: 0 0 12px; font: bold 14px 'Press Start 2P', monospace; color: #ffd23f; line-height: 1.6; }
+        #rb-potd-congrats p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+        #rb-potd-congrats textarea { width: 100%; box-sizing: border-box; min-height: 70px; padding: 10px; font-size: 14px; border: 3px solid #0a1838; resize: vertical; }
+        #rb-potd-congrats .row { display: flex; gap: 10px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+        #rb-potd-congrats button { font: bold 11px 'Press Start 2P', monospace; padding: 12px 16px; border: 3px solid #0a1838; cursor: pointer; }
+        #rb-potd-congrats .send { background: #ffd23f; color: #0a1838; } #rb-potd-congrats .later { background: #2e4a7d; color: #fff; }
         #rb-news { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.84); }
         #rb-news[hidden] { display: none; }
         #rb-news .box { width: min(540px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #0d2a6b; border: 5px solid #fff;
@@ -1603,10 +1651,22 @@
     </div>
     <div id="rb-news" hidden>
         <div class="box">
-            <h2>TWO NEW FEATURES</h2>
-            <p><b>1. Your name.</b> Before you play you'll be asked for your name, once. It shows next to your team on the game records, so we can see who played.</p>
-            <p><b>2. Report a bug.</b> The <span class="chip">!</span> button in the bottom-left corner opens a box. Type what went wrong and send it &mdash; it arrives with the game's own log attached.</p>
-            <button id="rb-news-ok" type="button">GOT IT</button>
+            <h2>&#9733; PLAY OF THE DAY &#9733;</h2>
+            <p id="rb-news-head"></p>
+            <p id="rb-news-who"></p>
+            <button id="rb-news-ok" type="button">WATCH IT</button>
+            <button id="rb-news-later" type="button" style="background:#2e4a7d;color:#fff;margin-top:10px">LATER</button>
+        </div>
+    </div>
+    <div id="rb-potd-congrats" hidden>
+        <div class="box">
+            <h2>&#127942; CONGRATS!</h2>
+            <p>Your play is the <b>PLAY OF THE DAY</b>:</p>
+            <p id="rb-potd-congrats-head" style="color:#ffd23f"></p>
+            <p>It's on the front page for everyone to watch. Want to say something to Soham, who made the game?</p>
+            <textarea id="rb-potd-congrats-text" maxlength="500" placeholder="Type a message (optional)"></textarea>
+            <div class="row"><button class="send" id="rb-potd-congrats-send" type="button">SEND</button><button class="later" id="rb-potd-congrats-close" type="button">CLOSE</button></div>
+            <p id="rb-potd-congrats-msg" style="min-height:1em;margin-top:10px;font-size:12px;color:#c9d4e6"></p>
         </div>
     </div>
     <div id="rb-a2hs" hidden>
@@ -1644,7 +1704,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V464<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V465<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1663,6 +1723,18 @@
                 </div>
             </div>
             <p id="rb-entry-msg" class="msg"></p>
+            <section id="rb-potd" hidden aria-labelledby="rb-potd-title">
+                <p class="potd-eye">&#9733; PLAY OF THE DAY &middot; <span id="rb-potd-date"></span></p>
+                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button></div>
+                <h3 id="rb-potd-title"></h3>
+                <p class="potd-who" id="rb-potd-who"></p>
+                <p class="potd-why" id="rb-potd-why"></p>
+                <p class="potd-cmt-h">COMMENTS</p>
+                <ul class="potd-cmts" id="rb-potd-cmts"></ul>
+                <form class="potd-form" id="rb-potd-form"><input id="rb-potd-input" maxlength="140" placeholder="Say something about this play" autocomplete="off"><button type="submit">POST</button></form>
+                <p class="potd-msg" id="rb-potd-msg"></p>
+                <details id="rb-potd-past"><summary>PAST PLAYS OF THE DAY</summary><ul class="potd-days" id="rb-potd-days"></ul></details>
+            </section>
             <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
             <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
             <p class="rb-solo rb-links"><a href="/how-to-play/">HOW TO PLAY</a> &middot; <a href="/play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="/unblocked/">UNBLOCKED</a></p>
@@ -1733,7 +1805,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V464</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V465</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15515,7 +15587,8 @@
         var where = recWhere(); if (!where) return;
         REC.active = true; REC.t0 = performance.now(); REC.lastT = 0; REC.prev = null; REC.prevSeq = 0; REC.lastKeyAt = 0;
         REC.parts = []; REC.raw = 0; REC.res = null; REC.end = ''; REC.stopAt = 0; REC.lastCapAt = 0;
-        REC.meta = { room: where.room, role: where.role, at: Date.now(), q: f.q, clk: f.clk, d: f.d, tg: f.tg, y: f.y, dir: f.dir, via: f.via || 'pass', poss: f.poss };
+        REC.meta = { room: where.room, role: where.role, at: Date.now(), q: f.q, clk: f.clk, d: f.d, tg: f.tg, y: f.y, dir: f.dir, via: f.via || 'pass', poss: f.poss,
+                     dif: (function () { try { return window._rb2p_difficultyPref ? String(window._rb2p_difficultyPref()) : ''; } catch (e) { return ''; } })() };   // V465: the defense this offense faced
         REC.trk = { v: 2, roster: [], idx: new Map(), frames: [] };   // V458: what happened, for the daily highlights
         REC.sawLive = false; REC.sawDead = false;
         if (REC.stopTimer) clearTimeout(REC.stopTimer);
@@ -19334,14 +19407,178 @@
             }
         } catch (eJP) {}
 
-        // ===== V387: first-run announcement =====
-        try {
-            var $news = document.getElementById('rb-news'), $newsOk = document.getElementById('rb-news-ok');
-            if ($news && !localStorage.getItem('rb2p_news_v387')) {
-                $news.hidden = false;
-                if ($newsOk) $newsOk.addEventListener('click', function () { try { localStorage.setItem('rb2p_news_v387', '1'); } catch (e) {} $news.hidden = true; });
+        // ===== V465: PLAY OF THE DAY (the owner: "remove the banner we had for the NEW user name thing and replace it with a
+        // PLAY OF THE DAY banner and then a portion on the main page where the number one play is displayed along with
+        // offensive user name if offense play and defensive if defensive play ... add a comments section ... the device that
+        // did the play should get an alert saying congrats, and a way to respond back to me the creator ... a special flair
+        // if they comment in the play of the day section and the plays of the days should get archived each day") =====
+        // The 6 pm job (tools/highlights/daily.js) publishes the judge's #1: embedcode/potd (a ~1 KB summary — the headline,
+        // the player's name, his device's uid), embedcode/potdIndex/{date} (the archive) and embedcode/potdPlays/{date} (the
+        // play's numbers, ~50 KB — fetched only on WATCH). The replay is the game's own renderer (the opponent's-screen
+        // codec). Comments: rooms/~potd/c/{date}, signed-in players. The banner (once per new play of the day) replaces the
+        // V387 first-run news; the a2hs popup still waits for it (var $news).
+        var $news = document.getElementById('rb-news');
+        (function () {
+            var PUB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
+            var el = function (id) { return document.getElementById(id); };
+            var $sec = el('rb-potd'), $cv = el('rb-potd-cv'), $go = el('rb-potd-go'), $date = el('rb-potd-date'), $title = el('rb-potd-title'),
+                $who = el('rb-potd-who'), $why = el('rb-potd-why'), $cmts = el('rb-potd-cmts'), $form = el('rb-potd-form'), $input = el('rb-potd-input'),
+                $msg = el('rb-potd-msg'), $days = el('rb-potd-days'), $cg = el('rb-potd-congrats');
+            if (!$sec || !$news) return;
+            var SRC = window._rb2p_potdSource || null;                        // test seam: { path: value }
+            var CROOT = window._rb2p_potdCommentsRoot || 'rooms/~potd/c/';     // test seam
+            var popups = window._rb2p_potdForce === true || !(window._rb2p_isTestRun && window._rb2p_isTestRun());
+            var cur = null, winners = {}, playing = null, R = null;
+            function pub(path) {
+                if (SRC) return Promise.resolve(Object.prototype.hasOwnProperty.call(SRC, path) ? SRC[path] : null);
+                return fetch(PUB + path + '.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
             }
-        } catch (eNews) {}
+            function say(t) { if ($msg) $msg.textContent = t || ''; }
+            function day(d) { try { return new Date(d + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase(); } catch (e) { return d; } }
+            function who(s) { return (s.side === 'defense' ? 'DEFENSE · ' : 'OFFENSE · ') + (s.name || 'a player') + (s.hero ? '  (' + s.hero + ')' : ''); }
+            async function myUid() {
+                if (window._rb2p_potdUid) return window._rb2p_potdUid;            // test seam
+                try { if (window._rb2p_fbAuthUrl) await window._rb2p_fbAuthUrl(PUB); } catch (e) {}   // the anonymous sign-in
+                try { return window._rb2p_uid ? window._rb2p_uid() : ''; } catch (e) { return ''; }
+            }
+            function show(s) {
+                cur = s; playing = null;
+                $date.textContent = day(s.date); $title.textContent = s.headline || ''; $who.textContent = who(s); $why.textContent = s.why || '';
+                $go.textContent = '▶ WATCH'; $go.hidden = false;
+                // a fresh canvas for each day shown: a WebGL canvas cannot be cleared from a 2D context (one never gets WebGL)
+                if (R) { var fresh = $cv.cloneNode(false); $cv.parentNode.replaceChild(fresh, $cv); $cv = fresh; R = null; }
+                $sec.hidden = false; say('');
+                Array.prototype.forEach.call($days.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.d === s.date); });
+                loadComments();
+            }
+            // the replay: the play's own numbers through the game's renderer, gliding at the screen's rate
+            async function watch() {
+                if (!cur) return;
+                $go.hidden = true; say('');
+                var data = cur.__play || await pub('embedcode/potdPlays/' + cur.date);
+                var V = window._rb2p_view;
+                if (!data || !data.play || !V || !V.decodePlay || !V.Renderer) { $go.hidden = false; say('The replay is not available right now.'); return; }
+                cur.__play = data;
+                var frames;
+                try { frames = await V.decodePlay(data.play); } catch (e) { frames = null; }
+                if (!frames || !frames.length) { $go.hidden = false; say('The replay could not be read.'); return; }
+                $cv.width = data.play.cw || 854; $cv.height = data.play.ch || 480;
+                try { if (!R) R = new V.Renderer($cv, true); } catch (e) { $go.hidden = false; say('This browser cannot draw the replay.'); return; }
+                var token = playing = {}, t0 = performance.now(), last = frames[frames.length - 1].t, end = Math.min(last, Number(data.toMs) || last);
+                (function step(now) {
+                    if (playing !== token) return;
+                    if (document.documentElement.classList.contains('rb-in-match')) { playing = null; return; }
+                    var t = now - t0;
+                    if (t > end) { playing = null; $go.textContent = '↻ REPLAY'; $go.hidden = false; return; }
+                    var i = 0; while (i + 1 < frames.length && frames[i + 1].t <= t) i++;
+                    var A = frames[i], B = frames[i + 1];
+                    try {
+                        if (!B || B.t <= A.t) R.draw(A.f, null);
+                        else { var a = Math.min(1, Math.max(0, (t - A.t) / (B.t - A.t))); R.draw(V.lerpFrame(A.f, B.f, a), V.lerpPositions(A.f, B.f, a)); }
+                    } catch (e) { playing = null; $go.hidden = false; say('The replay stopped.'); try { if (window._rb2p_diagLog) window._rb2p_diagLog('POTD replay stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} return; }
+                    requestAnimationFrame(step);
+                })(performance.now());
+            }
+            $go.addEventListener('click', watch);
+            // comments: the newest 60 of the day; the play's maker carries the flair
+            var BAD = /\b(f+u+c+k+\w*|sh+i+t+\w*|b+i+t+c+h+\w*|c+u+n+t+\w*|d+i+c+k+\w*|p+u+s+s+y+\w*|n+i+g+g+\w*|f+a+g+\w*|r+e+t+a+r+d+\w*|w+h+o+r+e+\w*|s+l+u+t+\w*|a+s+s+h+o+l+e+\w*)\b/gi;
+            function clean(t) { return String(t || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140).replace(BAD, function (w) { return w.charAt(0) + '***'; }); }
+            async function loadComments() {
+                var d = cur && cur.date; if (!d) return;
+                var list = null;
+                try {
+                    if (SRC && Object.prototype.hasOwnProperty.call(SRC, 'comments/' + d)) list = SRC['comments/' + d];
+                    else if (window._rb2p_fbAuthUrl) {
+                        var u = await window._rb2p_fbAuthUrl(PUB + CROOT + d + '.json');
+                        u += (u.indexOf('?') >= 0 ? '&' : '?') + 'orderBy=' + encodeURIComponent('"$key"') + '&limitToLast=60';
+                        var r = await fetch(u, { cache: 'no-store' }); list = r.ok ? await r.json() : null;
+                    }
+                } catch (e) { list = null; }
+                if (!cur || cur.date !== d) return;
+                $cmts.textContent = '';
+                var rows = list ? Object.keys(list).sort().map(function (k) { return list[k]; }).filter(function (c) { return c && c.text; }) : [];
+                if (!rows.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'No comments yet — be the first.'; $cmts.appendChild(n0); return; }
+                rows.forEach(function (c) {
+                    var li = document.createElement('li');
+                    if (c.uid && winners[d] && c.uid === winners[d]) { var f = document.createElement('span'); f.className = 'potd-flair'; f.textContent = '★ PLAY OF THE DAY'; li.appendChild(f); }
+                    var b = document.createElement('b'); b.textContent = clean(c.name) || 'Player'; li.appendChild(b);
+                    li.appendChild(document.createTextNode(clean(c.text)));
+                    $cmts.appendChild(li);
+                });
+                $cmts.scrollTop = $cmts.scrollHeight;
+            }
+            $form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                if (!cur) return;
+                var txt = clean($input.value); if (!txt) return;
+                var lastPost = 0; try { lastPost = Number(localStorage.getItem('rb2p_potd_lastPost')) || 0; } catch (e2) {}
+                if (Date.now() - lastPost < 20000) { say('One comment every 20 seconds.'); return; }
+                say('Posting…');
+                var uid = await myUid();
+                var rec = { uid: uid || '', name: (rb2pName() || 'Player').slice(0, 16), text: txt, ts: Date.now(), ver: (document.querySelector('.prompt') || { textContent: '' }).textContent.replace(/^.*(V\d+).*$/, '$1') };
+                var ok = null;
+                try { ok = SRC ? (window._rb2p_potdPosted = (window._rb2p_potdPosted || []).concat([rec]), true) : await window._rb2p_fbRestPost(CROOT + cur.date, rec); } catch (e3) { ok = null; }
+                if (!ok) { say('Could not post — try again.'); return; }
+                try { localStorage.setItem('rb2p_potd_lastPost', String(Date.now())); } catch (e4) {}
+                if (SRC) { var k = 'comments/' + cur.date; SRC[k] = Object.assign({}, SRC[k] || {}); SRC[k]['z' + Date.now()] = rec; }
+                $input.value = ''; say('Posted.'); loadComments();
+            });
+            // the archive: every day's play of the day
+            async function loadDays() {
+                var idx = await pub('embedcode/potdIndex'); if (!idx) return;
+                var dates = Object.keys(idx).sort().reverse();
+                $days.textContent = '';
+                dates.forEach(function (d) {
+                    var s = idx[d]; if (!s) return;
+                    winners[d] = s.uid || winners[d];
+                    var li = document.createElement('li'), b = document.createElement('button'), tm = document.createElement('time');
+                    b.type = 'button'; b.dataset.d = d; tm.textContent = day(d); b.appendChild(tm);
+                    b.appendChild(document.createTextNode((s.headline || '') + (s.name ? ' — ' + s.name : '')));
+                    b.addEventListener('click', function () { show(Object.assign({ date: d }, s)); try { $sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} });
+                    li.appendChild(b); $days.appendChild(li);
+                });
+                if (cur) Array.prototype.forEach.call($days.querySelectorAll('button'), function (bt) { bt.classList.toggle('on', bt.dataset.d === cur.date); });
+            }
+            // the banner, once per new play of the day — or, on the device that made the play, the congrats
+            function banner(s) {
+                try { if (localStorage.getItem('rb2p_potd_seen') === s.date) return; } catch (e) {}
+                if (document.documentElement.classList.contains('rb-in-match')) return;
+                el('rb-news-head').textContent = s.headline || ''; el('rb-news-who').textContent = who(s);
+                $news.hidden = false;
+                var done = function () { try { localStorage.setItem('rb2p_potd_seen', s.date); } catch (e) {} $news.hidden = true; };
+                el('rb-news-ok').onclick = function () { done(); try { $sec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} watch(); };
+                el('rb-news-later').onclick = done;
+            }
+            function congrats(s) {
+                try { if (localStorage.getItem('rb2p_potd_congrats') === s.date) return; } catch (e) {}
+                if (document.documentElement.classList.contains('rb-in-match')) return;
+                el('rb-potd-congrats-head').textContent = s.headline || '';
+                $cg.hidden = false;
+                var done = function () { try { localStorage.setItem('rb2p_potd_congrats', s.date); localStorage.setItem('rb2p_potd_seen', s.date); } catch (e) {} $cg.hidden = true; };
+                el('rb-potd-congrats-close').onclick = done;
+                el('rb-potd-congrats-send').onclick = async function () {
+                    var t = String(el('rb-potd-congrats-text').value || '').trim();
+                    if (!t) { done(); return; }
+                    el('rb-potd-congrats-msg').textContent = 'Sending…';
+                    try {
+                        if (SRC) window._rb2p_potdReply = t; else await window._rb2p_sendComplaint(t, ['PLAY OF THE DAY reply ' + s.date]);
+                        el('rb-potd-congrats-msg').textContent = 'Sent — thank you!';
+                        setTimeout(done, 1200);
+                    } catch (e) { el('rb-potd-congrats-msg').textContent = 'Could not send — try again.'; }
+                };
+            }
+            (async function init() {
+                var s = await pub('embedcode/potd');
+                if (!s || !s.date || !s.headline) return;   // no play of the day yet: nothing shows
+                if (s.uid) winners[s.date] = s.uid;
+                show(s);
+                loadDays();
+                if (!popups) return;
+                var me = s.uid ? await myUid() : '';
+                if (me && s.uid && me === s.uid) congrats(s); else banner(s);
+            })();
+            window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, state: function () { return { cur: cur && cur.date, playing: !!playing, winners: winners }; } };
+        })();
 
         // ===== V457: iPhone — add the game to the Home Screen (the owner: "if the phone is an iphone, tell them to add it to
         // home screen for a better experience ... a pop up on iphone for first time visitors") =====

@@ -1,7 +1,7 @@
 // e2e/a2hs.js — V457: an iPhone's first visit suggests adding the game to the Home Screen (the owner: "if the phone is an
 // iphone, tell them to add it to home screen for a better experience ... There should be a pop up on iphone for first time
 // visitors saying to add it to home page"). WebKit (Safari's engine) as an iPhone 13; Chromium as a desktop and an Android.
-//   A1  a first visit (sideways): the first-run news first, then the Home Screen popup — never both at once
+//   A1  a first visit (sideways): the play-of-the-day banner first (V465), then the Home Screen popup — never both at once
 //   A2  it is on top of the lobby          A3  GOT IT closes it, and it never comes back (localStorage rb2p_a2hs_v457)
 //   B1  upright (news seen): it shows, inside the screen      B2  over the turn-sideways screen
 //   C1  opened from the Home Screen (navigator.standalone): no popup, and the visit record says app
@@ -23,8 +23,11 @@ let pass = 0, fail = 0; const check = (n, ok, d) => { ok ? (pass++, console.log(
     try {
         // A: a first visit, sideways — the news first, then this popup
         let ctx = await webkit.newContext(Object.assign({}, iphone, { viewport: { width: 844, height: 390 }, screen: { width: 844, height: 390 } }));
+        // V465: the first-run banner is now the PLAY OF THE DAY (it shows only when one is published; a test run forces it)
+        await ctx.addInitScript(() => { window._rb2p_potdForce = true; window._rb2p_potdUid = 'not-the-maker'; });
         let page = await ctx.newPage(); await page.goto(URL + '?cb=' + Date.now());
-        await sleep(2500);
+        await page.waitForFunction(() => { const n = document.getElementById('rb-news'); return n && !n.hidden; }, null, { timeout: 15000 }).catch(() => {});
+        await sleep(800);
         const newsUp = await vis(page, 'rb-news'), a2hsBeforeNews = await vis(page, 'rb-a2hs');
         await page.click('#rb-news-ok', { timeout: 8000 }).catch(e => console.log('  (news click: ' + String(e.message).split('\n')[0] + ')'));
         await sleep(1500);

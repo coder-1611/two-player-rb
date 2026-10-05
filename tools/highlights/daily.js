@@ -151,10 +151,10 @@ function tsv(allFeats, short) {
     const S = new Set(short.map(f => f.id));
     const feats = allFeats.length <= TSV_MAX ? allFeats
         : allFeats.filter(f => S.has(f.id)).concat(allFeats.filter(f => !S.has(f.id)).sort((a, b) => b.score - a.score).slice(0, TSV_MAX - S.size)).sort((a, b) => a.at - b.at);
-    const cols = ['id', 'game', 'quarter', 'clock', 'down', 'carrier', 'result', 'gain', 'td', 'broken_tackles', 'stiff_arms', 'hurdles',
+    const cols = ['id', 'game', 'quarter', 'clock', 'down', 'difficulty', 'carrier', 'result', 'gain', 'td', 'broken_tackles', 'stiff_arms', 'hurdles',
                   'dove_and_missed', 'left_behind', 'yds_after_contact', 'air_yds', 'hang_s', 'catch', 'defenders_at_catch', 'late_in_half',
                   'lead_change', 'score_before', 'measured_score', 'short_listed'];
-    const rows = feats.map(f => [f.id, f.room, f.q >= 5 ? 'OT' : f.q, clock(f.clk || 0), downText(f), f.hero + (f.heroPos ? ' (' + f.heroPos + ')' : ''),
+    const rows = feats.map(f => [f.id, f.room, f.q >= 5 ? 'OT' : f.q, clock(f.clk || 0), downText(f), String(f.dif || '').toUpperCase(), f.hero + (f.heroPos ? ' (' + f.heroPos + ')' : ''),
         f.kick ? 'kick' : f.sack ? 'sack' : f.pass ? (f.pass.intercepted ? 'interception' : f.pass.incomplete ? 'incomplete' : 'pass') : (f.fumble ? 'fumble' : 'run'),
         f.gain == null ? '' : Math.round(f.gain), f.td ? (f.defensiveTd ? 'DEF TD' : 'TD') : '', f.tacklesBroken || 0, f.stiffArms || 0, f.hurdles || 0,
         f.missedTackles || 0, f.beaten || 0, f.yardsAfterContact || 0, f.pass ? (f.pass.airYds == null ? '' : Math.round(f.pass.airYds)) : '',
@@ -181,6 +181,7 @@ function candidateText(f) {
     return '## ' + f.id + ' — ' + F.title(f) + '\n' +
         'Game ' + f.room + ' · Q' + (f.q >= 5 ? 'OT' : f.q) + ' ' + clock(f.clk || 0) + (downText(f) ? ' · ' + downText(f) : '') +
         (f.scoreBefore ? ' · score before (offense-defense) ' + f.scoreBefore.join('-') : '') + (f.leadChange ? ' · LEAD CHANGE' : '') + (f.lateInHalf ? ' · LATE IN THE HALF' : '') +
+        ' · defense difficulty ' + (String(f.dif || '').toUpperCase() || 'not recorded') +
         ' · measured score ' + f.score + ' · sheet: sheets/' + f.id + '.jpg\n' +
         'Numbers: ' + (nums.length ? nums.join(' · ') : 'nothing special measured') + '\n' +
         'Story: ' + f.story + '\n';
@@ -222,7 +223,40 @@ function checkTop5(file, ids, want) {
     }
     if (picks.length < want) return { ok: false, why: picks.length + ' picks; ' + want + ' are needed' };
     picks.sort((a, b) => (Number(a.rank) || 99) - (Number(b.rank) || 99));
-    return { ok: true, picks: picks.slice(0, want).map((p, i) => ({ rank: i + 1, id: p.id, headline: p.headline.trim().slice(0, 90), why: p.why.trim() })), notes: String(j.notes || '').trim() };
+    return { ok: true, picks: picks.slice(0, want).map((p, i) => ({ rank: i + 1, id: p.id, headline: p.headline.trim().slice(0, 90), why: p.why.trim(),
+                                                                    fan: typeof p.fan === 'string' ? p.fan.trim().slice(0, 300) : '' })), notes: String(j.notes || '').trim() };
+}
+
+// ---------- 6. the play of the day (V465): the #1 on the game's front page ----------
+// embedcode/potd (a ~1 KB summary every lobby reads), embedcode/potdIndex/{date} (the archive list) and
+// embedcode/potdPlays/{date} (the play's numbers, fetched on WATCH). The player credited: the offense's for an offensive
+// play (the phone that recorded it), the defense's for a defender's (a pick or a fumble returned) — his name from the
+// room, his device (anonymous uid) from that phone's latest bind; that device gets the congrats.
+const FIREBASE = process.env.FIREBASE_BIN || 'firebase';
+async function publishPotd(pick, f, play, judged) {
+    if (process.env.HL_NO_PUBLISH === '1' || has('--no-publish')) return 'skipped (--no-publish)';
+    const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
+    const get = async p => { try { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
+    const credRole = f.heroSide === 'D' ? (play.role === 'a' ? 'b' : 'a') : play.role;
+    const names = await get('rooms/' + play.room + '/names') || {};
+    let name = names[credRole] || '', uid = '';
+    const au = await get('rooms/' + play.room + '/audit/' + credRole) || {};
+    const binds = Object.values(au).filter(e => e && e.k === 'bind' && Number(e.t) <= Number(play.at) + 120000).sort((a, b) => a.t - b.t);
+    if (binds.length) { uid = binds[binds.length - 1].uid || ''; if (!name) name = binds[binds.length - 1].name || ''; }
+    const ends = f.events.filter(e => e.kind === 'td' || e.kind === 'end').map(e => e.t);
+    const toMs = Math.round((ends.length ? Math.max(...ends) : Math.max(0, ...f.events.map(e => e.t))) + 2500);
+    // the front page's words: the judge's fan line, else its reason without the contact sheet's frame numbers
+    const noFrames = t => String(t || '').replace(/\s*\((?:see )?frames? [^)]*\)/gi, '').replace(/\b(?:in )?frames? \d+(?:\s*[-–]\s*\d+)? (show|shows)\b/gi, 'the replay shows').replace(/\b(?:in |by )?frames? \d+(?:\s*[-–]\s*\d+)?(?: and \d+)?,?\s*/gi, '')
+                                         .replace(/\s+([,.])/g, '$1').replace(/\s{2,}/g, ' ').replace(/(^|[.!?]\s+)([a-z])/g, (m, a, b) => a + b.toUpperCase()).trim();
+    const summary = { date: DATE, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense', name: String(name).slice(0, 40), hero: f.hero || '',
+                      uid, headline: pick.headline, why: pick.fan || noFrames(pick.why), q: play.q, clk: play.clk, dif: play.dif || '', toMs, judged: !!judged, ts: Date.now() };
+    const body = {}; for (const k of Object.keys(play)) if (k !== 'zt' && k !== 'encT') body[k] = play[k];
+    const setPath = (p, v) => { const tmp = path.join(os.tmpdir(), 'potd-' + process.pid + '-' + Math.random().toString(36).slice(2) + '.json');
+        fs.writeFileSync(tmp, JSON.stringify(v)); try { execFileSync(FIREBASE, ['database:set', p, tmp, '--project', 'realretrobowl2p', '--force'], { stdio: 'pipe', timeout: 90000 }); } finally { try { fs.unlinkSync(tmp); } catch (e) {} } };
+    setPath('/embedcode/potdPlays/' + DATE, Object.assign({}, summary, { play: body }));   // the replay first: WATCH works the moment the summary appears
+    setPath('/embedcode/potdIndex/' + DATE, { headline: summary.headline, why: summary.why, name: summary.name, side: summary.side, hero: summary.hero, uid, q: summary.q, clk: summary.clk });
+    setPath('/embedcode/potd', summary);
+    return 'published: ' + summary.side + ' — ' + (summary.name || '?') + (uid ? '' : ' (no device found)');
 }
 
 // ---------- 5. the output ----------
@@ -235,6 +269,15 @@ async function guardState() {
 }
 
 (async () => {
+    if (has('--publish-only')) {   // V465: publish a finished day's #1 (its run folder's top5.json/status.json, the archived play)
+        const st = loadJson(path.join(RUNS, DATE, 'status.json'), null), t5 = loadJson(path.join(RUNS, DATE, 'top5.json'), null);
+        const id = st && st.picks && st.picks[0]; if (!id) { log('no finished day ' + DATE + ' in ' + RUNS); process.exit(1); }
+        const pick = (t5 && t5.picks || []).find(p => p.id === id) || { id, headline: id, why: '' };
+        const m = /^([A-Z0-9]+)-([ab])-p(\d+)$/.exec(id), play = m ? loadJson(path.join(ARCH, dayKey(Number(m[3])), m[1], m[2] + '-p' + m[3] + '.json'), null) : null;
+        if (!play) { log('the play ' + id + ' is not in the archive'); process.exit(1); }
+        log('play of the day ' + DATE + ' ' + await publishPotd(pick, F.features(play), play, /sonnet|test/.test(String(st.judge))));
+        process.exit(0);
+    }
     const t0 = Date.now();
     const dayDir = path.join(OUT, DATE), runDir = path.join(RUNS, DATE);
     log('=== highlights ' + DATE + ': the plays from ' + new Date(SINCE).toLocaleString() + ' to ' + new Date(UNTIL).toLocaleString() + ' ===');
@@ -359,6 +402,8 @@ async function guardState() {
         lines.push('---', '', '<sub>Every play\'s numbers, the short list and the contact sheets the judge saw: `' + runDir + '`. Run ' + Math.round((Date.now() - t0) / 1000) + ' s.</sub>', '');
         writeAtomic(path.join(dayDir, 'README.md'), lines.join('\n'));
         status.ok = NOVIDEO || status.videos.length === picks.length;
+        try { status.potd = await publishPotd(picks[0], byId.get(picks[0].id).f, byId.get(picks[0].id).play, judged); log('play of the day ' + status.potd); }
+        catch (e) { status.potd = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('potd: ' + status.potd); log('play of the day ' + status.potd); }
         notify('Retro Bowl 2P — today\'s top ' + picks.length, (judged ? '' : '(unjudged) ') + picks.map(p => p.rank + '. ' + p.headline).join('  ').slice(0, 170));
         log('done: ' + dayDir);
     } catch (e) {
