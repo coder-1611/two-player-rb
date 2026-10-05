@@ -46,7 +46,7 @@ async function sheet(page, play, moments, file, opts) {
             let k = 0; while (k + 1 < frames.length && frames[k + 1].t <= m.t) k++;
             const A = frames[k], B = frames[k + 1];
             if (!B || B.t <= A.t) R.draw(A.f, null);
-            else { const a = Math.min(1, Math.max(0, (m.t - A.t) / (B.t - A.t))); R.draw(V.lerpFrame(A.f, B.f, a), V.lerpPositions(A.f, B.f, a)); }
+            else R.draw(A.f, null);   // V478: the exact recorded frame (no blending)
             const cx = (i % cols) * (cellW + gap), cy = headH + Math.floor(i / cols) * (cellH + gap);
             x.drawImage(cell, cx, cy);
             // the caption: the moment's number, its time and what happened
@@ -92,7 +92,7 @@ async function video(page, play, file, opts) {
                 let i = 0; while (i + 1 < fr.length && fr[i + 1].t <= t) i++;
                 const A = fr[i], B = fr[i + 1];
                 if (!B || B.t <= A.t) P.R.draw(A.f, null);
-                else { const a = Math.min(1, Math.max(0, (t - A.t) / (B.t - A.t))); P.R.draw(P.V.lerpFrame(A.f, B.f, a), P.V.lerpPositions(A.f, B.f, a)); }
+                else P.R.draw(A.f, null);   // V478: the exact recorded frame (no blending)
                 if (P.x) {   // the caption, over the first 3.5 s (fading out over the last half second)
                     const W = P.out.width, Hh = P.out.height, x = P.x;
                     x.drawImage(P.cv, 0, 0);

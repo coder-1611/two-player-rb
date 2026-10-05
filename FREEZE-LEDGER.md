@@ -1560,3 +1560,15 @@ each day into a viewable section".
 - **Measured** on the preview's 93-yd TD: the end zone's edge keeps a constant 49 px from the next yard line in every
   60 Hz draw.
 - Tests: opp-view 7/7.
+
+## V478 (2026-10-05): no blending anywhere — the replay shows only frames the game drew
+- **The owner:** "the shadows are floating around and other random sprites are also just spawning and spinning around
+  ... THERE SHOULD BE NO SLIDING OR BLENDING, the key thing to notice is if the down marker moves instantaneously or
+  slides".
+- **The live opponent's screen**, the play-of-the-day replay, the inbox replay, the contact sheets and the MP4 videos
+  draw the exact frame with t <= now (`R.draw(A, null)`). They never use `lerpFrame`/`lerpPositions` (the functions
+  stay, unused). The down marker moves the instant the game moved it.
+- The live link is 30 frames a second (V450's rate), so the waiting phone shows each exact frame about twice at 60 Hz.
+  Recordings are 15 a second.
+- Tests: opp-view 7/7 (W3 rewritten: 197 distinct camera positions in 406 draws for 200 frames received, i.e. only
+  frames the other phone drew).

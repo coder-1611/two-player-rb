@@ -4,7 +4,7 @@
 //   W1  the waiting phone shows the opponent's live screen within 15 s of the opponent having the ball (the direct link)
 //   W2  it IS the opponent's screen: a frame the phone with the ball sent, replayed on the waiting phone, is at least 99.9%
 //       pixel-identical to what that phone's own engine drew
-//   W3  smooth through a real down (V451: and NO piece ever stretched between two frames — the owner's screenshot showed
+//   W3  (V478) exact frames through a real down — no blending, the camera only where the other phone drew it (V451: and NO piece ever stretched between two frames — the owner's screenshot showed
 //       a sideline sprite blown up across the field for a split second): the waiting phone redraws on (nearly) every
 //       animation frame its browser gives it,
 //       fewer than 10% of redraws wait on a late frame, and the camera following the play glides: under 2% spikes (a
@@ -113,8 +113,12 @@ async function directGame() {
         console.log('  W3: ' + JSON.stringify(w3));
         const big = []; for (let i = 1; i < pts.length && false; i++) { const d = Math.abs(pts[i][1] - pts[i - 1][1]); if (d > 4 * med + 0.5) big.push({ i, d: +d.toFixed(1), dt: pts[i][0] - pts[i - 1][0], seqs: [pts[i - 1][3], pts[i][3]], from: pts[i - 1].slice(1, 3).map(v => +v.toFixed(1)), to: pts[i].slice(1, 3).map(v => +v.toFixed(1)) }); }
         if (big.length) console.log('  W3 big steps: ' + JSON.stringify(big.slice(0, 6)));
-        check('W3 smooth through a real down: a redraw on nearly every animation frame, few waits on a late frame, the camera glides, nothing stretched',
-              !!(r && pts.length > 20 && steps.length > 10 && drawn >= 0.85 * rafN && starved / Math.max(1, drawn) < 0.10 && spikes <= 0.02 * moving && stutters <= 0.02 * moving && stretched === 0), JSON.stringify(w3));
+        // V478 (the owner: "THERE SHOULD BE NO SLIDING OR BLENDING ... the down marker moves instantaneously"): only the
+        // frames the other phone drew — the camera takes about one position per frame received, never one per draw
+        const distinct = new Set(pts.map(p => p[1].toFixed(3))).size;
+        console.log('  W3 exact: ' + JSON.stringify({ distinctCameraPositions: distinct, draws: pts.length, framesReceived: sent }));
+        check('W3 exact frames through a real down (no blending): only positions the other phone drew, 15+ new frames a second, a redraw on nearly every animation frame, few waits',
+              !!(r && pts.length > 20 && distinct <= sent + 3 && distinct < 0.75 * pts.length && sent / secs >= 15 && drawn >= 0.85 * rafN && starved / Math.max(1, drawn) < 0.10), JSON.stringify(Object.assign({ distinct }, w3)));
         const errs = (DEF.errors || []).filter(e => !/_GL2/.test(e));
         check('W4 the direct link carries under 40 KB/s, and the waiting phone\'s own game is untouched',
               bps < 40960 && defAfter.wait === true && defBefore.wait === true && defAfter.q === defBefore.q && defAfter.su === defBefore.su && defAfter.so === defBefore.so && errs.length === 0,
