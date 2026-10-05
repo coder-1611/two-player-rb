@@ -138,11 +138,24 @@ const clearPat = page => page.evaluate(() => {
             var hold = setInterval(function () { RB.engineState().engineYardLineSigned = 2; }, 20);
             await new Promise(r => setTimeout(r, 3200));   // > the 20-tick (2s) kill threshold
             clearInterval(hold);
-            return { upAtStart: upAtStart, upAtEnd: window._rb2p_patModalUp() };
+            return { upAtStart: upAtStart, upAtEnd: window._rb2p_patModalUp(), left: window._rb2p_enumeratePopupInstances().length };
         });
         console.log('  T5: ' + JSON.stringify(t5));
-        check('T5 a modal held off the 2 is killed rather than played from there',
-              t5.upAtStart === true && t5.upAtEnd === false, JSON.stringify(t5));
+        check('T5 a modal held off the 2 is killed rather than played from there — the WHOLE modal (V463: no panel left behind)',
+              t5.upAtStart === true && t5.upAtEnd === false && t5.left === 0, JSON.stringify(t5));
+        // ---- T5b (V463, LRPA): the unwedge (the 35 s wall's) takes the whole modal, not just its buttons ----
+        const t5b = await page.evaluate(async () => {
+            var em = RB.engineState();
+            window._rb2p_convAuthMs = Date.now();
+            _wm(em.rawEngineMatch, _Sc2, '', _Xi(em.rawEngineMatch, _Sc2, 'matchmsg_PATor2'), _Xi(em.rawEngineMatch, _Sc2, 'match_1pt'), _Xi(em.rawEngineMatch, _Sc2, 'match_2pt'), 100367, 100369, 16777215, 0.7);
+            var before = window._rb2p_enumeratePopupInstances().length;
+            window._rb2p_unwedgeConversion('test');
+            await new Promise(r => setTimeout(r, 300));
+            return { before: before, left: window._rb2p_enumeratePopupInstances().length, up: window._rb2p_patModalUp() };
+        });
+        console.log('  T5b: ' + JSON.stringify(t5b));
+        check('T5b the 35 s wall\'s unwedge removes the whole conversion modal (background and text too), nothing left on screen',
+              t5b.before >= 3 && t5b.left === 0 && t5b.up === false, JSON.stringify(t5b));
 
         // ---- T6: the 35s wall releases a stuck invariant ----
         const t6 = await page.evaluate(() => {

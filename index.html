@@ -448,9 +448,11 @@
                 if (window._rb2p_patDutyMine) { window._rb2p_patDutyMine = null; did.push('duty'); }
                 window._rb2p_patOwedSinceMs = 0;
                 try {
-                    var pl = (window._rb2p_enumeratePopupInstances && window._rb2p_enumeratePopupInstances()) || [];
-                    var k = 0;
-                    for (var i = 0; i < pl.length; i++) { var q = pl[i]; if (q && !q._HL2 && (q._0G === 100367 || q._0G === 100369)) { try { _cr(q); } catch (e) { q._HL2 = true; } k++; } }
+                    // V463 (LRPA, a player: "When I got a pick and he got tackle and said go for 1 or two points"): the
+                    // WHOLE conversion modal goes — its background (obj_msgbg) and text with the 1 PT / 2 PT buttons.
+                    // Killing only the buttons left "go for 1 or 2" on screen with nothing to press (a hidden tab's
+                    // conversion closed by the 35 s wall showed it when the player came back, a drive later).
+                    var k = window._rb2p_killConversionModal ? window._rb2p_killConversionModal() : 0;
                     if (k) did.push('modal x' + k);
                 } catch (e) {}
                 if (did.length && window._rb2p_diagLog) window._rb2p_diagLog('UNWEDGE (' + why + '): ' + did.join(', '));
@@ -1642,7 +1644,7 @@
                 </div>
                 <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
             </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V463<span class="rb-cursor">_</span></p>
+            <p class="prompt">TAP PLAY TO START A GAME — V464<span class="rb-cursor">_</span></p>
             <p class="rb-playing-as" id="rb-playing-as"></p>
             <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
             <div class="rb-stack">
@@ -1731,7 +1733,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V463</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V464</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -9650,6 +9652,16 @@
                 return out;
             }
             window._rb2p_enumeratePopupInstances = enumeratePopupInstances;
+            // V463: a conversion modal is destroyed whole — the background, its text and its buttons — and only when it
+            // is the conversion's (a 1 PT / 2 PT button is up): one modal is up at a time, so the 4th-down menu (V352b) is
+            // never touched. Returns the instances destroyed.
+            window._rb2p_killConversionModal = function () {
+                var pl = enumeratePopupInstances(), conv = false, n = 0;
+                for (var i = 0; i < pl.length; i++) if (pl[i] && !pl[i]._HL2 && (pl[i]._0G === 100367 || pl[i]._0G === 100369)) { conv = true; break; }
+                if (!conv) return 0;
+                for (var j = 0; j < pl.length; j++) { var q = pl[j]; if (!q || q._HL2) continue; try { _cr(q); } catch (e) { q._HL2 = true; } n++; }
+                return n;
+            };
 
             // ===== V353: THE INFINITE PLAY-CHANGE LOOP — detector + self-heal =====
             // Reported repeatedly ("the play keeps re-selecting on its own, over
@@ -10421,17 +10433,10 @@
                             patWrongModalTicks = 0;
                             try {
                                 var pl2 = window._rb2p_enumeratePopupInstances() || [];
-                                var killed = 0;
-                                for (var k = 0; k < pl2.length; k++) {
-                                    var pk = pl2[k];
-                                    // V352b (audit hole 19): conversion buttons ONLY —
-                                    // the old `_0G == null` arm would also destroy the
-                                    // 4th-down go-for-it / FG / punt menu.
-                                    if (pk && !pk._HL2 && (pk._0G === 100367 || pk._0G === 100369)) {
-                                        try { _cr(pk); } catch (eK) { pk._HL2 = true; }
-                                        killed++;
-                                    }
-                                }
+                                // V352b (audit hole 19): only when it is the conversion's modal — the old
+                                // `_0G == null` arm would also destroy the 4th-down go-for-it / FG / punt menu.
+                                // V463: and the WHOLE modal (its background and text too), never buttons alone.
+                                var killed = window._rb2p_killConversionModal();
                                 console.warn('[2P PAT-INV] modal was up off the 2 — killed ' + killed +
                                              ' instance(s); it re-pops once the ball is legal');
                                 if (window._rb2p_diagLog) window._rb2p_diagLog('PAT-INV killed off-spot modal x' + killed);

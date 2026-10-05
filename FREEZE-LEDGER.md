@@ -1352,3 +1352,13 @@ eight of them, ~100+ KB, re-uploaded) and the V239 telemetry (a screenshot every
 and never during a live play (stuck screens are dead-ball screens); the 15 s screenshot is gone. Touch phone, CPU x4,
 link + recorder on: late frames 7.0% (V462) -> 3.1% (the no-capture baseline), worst engine frame 41.8 -> 17.4 ms.
 qtr-tap 7/7, run.js 15/15.
+
+## V464 (2026-10-04): a closed conversion leaves no "go for 1 or 2" on screen
+
+A player (room LRPA, two tabs on one Chromebook): "When I got a pick and he got tackle and said go for 1 or two points".
+The scorer's tab was hidden through its conversion; the 35 s wall resolved it (missed) and `_rb2p_unwedgeConversion`
+destroyed the modal's two BUTTONS only (`_0G` 100367/100369). A conversion modal is five instances — its background
+(obj_msgbg), text and the buttons (V148) — so "go for 1 or 2" stayed on screen with nothing to press, and the player saw
+it a drive later, after the interception. The PAT-INV off-the-2 kill did the same. Now `_rb2p_killConversionModal()`
+destroys the whole modal, only when it is the conversion's (a 1 PT / 2 PT button is up), at both sites.
+`e2e/v352-conversion.js` T5 (no instance left) and T5b (the unwedge leaves nothing: 5 -> 0); v395-hidden 10/10.
