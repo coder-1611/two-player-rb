@@ -1546,3 +1546,17 @@ each day into a viewable section".
   canvas hidden under the replay (V455, a freeze fix), the LIVE tag and watermark (V457), the glide's never-stretch rule
   (V451).
 - Tests: opp-view 7/7 (W2 >= 99.9% pixel-identical, W3 smooth).
+
+## V477 (2026-10-05): the replay's drawing is V450's — the end zone no longer jumps
+- **The owner:** "it sucks, the WHOLE END ZONE was moving!!! It is horrible, bring back the good stuff".
+- **The cause** (the blending between frames, used by the live screen and every replay):
+  - V451 glided a piece that changes size between frames by its centre only, snapping it to its new size. A piece
+    entering the screen grows as it scrolls in, so the end zone's edge jumped instead of rolling in with the field.
+  - V451 also glided only the field camera.
+- **Both are back to V450:** every vertex glides (`lerpPositions` is line-for-line V450's) and every camera glides
+  together.
+- **The live screen is now V450 throughout:** V476 restored the rate, the in-frame encode, full resolution and the
+  delay.
+- **Measured** on the preview's 93-yd TD: the end zone's edge keeps a constant 49 px from the next yard line in every
+  60 Hz draw.
+- Tests: opp-view 7/7.
