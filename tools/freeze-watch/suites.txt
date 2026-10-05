@@ -77,3 +77,4 @@ max-return-speed
 fumble-popup
 potd
 lobby-phone
+potd-layout

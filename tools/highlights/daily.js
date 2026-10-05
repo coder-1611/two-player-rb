@@ -233,30 +233,65 @@ function checkTop5(file, ids, want) {
 // play (the phone that recorded it), the defense's for a defender's (a pick or a fumble returned) — his name from the
 // room, his device (anonymous uid) from that phone's latest bind; that device gets the congrats.
 const FIREBASE = process.env.FIREBASE_BIN || 'firebase';
-async function publishPotd(pick, f, play, judged) {
+// V467: a play recorded before V465 carries no difficulty: in a SAME-mode game it is the room's shared setting (a
+// DIFFERENT-mode game kept each player's own on his device: unknown)
+async function fillDifficulty(plays) {
+    const rooms = [...new Set(plays.filter(p => p && !p.dif && p.room).map(p => String(p.room)))];
+    if (!rooms.length) return 0;
+    const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
+    const cfg = {};
+    for (const r of rooms) { try { const res = await fetch(DB + 'rooms/' + encodeURIComponent(r) + '/config.json?auth=' + tok, { cache: 'no-store' }); cfg[r] = res.ok ? await res.json() : null; } catch (e) { cfg[r] = null; } }
+    let n = 0;
+    for (const p of plays) { const c = p && !p.dif && cfg[String(p.room)]; if (c && c.diffMode === 'same' && c.sharedDifficulty) { p.dif = String(c.sharedDifficulty); n++; } }
+    return n;
+}
+
+// ---------- 4b. the PLAY OF THE DAY (V465) and the top 3 (V467) on the front page ----------
+// top: [{ pick, f, play }] in rank order (the first three). #1 keeps its V465 places — embedcode/potd's top level,
+// potdPlays/{date}, potdIndex/{date}'s top level — so a page still on V465 shows it; `top` lists all three, and #2/#3's
+// replays are potdPlays/{date}~2 and ~3 (fetched only on WATCH). Only #1's device uid is published (its congrats, its flair).
+async function publishPotd(top, judged) {
     if (process.env.HL_NO_PUBLISH === '1' || has('--no-publish')) return 'skipped (--no-publish)';
+    top = (top || []).filter(t => t && t.pick && t.f && t.play).slice(0, 3);
+    if (!top.length) return 'nothing to publish';
     const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
     const get = async p => { try { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
-    const credRole = f.heroSide === 'D' ? (play.role === 'a' ? 'b' : 'a') : play.role;
-    const names = await get('rooms/' + play.room + '/names') || {};
-    let name = names[credRole] || '', uid = '';
-    const au = await get('rooms/' + play.room + '/audit/' + credRole) || {};
-    const binds = Object.values(au).filter(e => e && e.k === 'bind' && Number(e.t) <= Number(play.at) + 120000).sort((a, b) => a.t - b.t);
-    if (binds.length) { uid = binds[binds.length - 1].uid || ''; if (!name) name = binds[binds.length - 1].name || ''; }
-    const ends = f.events.filter(e => e.kind === 'td' || e.kind === 'end').map(e => e.t);
-    const toMs = Math.round((ends.length ? Math.max(...ends) : Math.max(0, ...f.events.map(e => e.t))) + 2500);
-    // the front page's words: the judge's fan line, else its reason without the contact sheet's frame numbers
+    // the front page's words: the judge's fan line, else its reason without the contact sheet's frame numbers — a
+    // sentence or two (the page has room for about three lines)
     const noFrames = t => String(t || '').replace(/\s*\((?:see )?frames? [^)]*\)/gi, '').replace(/\b(?:in )?frames? \d+(?:\s*[-–]\s*\d+)? (show|shows)\b/gi, 'the replay shows').replace(/\b(?:in |by )?frames? \d+(?:\s*[-–]\s*\d+)?(?: and \d+)?,?\s*/gi, '')
                                          .replace(/\s+([,.])/g, '$1').replace(/\s{2,}/g, ' ').replace(/(^|[.!?]\s+)([a-z])/g, (m, a, b) => a + b.toUpperCase()).trim();
-    const summary = { date: DATE, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense', name: String(name).slice(0, 40), hero: f.hero || '',
-                      uid, headline: pick.headline, why: pick.fan || noFrames(pick.why), q: play.q, clk: play.clk, dif: play.dif || '', toMs, judged: !!judged, ts: Date.now() };
-    const body = {}; for (const k of Object.keys(play)) if (k !== 'zt' && k !== 'encT') body[k] = play[k];
+    const short = t => { const s0 = String(t || '').trim(); if (s0.length <= 230) return s0;
+        // a sentence ends at . ! or ? (and a closing quote) before a capital — not at the ! inside "Stiff Arm!" label
+        let out = ''; for (const x of s0.split(/(?<=[.!?]["'\u201d)\]]?)\s+(?=["'\u201c(\[]?[A-Z0-9])/)) { if ((out + ' ' + x.trim()).trim().length > 230) break; out = (out + ' ' + x.trim()).trim(); }
+        return out || s0.slice(0, 227).replace(/\s+\S*$/, '') + '…'; };
+    const entries = [], bodies = [];
+    for (let i = 0; i < top.length; i++) {
+        const { pick, f, play } = top[i];
+        const credRole = f.heroSide === 'D' ? (play.role === 'a' ? 'b' : 'a') : play.role;
+        const names = await get('rooms/' + play.room + '/names') || {};
+        let name = names[credRole] || '', uid = '';
+        const au = await get('rooms/' + play.room + '/audit/' + credRole) || {};
+        const binds = Object.values(au).filter(e => e && e.k === 'bind' && Number(e.t) <= Number(play.at) + 120000).sort((a, b) => a.t - b.t);
+        if (binds.length) { uid = binds[binds.length - 1].uid || ''; if (!name) name = binds[binds.length - 1].name || ''; }
+        const ends = f.events.filter(e => e.kind === 'td' || e.kind === 'end').map(e => e.t);
+        const toMs = Math.round((ends.length ? Math.max(...ends) : Math.max(0, ...f.events.map(e => e.t))) + 2500);
+        const e = { rank: i + 1, key: DATE + (i ? '~' + (i + 1) : ''), id: pick.id, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense',
+                    name: String(name).slice(0, 40), hero: f.hero || '', headline: pick.headline, why: short(pick.fan || noFrames(pick.why)), q: play.q, clk: play.clk,
+                    dif: play.dif || '', toMs };
+        if (i === 0) e.uid = uid;
+        entries.push(e);
+        const body = {}; for (const k of Object.keys(play)) if (k !== 'zt' && k !== 'encT') body[k] = play[k];
+        bodies.push(body);
+    }
     const setPath = (p, v) => { const tmp = path.join(os.tmpdir(), 'potd-' + process.pid + '-' + Math.random().toString(36).slice(2) + '.json');
         fs.writeFileSync(tmp, JSON.stringify(v)); try { execFileSync(FIREBASE, ['database:set', p, tmp, '--project', 'realretrobowl2p', '--force'], { stdio: 'pipe', timeout: 90000 }); } finally { try { fs.unlinkSync(tmp); } catch (e) {} } };
-    setPath('/embedcode/potdPlays/' + DATE, Object.assign({}, summary, { play: body }));   // the replay first: WATCH works the moment the summary appears
-    setPath('/embedcode/potdIndex/' + DATE, { headline: summary.headline, why: summary.why, name: summary.name, side: summary.side, hero: summary.hero, uid, q: summary.q, clk: summary.clk });
-    setPath('/embedcode/potd', summary);
-    return 'published: ' + summary.side + ' — ' + (summary.name || '?') + (uid ? '' : ' (no device found)');
+    const one = entries[0], at = { date: DATE, judged: !!judged, ts: Date.now() };
+    // the replays first: WATCH works the moment the summary appears
+    entries.forEach((e, i) => setPath('/embedcode/potdPlays/' + e.key, Object.assign({}, e, at, { play: bodies[i] })));
+    const card = e => ({ rank: e.rank, key: e.key, side: e.side, name: e.name, hero: e.hero, headline: e.headline, why: e.why, q: e.q, clk: e.clk, dif: e.dif, toMs: e.toMs });
+    setPath('/embedcode/potdIndex/' + DATE, { headline: one.headline, why: one.why, name: one.name, side: one.side, hero: one.hero, uid: one.uid, q: one.q, clk: one.clk, dif: one.dif, top: entries.map(card) });
+    setPath('/embedcode/potd', Object.assign({}, one, at, { top: entries.map(card) }));
+    return 'published the top ' + entries.length + ': ' + entries.map(e => '#' + e.rank + ' ' + e.side + ' — ' + (e.name || '?') + (e.dif ? ' (' + e.dif + ')' : '')).join(', ') + (one.uid ? '' : ' (#1: no device found)');
 }
 
 // ---------- 5. the output ----------
@@ -269,13 +304,19 @@ async function guardState() {
 }
 
 (async () => {
-    if (has('--publish-only')) {   // V465: publish a finished day's #1 (its run folder's top5.json/status.json, the archived play)
+    if (has('--publish-only')) {   // V465/V467: publish a finished day's top 3 (its run folder's top5.json/status.json, the archived plays)
         const st = loadJson(path.join(RUNS, DATE, 'status.json'), null), t5 = loadJson(path.join(RUNS, DATE, 'top5.json'), null);
-        const id = st && st.picks && st.picks[0]; if (!id) { log('no finished day ' + DATE + ' in ' + RUNS); process.exit(1); }
-        const pick = (t5 && t5.picks || []).find(p => p.id === id) || { id, headline: id, why: '' };
-        const m = /^([A-Z0-9]+)-([ab])-p(\d+)$/.exec(id), play = m ? loadJson(path.join(ARCH, dayKey(Number(m[3])), m[1], m[2] + '-p' + m[3] + '.json'), null) : null;
-        if (!play) { log('the play ' + id + ' is not in the archive'); process.exit(1); }
-        log('play of the day ' + DATE + ' ' + await publishPotd(pick, F.features(play), play, /sonnet|test/.test(String(st.judge))));
+        const ids = (st && st.picks || []).slice(0, 3); if (!ids.length) { log('no finished day ' + DATE + ' in ' + RUNS); process.exit(1); }
+        const top = [];
+        for (const id of ids) {
+            const pick = (t5 && t5.picks || []).find(p => p.id === id) || { id, headline: id, why: '' };
+            const m = /^([A-Z0-9]+)-([ab])-p(\d+)$/.exec(id), play = m ? loadJson(path.join(ARCH, dayKey(Number(m[3])), m[1], m[2] + '-p' + m[3] + '.json'), null) : null;
+            if (!play) { log('the play ' + id + ' is not in the archive'); process.exit(1); }
+            top.push({ pick, play });
+        }
+        if (!NOFB) { try { await fillDifficulty(top.map(t => t.play)); } catch (e) { log('difficulty not read: ' + e.message); } }
+        top.forEach(t => { t.f = F.features(t.play); });
+        log('plays of the day ' + DATE + ' ' + await publishPotd(top, /sonnet|test/.test(String(st.judge))));
         process.exit(0);
     }
     const t0 = Date.now();
@@ -306,6 +347,7 @@ async function guardState() {
         log('archive: ' + plays.size + ' play(s) in the window');
         if (!NOFB) { try { await firebasePlays(plays); } catch (e) { status.errors.push('Firebase: ' + e.message); log('Firebase not read: ' + e.message); } }
         let all = [...plays.values()].filter(p => INCLUDE_TEST || !isTestRoom(String(p.room || '')));
+        if (!NOFB) { try { const n = await fillDifficulty(all); if (n) log('difficulty from the room settings: ' + n + ' play(s)'); } catch (e) { log('difficulty not read: ' + e.message); } }
         // 2. measured
         const byId = new Map();
         const feats = all.map(p => { try { const f = F.features(p); byId.set(f.id, { f, play: p }); return f; } catch (e) { log('features ' + p.room + '/' + p.at + ': ' + e.message); return null; } })
@@ -402,7 +444,7 @@ async function guardState() {
         lines.push('---', '', '<sub>Every play\'s numbers, the short list and the contact sheets the judge saw: `' + runDir + '`. Run ' + Math.round((Date.now() - t0) / 1000) + ' s.</sub>', '');
         writeAtomic(path.join(dayDir, 'README.md'), lines.join('\n'));
         status.ok = NOVIDEO || status.videos.length === picks.length;
-        try { status.potd = await publishPotd(picks[0], byId.get(picks[0].id).f, byId.get(picks[0].id).play, judged); log('play of the day ' + status.potd); }
+        try { status.potd = await publishPotd(picks.slice(0, 3).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), judged); log('plays of the day ' + status.potd); }
         catch (e) { status.potd = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('potd: ' + status.potd); log('play of the day ' + status.potd); }
         notify('Retro Bowl 2P — today\'s top ' + picks.length, (judged ? '' : '(unjudged) ') + picks.map(p => p.rank + '. ' + p.headline).join('  ').slice(0, 170));
         log('done: ' + dayDir);

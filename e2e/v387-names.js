@@ -1,5 +1,5 @@
 // e2e/v387-names.js — the name gate, the bug-report box, the first-run announcement.
-//   T1 a fresh device sees the announcement; GOT IT dismisses it and it never returns
+//   T1 (V465: the announcement became the PLAY OF THE DAY banner — e2e/potd.js D5)
 //   T2 PLAY 2P without a name shows the name gate; a 1-char name is refused; a real name passes
 //   T3 hosting a room writes rooms/{code}/names/a = the name
 //   T4 the "!" chip opens the box; SEND stores complaints/{id} with name, room, text, diag
@@ -20,12 +20,10 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         await page.evaluateOnNewDocument(() => { try { localStorage.removeItem('rb2p_name'); localStorage.removeItem('rb2p_news_v387'); } catch (e) {} });
         await page.goto(H.url(), { waitUntil: 'domcontentloaded' });
         await sleep(9000);
-        // T1
+        // T1 — V465 replaced the V387 announcement with the PLAY OF THE DAY banner (never in a test run unless forced):
+        // e2e/potd.js D5 tests it now
         const t1a = await page.evaluate(() => ({ news: !document.getElementById('rb-news').hidden, view: document.getElementById('rb-lobby').dataset.active }));
-        await page.click('#rb-news-ok'); await sleep(200);
-        const t1b = await page.evaluate(() => ({ news: !document.getElementById('rb-news').hidden, flag: localStorage.getItem('rb2p_news_v387') }));
-        console.log('  T1: ' + JSON.stringify({ t1a, t1b }));
-        check('T1 a fresh device sees the announcement once, GOT IT dismisses it', t1a.news && !t1b.news && t1b.flag === '1', JSON.stringify({ t1a, t1b }));
+        console.log('  T1: ' + JSON.stringify({ t1a }) + ' (the announcement: see e2e/potd.js D5)');
         // T2 — the gate is up already (no name); type a bad name, then a good one
         check('T2a with no name the lobby opens on the name gate', t1a.view === 'name', t1a.view);
         await page.type('#rb-name-input', 'S'); await page.click('#rb-name-go'); await sleep(150);

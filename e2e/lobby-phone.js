@@ -49,7 +49,8 @@ const MEASURE = () => {
             await sleep(300);
             const e = await page.evaluate(MEASURE);
             check('P2 ' + w + 'x' + h + ': the column scrolls to its end (the play of the day and the last line on screen)',
-                  e.potdShown && e.last.bottom <= e.scr.bottom + 1 && e.potd.bottom <= e.scr.bottom + 1 && e.football.bottom < 0, JSON.stringify({ last: e.last, potd: e.potd, scr: e.scr }));
+                  e.potdShown && e.last.bottom <= e.scr.bottom + 1 && e.potd.bottom <= e.scr.bottom + 1 && (e.scrollH > e.clientH ? e.football.bottom < 0 : e.potd.top >= 0),
+                  JSON.stringify({ last: e.last, potd: e.potd, scr: e.scr }));   // V467: a tablet held sideways has it all on one screen (nothing scrolls)
             await page.close();
         }
         // ---- P3: a short column (no play of the day) is centered, as before V465 ----

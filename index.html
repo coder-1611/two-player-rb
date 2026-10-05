@@ -939,34 +939,71 @@
         #rb-complain-choices input { margin: 1px 0 0; accent-color: #ffd23f; flex: none; }
         @media (max-width: 560px) { #rb-complain-choices { grid-template-columns: 1fr; } }
         /* ---- V387: first-run announcement ---- */
-        /* V465: the play of the day — on the main page, under the join row */
-        #rb-potd { margin: 22px auto 0; width: min(560px, 100%); box-sizing: border-box; border: 3px solid #ffd23f; background: rgba(8,20,52,.78);
-                   padding: 14px 14px 12px; box-shadow: 4px 4px 0 #0a1838; text-align: left; }
+        /* V465: the play of the day — V467: the day's top 3: #1 on the big screen, #2 and #3 as cards (a card puts its play
+           on the big screen), each with the defense difficulty it beat; comments and the archive are rows that open in place */
+        #rb-potd { margin: 22px auto 0; width: min(560px, 100%); box-sizing: border-box; border: 3px solid #ffd23f; background: #0c2250;
+                   padding: 14px; box-shadow: 4px 4px 0 #0a1838; text-align: left; display: flex; flex-direction: column; gap: 10px; }
         #rb-potd[hidden] { display: none; }
-        #rb-potd .potd-eye { margin: 0 0 10px; text-align: center; font: bold 11px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; line-height: 1.6; }
-        #rb-potd .potd-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #12571f; border: 2px solid #fff; overflow: hidden; }
+        #rb-potd .potd-eye { margin: 0; text-align: center; font: bold 11px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; line-height: 1.6; }
+        /* the big screen: a drawn field until WATCH (the play's numbers, 30-70 KB, load only when asked for) */
+        #rb-potd .potd-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; box-sizing: border-box; align-self: center; border: 2px solid #fff; overflow: hidden;
+                               background-color: #1e7a35;
+                               background-image: linear-gradient(90deg, #165f29 0 8.333%, transparent 8.333% 91.667%, #165f29 91.667%),
+                                                 repeating-linear-gradient(90deg, transparent 0 calc(8.333% - 2px), rgba(255,255,255,.45) calc(8.333% - 2px) 8.333%),
+                                                 repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 4.1667%, transparent 4.1667% 8.333%); }
         #rb-potd .potd-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        #rb-potd .potd-rank { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 6px 8px; font: bold 12px 'Press Start 2P', monospace; line-height: 1;
+                              background: #ffd23f; color: #0a1838; border: 2px solid #0a1838; box-shadow: 2px 2px 0 #0a1838; pointer-events: none; }
         #rb-potd .potd-go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 18px; font: bold 12px 'Press Start 2P', monospace;
                             letter-spacing: 1px; background: #ffd23f; color: #0a1838; border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
         #rb-potd .potd-go[hidden] { display: none; }
-        #rb-potd h3 { margin: 12px 0 6px; font: bold 12px 'Press Start 2P', monospace; color: #fff; line-height: 1.7; text-wrap: balance; }
-        #rb-potd .potd-who { margin: 0 0 6px; font-size: 13px; color: #ffd23f; letter-spacing: .04em; }
-        #rb-potd .potd-why { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: #c9d4e6; }
-        #rb-potd .potd-cmt-h { margin: 14px 0 8px; font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; color: #ffd23f; }
-        #rb-potd .potd-cmts { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
-        #rb-potd .potd-cmts li { padding: 7px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: 13px; line-height: 1.45; color: #e7edf6; overflow-wrap: anywhere; }
+        #rb-potd .potd-note { position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0; text-align: center; font-size: 9px; line-height: 1.6; color: #fff; text-shadow: 1px 1px 0 #0a1838; pointer-events: none; }
+        #rb-potd .potd-info { display: flex; flex-direction: column; gap: 6px; }
+        #rb-potd h3 { margin: 0; font: bold 12px 'Press Start 2P', monospace; color: #fff; line-height: 1.7; text-wrap: balance; }
+        #rb-potd .potd-line { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 11px; line-height: 1.8; letter-spacing: .04em; }
+        #rb-potd .potd-who { color: #ffd23f; }
+        #rb-potd .potd-difl { display: inline-flex; align-items: center; gap: 6px; color: #9fb3cc; font-size: 8px; letter-spacing: 1px; }
+        #rb-potd .potd-difl[hidden] { display: none; }
+        .potd-dif { display: inline-block; padding: 4px 6px; font: bold 9px 'Press Start 2P', monospace; font-style: normal; letter-spacing: 1px; line-height: 1;
+                    color: #0a1838; background: #ffd23f; border: 2px solid #0a1838; box-shadow: 2px 2px 0 #0a1838; }
+        .potd-dif[data-dif="easy"] { background: #36e07a; }
+        .potd-dif[data-dif="medium"] { background: #ffd23f; }
+        .potd-dif[data-dif="hard"] { background: #ff9a1f; }
+        .potd-dif[data-dif="max"] { background: #ff5d6c; }
+        #rb-potd .potd-why { margin: 0; font-size: 11px; line-height: 1.7; color: #c9d4e6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        #rb-potd .potd-why:empty { display: none; }
+        #rb-potd .potd-more { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+        #rb-potd .potd-more:empty { display: none; }
+        #rb-potd .potd-card { width: 100%; height: 100%; box-sizing: border-box; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 6px;
+                              align-content: start; padding: 8px; text-align: left; cursor: pointer; font-family: inherit; color: #e7edf6;
+                              background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.35); box-shadow: 2px 2px 0 #0a1838; }
+        #rb-potd .potd-card:hover, #rb-potd .potd-card:focus-visible { border-color: #ffd23f; background: rgba(255,210,63,.1); outline: none; }
+        #rb-potd .potd-card .r { grid-row: 1 / span 2; font: bold 11px 'Press Start 2P', monospace; line-height: 1.5; color: #ffd23f; }
+        #rb-potd .potd-card .h { font-size: 9px; line-height: 1.7; color: #fff; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        #rb-potd .potd-card .w { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 8px; line-height: 1.6; color: #ffd23f; }
+        #rb-potd .potd-card .w .potd-dif { font-size: 7px; padding: 3px 4px; }
+        #rb-potd .potd-rows { display: flex; flex-direction: column; }
+        #rb-potd details { margin: 0; border-top: 1px solid rgba(255,255,255,.16); }
+        #rb-potd summary { display: flex; align-items: baseline; gap: 10px; padding: 9px 0 3px; cursor: pointer; list-style: none;
+                           font: bold 9px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1.6; color: #ffd23f; }
+        #rb-potd summary::-webkit-details-marker { display: none; }
+        #rb-potd summary::before { content: '\25B8'; }
+        #rb-potd details[open] > summary::before { content: '\25BE'; }
+        #rb-potd summary .peek { flex: 1; min-width: 0; font-weight: normal; letter-spacing: 0; color: #c9d4e6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #rb-potd details[open] > summary .peek { visibility: hidden; }
+        #rb-potd .potd-cmts { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+        #rb-potd .potd-cmts li { padding: 7px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: 11px; line-height: 1.6; color: #e7edf6; overflow-wrap: anywhere; }
+        #rb-potd .potd-cmts li:first-child { border-top: 0; }
         #rb-potd .potd-cmts li b { color: #fff; margin-right: 6px; }
-        #rb-potd .potd-cmts .none { color: #8fa1b3; border-top: 0; }
+        #rb-potd .potd-cmts .none { color: #8fa1b3; }
         .potd-flair { display: inline-block; margin-right: 6px; padding: 3px 5px; font: bold 8px 'Press Start 2P', monospace; letter-spacing: .5px; vertical-align: 1px;
                       background: #ffd23f; color: #0a1838; box-shadow: 2px 2px 0 #0a1838; }
         #rb-potd .potd-form { display: flex; gap: 8px; margin-top: 10px; }
         #rb-potd .potd-form input { flex: 1; min-width: 0; padding: 10px; font-size: 14px; background: #fff; color: #0a1838; border: 3px solid #0a1838; }
         #rb-potd .potd-form button { padding: 10px 12px; font: bold 10px 'Press Start 2P', monospace; background: #2e7de6; color: #fff; border: 3px solid #0a1838; cursor: pointer; }
-        #rb-potd .potd-msg { min-height: 1em; margin: 6px 0 0; font-size: 12px; color: #8fa1b3; }
-        #rb-potd details { margin-top: 14px; }
-        #rb-potd summary { cursor: pointer; font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; color: #ffd23f; padding: 6px 0; }
-        #rb-potd .potd-days { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
-        #rb-potd .potd-days button { width: 100%; text-align: left; padding: 8px 10px; font-size: 12px; line-height: 1.4; color: #e7edf6; background: rgba(255,255,255,.06);
+        #rb-potd .potd-msg { min-height: 1em; margin: 6px 0 4px; font-size: 10px; line-height: 1.6; color: #8fa1b3; }
+        #rb-potd .potd-days { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 6px; max-height: 240px; overflow-y: auto; }
+        #rb-potd .potd-days button { width: 100%; text-align: left; padding: 8px 10px; font-family: inherit; font-size: 9px; line-height: 1.7; color: #e7edf6; background: rgba(255,255,255,.06);
                                      border: 2px solid rgba(255,255,255,.18); cursor: pointer; }
         #rb-potd .potd-days button.on { border-color: #ffd23f; }
         #rb-potd .potd-days time { color: #ffd23f; margin-right: 8px; font-variant-numeric: tabular-nums; }
@@ -1353,6 +1390,47 @@
             .rb-solo { margin-top: 6px; line-height: 1.6; }
         }
         .rb-links a { color: #8fa1b3; text-decoration: none; }
+        /* V467: the entry screen in three parts — the lobby (.rb-entry-main), the plays of the day (#rb-potd), the small
+           print (.rb-entry-foot). With no play of the day it is the one centered column it always was. */
+        #rb-lobby .rb-entry-main { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+        #rb-lobby .rb-entry-foot { display: flex; flex-direction: column; align-items: center; width: 100%; }
+        @media (max-height: 760px) { #rb-lobby .rb-entry-main { gap: 9px; } }
+        html.rb-mobile #rb-lobby .rb-entry-main { gap: 10px; }
+        #rb-potd .potd-body { display: flex; flex-direction: column; gap: 10px; }
+        /* a narrow screen (a phone, a tall window): the lobby fills the first screen and the plays start below it — never a
+           panel cut by the bottom edge; the PLAYS OF THE DAY chip points the way down */
+        #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - 56px); justify-content: center; }
+        @media (max-height: 760px) { #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - 18px); } }
+        html.rb-mobile #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - max(22px, env(safe-area-inset-top))); }
+        #rb-potd-cue { position: absolute; right: 16px; bottom: 44px; z-index: 6; padding: 10px 12px; font: bold 9px 'Press Start 2P', monospace; letter-spacing: 1px;
+                       line-height: 1; color: #0a1838; background: #ffd23f; border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
+        #rb-potd-cue[hidden], #rb-lobby:not([data-active="entry"]) #rb-potd-cue { display: none; }
+        html.rb-mobile #rb-potd-cue { bottom: max(12px, env(safe-area-inset-bottom)); right: max(14px, env(safe-area-inset-right)); }
+        /* a wide screen (a desktop, a Chromebook, a tablet held sideways): the lobby on the left, the plays of the day on the
+           right, both whole on the first screen — the #1 replay takes the height that is left (fit() in the potd script) */
+        @media (min-width: 900px) and (min-height: 560px) and (min-aspect-ratio: 5/4) {
+            html #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"].potd-on {
+                display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr) auto;
+                grid-template-areas: "main potd" "foot potd"; column-gap: clamp(24px, 3.5vw, 64px); row-gap: 12px; align-items: center;
+                height: 100%; max-height: 100%; box-sizing: border-box; padding: 22px clamp(20px, 3.5vw, 56px) 44px;
+            }
+            html #rb-lobby .rb-screen[data-view="entry"].potd-on > * { margin-top: 0; margin-bottom: 0; }
+            html #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main,
+            html.rb-mobile #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { grid-area: main; min-height: 0; }
+            html #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot { grid-area: foot; align-self: end; }
+            #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-solo { margin-top: 4px; line-height: 1.6; }
+            html #rb-lobby .rb-screen[data-view="entry"].potd-on > #rb-potd { grid-area: potd; width: 100%; max-width: 940px; justify-self: center; }
+            #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-wordmark { font-size: clamp(22px, min(2.8vw, 8vh), 64px); }
+            .potd-on #rb-potd .potd-body { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; }
+            .potd-on #rb-potd .potd-more { grid-auto-flow: row; }
+            #rb-potd-cue { display: none !important; }
+        }
+        @media (min-width: 900px) and (min-height: 560px) and (max-height: 700px) and (min-aspect-ratio: 5/4) {
+            .potd-on #rb-potd .potd-why { -webkit-line-clamp: 2; }
+        }
+        @media (min-width: 900px) and (min-height: 560px) and (max-height: 640px) and (min-aspect-ratio: 5/4) {
+            #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-football { display: none; }
+        }
 </style>
 </head>
 
@@ -1666,6 +1744,7 @@
             <h2>&#9733; PLAY OF THE DAY &#9733;</h2>
             <p id="rb-news-head"></p>
             <p id="rb-news-who"></p>
+            <p id="rb-news-dif" hidden style="margin-top:-2px">DIFFICULTY <i class="potd-dif" id="rb-news-difc"></i></p>
             <button id="rb-news-ok" type="button">WATCH IT</button>
             <button id="rb-news-later" type="button" style="background:#2e4a7d;color:#fff;margin-top:10px">LATER</button>
         </div>
@@ -1710,48 +1789,61 @@
 
         <!-- ======================= LANDING / ENTRY ======================= -->
         <div data-view="entry" class="rb-screen">
-            <div class="rb-hero">
-                <div class="rb-football" aria-hidden="true">
-                    <span class="lace-h"></span><span class="lace-v"></span><span class="lace-rungs"></span>
+            <div class="rb-entry-main">
+                <div class="rb-hero">
+                    <div class="rb-football" aria-hidden="true">
+                        <span class="lace-h"></span><span class="lace-v"></span><span class="lace-rungs"></span>
+                    </div>
+                    <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
-            </div>
-            <p class="prompt">TAP PLAY TO START A GAME — V466<span class="rb-cursor">_</span></p>
-            <p class="rb-playing-as" id="rb-playing-as"></p>
-            <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
-            <div class="rb-stack">
-                <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
-                <div class="diff-row seg-row">
-                    <button class="diff-btn mode-btn" data-mode="same">SAME</button>
-                    <button class="diff-btn mode-btn" data-mode="different">DIFFERENT</button>
+                <p class="prompt">TAP PLAY TO START A GAME — V467<span class="rb-cursor">_</span></p>
+                <p class="rb-playing-as" id="rb-playing-as"></p>
+                <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
+                <div class="rb-stack">
+                    <p class="rb-sub">DEFENSE DIFFICULTY FOR BOTH PLAYERS</p>
+                    <div class="diff-row seg-row">
+                        <button class="diff-btn mode-btn" data-mode="same">SAME</button>
+                        <button class="diff-btn mode-btn" data-mode="different">DIFFERENT</button>
+                    </div>
                 </div>
-            </div>
-            <div class="rb-stack">
-                <p class="rb-sub">HAVE A CODE? JOIN A FRIEND'S ROOM</p>
-                <div class="rb-joinrow">
-                    <input id="rb-room-input" maxlength="4" placeholder="CODE"
-                           autocomplete="off" autocapitalize="characters">
-                    <button id="rb-join" class="rb-join-btn">JOIN</button>
+                <div class="rb-stack">
+                    <p class="rb-sub">HAVE A CODE? JOIN A FRIEND'S ROOM</p>
+                    <div class="rb-joinrow">
+                        <input id="rb-room-input" maxlength="4" placeholder="CODE"
+                               autocomplete="off" autocapitalize="characters">
+                        <button id="rb-join" class="rb-join-btn">JOIN</button>
+                    </div>
                 </div>
+                <p id="rb-entry-msg" class="msg"></p>
             </div>
-            <p id="rb-entry-msg" class="msg"></p>
-            <section id="rb-potd" hidden aria-labelledby="rb-potd-title">
-                <p class="potd-eye">&#9733; PLAY OF THE DAY &middot; <span id="rb-potd-date"></span></p>
-                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button></div>
-                <h3 id="rb-potd-title"></h3>
-                <p class="potd-who" id="rb-potd-who"></p>
-                <p class="potd-why" id="rb-potd-why"></p>
-                <p class="potd-cmt-h">COMMENTS</p>
-                <ul class="potd-cmts" id="rb-potd-cmts"></ul>
-                <form class="potd-form" id="rb-potd-form"><input id="rb-potd-input" maxlength="140" placeholder="Say something about this play" autocomplete="off"><button type="submit">POST</button></form>
-                <p class="potd-msg" id="rb-potd-msg"></p>
-                <details id="rb-potd-past"><summary>PAST PLAYS OF THE DAY</summary><ul class="potd-days" id="rb-potd-days"></ul></details>
+            <section id="rb-potd" hidden aria-labelledby="rb-potd-eye">
+                <p class="potd-eye" id="rb-potd-eye">&#9733; PLAYS OF THE DAY &middot; <span id="rb-potd-date"></span></p>
+                <div class="potd-stage"><canvas id="rb-potd-cv" width="854" height="480"></canvas><span class="potd-rank" id="rb-potd-rank">#1</span><button class="potd-go" id="rb-potd-go" type="button">&#9654; WATCH</button><p class="potd-note" id="rb-potd-note"></p></div>
+                <div class="potd-body">
+                    <div class="potd-info">
+                        <h3 id="rb-potd-title"></h3>
+                        <p class="potd-line"><span class="potd-who" id="rb-potd-who"></span><span class="potd-difl" id="rb-potd-difl" hidden>DIFFICULTY <i class="potd-dif" id="rb-potd-dif"></i></span></p>
+                        <p class="potd-why" id="rb-potd-why"></p>
+                    </div>
+                    <ol class="potd-more" id="rb-potd-more" aria-label="More plays of the day"></ol>
+                </div>
+                <div class="potd-rows">
+                    <details id="rb-potd-talk"><summary>COMMENTS <span id="rb-potd-ncmt"></span><span class="peek" id="rb-potd-peek"></span></summary>
+                        <ul class="potd-cmts" id="rb-potd-cmts"></ul>
+                        <form class="potd-form" id="rb-potd-form"><input id="rb-potd-input" maxlength="140" placeholder="Say something about today's plays" autocomplete="off"><button type="submit">POST</button></form>
+                        <p class="potd-msg" id="rb-potd-msg"></p>
+                    </details>
+                    <details id="rb-potd-past"><summary>PAST DAYS</summary><ul class="potd-days" id="rb-potd-days"></ul></details>
+                </div>
             </section>
-            <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
-            <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
-            <p class="rb-solo rb-links"><a href="/how-to-play/">HOW TO PLAY</a> &middot; <a href="/play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="/unblocked/">UNBLOCKED</a></p>
-            <p class="rb-solo rb-links">BUILT BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=lobby" rel="author">LOCAL WEB TECH</a></p>
+            <div class="rb-entry-foot">
+                <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
+                <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
+                <p class="rb-solo rb-links"><a href="/how-to-play/">HOW TO PLAY</a> &middot; <a href="/play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="/unblocked/">UNBLOCKED</a></p>
+                <p class="rb-solo rb-links">BUILT BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=lobby" rel="author">LOCAL WEB TECH</a></p>
+            </div>
         </div>
+        <button id="rb-potd-cue" type="button" hidden>&#9660; PLAYS OF THE DAY</button>
 
         <!-- ======================= WHO'S PLAYING (V387) ======================= -->
         <div data-view="name" class="rb-screen">
@@ -1817,7 +1909,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V466</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V467</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -19432,52 +19524,105 @@
         // V387 first-run news; the a2hs popup still waits for it (var $news).
         var $news = document.getElementById('rb-news');
         (function () {
+            // V467 (the owner: "make it top 3 but number 1 prominent and show difficulty. Plus I don't like the incomplete feel
+            // of the bottom being cut off, make it more natural"): the day's top 3 — embedcode/potd's `top` (a V465 summary
+            // without one is a day of one play). #1 on the big screen, #2/#3 as cards: a card puts its play there and plays it
+            // (its numbers: potdPlays/{date}~2, ~3). Each shows the defense difficulty it beat. On a wide screen the section
+            // sits beside the lobby and the replay takes the height that is left (fit()); on a narrow one it starts below the
+            // first screen, with a chip pointing down (cue()). The archive loads when it is opened (the last 30 days).
             var PUB = 'https://realretrobowl2p-default-rtdb.firebaseio.com/';
             var el = function (id) { return document.getElementById(id); };
             var $sec = el('rb-potd'), $cv = el('rb-potd-cv'), $go = el('rb-potd-go'), $date = el('rb-potd-date'), $title = el('rb-potd-title'),
                 $who = el('rb-potd-who'), $why = el('rb-potd-why'), $cmts = el('rb-potd-cmts'), $form = el('rb-potd-form'), $input = el('rb-potd-input'),
-                $msg = el('rb-potd-msg'), $days = el('rb-potd-days'), $cg = el('rb-potd-congrats');
-            if (!$sec || !$news) return;
+                $msg = el('rb-potd-msg'), $days = el('rb-potd-days'), $cg = el('rb-potd-congrats'), $rank = el('rb-potd-rank'), $note = el('rb-potd-note'),
+                $difl = el('rb-potd-difl'), $dif = el('rb-potd-dif'), $more = el('rb-potd-more'), $talk = el('rb-potd-talk'), $ncmt = el('rb-potd-ncmt'),
+                $peek = el('rb-potd-peek'), $past = el('rb-potd-past'), $cue = el('rb-potd-cue'), $lob = el('rb-lobby');
+            if (!$sec || !$news || !$more) return;
+            var $scr = $sec.parentNode, $stage = $cv.parentNode;
             var SRC = window._rb2p_potdSource || null;                        // test seam: { path: value }
             var CROOT = window._rb2p_potdCommentsRoot || 'rooms/~potd/c/';     // test seam
             var popups = window._rb2p_potdForce === true || !(window._rb2p_isTestRun && window._rb2p_isTestRun());
-            var cur = null, winners = {}, playing = null, R = null;
-            function pub(path) {
+            var cur = null, sel = null, list = [], winners = {}, playing = null, R = null, daysLoaded = false;
+            var WIDE = window.matchMedia ? window.matchMedia('(min-width: 900px) and (min-height: 560px) and (min-aspect-ratio: 5/4)') : null;   // = the CSS
+            function pub(path, query) {
                 if (SRC) return Promise.resolve(Object.prototype.hasOwnProperty.call(SRC, path) ? SRC[path] : null);
-                return fetch(PUB + path + '.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+                return fetch(PUB + path + '.json' + (query ? '?' + query : ''), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
             }
-            function say(t) { if ($msg) $msg.textContent = t || ''; }
+            function say(t) { if ($msg) $msg.textContent = t || ''; }       // the comments
+            function note(t) { if ($note) $note.textContent = t || ''; }    // the replay
             function day(d) { try { return new Date(d + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase(); } catch (e) { return d; } }
-            function who(s) { return (s.side === 'defense' ? 'DEFENSE · ' : 'OFFENSE · ') + (s.name || 'a player') + (s.hero ? '  (' + s.hero + ')' : ''); }
+            function side(s) { return s.side === 'defense' ? 'DEFENSE · ' : 'OFFENSE · '; }
+            function who(s) { return side(s) + (s.name || 'a player') + (s.hero ? '  (' + s.hero + ')' : ''); }
+            var DIF = { easy: 'EASY', medium: 'MED', hard: 'HARD', max: 'MAX' };
+            function chip(i, d) {   // the difficulty, as the lobby's own labels; false when it is not known (a play from before V465)
+                var k = String(d || '').toLowerCase(); if (k === 'ultramax') k = 'max'; if (!DIF[k]) k = '';
+                if (i) { i.textContent = k ? DIF[k] : ''; if (k) i.setAttribute('data-dif', k); else i.removeAttribute('data-dif'); i.title = k ? 'Defense difficulty: ' + DIF[k] : ''; }
+                return !!k;
+            }
+            function entries(s) {
+                var t = s.top && s.top.length ? s.top.slice(0, 3) : [s];
+                return t.filter(Boolean).map(function (e, i) {
+                    var o = {}; for (var k in e) if (k !== 'top') o[k] = e[k];
+                    o.rank = i + 1; o.key = e.key || (s.date + (i ? '~' + (i + 1) : '')); o.date = s.date;
+                    return o;
+                });
+            }
             async function myUid() {
                 if (window._rb2p_potdUid) return window._rb2p_potdUid;            // test seam
                 try { if (window._rb2p_fbAuthUrl) await window._rb2p_fbAuthUrl(PUB); } catch (e) {}   // the anonymous sign-in
                 try { return window._rb2p_uid ? window._rb2p_uid() : ''; } catch (e) { return ''; }
             }
-            function show(s) {
-                cur = s; playing = null;
-                $date.textContent = day(s.date); $title.textContent = s.headline || ''; $who.textContent = who(s); $why.textContent = s.why || '';
-                $go.textContent = '▶ WATCH'; $go.hidden = false;
-                // a fresh canvas for each day shown: a WebGL canvas cannot be cleared from a 2D context (one never gets WebGL)
+            // a play on the big screen; the other two as cards
+            function stage(e) {
+                playing = null; sel = e;
+                // a fresh canvas for each play shown: a WebGL canvas cannot be cleared from a 2D context (one never gets WebGL)
                 if (R) { var fresh = $cv.cloneNode(false); $cv.parentNode.replaceChild(fresh, $cv); $cv = fresh; R = null; }
-                $sec.hidden = false; say('');
+                $rank.textContent = '#' + e.rank;
+                $title.textContent = e.headline || ''; $who.textContent = who(e); $why.textContent = e.why || '';
+                $difl.hidden = !chip($dif, e.dif);
+                $go.textContent = '▶ WATCH'; $go.hidden = false; note('');
+                $more.textContent = '';
+                list.forEach(function (o) {
+                    if (o === e) return;
+                    var li = document.createElement('li'), b = document.createElement('button');
+                    b.type = 'button'; b.className = 'potd-card'; b.dataset.rank = String(o.rank);
+                    b.setAttribute('aria-label', 'Watch #' + o.rank + ': ' + (o.headline || ''));
+                    var r = document.createElement('span'); r.className = 'r'; r.textContent = '#' + o.rank;
+                    var h = document.createElement('span'); h.className = 'h'; h.textContent = o.headline || '';
+                    var w = document.createElement('span'); w.className = 'w';
+                    var n = document.createElement('span'); n.textContent = side(o) + (o.name || 'a player'); w.appendChild(n);
+                    var c = document.createElement('i'); c.className = 'potd-dif'; if (chip(c, o.dif)) w.appendChild(c);
+                    b.appendChild(r); b.appendChild(h); b.appendChild(w);
+                    b.addEventListener('click', function () { stage(o); watch(); });
+                    li.appendChild(b); $more.appendChild(li);
+                });
+                fit();
+            }
+            function show(s, rank) {
+                cur = s; list = entries(s);
+                if (s.uid) winners[s.date] = s.uid;
+                $date.textContent = day(s.date);
+                $sec.hidden = false; $scr.classList.add('potd-on');
                 Array.prototype.forEach.call($days.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.d === s.date); });
-                loadComments();
+                stage(list[Math.max(0, Math.min(list.length - 1, (rank || 1) - 1))]);
+                say(''); loadComments(); cue();
             }
             // the replay: the play's own numbers through the game's renderer, gliding at the screen's rate
             async function watch() {
-                if (!cur) return;
-                $go.hidden = true; say('');
-                var data = cur.__play || await pub('embedcode/potdPlays/' + cur.date);
+                var e = sel; if (!e) return;
+                $go.hidden = true; note('');
+                var data = e.__play || await pub('embedcode/potdPlays/' + e.key);
+                if (sel !== e) return;   // another play was chosen meanwhile
                 var V = window._rb2p_view;
-                if (!data || !data.play || !V || !V.decodePlay || !V.Renderer) { $go.hidden = false; say('The replay is not available right now.'); return; }
-                cur.__play = data;
+                if (!data || !data.play || !V || !V.decodePlay || !V.Renderer) { $go.hidden = false; note('The replay is not available right now.'); return; }
+                e.__play = data;
                 var frames;
-                try { frames = await V.decodePlay(data.play); } catch (e) { frames = null; }
-                if (!frames || !frames.length) { $go.hidden = false; say('The replay could not be read.'); return; }
+                try { frames = await V.decodePlay(data.play); } catch (er) { frames = null; }
+                if (sel !== e) return;
+                if (!frames || !frames.length) { $go.hidden = false; note('The replay could not be read.'); return; }
                 $cv.width = data.play.cw || 854; $cv.height = data.play.ch || 480;
-                try { if (!R) R = new V.Renderer($cv, true); } catch (e) { $go.hidden = false; say('This browser cannot draw the replay.'); return; }
-                var token = playing = {}, t0 = performance.now(), last = frames[frames.length - 1].t, end = Math.min(last, Number(data.toMs) || last);
+                try { if (!R) R = new V.Renderer($cv, true); } catch (er) { $go.hidden = false; note('This browser cannot draw the replay.'); return; }
+                var token = playing = {}, t0 = performance.now(), last = frames[frames.length - 1].t, end = Math.min(last, Number(data.toMs || e.toMs) || last);
                 (function step(now) {
                     if (playing !== token) return;
                     if (document.documentElement.classList.contains('rb-in-match')) { playing = null; return; }
@@ -19488,28 +19633,76 @@
                     try {
                         if (!B || B.t <= A.t) R.draw(A.f, null);
                         else { var a = Math.min(1, Math.max(0, (t - A.t) / (B.t - A.t))); R.draw(V.lerpFrame(A.f, B.f, a), V.lerpPositions(A.f, B.f, a)); }
-                    } catch (e) { playing = null; $go.hidden = false; say('The replay stopped.'); try { if (window._rb2p_diagLog) window._rb2p_diagLog('POTD replay stopped: ' + String(e && e.message || e).slice(0, 80)); } catch (e2) {} return; }
+                    } catch (er) { playing = null; $go.hidden = false; note('The replay stopped.'); try { if (window._rb2p_diagLog) window._rb2p_diagLog('POTD replay stopped: ' + String(er && er.message || er).slice(0, 80)); } catch (e2) {} return; }
                     requestAnimationFrame(step);
                 })(performance.now());
             }
             $go.addEventListener('click', watch);
-            // comments: the newest 60 of the day; the play's maker carries the flair
+            // a wide screen: the section beside the lobby, its replay as big as the height left allows (the comments and the
+            // archive count as their closed rows: opening one scrolls the page, it does not shrink the replay)
+            function wide() { return !!(WIDE && WIDE.matches) && !$sec.hidden; }
+            function fit() {
+                try {
+                    if (!wide()) { $sec.style.width = ''; $stage.style.width = ''; return; }
+                    var px = function (v) { return parseFloat(v) || 0; };
+                    var cs = getComputedStyle($scr), ss = getComputedStyle($sec);
+                    var availH = $scr.clientHeight - px(cs.paddingTop) - px(cs.paddingBottom);
+                    var cols = String(cs.gridTemplateColumns || '').split(' ').map(px).filter(function (v) { return v > 0; });
+                    var colW = Math.min(cols.length > 1 ? cols[1] : $scr.clientWidth / 2, 940);
+                    var padX = px(ss.paddingLeft) + px(ss.paddingRight) + px(ss.borderLeftWidth) + px(ss.borderRightWidth);
+                    var padY = px(ss.paddingTop) + px(ss.paddingBottom) + px(ss.borderTopWidth) + px(ss.borderBottomWidth);
+                    var gap = px(ss.rowGap), full = colW - padX, minW = Math.min(full, 560), w = full;
+                    // the section is as wide as the replay, but never narrower than 560 (the words and the cards need the room):
+                    // a short screen centers a smaller replay instead of squeezing them
+                    for (var k = 0; k < 5; k++) {   // the words wrap by the width; the width follows the height left
+                        $sec.style.width = Math.round(Math.max(minW, w) + padX) + 'px';
+                        var others = 0, n = 0;
+                        Array.prototype.forEach.call($sec.children, function (c) {
+                            if (c === $stage || c.hidden || getComputedStyle(c).display === 'none') return;
+                            n++;
+                            if (c.classList.contains('potd-rows')) Array.prototype.forEach.call(c.querySelectorAll('summary'), function (sm) { others += sm.getBoundingClientRect().height + 1; });
+                            else others += c.getBoundingClientRect().height;
+                        });
+                        var w2 = Math.max(300, Math.min(full, Math.floor((availH - padY - others - gap * n) * 16 / 9)));
+                        if (Math.abs(w2 - w) < 2) { w = w2; break; }
+                        w = w2;
+                    }
+                    $sec.style.width = Math.round(Math.max(minW, w) + padX) + 'px';
+                    $stage.style.width = Math.round(w) + 'px';
+                } catch (e) {}
+            }
+            // a narrow screen: the section starts below the first screen — a chip points down to it until it is in sight
+            function cue() {
+                if (!$cue) return;
+                var on = !$sec.hidden && !wide() && (!$lob || $lob.dataset.active === 'entry');
+                if (on) on = $sec.getBoundingClientRect().top > window.innerHeight - 24;
+                $cue.hidden = !on;
+            }
+            if ($cue) $cue.addEventListener('click', function () { try { $sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { $sec.scrollIntoView(); } });
+            $scr.addEventListener('scroll', cue, { passive: true });
+            window.addEventListener('resize', function () { fit(); cue(); });
+            try { if (WIDE && WIDE.addEventListener) WIDE.addEventListener('change', function () { fit(); cue(); }); } catch (e) {}
+            // comments: the newest 60 of the day; the play of the day's maker carries the flair
             var BAD = /\b(f+u+c+k+\w*|sh+i+t+\w*|b+i+t+c+h+\w*|c+u+n+t+\w*|d+i+c+k+\w*|p+u+s+s+y+\w*|n+i+g+g+\w*|f+a+g+\w*|r+e+t+a+r+d+\w*|w+h+o+r+e+\w*|s+l+u+t+\w*|a+s+s+h+o+l+e+\w*)\b/gi;
             function clean(t) { return String(t || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140).replace(BAD, function (w) { return w.charAt(0) + '***'; }); }
             async function loadComments() {
                 var d = cur && cur.date; if (!d) return;
-                var list = null;
+                var list2 = null;
                 try {
-                    if (SRC && Object.prototype.hasOwnProperty.call(SRC, 'comments/' + d)) list = SRC['comments/' + d];
+                    if (SRC && Object.prototype.hasOwnProperty.call(SRC, 'comments/' + d)) list2 = SRC['comments/' + d];
                     else if (window._rb2p_fbAuthUrl) {
                         var u = await window._rb2p_fbAuthUrl(PUB + CROOT + d + '.json');
                         u += (u.indexOf('?') >= 0 ? '&' : '?') + 'orderBy=' + encodeURIComponent('"$key"') + '&limitToLast=60';
-                        var r = await fetch(u, { cache: 'no-store' }); list = r.ok ? await r.json() : null;
+                        var r = await fetch(u, { cache: 'no-store' }); list2 = r.ok ? await r.json() : null;
                     }
-                } catch (e) { list = null; }
+                } catch (e) { list2 = null; }
                 if (!cur || cur.date !== d) return;
                 $cmts.textContent = '';
-                var rows = list ? Object.keys(list).sort().map(function (k) { return list[k]; }).filter(function (c) { return c && c.text; }) : [];
+                var rows = list2 ? Object.keys(list2).sort().map(function (k) { return list2[k]; }).filter(function (c) { return c && c.text; })
+                                       .sort(function (a, b) { return (Number(a.ts) || 0) - (Number(b.ts) || 0); }) : [];   // oldest first, by when it was said
+                if ($ncmt) $ncmt.textContent = rows.length ? '· ' + (rows.length >= 60 ? '60+' : rows.length) : '';
+                var lastC = rows[rows.length - 1];
+                if ($peek) $peek.textContent = lastC ? (clean(lastC.name) || 'Player') + ': ' + clean(lastC.text) : 'Be the first to say something';
                 if (!rows.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'No comments yet — be the first.'; $cmts.appendChild(n0); return; }
                 rows.forEach(function (c) {
                     var li = document.createElement('li');
@@ -19536,11 +19729,12 @@
                 if (SRC) { var k = 'comments/' + cur.date; SRC[k] = Object.assign({}, SRC[k] || {}); SRC[k]['z' + Date.now()] = rec; }
                 $input.value = ''; say('Posted.'); loadComments();
             });
-            // the archive: every day's play of the day
+            // the archive: the last 30 days, loaded the first time it is opened
             async function loadDays() {
-                var idx = await pub('embedcode/potdIndex'); if (!idx) return;
-                var dates = Object.keys(idx).sort().reverse();
+                var idx = await pub('embedcode/potdIndex', 'orderBy=' + encodeURIComponent('"$key"') + '&limitToLast=30');
                 $days.textContent = '';
+                var dates = idx ? Object.keys(idx).sort().reverse() : [];
+                if (!dates.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'Nothing yet.'; n0.style.fontSize = '9px'; n0.style.color = '#8fa1b3'; $days.appendChild(n0); return; }
                 dates.forEach(function (d) {
                     var s = idx[d]; if (!s) return;
                     winners[d] = s.uid || winners[d];
@@ -19552,14 +19746,16 @@
                 });
                 if (cur) Array.prototype.forEach.call($days.querySelectorAll('button'), function (bt) { bt.classList.toggle('on', bt.dataset.d === cur.date); });
             }
+            if ($past) $past.addEventListener('toggle', function () { if ($past.open && !daysLoaded) { daysLoaded = true; loadDays(); } });
             // the banner, once per new play of the day — or, on the device that made the play, the congrats
             function banner(s) {
                 try { if (localStorage.getItem('rb2p_potd_seen') === s.date) return; } catch (e) {}
                 if (document.documentElement.classList.contains('rb-in-match')) return;
                 el('rb-news-head').textContent = s.headline || ''; el('rb-news-who').textContent = who(s);
+                if (el('rb-news-dif')) el('rb-news-dif').hidden = !chip(el('rb-news-difc'), s.dif);
                 $news.hidden = false;
                 var done = function () { try { localStorage.setItem('rb2p_potd_seen', s.date); } catch (e) {} $news.hidden = true; };
-                el('rb-news-ok').onclick = function () { done(); try { $sec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} watch(); };
+                el('rb-news-ok').onclick = function () { done(); if (sel && sel.rank !== 1 && list[0]) stage(list[0]); try { $sec.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} watch(); };
                 el('rb-news-later').onclick = done;
             }
             function congrats(s) {
@@ -19582,15 +19778,16 @@
             }
             (async function init() {
                 var s = await pub('embedcode/potd');
-                if (!s || !s.date || !s.headline) return;   // no play of the day yet: nothing shows
-                if (s.uid) winners[s.date] = s.uid;
+                if (!s || !s.date || !s.headline) return;   // no play of the day yet: nothing shows, the lobby is as it was
                 show(s);
-                loadDays();
+                try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fit(); cue(); }); } catch (e) {}
                 if (!popups) return;
                 var me = s.uid ? await myUid() : '';
                 if (me && s.uid && me === s.uid) congrats(s); else banner(s);
             })();
-            window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, state: function () { return { cur: cur && cur.date, playing: !!playing, winners: winners }; } };
+            window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, fit: fit, cue: cue,
+                stage: function (rank) { var e = list[rank - 1]; if (e) stage(e); return !!e; },
+                state: function () { return { cur: cur && cur.date, rank: sel && sel.rank, n: list.length, playing: !!playing, winners: winners, wide: wide() }; } };
         })();
 
         // ===== V457: iPhone — add the game to the Home Screen (the owner: "if the phone is an iphone, tell them to add it to

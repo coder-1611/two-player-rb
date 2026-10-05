@@ -1402,3 +1402,24 @@ each day into a viewable section".
   and the title sizes to the height, so the title, PLAY 2P and JOIN are on the first screen.
 - Tests: `e2e/lobby-phone.js` P1–P3 (five phone/tablet sizes: the buttons on the first screen, the column scrolls to its
   end, a short column still centered). The other suites press PLAY 2P from code, which works off screen.
+
+## V467 (2026-10-04): the day's top 3 on the front page, with the difficulty — and nothing cut off by the screen's edge
+- **The owner:** "make it top 3 but number 1 prominent and show difficulty. Plus I don't like the incomplete feel of the
+  bottom being cut off, make it more natural." (V465 put the panel under the lobby: at 1920x855 it began 620 px down and
+  the screen's edge and the ticker cut it in half.)
+- **The 6 pm job** (`tools/highlights/daily.js` publishPotd) publishes the judge's top 3: `embedcode/potd.top` and
+  `potdIndex/{date}.top` (rank, side, name, hero, headline, a short `why`, difficulty, toMs), the replays at
+  `potdPlays/{date}`, `{date}~2`, `{date}~3` (fetched only on WATCH). #1 keeps its V465 fields (a page still on V465 works);
+  only #1's device uid is published. A play from before V465 gets its difficulty from the room's SAME-mode setting
+  (`rooms/{code}/config.sharedDifficulty`; a DIFFERENT-mode game's is unknown). The short `why`: the judge's `fan` line,
+  else a sentence or two of its reason (the split ignores the "!" in "Stiff Arm!"). JUDGE.md: the top three go on the
+  front page.
+- **The page:** #1 on the big screen (a drawn field until WATCH, its rank badge), #2/#3 as cards (a card puts its play on
+  the big screen and plays it), each with a difficulty chip in the lobby's own words (EASY/MED/HARD/MAX); comments and the
+  archive are rows that open in place (the comments row counts them and shows the newest; the archive loads when opened,
+  the last 30 days). A wide screen (>=900x560, landscape) is a grid: the lobby left, the plays right, the replay as big as
+  the height left allows (`fit()`), all on the first screen. A narrow one (a phone held sideways, a tall window): the lobby
+  fills the first screen, the plays start below it, a PLAYS OF THE DAY chip points the way (`cue()`). With no play of the
+  day the lobby is the one centered column it always was.
+- Tests: `e2e/potd-layout.js` L1–L3 (nine sizes), `e2e/potd.js` D1–D9 (D8 the cards, D9 a card on the big screen),
+  `lobby-phone` P2 (a tablet held sideways scrolls nothing), `v387-names` T1 now points at potd D5.

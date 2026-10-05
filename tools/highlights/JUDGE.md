@@ -68,14 +68,14 @@ A play that is great on all four beats a play that is extreme on one. Use the fr
     { "rank": 1, "id": "<the play's id, exactly as in plays.tsv>",
       "headline": "<at most 70 characters, like a broadcast lower-third: who did what>",
       "why": "<2-4 sentences: how it scores on the four (situation, difficulty, impact, unexpectedness), citing what you saw in the frames (frame numbers)>",
-      "fan": "<1-2 sentences for the game's FRONT PAGE, written for the players (kids who play it): what happened and why it is amazing — no frame numbers, no jargon>" }
+      "fan": "<1-2 sentences (at most ~200 characters) for the game's FRONT PAGE, written for the players (kids who play it): what happened and why it is amazing — no frame numbers, no jargon>" }
   ],
   "notes": "<one or two sentences about the day: how many plays, what stood out, anything that looked wrong in the data>"
 }
 ```
 
-Your #1 becomes the **PLAY OF THE DAY** on the game's front page, with its `fan` line under the replay — write that one
-for the players.
+Your top three go on the game's **front page**: #1 as the **PLAY OF THE DAY** (the big replay), #2 and #3 beside it, each
+with its `fan` line and its difficulty. Write every `fan` line for the players, at most about 200 characters.
 
 Headline examples, for the tone: "McCaffrey shrugs off 3 tacklers, stiff-arms a 4th for 15" ·
 "Purdy's 52-yard heave caught in triple coverage as time expires" · "Ramsey's pick-six turns a 7-point deficit into a lead".
