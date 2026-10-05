@@ -1615,3 +1615,7 @@ each day into a viewable section".
 - **`--keep-pools` / `--pool` / `--pool-a`:** the device inbox keeps its earlier pool(s) and adds this run's
   (keys b1..b5). The page's `#rb-inbox` shows each pool under its title, "B #1", and each play's points.
 - Tests: inbox B1-B4 4/4.
+
+## V482 (2026-10-05): MAX is worth 40 in the points formula
+- The owner: "Make max 40 instead of 20" — `features.js DIF_PTS.max` 40 (HARD 8, MED 2, EASY 0 unchanged); the brief says so.
+- Re-picked as pool C on the owner's Chromebook (pools A and B kept).

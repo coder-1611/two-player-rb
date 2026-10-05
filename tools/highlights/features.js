@@ -335,7 +335,7 @@ function keyMoments(f, n) {
 // point, ... the clutch things are 20 seconds, overtime plays get 1.2x boost and spectacularness is a raw score out of 16
 // ... + 2 times (stiff arms and jukes)". The numeric parts; the judge adds its raw spectacular score (0-16); an overtime
 // play's total is x1.2.
-const DIF_PTS = { max: 20, ultramax: 20, hard: 8, medium: 2, easy: 0 };
+const DIF_PTS = { max: 40, ultramax: 40, hard: 8, medium: 2, easy: 0 };   // V482 (the owner: "make max 40 instead of 20")
 function points(f) {
     const dk = String(f.dif || '').toLowerCase(), difficulty = DIF_PTS[dk] != null ? DIF_PTS[dk] : 2;   // not recorded: as MED
     const offense = f.heroSide !== 'D', kick = !!f.kick || /kick|punt|fg/i.test(String(f.via || ''));
