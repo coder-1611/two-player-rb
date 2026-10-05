@@ -1619,3 +1619,7 @@ each day into a viewable section".
 ## V482 (2026-10-05): MAX is worth 40 in the points formula
 - The owner: "Make max 40 instead of 20" — `features.js DIF_PTS.max` 40 (HARD 8, MED 2, EASY 0 unchanged); the brief says so.
 - Re-picked as pool C on the owner's Chromebook (pools A and B kept).
+
+## V483 (2026-10-05): a defensive play gets a flat 10, not the difficulty points
+- The owner: "in defensive plays no difficulty boost, maybe just +10" — `points()`: a pick or a fumble return (the hero on
+  defense) scores difficulty 10 whatever the setting; the brief says so. Re-picked as pool D on the owner's Chromebook.

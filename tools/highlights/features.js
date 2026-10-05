@@ -337,8 +337,9 @@ function keyMoments(f, n) {
 // play's total is x1.2.
 const DIF_PTS = { max: 40, ultramax: 40, hard: 8, medium: 2, easy: 0 };   // V482 (the owner: "make max 40 instead of 20")
 function points(f) {
-    const dk = String(f.dif || '').toLowerCase(), difficulty = DIF_PTS[dk] != null ? DIF_PTS[dk] : 2;   // not recorded: as MED
     const offense = f.heroSide !== 'D', kick = !!f.kick || /kick|punt|fg/i.test(String(f.via || ''));
+    // V483 (the owner: "in defensive plays no difficulty boost, maybe just +10"): a pick or a fumble return gets a flat 10
+    const dk = String(f.dif || '').toLowerCase(), difficulty = !offense ? 10 : (DIF_PTS[dk] != null ? DIF_PTS[dk] : 2);   // not recorded: as MED
     const conv = offense && !kick && f.down >= 1 && f.down <= 4 && (f.td || (f.gain != null && f.toGo > 0 && f.gain >= f.toGo));
     const td = f.td ? 20 : 0, firstDown = conv ? 5 : 0, fourth = conv && f.down === 4 ? 10 + Math.round(f.toGo) : 0;
     const yards = 0.5 * Math.max(0, offense ? (f.gain || 0) : (f.returnYds || 0));
