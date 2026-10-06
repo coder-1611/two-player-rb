@@ -111,5 +111,5 @@ function notifyGitHub(kind, title, body) {   // the workflow (as github-actions)
             log('RECOVERED');
         }
     }
-    fs.writeFileSync(STATE, JSON.stringify({ at: now, fails, down, alerted, probe: pr, usage: u, hourly: hist }, null, 1));
+    fs.writeFileSync(STATE, JSON.stringify({ at: now, fails, down, alerted: REPORT ? prev : alerted, probe: pr, usage: u, hourly: hist }, null, 1));   // a --report sends nothing, so it marks nothing sent
 })().catch(e => { log('FATAL ' + e.message); process.exit(2); });

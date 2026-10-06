@@ -1748,3 +1748,8 @@ each day into a viewable section".
   emails/pushes it) and closes it when all answer; the Mac's messages open/comment "outage" or "usage" issues.
 - **`tools/install-fb-watch.sh`:** installs com.rb2p.fb-watch and com.rb2p.fb-backup (3:30 am, --auto --copy-to
   "iCloud Drive/Retro Bowl 2P backups" --prune).
+
+## V492 (2026-10-05): fb-watch — a --report run no longer marks the alerts as sent
+- The first --report run saved its problems as alerted, so the LaunchAgent's first real run stayed quiet. Now --report
+  keeps the previous record. The first alert then went out: issue #1 "Firebase usage warning" (storage 103%, downloads
+  234%), opened by github-actions, @coder-1611. GitHub's own check (workflow_dispatch, no kind) passed: all four answer.
