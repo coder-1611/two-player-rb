@@ -911,6 +911,57 @@
         }
         #rb-lobby .rb-join-btn:hover { transform: translate(-1px,-1px); }
 
+        /* ---- V486: FIND A PLAYER — the waiting line and the lobby chat ---- */
+        #rb-lobby .rb-find-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+        #rb-lobby #rb-find {
+            font-family: 'Press Start 2P', monospace; font-size: 12px; letter-spacing: 2px; line-height: 1;
+            color: #0a1838; background: #36e07a; border: 4px solid #0a1838; padding: 12px 16px; cursor: pointer;
+            box-shadow: 4px 4px 0 #0a1838; transition: transform .07s;
+        }
+        #rb-lobby #rb-find:hover { transform: translate(-1px,-1px); }
+        #rb-lobby #rb-find .n:not(:empty) { margin-left: 10px; padding: 3px 6px; background: #0a1838; color: #ffd23f; font-size: 9px; }
+        #rb-lobby #rb-find.live { animation: rb-find-pulse 1.4s ease-in-out infinite; }
+        @keyframes rb-find-pulse { 50% { box-shadow: 4px 4px 0 #0a1838, 0 0 0 7px rgba(54,224,122,.35); } }
+        @media (prefers-reduced-motion: reduce) { #rb-lobby #rb-find.live { animation: none; } }
+        #rb-lobby[data-active="find"] .rb-screen[data-view="find"] {
+            position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
+            gap: 14px; width: 100%; max-height: 100vh; overflow-y: auto; padding: 40px 24px 56px; text-align: center; box-sizing: border-box;
+        }
+        #rb-lobby .rb-find-note { margin: 0; max-width: 680px; font-size: 10px; line-height: 1.9; letter-spacing: .5px; color: #cdddff; }
+        #rb-lobby .rb-find-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; width: min(980px, 100%); align-items: stretch; }
+        @media (max-width: 760px) { #rb-lobby .rb-find-cols { grid-template-columns: minmax(0, 1fr); } }
+        #rb-lobby .rb-find-box { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; padding: 16px 14px;
+            background: rgba(8,20,52,.45); border: 3px solid #fff; box-shadow: 4px 4px 0 #0a1838; }
+        #rb-lobby #rb-find-go { padding: 16px 30px; font-size: clamp(14px, 1.8vw, 18px); }
+        #rb-lobby #rb-find-go.on { color: #b3261e; }
+        #rb-lobby .rb-find-state { margin: 0; min-height: 14px; font-size: 10px; line-height: 1.7; color: #ffd23f; }
+        #rb-lobby .rb-find-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; max-height: 210px; overflow-y: auto; }
+        #rb-lobby .rb-find-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(0,0,0,.25); font-size: 10px; text-align: left; }
+        #rb-lobby .rb-find-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; line-height: 1.5; }
+        #rb-lobby .rb-find-list li .ago { color: #8fa1b3; font-size: 8px; white-space: nowrap; }
+        #rb-lobby .rb-find-list li button { font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 8px 10px; color: #0a1838; background: #ffd23f;
+            border: 3px solid #0a1838; cursor: pointer; }
+        #rb-lobby .rb-find-list li.me { outline: 2px dashed #36e07a; outline-offset: -2px; }
+        #rb-lobby .rb-find-list li.none { justify-content: center; color: #8fa1b3; background: none; line-height: 1.7; text-align: center; }
+        #rb-lobby .rb-find-newer { margin: 0; font-size: 8px; color: #8fa1b3; line-height: 1.6; }
+        #rb-lobby .rb-find-newer[hidden] { display: none; }
+        #rb-lobby .rb-chat-log { list-style: none; margin: 0; padding: 8px; width: 100%; box-sizing: border-box; height: 230px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,.28); text-align: left; font-size: 10px; line-height: 1.7; }
+        #rb-lobby .rb-chat-log li { color: #e8f0ff; overflow-wrap: anywhere; }
+        #rb-lobby .rb-chat-log li b { color: #ffd23f; margin-right: 6px; }
+        #rb-lobby .rb-chat-log li.me b { color: #36e07a; }
+        #rb-lobby .rb-chat-log li.none { color: #8fa1b3; }
+        #rb-lobby .rb-chat-form { display: flex; gap: 8px; width: 100%; }
+        #rb-lobby #rb-chat-input { flex: 1; min-width: 0; width: auto; font-size: 11px; letter-spacing: 1px; text-transform: none; text-align: left; padding: 10px; border-width: 3px; }
+        #rb-lobby .rb-chat-form button { font: bold 11px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 0 12px; color: #0a1838; background: #ffd23f;
+            border: 3px solid #0a1838; cursor: pointer; }
+        #rb-lobby .rb-chat-tip { margin: 0; font-size: 8px; line-height: 1.6; color: #8fa1b3; }
+        html.rb-mobile #rb-lobby[data-active="find"] .rb-screen[data-view="find"] {
+            gap: 10px; justify-content: flex-start; max-height: 100%;
+            padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+        }
+        html.rb-mobile #rb-lobby .rb-chat-log { height: 170px; }
+
         /* ---- V387: the name gate ---- */
         #rb-lobby[data-active="name"] .rb-screen[data-view="name"] {
             position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
@@ -1460,7 +1511,7 @@
         #rb-potd .potd-body { display: flex; flex-direction: column; gap: 10px; }
         /* a narrow screen (a phone, a tall window): the lobby fills the first screen and the plays start below it — never a
            panel cut by the bottom edge; the PLAYS OF THE DAY chip points the way down */
-        #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - 56px); justify-content: center; }
+        #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - 56px); justify-content: center; flex-shrink: 0; }   /* V486: a column taller than the screen grows (scrolls) — shrunk, it spilled over the top edge */
         @media (max-height: 760px) { #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - 18px); } }
         html.rb-mobile #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { min-height: calc(100vh - max(22px, env(safe-area-inset-top))); }
         #rb-potd-cue { position: absolute; right: 16px; bottom: 44px; z-index: 6; padding: 10px 12px; font: bold 9px 'Press Start 2P', monospace; letter-spacing: 1px;
@@ -1871,7 +1922,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V485<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V486<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -1888,6 +1939,10 @@
                                autocomplete="off" autocapitalize="characters">
                         <button id="rb-join" class="rb-join-btn">JOIN</button>
                     </div>
+                </div>
+                <div class="rb-find-row">
+                    <span class="rb-sub">NO CODE?</span>
+                    <button id="rb-find" type="button">FIND A PLAYER<span class="n" id="rb-find-n"></span></button>
                 </div>
                 <p id="rb-entry-msg" class="msg"></p>
             </div>
@@ -1981,10 +2036,39 @@
             </div>
         </div>
 
+        <!-- ======================= FIND A PLAYER (V486) ======================= -->
+        <div data-view="find" class="rb-screen">
+            <h1 class="rb-roomtitle">FIND A <span class="code">PLAYER</span></h1>
+            <p class="rb-find-note">The site is still growing, so you may not find someone right away. Keep this page open &mdash; it beeps when a player joins. Most players are on weekdays around midday (Central time).</p>
+            <div class="rb-find-cols">
+                <div class="rb-find-box">
+                    <p class="rb-sub">DIFFICULTY &mdash; SAME FOR BOTH</p>
+                    <div class="diff-row">
+                        <button class="diff-btn" type="button" data-fdif="easy">EASY</button>
+                        <button class="diff-btn" type="button" data-fdif="medium">MED</button>
+                        <button class="diff-btn" type="button" data-fdif="hard">HARD</button>
+                        <button class="diff-btn" type="button" data-fdif="max">MAX</button>
+                    </div>
+                    <button id="rb-find-go" class="rb-cta" type="button">FIND A GAME</button>
+                    <p class="rb-find-state" id="rb-find-state" aria-live="polite"></p>
+                    <p class="rb-sub">WAITING NOW</p>
+                    <ul class="rb-find-list" id="rb-find-list"></ul>
+                    <p class="rb-find-newer" id="rb-find-newer" hidden>More players are waiting on a newer version &mdash; reload the page to see them.</p>
+                </div>
+                <div class="rb-find-box">
+                    <p class="rb-sub">LOBBY CHAT</p>
+                    <ul class="rb-chat-log" id="rb-chat-log"></ul>
+                    <form class="rb-chat-form" id="rb-chat-form"><input id="rb-chat-input" maxlength="200" placeholder="Say something" autocomplete="off"><button type="submit">SEND</button></form>
+                    <p class="rb-chat-tip">Keep personal info (your school, address, phone) to yourself.</p>
+                </div>
+            </div>
+            <button id="rb-find-back" class="rb-join-btn" type="button">&#9664; BACK</button>
+        </div>
+
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V485</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V486</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -18742,6 +18826,7 @@
             lobby.dataset.active = name;
             lobby.style.display = 'flex';
             showLeaveGameBtn(false);   // in the lobby, not the game
+            try { lfgView(name); } catch (eLV) {}   // V486: the waiting line follows the screen
             // V451: the opponent's-screen replay gets its one-time setup done here, while the players pick teams
             if (name === 'room') { try { if (window._rb2p_view && window._rb2p_view.prewarm) window._rb2p_view.prewarm(); } catch (eW) {} }
             if (name === 'entry') {
@@ -20686,7 +20771,9 @@
 
             var bothIn = !!(a && b);
             $ready.disabled = !bothIn;
-            if (!bothIn) {
+            if (!bothIn && lfgRoom && lfgRoom.code === myRoom) {   // V486: a found player, not a friend with the code
+                $status.textContent = 'Found ' + lfgName(lfgRoom.name) + ' — they are joining…';
+            } else if (!bothIn) {
                 // V410 (complaint ITYV "how to see the code"): say what the code is for
                 $status.innerHTML = 'Waiting for your friend — tell them the code <b style="color:#ffd23c;letter-spacing:3px">' + myRoom +
                     '</b>. They type it in the CODE box and tap JOIN. <button type="button" id="rb-copy-link" style="margin-left:8px;font:inherit;font-size:.85em;padding:2px 8px;cursor:pointer">COPY INVITE LINK</button>';
@@ -20771,6 +20858,310 @@
             $entryMsg.textContent = '';
             showView('entry');
         }
+
+        // ===== V486: FIND A PLAYER (the owner: "I have noticed a lot of players who want to play two player but there just
+        // isn't someone to play with. Create a lobby where these lonely people can submit their want-to-play request and if
+        // there is someone else they connect. This should be the same process as getting a code of SAME difficulty. Plan out
+        // the best way to do this with limited traffic and also add a chat feature ... add a disclaimer saying the site is
+        // growing and you may not find someone. Figure out the best and most easy way to group people") =====
+        // rooms/~lfg — the rooms rules (any signed-in player); `audited` keeps the pre-V419 room sweep off it:
+        //   q/{sid}    one player in line: {name, dif, ts (joined the line), hb (every 20 s), v (build), u (device uid)};
+        //              onDisconnect takes it away with the tab; an entry 75 s without a heartbeat is ignored
+        //   chat/{id}  the lobby chat, the last 50 shown, read only while the FIND screen is open
+        // ONE line for all four difficulties: a few players a day split four ways would leave four empty lines. The same
+        // difficulty matches by itself; anyone else waiting is one tap away (at THEIR difficulty); every lobby shows how
+        // many are waiting on the FIND A PLAYER button. A match: the NEWER player claims the older one's entry (a
+        // transaction — two can never claim one), makes the room exactly as PLAY 2P does in SAME mode at the agreed
+        // difficulty (A seeds the room's config as always), and writes the code into the claimed entry; the waiting page
+        // joins that code the way JOIN does, with a beep and a flashing tab title if it sits in the background. The maker
+        // gives up after 45 s without them and is back in line.
+        var lfgReady = false;
+        var LFG = (function () { try { if (window._rb2p_lfgRoot) return String(window._rb2p_lfgRoot); } catch (e) {} return 'rooms/~lfg'; })();   // test seam
+        var lfgSid = mySessionId(), lfgVer = Number((((document.querySelector('.prompt') || { textContent: '' }).textContent).match(/V(\d+)/) || [])[1]) || 0;
+        var lfgQ = {}, lfgOffset = 0, lfgWaiting = false, lfgSince = 0, lfgBusy = false, lfgJoining = false, lfgRoom = null, lfgNoteUntil = 0, lfgPostedAt = 0;
+        var lfgUnsubQ = null, lfgUnsubMe = null, lfgUnsubChat = null, lfgHbT = null, lfgTickT = null, lfgClaimT = null, lfgAc = null, lfgKept = false;
+        var LFG_DIF = { easy: 'EASY', medium: 'MED', hard: 'HARD', max: 'MAX' };
+        var lfgDif = (function () { var d = getUserDifficultyPref(); if (d === 'ultramax') d = 'max'; return LFG_DIF[d] ? d : 'medium'; })();
+        var $find = document.getElementById('rb-find'), $findN = document.getElementById('rb-find-n'), $findGo = document.getElementById('rb-find-go'),
+            $findState = document.getElementById('rb-find-state'), $findList = document.getElementById('rb-find-list'), $findNewer = document.getElementById('rb-find-newer'),
+            $chatLog = document.getElementById('rb-chat-log'), $chatForm = document.getElementById('rb-chat-form'), $chatIn = document.getElementById('rb-chat-input');
+        function lfgNow() { return Date.now() + lfgOffset; }   // the server's clock: every page compares the same times
+        function lfgUid() { try { return window._rb2p_uid ? String(window._rb2p_uid() || '') : ''; } catch (e) { return ''; } }
+        function lfgName(n) { var c = window._rb2p_censorName ? window._rb2p_censorName(n) : String(n || ''); return c || 'a player'; }
+        function lfgOk(e) { return !!(e && typeof e === 'object' && LFG_DIF[e.dif] && Number(e.v) === lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 75000); }
+        function lfgSay(t, holdMs) { if ($findState) $findState.textContent = t || ''; lfgNoteUntil = holdMs ? Date.now() + holdMs : 0; }
+        function lfgClock() { var x = Math.max(0, Math.round((lfgNow() - (lfgSince || lfgNow())) / 1000)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
+        function lfgAgo(ts) { var m = Math.floor((lfgNow() - Number(ts || 0)) / 60000); return m < 1 ? 'JUST NOW' : m + ' MIN'; }
+        function lfgLine() {   // who is in line (fresh, this build, not being matched), first come first
+            return Object.keys(lfgQ).filter(function (k) { return lfgOk(lfgQ[k]) && !lfgQ[k].m; })
+                .sort(function (x, y) { return (Number(lfgQ[x].ts) - Number(lfgQ[y].ts)) || (x < y ? -1 : 1); });
+        }
+        function lfgMine(k) { var u = lfgUid(); return k === lfgSid || !!(u && lfgQ[k] && lfgQ[k].u === u); }   // this tab, or another tab of this device
+        // the button, the clock, the ages — every second
+        function lfgTick() {
+            var others = lfgLine().filter(function (k) { return !lfgMine(k); }).length;
+            if ($findN) $findN.textContent = lfgWaiting ? 'LOOKING ' + lfgClock() : (others ? others + ' WAITING' : '');
+            if ($find) $find.classList.toggle('live', !lfgWaiting && others > 0);
+            if ($findGo) { $findGo.textContent = lfgWaiting ? 'STOP LOOKING' : 'FIND A GAME'; $findGo.classList.toggle('on', lfgWaiting); }
+            if (lfgWaiting && !lfgBusy && !lfgJoining && Date.now() > lfgNoteUntil) {
+                var e = lfgQ[lfgSid];
+                if (!(e && e.m)) lfgSay('Looking for a ' + LFG_DIF[lfgDif] + ' game… ' + lfgClock() + (others ? '' : ' — nobody else is in line yet.'));
+            }
+            Array.prototype.forEach.call(document.querySelectorAll('#rb-lobby [data-fdif]'), function (b) { b.classList.toggle('selected', b.dataset.fdif === lfgDif); });
+            if ($findList) Array.prototype.forEach.call($findList.querySelectorAll('.ago[data-ts]'), function (a) { a.textContent = lfgAgo(a.dataset.ts); });
+        }
+        // the list — rebuilt only when the line changes (a button rebuilt under a finger loses the tap)
+        function lfgList() {
+            lfgTick();
+            if ($findNewer) $findNewer.hidden = !Object.keys(lfgQ).some(function (k) { var e = lfgQ[k]; return e && Number(e.v) > lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 75000; });
+            if (!$findList) return;
+            var keys = lfgLine();
+            $findList.textContent = '';
+            if (!keys.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'Nobody yet. Tap FIND A GAME and you are first in line.'; $findList.appendChild(n0); return; }
+            keys.forEach(function (k) {
+                var e = lfgQ[k], li = document.createElement('li'), mine = lfgMine(k);
+                if (k === lfgSid) li.className = 'me';
+                var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = k === lfgSid ? 'YOU' : lfgName(e.name);
+                var c = document.createElement('i'); c.className = 'potd-dif'; c.setAttribute('data-dif', e.dif); c.textContent = LFG_DIF[e.dif];
+                var ago = document.createElement('span'); ago.className = 'ago'; ago.dataset.ts = String(e.ts); ago.textContent = lfgAgo(e.ts);
+                li.appendChild(nm); li.appendChild(c); li.appendChild(ago);
+                if (!mine) {
+                    var b = document.createElement('button'); b.type = 'button'; b.textContent = 'PLAY'; b.dataset.sid = k;
+                    b.title = 'Play ' + lfgName(e.name) + ' at ' + LFG_DIF[e.dif];
+                    b.addEventListener('click', function () { lfgUnlock(); lfgClaim(k); });
+                    li.appendChild(b);
+                }
+                $findList.appendChild(li);
+            });
+        }
+        // the line, watched while the lobby's entry or FIND screen is up (and while this page is in line)
+        function lfgWatch(on) {
+            if (on && !lfgUnsubQ) {
+                lfgUnsubQ = FB.onValue(FB.ref(db, LFG + '/q'), function (sn) { lfgQ = sn.val() || {}; lfgList(); lfgScan(); }, function () {});
+                if (!lfgTickT) lfgTickT = setInterval(lfgTick, 1000);
+            } else if (!on && lfgUnsubQ && !lfgWaiting) {
+                lfgUnsubQ(); lfgUnsubQ = null; lfgQ = {};
+                if (lfgTickT) { clearInterval(lfgTickT); lfgTickT = null; }
+            }
+        }
+        function lfgPost() {
+            lfgPostedAt = Date.now();
+            var ref = FB.ref(db, LFG + '/q/' + lfgSid);
+            FB.set(ref, { name: String(rb2pName() || 'Player').slice(0, 16), dif: lfgDif, ts: lfgSince, hb: lfgNow(), v: lfgVer, u: lfgUid() })
+              .catch(function (e) { lfgSay('Could not get in line: ' + (e && e.message || e), 8000); });
+            try { FB.onDisconnect(ref).remove(); } catch (eD) {}
+        }
+        function lfgStart() {
+            if (!rb2pName()) { showNameGate(); return; }
+            if (myRoom) return;
+            lfgWaiting = true; lfgSince = lfgSince || lfgNow();
+            lfgWatch(true); lfgPost(); lfgMeWatch(true);
+            if (!lfgHbT) lfgHbT = setInterval(function () {
+                var e = lfgQ[lfgSid];
+                if (lfgWaiting && e && e.dif && !e.m) FB.update(FB.ref(db, LFG + '/q/' + lfgSid), { hb: lfgNow() }).catch(function () {});
+            }, 20000);
+            lfgList(); lfgScan();
+        }
+        function lfgStop(keepClock) {   // out of line: the entry goes, the heartbeat stops
+            lfgWaiting = false; if (!keepClock) lfgSince = 0;
+            if (lfgHbT) { clearInterval(lfgHbT); lfgHbT = null; }
+            if (lfgClaimT) { clearTimeout(lfgClaimT); lfgClaimT = null; }
+            lfgMeWatch(false);
+            FB.remove(FB.ref(db, LFG + '/q/' + lfgSid)).catch(function () {});
+            lfgList();
+        }
+        // my own entry: claimed → (the room is being made) → its code → join
+        function lfgMeWatch(on) {
+            if (on && !lfgUnsubMe) {
+                lfgUnsubMe = FB.onValue(FB.ref(db, LFG + '/q/' + lfgSid), function (sn) {
+                    var v = sn.val();
+                    if (!lfgWaiting || lfgBusy || lfgJoining) return;
+                    if (!v || !v.dif) { if (Date.now() - lfgPostedAt > 5000) lfgPost(); return; }   // my place vanished (a blip): back, same place
+                    if (v.m && v.m.code) { lfgJoin(String(v.m.code), v.m.name); return; }
+                    if (v.m) {
+                        lfgSay('Found ' + lfgName(v.m.name) + ' — setting up the room…', 25000);
+                        var at = v.m.at;
+                        if (lfgClaimT) clearTimeout(lfgClaimT);
+                        lfgClaimT = setTimeout(function () {   // the maker vanished before the code came: stay in line
+                            var e = lfgQ[lfgSid];
+                            if (lfgWaiting && e && e.m && !e.m.code && e.m.at === at) { FB.remove(FB.ref(db, LFG + '/q/' + lfgSid + '/m')).catch(function () {}); lfgSay('', 0); }
+                        }, 25000);
+                    }
+                }, function () {});
+            } else if (!on && lfgUnsubMe) { lfgUnsubMe(); lfgUnsubMe = null; }
+        }
+        // in line at the same difficulty as an OLDER entry: claim it (the newer player always claims, so two never do)
+        function lfgScan() {
+            if (!lfgWaiting || lfgBusy || lfgJoining || myRoom) return;
+            var me = lfgQ[lfgSid]; if (!me || me.m || !me.dif) return;
+            var best = null;
+            Object.keys(lfgQ).forEach(function (k) {
+                var e = lfgQ[k];
+                if (lfgMine(k) || !lfgOk(e) || e.m || e.dif !== me.dif || Date.now() - (lfgFailed[k] || 0) < 10000) return;
+                var older = Number(e.ts) < Number(me.ts) || (Number(e.ts) === Number(me.ts) && k < lfgSid);
+                if (older && (!best || Number(e.ts) < Number(lfgQ[best].ts))) best = k;
+            });
+            if (best) lfgClaim(best);
+        }
+        var lfgFailed = {};   // an entry a claim just failed on: the scan leaves it alone for 10 s
+        async function lfgClaim(k) {
+            if (lfgBusy || lfgJoining || myRoom) return;
+            if (!rb2pName()) { showNameGate(); return; }
+            var wasWaiting = lfgWaiting, restart = false;
+            lfgBusy = true;
+            try {
+                if (wasWaiting) {   // out of line first — unless someone has just claimed ME (then that match goes ahead)
+                    var out = await FB.runTransaction(FB.ref(db, LFG + '/q/' + lfgSid), function (cur) { if (cur && cur.m) return; return null; });
+                    if (!out.committed) return;
+                    lfgStop(true);
+                }
+                var res = await FB.runTransaction(FB.ref(db, LFG + '/q/' + k), function (cur) {
+                    if (cur === null) return null;
+                    if (cur.m || !LFG_DIF[cur.dif]) return;
+                    cur.m = { by: lfgSid, name: String(rb2pName() || 'Player').slice(0, 16), at: Date.now() };
+                    return cur;
+                });
+                var got = res.committed ? res.snapshot.val() : null;
+                if (!got || !got.m || got.m.by !== lfgSid) {
+                    lfgFailed[k] = Date.now();
+                    lfgSay('Someone else got that game.' + (wasWaiting ? ' Still looking…' : ''), 5000);
+                    restart = wasWaiting;
+                    return;
+                }
+                lfgSay('Found ' + lfgName(got.name) + ' — setting up the room…', 30000);
+                // the room: exactly what PLAY 2P makes in SAME mode, at their difficulty
+                applyDiffModeLocal('same'); setUserDifficultyPref(got.dif);
+                var code = await claimNewRoom();
+                if (!code) {
+                    FB.remove(FB.ref(db, LFG + '/q/' + k + '/m')).catch(function () {});
+                    lfgFailed[k] = Date.now();
+                    lfgSay('Could not make a room — try again.', 6000);
+                    restart = wasWaiting;
+                    return;
+                }
+                lfgRoom = { code: code, name: got.name, at: Date.now() };
+                enterRoom(code, 'a', false);
+                FB.set(FB.ref(db, LFG + '/q/' + k + '/m/code'), code).catch(function () {});
+                lfgAttention();
+                setTimeout(function () { lfgNoShow(code, got.dif); }, 45000);
+            } catch (e) {
+                lfgSay('Connection error: ' + (e && e.message || e), 6000);
+                restart = wasWaiting;
+            } finally {
+                lfgBusy = false;
+                if (restart && !lfgWaiting && !myRoom) setTimeout(lfgStart, 0);   // back in line (after the busy flag is down)
+            }
+        }
+        async function lfgJoin(code, name) {
+            if (lfgJoining) return;
+            lfgJoining = true;
+            lfgRoom = { code: code, name: name, at: Date.now() };
+            lfgStop(true);
+            lfgSay('Found ' + lfgName(name) + ' — joining…', 20000);
+            try {
+                var role = await claimSlot(code);
+                if (!role || role === 'notfound') { lfgRoom = null; lfgJoining = false; lfgStart(); lfgSay('That game fell through — still looking.', 6000); return; }
+                lfgJoining = false;
+                lfgAttention();
+                enterRoom(code, role, false);   // the JOIN path; the room's SAME mode and difficulty come with it
+            } catch (e) {
+                lfgRoom = null; lfgJoining = false; if (!myRoom) lfgStart(); lfgSay('Connection error — still looking.', 6000);
+            } finally { lfgJoining = false; }
+        }
+        function lfgNoShow(code, dif) {   // the maker's room, 45 s on, still one seat empty: back in line
+            if (!lfgRoom || lfgRoom.code !== code || myRoom !== code) return;
+            if (lastPlayers && lastPlayers.b) return;
+            lfgRoom = null;
+            Promise.resolve(leaveRoom()).then(function () {
+                if (LFG_DIF[dif]) lfgDif = dif;
+                showView('find'); lfgSince = 0; lfgStart();
+                lfgSay('They did not make it in time — you are back in line.', 8000);
+            });
+        }
+        // a tap lets the page beep later (a browser plays sound only after one)
+        function lfgUnlock() {
+            try { var AC = window.AudioContext || window.webkitAudioContext; if (AC && !lfgAc) lfgAc = new AC(); if (lfgAc && lfgAc.state === 'suspended') lfgAc.resume(); } catch (e) {}
+        }
+        function lfgAttention() {
+            try {
+                if (lfgAc) [0, 0.22].forEach(function (d, i) {
+                    var o = lfgAc.createOscillator(), g = lfgAc.createGain(), t0 = lfgAc.currentTime + d;
+                    o.type = 'square'; o.frequency.value = i ? 1175 : 880;
+                    g.gain.setValueAtTime(0.08, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+                    o.connect(g); g.connect(lfgAc.destination); o.start(t0); o.stop(t0 + 0.2);
+                });
+            } catch (e) {}
+            if (document.hidden) {
+                var base = document.title, on = false, t = setInterval(function () {
+                    if (!document.hidden) { clearInterval(t); document.title = base; return; }
+                    on = !on; document.title = on ? 'PLAYER FOUND! — RETRO BOWL 2P' : base;
+                }, 900);
+            }
+        }
+        // the lobby chat
+        function lfgChat(on) {
+            if (on && !lfgUnsubChat) {
+                lfgUnsubChat = FB.onValue(FB.query(FB.ref(db, LFG + '/chat'), FB.limitToLast(50)), function (sn) {
+                    if (!$chatLog) return;
+                    var atEnd = $chatLog.scrollTop + $chatLog.clientHeight >= $chatLog.scrollHeight - 30, n = 0;
+                    $chatLog.textContent = '';
+                    sn.forEach(function (c) {
+                        var m = c.val(); if (!m || !m.text) return;
+                        var li = document.createElement('li'); if (m.sid === lfgSid) li.className = 'me';
+                        var b = document.createElement('b'); b.textContent = lfgName(m.name); li.appendChild(b);
+                        li.appendChild(document.createTextNode(String(m.text).slice(0, 200)));
+                        $chatLog.appendChild(li); n++;
+                    });
+                    if (!n) { var z = document.createElement('li'); z.className = 'none'; z.textContent = 'No messages yet. Say hi.'; $chatLog.appendChild(z); }
+                    if (atEnd) $chatLog.scrollTop = $chatLog.scrollHeight;
+                }, function () {});
+            } else if (!on && lfgUnsubChat) { lfgUnsubChat(); lfgUnsubChat = null; }
+        }
+        function lfgKeep() {   // the keep marker, once a page (the pre-V419 room sweep skips a room with `audited`)
+            if (lfgKept || window._rb2p_lfgRoot) return; lfgKept = true;
+            FB.set(FB.ref(db, LFG + '/audited'), { ts: Date.now(), keep: 'the find-a-player line and the lobby chat (the pre-V419 room sweep skips a room with this)' }).catch(function () {});
+        }
+        function lfgView(name) {
+            if (!lfgReady) return;
+            if (name === 'find') { lfgWatch(true); lfgChat(true); lfgKeep(); lfgList(); setTimeout(function () { if ($chatLog) $chatLog.scrollTop = $chatLog.scrollHeight; }, 50); }
+            else if (name === 'entry') { lfgWatch(true); lfgChat(false); lfgTick(); }
+            else if (name === 'room') { if (lfgWaiting) lfgStop(); lfgChat(false); lfgWatch(false); }
+            else lfgChat(false);
+        }
+        if ($chatForm) $chatForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            if (!rb2pName()) { showNameGate(); return; }
+            var t = String(($chatIn && $chatIn.value) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+            if (!t) return;
+            $chatIn.value = '';
+            FB.set(FB.push(FB.ref(db, LFG + '/chat')), { name: String(rb2pName()).slice(0, 16), text: t, ts: lfgNow(), sid: lfgSid, u: lfgUid() })
+              .catch(function () { if ($chatIn && !$chatIn.value) $chatIn.value = t; });
+            lfgKeep();
+            if ($chatLog) setTimeout(function () { $chatLog.scrollTop = $chatLog.scrollHeight; }, 60);
+        });
+        if ($find) $find.addEventListener('click', function () {
+            if (!rb2pName()) { showNameGate(); return; }
+            lfgUnlock(); $entryMsg.textContent = ''; showView('find');
+        });
+        (function () { var bk = document.getElementById('rb-find-back'); if (bk) bk.addEventListener('click', function () { showView('entry'); }); })();   // your place in line is kept
+        if ($findGo) $findGo.addEventListener('click', function () {
+            lfgUnlock();
+            if (lfgWaiting) { lfgStop(); lfgSay('Stopped looking.', 3000); }
+            else { lfgSince = 0; lfgSay('', 0); lfgStart(); }
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('#rb-lobby [data-fdif]'), function (b) {
+            b.addEventListener('click', function () {
+                if (!LFG_DIF[b.dataset.fdif]) return;
+                lfgDif = b.dataset.fdif; lfgTick();
+                var e = lfgQ[lfgSid];
+                if (lfgWaiting && e && !e.m) FB.update(FB.ref(db, LFG + '/q/' + lfgSid), { dif: lfgDif, hb: lfgNow() }).catch(function () {});
+            });
+        });
+        try { FB.onValue(FB.ref(db, '.info/serverTimeOffset'), function (sn) { lfgOffset = Number(sn.val()) || 0; }); } catch (eOff) {}
+        window._rb2p_lfg = { root: LFG, sid: lfgSid, state: function () { return { waiting: lfgWaiting, busy: lfgBusy, joining: lfgJoining, room: lfgRoom, dif: lfgDif, q: lfgQ, ver: lfgVer }; } };
+        lfgReady = true;
+        if (lobby.dataset.active !== 'room') lfgWatch(true);
+        if (lobby.dataset.active === 'find') lfgView('find');
 
         // ---- Match start ----
         // V185: all Firebase match glue (send wiring, opponent-outcome receive,

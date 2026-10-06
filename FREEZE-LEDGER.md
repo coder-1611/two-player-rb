@@ -1649,3 +1649,28 @@ each day into a viewable section".
   name/headline/fan line (if the filter cannot load, no name is published).
 - Over all 571 recorded usernames it censors 7, all real slurs (6 n-word forms, 1 r-word); nothing else moved.
 - Tests: censor C1-C2, potd 10/10 (D12 new), inbox 4/4, highlights 8/8.
+
+## V486 (2026-10-05): FIND A PLAYER — a waiting line that matches strangers, and a lobby chat
+- The owner: "a lot of players who want to play two player but there just isn't someone to play with. Create a lobby
+  where these lonely people can submit their want-to-play request and if there is someone else they connect. This
+  should be the same process as getting a code of SAME difficulty. Plan out the best way to do this with limited
+  traffic and also add a chat feature ... add a disclaimer saying the site is growing and you may not find someone."
+- **Lobby:** NO CODE? [FIND A PLAYER] under JOIN; it shows "N WAITING" (pulsing) whenever someone is in line, so every
+  visitor sees a waiting player, and "LOOKING m:ss" while you are.
+- **The FIND screen (`data-view="find"`):** the disclaimer; a difficulty (EASY/MED/HARD/MAX, the same for both);
+  FIND A GAME / STOP LOOKING; WAITING NOW (name, difficulty, how long, PLAY); the LOBBY CHAT (last 50 lines, 200
+  characters each, no filter) with a one-line personal-info tip. BACK keeps your place in line.
+- **One line, not four** (a few players a day split four ways = four empty lines): the same difficulty matches by
+  itself; anyone else is one tap away at THEIR difficulty.
+- **Data:** `rooms/~lfg` (the live rules already let any signed-in player read/write under rooms — no rules change):
+  `q/{sid}` {name, dif, ts, hb every 20 s, v, u} with onDisconnect remove, ignored after 75 s without a heartbeat or on
+  another build ("reload to see them" note for newer ones); `chat/{push}`; `audited` = the keep marker (pre-V419 sweep).
+- **The match:** the NEWER player claims the older entry (transaction; your own entry leaves first unless you were just
+  claimed, so two never claim one), then makes the room exactly as PLAY 2P in SAME mode at the agreed difficulty
+  (`applyDiffModeLocal('same')` + `setUserDifficultyPref`, `claimNewRoom`, `enterRoom` — A seeds the config as always)
+  and writes the code into the claimed entry; the waiting page joins it via `claimSlot` + `enterRoom` (the JOIN path).
+  Beep + flashing tab title when it is in the background. A claim with no code for 25 s is dropped (still in line); a
+  maker whose player has not arrived in 45 s leaves and is back in line. The room says "Found NAME — they are joining…".
+- **Entry layout fix:** `.potd-on > .rb-entry-main` gets `flex-shrink: 0` — the taller column spilled over the top of a
+  sideways phone (the title at -5 px on 844x390).
+- Tests: find-player F1-F5 (test-only line `rooms/~lfgtest/<run>`, Z+digit room codes), potd-layout 11/11, lobby-phone 12/12.
