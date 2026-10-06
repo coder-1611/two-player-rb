@@ -1701,3 +1701,15 @@ each day into a viewable section".
   or a PLAY tap) plus the flashing tab title.
 - Tests: find-player 8/8 (F3b the card + room chat, F3c the side chat via the game view: unread 1 + peek, the panel, a
   typed key never reaches a window keydown listener; F4b a friend's room: no chat, no chip, no card).
+
+## V489 (2026-10-05): the room chat and the side chat in every game, a friend's code too
+- The owner: "sure add it to normal games".
+- `lfgRoomChat(code)` no longer waits on `rooms/{code}/lfg` (still written by a matched room's maker — a record of
+  which games the line made): every room subscribes to `rooms/{code}/chat`, and every game has the CHAT chip.
+- The room's chat box shows once both seats are filled (`renderPlayers` → `lfgRcPaint`): before that there is nobody
+  to talk to, and a friend's room keeps its long "tell them the code" line clear of the panel on a wide screen.
+- `#rb-lobby .status` gets `flex-shrink: 0` — in a column taller than the screen its min-height let it be squashed
+  under its own lines (the COPY INVITE LINK button ran into the team row).
+- The PLAYER FOUND card stays for matched players only.
+- Tests: find-player 8/8 (F4b: a code room — no chat while alone, the chat once the friend joins by the code, the chip
+  in the game, no card on either page).

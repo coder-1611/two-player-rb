@@ -1235,7 +1235,7 @@
         }
         #rb-lobby .you-are { font-size: 12px; letter-spacing: 2px; color: #cdddff; margin: 4px 0 0 0; }
         #rb-lobby .you-are b { color: #36e07a; }
-        #rb-lobby .status { font-size: 11px; letter-spacing: 2px; color: #9fbcf0; margin: 0; min-height: 14px; }
+        #rb-lobby .status { font-size: 11px; letter-spacing: 2px; color: #9fbcf0; margin: 0; min-height: 14px; flex-shrink: 0; }   /* V489: never squashed (its min-height let a full column shrink it under its own lines) */
 
         /* ---- segmented control rows ---- */
         #rb-lobby .diff-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 0; }
@@ -1971,7 +1971,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V488<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V489<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2126,7 +2126,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V488</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V489</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -20829,6 +20829,7 @@
 
             var bothIn = !!(a && b);
             $ready.disabled = !bothIn;
+            lfgRcBoth = bothIn; try { lfgRcPaint(); } catch (eRc) {}   // V489: the chat, once there is someone to talk to
             if (!bothIn && lfgRoom && lfgRoom.code === myRoom) {   // V486: a found player, not a friend with the code
                 $status.textContent = 'Found ' + lfgName(lfgRoom.name) + ' — they are joining…';
             } else if (!bothIn) {
@@ -21186,11 +21187,13 @@
         })();
         // V488 (the owner: "add a chat feature inside the difficulty deciding screen if FROM lobby to decide these things"):
         // a found player's room (rooms/{code}/lfg, written by its maker) gets a chat, rooms/{code}/chat — on the room screen,
-        // back after a reload; a friend's code gets none. And (the owner: "also have a side chat mid game") the same chat
+        // back after a reload. V489 (the owner: "sure add it to normal games"): every room has it, a friend's code too (the
+        // lfg mark stays, a record of which games the line made). And (the owner: "also have a side chat mid game") the same chat
         // goes on in the game: a CHAT chip bottom right (in the bar beside the picture, like the other chips), a side
         // panel, an unread count and a short peek at a new line while it is shut. A tap or a key in it never reaches the
         // game (its press and its keys stop there; a release passes, so a throw that ends over it still lands).
-        var lfgRcCode = null, lfgRcUnsubFlag = null, lfgRcUnsubLog = null, lfgRcOn = false;
+        var lfgRcCode = null, lfgRcUnsubLog = null, lfgRcOn = false, lfgRcBoth = false;
+        function lfgRcPaint() { if ($rc) $rc.hidden = !(lfgRcOn && lfgRcBoth); }   // V489: the room's chat shows once both players are in it
         var lfgInGame = false, lfgGcOpen = false, lfgGcSeen = '', lfgGcLast = '', lfgGcPeeked = '', lfgGcPeekT = null;
         var $gc = document.createElement('div'), $gcBtn = document.createElement('button'), $gcPeek = document.createElement('div');
         $gc.id = 'rb-gchat'; $gc.hidden = true;
@@ -21245,21 +21248,16 @@
         function lfgRoomChat(code) {
             if (!code || lfgRcCode === code) return;
             lfgRoomChatOff();
-            lfgRcCode = code;
-            lfgRcUnsubFlag = FB.onValue(FB.ref(db, 'rooms/' + code + '/lfg'), function (sn) {
-                var on = !!sn.val();
-                lfgRcOn = on; if ($rc) $rc.hidden = !on; lfgGcShow();
-                if (on && !lfgRcUnsubLog) lfgRcUnsubLog = FB.onValue(FB.query(FB.ref(db, 'rooms/' + code + '/chat'), FB.limitToLast(50)), function (s2) {
-                    lfgChatRender($rcLog, s2, 'No messages yet. Say hi and pick the difficulty together.');
-                    lfgChatRender($gcLog, s2, 'No messages yet. Say something.');
-                    lfgGcNew(s2);
-                }, function () {});
+            lfgRcCode = code; lfgRcOn = true; lfgRcPaint(); lfgGcShow();
+            lfgRcUnsubLog = FB.onValue(FB.query(FB.ref(db, 'rooms/' + code + '/chat'), FB.limitToLast(50)), function (s2) {
+                lfgChatRender($rcLog, s2, 'No messages yet. Say hi.');
+                lfgChatRender($gcLog, s2, 'No messages yet. Say something.');
+                lfgGcNew(s2);
             }, function () {});
         }
         function lfgRoomChatOff() {
-            if (lfgRcUnsubFlag) { lfgRcUnsubFlag(); lfgRcUnsubFlag = null; }
             if (lfgRcUnsubLog) { lfgRcUnsubLog(); lfgRcUnsubLog = null; }
-            lfgRcCode = null; lfgRcOn = false; lfgGcSeen = lfgGcLast = lfgGcPeeked = ''; if ($rc) $rc.hidden = true; lfgGcShow();
+            lfgRcCode = null; lfgRcOn = false; lfgGcSeen = lfgGcLast = lfgGcPeeked = ''; lfgRcPaint(); lfgGcShow();
         }
         if ($rcForm) $rcForm.addEventListener('submit', function (ev) {
             ev.preventDefault();

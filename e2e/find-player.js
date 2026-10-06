@@ -9,7 +9,9 @@
 //       chat and a line from A reaches B's room chat
 //   F3c V488: in the game (the 'game' view) the same chat is a CHAT chip: A's side-panel line shows on B's chip as 1
 //       unread + a peek, B's panel has it and opening clears the count; keys typed in it never reach the game
-//   F4  both leave; A waits, B (not in line) taps A's PLAY: one room, SAME mode on both; F4b a friend's room has no chat
+//   F4  both leave; A waits, B (not in line) taps A's PLAY: one room, SAME mode on both
+//   F4b V489: a friend's room (PLAY 2P, joined by its code) has the chat too once both are in, and the CHAT chip in the
+//       game — but no PLAYER FOUND card
 //   F5  a waiting tab that closes leaves the line (onDisconnect): B's list is empty again within seconds
 const H = require('./harness');
 const sleep = H.sleep;
@@ -130,17 +132,22 @@ async function find(p, go) {
         check('F4 a tap on a waiting player: one room, SAME mode on both pages and in the room, one difficulty on both',
               sA.code === c2 && sB.code === c2 && sA.mode === 'same' && sB.mode === 'same' && sA.dif === sB.dif && cfg2.sharedDifficulty === sA.dif && cfg2.diffMode === 'same',
               JSON.stringify({ sA, sB, cfg2 }));
-        // F4b: a friend's room (PLAY 2P, a code) has no chat
+        // F4b: a friend's room (PLAY 2P, a code) has the chat too (V489)
         await Promise.all([A, B].map(x => x.page.evaluate(() => document.getElementById('rb-leave').click())));
         await Promise.all([A, B].map(x => x.page.waitForFunction(() => document.querySelector('#rb-lobby').dataset.active === 'entry', { timeout: 15000 }).catch(() => {})));
         const c3 = code();
         await A.page.evaluate(c => { window._rb2p_forceRoomCode = c; document.getElementById('rb-play2p').click(); }, c3);
         await A.page.waitForFunction(c => document.getElementById('rb-room-name').textContent === c && document.querySelector('#rb-lobby').dataset.active === 'room', { timeout: 20000, polling: 200 }, c3).catch(() => {});
-        await sleep(2500);
+        await sleep(1500);
+        const alone = await A.page.evaluate(() => !document.getElementById('rb-room-chat').hidden);
+        await B.page.evaluate(c => { document.getElementById('rb-room-input').value = c; document.getElementById('rb-join').click(); }, c3);
+        await A.page.waitForFunction(() => !document.getElementById('rb-room-chat').hidden, { timeout: 20000, polling: 200 }).catch(() => {});
         await A.page.evaluate(() => window._rb2p_lfg.view('game'));
         const friend = await A.page.evaluate(() => ({ chat: !document.getElementById('rb-room-chat').hidden, alert: !document.getElementById('rb-match').hidden, chip: !document.getElementById('rb-gchat-btn').hidden }));
+        friend.alone = alone; friend.bAlert = await B.page.evaluate(() => !document.getElementById('rb-match').hidden);
         await A.page.evaluate(() => window._rb2p_lfg.view('room'));
-        check('F4b a friend\'s room (PLAY 2P) has no chat, no CHAT chip in the game, no PLAYER FOUND card', !friend.chat && !friend.alert && !friend.chip, JSON.stringify(friend));
+        check('F4b a friend\'s room (a code): the chat once both are in (not while alone), the CHAT chip in the game, no PLAYER FOUND card',
+              !friend.alone && friend.chat && !friend.alert && !friend.bAlert && friend.chip, JSON.stringify(friend));
         // ---- F5 ----
         await Promise.all([A, B].map(x => x.page.evaluate(() => document.getElementById('rb-leave').click())));
         await Promise.all([A, B].map(x => x.page.waitForFunction(() => document.querySelector('#rb-lobby').dataset.active === 'entry', { timeout: 15000 }).catch(() => {})));
