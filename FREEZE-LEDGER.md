@@ -1725,3 +1725,26 @@ each day into a viewable section".
 - The count at the time: 0 real games from the line since the mark (V488, 8:55 PM); the 11 marked rooms were all test
   rooms. Lobby chat: 6 lines — MikeishimYT, Wintergreen16, SohamDesktop. FMGF (V486) and RKRV (V487) were SAME-mode
   2P games during V486-V487, when matches were not marked yet — they may or may not have come from the line.
+
+## V491 (2026-10-05): Firebase backups and outage/usage alerts — and the database is over the free plan
+- The owner: "have a backup for firebase in case it is disabled due to overuse, e.g. store the data somewhere else as
+  well and make sure I find out about any outages".
+- **Found (Cloud Monitoring, 2026-10-06 03:00 UTC):** billing is OFF (the free Spark plan) and the database is over both
+  limits — stored 1.107 GB of 1.074 GB (103%), downloaded 25.1 GB of 10.7 GB this cycle (234%); not disabled yet
+  (network/storage `disabled_for_overages` = 0). Daily billed downloads: Sep 30 88 GB, Oct 1 75 GB, then 2.4-9.7 GB.
+  Storage by part (the full backup): rooms/*/plays 551 MB (the 24 h of recordings, ~9,600 plays), taps 208 MB,
+  rooms/*/audit 204 MB, diag 110 MB, embedcode 17 MB, the rest ~6 MB.
+- **`tools/fb-backup.js`:** the database in pieces (≤ 256 MB a response) with this Mac's Firebase CLI admin login, gzip
+  files + a manifest (sizes by node and by room part) in .rb2p/firebase-backup/<date>/. Play recordings left out
+  (plays-archive.js keeps them) unless --with-plays. --small, --recent N, --auto (the day's rooms; full on the 1st),
+  --copy-to DIR (iCloud Drive, newest 7), --prune (14 daily, 3 full). Taken 2026-10-06: a full one WITH plays
+  (1,114 MB downloaded, 595 MB on disk), a small one.
+- **`tools/fb-watch.js`** (LaunchAgent com.rb2p.fb-watch, every 10 min): a public read of embedcode/potd/date (two
+  failures = DOWN), the usage meters (stored/limit, monthly sent/limit, the disabled flags, peak connections, last
+  hour's bytes), an hourly history in .rb2p/fb-watch-state.json; alerts on a new problem (and daily while it lasts):
+  a macOS notification + `gh workflow run firebase-watch.yml` with the message.
+- **`.github/workflows/firebase-watch.yml`:** every 15 min on GitHub's machines (works with Firebase and the Mac down):
+  the database + the three sites, three tries each; a problem opens an "outage" issue @-mentioning coder-1611 (GitHub
+  emails/pushes it) and closes it when all answer; the Mac's messages open/comment "outage" or "usage" issues.
+- **`tools/install-fb-watch.sh`:** installs com.rb2p.fb-watch and com.rb2p.fb-backup (3:30 am, --auto --copy-to
+  "iCloud Drive/Retro Bowl 2P backups" --prune).
