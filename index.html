@@ -934,6 +934,7 @@
             background: rgba(8,20,52,.45); border: 3px solid #fff; box-shadow: 4px 4px 0 #0a1838; }
         #rb-lobby #rb-find-go { padding: 16px 30px; font-size: clamp(14px, 1.8vw, 18px); }
         #rb-lobby #rb-find-go.on { color: #b3261e; }
+        #rb-lobby .rb-find-sub { margin: 0; font-size: 9px; line-height: 1.7; color: #9fbcf0; }
         #rb-lobby .rb-find-state { margin: 0; min-height: 14px; font-size: 10px; line-height: 1.7; color: #ffd23f; }
         #rb-lobby .rb-find-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; max-height: 210px; overflow-y: auto; }
         #rb-lobby .rb-find-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(0,0,0,.25); font-size: 10px; text-align: left; }
@@ -1922,7 +1923,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V486<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V487<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2042,14 +2043,8 @@
             <p class="rb-find-note">The site is still growing, so you may not find someone right away. Keep this page open &mdash; it beeps when a player joins. Most players are on weekdays around midday (Central time).</p>
             <div class="rb-find-cols">
                 <div class="rb-find-box">
-                    <p class="rb-sub">DIFFICULTY &mdash; SAME FOR BOTH</p>
-                    <div class="diff-row">
-                        <button class="diff-btn" type="button" data-fdif="easy">EASY</button>
-                        <button class="diff-btn" type="button" data-fdif="medium">MED</button>
-                        <button class="diff-btn" type="button" data-fdif="hard">HARD</button>
-                        <button class="diff-btn" type="button" data-fdif="max">MAX</button>
-                    </div>
                     <button id="rb-find-go" class="rb-cta" type="button">FIND A GAME</button>
+                    <p class="rb-find-sub">Once you are matched, you pick the difficulty together &mdash; the same for both.</p>
                     <p class="rb-find-state" id="rb-find-state" aria-live="polite"></p>
                     <p class="rb-sub">WAITING NOW</p>
                     <ul class="rb-find-list" id="rb-find-list"></ul>
@@ -2068,7 +2063,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V486</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V487</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -20792,6 +20787,8 @@
             ) {
                 $status.textContent = runItBackMode ? 'Running it back on ' + myRoom + ' — the game starts when your opponent taps RUN IT BACK too.'   // V454
                                                     : 'Waiting for opponent to ready up…';
+            } else if (lfgRoom && lfgRoom.code === myRoom) {   // V487: a found player — the difficulty is picked here
+                $status.textContent = 'You found a player! Pick the DEFENSE difficulty together (the same for both), then READY.';
             } else {
                 $status.textContent = 'Both players in — ready up to start.';
             }
@@ -20865,30 +20862,29 @@
         // the best way to do this with limited traffic and also add a chat feature ... add a disclaimer saying the site is
         // growing and you may not find someone. Figure out the best and most easy way to group people") =====
         // rooms/~lfg — the rooms rules (any signed-in player); `audited` keeps the pre-V419 room sweep off it:
-        //   q/{sid}    one player in line: {name, dif, ts (joined the line), hb (every 20 s), v (build), u (device uid)};
+        //   q/{sid}    one player in line: {name, ts (joined the line), hb (every 20 s), v (build), u (device uid)};
         //              onDisconnect takes it away with the tab; an entry 75 s without a heartbeat is ignored
         //   chat/{id}  the lobby chat, the last 50 shown, read only while the FIND screen is open
-        // ONE line for all four difficulties: a few players a day split four ways would leave four empty lines. The same
-        // difficulty matches by itself; anyone else waiting is one tap away (at THEIR difficulty); every lobby shows how
-        // many are waiting on the FIND A PLAYER button. A match: the NEWER player claims the older one's entry (a
-        // transaction — two can never claim one), makes the room exactly as PLAY 2P does in SAME mode at the agreed
-        // difficulty (A seeds the room's config as always), and writes the code into the claimed entry; the waiting page
-        // joins that code the way JOIN does, with a beep and a flashing tab title if it sits in the background. The maker
-        // gives up after 45 s without them and is back in line.
+        // ONE line, no difficulty in it (V487, the owner: "no need to choose difficulty before game, that can be chosen
+        // after they match up"): anyone in line matches anyone, and the pair picks the difficulty in the room — SAME mode
+        // shares either player's DEFENSE pick. Every lobby shows how many are waiting on the FIND A PLAYER button, and a
+        // waiting player is one tap away for someone who is not in line. A match: the NEWER player claims the oldest
+        // entry (a transaction — two can never claim one), makes the room exactly as PLAY 2P does in SAME mode (A seeds
+        // the room's config as always), and writes the code into the claimed entry; the waiting page joins that code the
+        // way JOIN does, with a beep and a flashing tab title if it sits in the background. The maker gives up after
+        // 45 s without them and is back in line.
         var lfgReady = false;
         var LFG = (function () { try { if (window._rb2p_lfgRoot) return String(window._rb2p_lfgRoot); } catch (e) {} return 'rooms/~lfg'; })();   // test seam
         var lfgSid = mySessionId(), lfgVer = Number((((document.querySelector('.prompt') || { textContent: '' }).textContent).match(/V(\d+)/) || [])[1]) || 0;
         var lfgQ = {}, lfgOffset = 0, lfgWaiting = false, lfgSince = 0, lfgBusy = false, lfgJoining = false, lfgRoom = null, lfgNoteUntil = 0, lfgPostedAt = 0;
         var lfgUnsubQ = null, lfgUnsubMe = null, lfgUnsubChat = null, lfgHbT = null, lfgTickT = null, lfgClaimT = null, lfgAc = null, lfgKept = false;
-        var LFG_DIF = { easy: 'EASY', medium: 'MED', hard: 'HARD', max: 'MAX' };
-        var lfgDif = (function () { var d = getUserDifficultyPref(); if (d === 'ultramax') d = 'max'; return LFG_DIF[d] ? d : 'medium'; })();
         var $find = document.getElementById('rb-find'), $findN = document.getElementById('rb-find-n'), $findGo = document.getElementById('rb-find-go'),
             $findState = document.getElementById('rb-find-state'), $findList = document.getElementById('rb-find-list'), $findNewer = document.getElementById('rb-find-newer'),
             $chatLog = document.getElementById('rb-chat-log'), $chatForm = document.getElementById('rb-chat-form'), $chatIn = document.getElementById('rb-chat-input');
         function lfgNow() { return Date.now() + lfgOffset; }   // the server's clock: every page compares the same times
         function lfgUid() { try { return window._rb2p_uid ? String(window._rb2p_uid() || '') : ''; } catch (e) { return ''; } }
         function lfgName(n) { var c = window._rb2p_censorName ? window._rb2p_censorName(n) : String(n || ''); return c || 'a player'; }
-        function lfgOk(e) { return !!(e && typeof e === 'object' && LFG_DIF[e.dif] && Number(e.v) === lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 75000); }
+        function lfgOk(e) { return !!(e && typeof e === 'object' && e.ts && Number(e.v) === lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 75000); }
         function lfgSay(t, holdMs) { if ($findState) $findState.textContent = t || ''; lfgNoteUntil = holdMs ? Date.now() + holdMs : 0; }
         function lfgClock() { var x = Math.max(0, Math.round((lfgNow() - (lfgSince || lfgNow())) / 1000)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
         function lfgAgo(ts) { var m = Math.floor((lfgNow() - Number(ts || 0)) / 60000); return m < 1 ? 'JUST NOW' : m + ' MIN'; }
@@ -20905,9 +20901,8 @@
             if ($findGo) { $findGo.textContent = lfgWaiting ? 'STOP LOOKING' : 'FIND A GAME'; $findGo.classList.toggle('on', lfgWaiting); }
             if (lfgWaiting && !lfgBusy && !lfgJoining && Date.now() > lfgNoteUntil) {
                 var e = lfgQ[lfgSid];
-                if (!(e && e.m)) lfgSay('Looking for a ' + LFG_DIF[lfgDif] + ' game… ' + lfgClock() + (others ? '' : ' — nobody else is in line yet.'));
+                if (!(e && e.m)) lfgSay('Looking for a player… ' + lfgClock() + (others ? '' : ' — nobody else is in line yet.'));
             }
-            Array.prototype.forEach.call(document.querySelectorAll('#rb-lobby [data-fdif]'), function (b) { b.classList.toggle('selected', b.dataset.fdif === lfgDif); });
             if ($findList) Array.prototype.forEach.call($findList.querySelectorAll('.ago[data-ts]'), function (a) { a.textContent = lfgAgo(a.dataset.ts); });
         }
         // the list — rebuilt only when the line changes (a button rebuilt under a finger loses the tap)
@@ -20922,12 +20917,11 @@
                 var e = lfgQ[k], li = document.createElement('li'), mine = lfgMine(k);
                 if (k === lfgSid) li.className = 'me';
                 var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = k === lfgSid ? 'YOU' : lfgName(e.name);
-                var c = document.createElement('i'); c.className = 'potd-dif'; c.setAttribute('data-dif', e.dif); c.textContent = LFG_DIF[e.dif];
                 var ago = document.createElement('span'); ago.className = 'ago'; ago.dataset.ts = String(e.ts); ago.textContent = lfgAgo(e.ts);
-                li.appendChild(nm); li.appendChild(c); li.appendChild(ago);
+                li.appendChild(nm); li.appendChild(ago);
                 if (!mine) {
                     var b = document.createElement('button'); b.type = 'button'; b.textContent = 'PLAY'; b.dataset.sid = k;
-                    b.title = 'Play ' + lfgName(e.name) + ' at ' + LFG_DIF[e.dif];
+                    b.title = 'Play ' + lfgName(e.name);
                     b.addEventListener('click', function () { lfgUnlock(); lfgClaim(k); });
                     li.appendChild(b);
                 }
@@ -20947,7 +20941,7 @@
         function lfgPost() {
             lfgPostedAt = Date.now();
             var ref = FB.ref(db, LFG + '/q/' + lfgSid);
-            FB.set(ref, { name: String(rb2pName() || 'Player').slice(0, 16), dif: lfgDif, ts: lfgSince, hb: lfgNow(), v: lfgVer, u: lfgUid() })
+            FB.set(ref, { name: String(rb2pName() || 'Player').slice(0, 16), ts: lfgSince, hb: lfgNow(), v: lfgVer, u: lfgUid() })
               .catch(function (e) { lfgSay('Could not get in line: ' + (e && e.message || e), 8000); });
             try { FB.onDisconnect(ref).remove(); } catch (eD) {}
         }
@@ -20958,7 +20952,7 @@
             lfgWatch(true); lfgPost(); lfgMeWatch(true);
             if (!lfgHbT) lfgHbT = setInterval(function () {
                 var e = lfgQ[lfgSid];
-                if (lfgWaiting && e && e.dif && !e.m) FB.update(FB.ref(db, LFG + '/q/' + lfgSid), { hb: lfgNow() }).catch(function () {});
+                if (lfgWaiting && e && e.ts && !e.m) FB.update(FB.ref(db, LFG + '/q/' + lfgSid), { hb: lfgNow() }).catch(function () {});
             }, 20000);
             lfgList(); lfgScan();
         }
@@ -20976,7 +20970,7 @@
                 lfgUnsubMe = FB.onValue(FB.ref(db, LFG + '/q/' + lfgSid), function (sn) {
                     var v = sn.val();
                     if (!lfgWaiting || lfgBusy || lfgJoining) return;
-                    if (!v || !v.dif) { if (Date.now() - lfgPostedAt > 5000) lfgPost(); return; }   // my place vanished (a blip): back, same place
+                    if (!v || !v.ts) { if (Date.now() - lfgPostedAt > 5000) lfgPost(); return; }   // my place vanished (a blip): back, same place
                     if (v.m && v.m.code) { lfgJoin(String(v.m.code), v.m.name); return; }
                     if (v.m) {
                         lfgSay('Found ' + lfgName(v.m.name) + ' — setting up the room…', 25000);
@@ -20990,14 +20984,14 @@
                 }, function () {});
             } else if (!on && lfgUnsubMe) { lfgUnsubMe(); lfgUnsubMe = null; }
         }
-        // in line at the same difficulty as an OLDER entry: claim it (the newer player always claims, so two never do)
+        // in line with an OLDER entry there: claim the oldest (the newer player always claims, so two never do)
         function lfgScan() {
             if (!lfgWaiting || lfgBusy || lfgJoining || myRoom) return;
-            var me = lfgQ[lfgSid]; if (!me || me.m || !me.dif) return;
+            var me = lfgQ[lfgSid]; if (!me || me.m || !me.ts) return;
             var best = null;
             Object.keys(lfgQ).forEach(function (k) {
                 var e = lfgQ[k];
-                if (lfgMine(k) || !lfgOk(e) || e.m || e.dif !== me.dif || Date.now() - (lfgFailed[k] || 0) < 10000) return;
+                if (lfgMine(k) || !lfgOk(e) || e.m || Date.now() - (lfgFailed[k] || 0) < 10000) return;
                 var older = Number(e.ts) < Number(me.ts) || (Number(e.ts) === Number(me.ts) && k < lfgSid);
                 if (older && (!best || Number(e.ts) < Number(lfgQ[best].ts))) best = k;
             });
@@ -21017,7 +21011,7 @@
                 }
                 var res = await FB.runTransaction(FB.ref(db, LFG + '/q/' + k), function (cur) {
                     if (cur === null) return null;
-                    if (cur.m || !LFG_DIF[cur.dif]) return;
+                    if (cur.m || !cur.ts) return;
                     cur.m = { by: lfgSid, name: String(rb2pName() || 'Player').slice(0, 16), at: Date.now() };
                     return cur;
                 });
@@ -21029,8 +21023,8 @@
                     return;
                 }
                 lfgSay('Found ' + lfgName(got.name) + ' — setting up the room…', 30000);
-                // the room: exactly what PLAY 2P makes in SAME mode, at their difficulty
-                applyDiffModeLocal('same'); setUserDifficultyPref(got.dif);
+                // the room: exactly what PLAY 2P makes in SAME mode — the pair picks the difficulty in it (SAME shares it)
+                applyDiffModeLocal('same');
                 var code = await claimNewRoom();
                 if (!code) {
                     FB.remove(FB.ref(db, LFG + '/q/' + k + '/m')).catch(function () {});
@@ -21043,7 +21037,7 @@
                 enterRoom(code, 'a', false);
                 FB.set(FB.ref(db, LFG + '/q/' + k + '/m/code'), code).catch(function () {});
                 lfgAttention();
-                setTimeout(function () { lfgNoShow(code, got.dif); }, 45000);
+                setTimeout(function () { lfgNoShow(code); }, 45000);
             } catch (e) {
                 lfgSay('Connection error: ' + (e && e.message || e), 6000);
                 restart = wasWaiting;
@@ -21068,12 +21062,11 @@
                 lfgRoom = null; lfgJoining = false; if (!myRoom) lfgStart(); lfgSay('Connection error — still looking.', 6000);
             } finally { lfgJoining = false; }
         }
-        function lfgNoShow(code, dif) {   // the maker's room, 45 s on, still one seat empty: back in line
+        function lfgNoShow(code) {   // the maker's room, 45 s on, still one seat empty: back in line
             if (!lfgRoom || lfgRoom.code !== code || myRoom !== code) return;
             if (lastPlayers && lastPlayers.b) return;
             lfgRoom = null;
             Promise.resolve(leaveRoom()).then(function () {
-                if (LFG_DIF[dif]) lfgDif = dif;
                 showView('find'); lfgSince = 0; lfgStart();
                 lfgSay('They did not make it in time — you are back in line.', 8000);
             });
@@ -21149,16 +21142,8 @@
             if (lfgWaiting) { lfgStop(); lfgSay('Stopped looking.', 3000); }
             else { lfgSince = 0; lfgSay('', 0); lfgStart(); }
         });
-        Array.prototype.forEach.call(document.querySelectorAll('#rb-lobby [data-fdif]'), function (b) {
-            b.addEventListener('click', function () {
-                if (!LFG_DIF[b.dataset.fdif]) return;
-                lfgDif = b.dataset.fdif; lfgTick();
-                var e = lfgQ[lfgSid];
-                if (lfgWaiting && e && !e.m) FB.update(FB.ref(db, LFG + '/q/' + lfgSid), { dif: lfgDif, hb: lfgNow() }).catch(function () {});
-            });
-        });
         try { FB.onValue(FB.ref(db, '.info/serverTimeOffset'), function (sn) { lfgOffset = Number(sn.val()) || 0; }); } catch (eOff) {}
-        window._rb2p_lfg = { root: LFG, sid: lfgSid, state: function () { return { waiting: lfgWaiting, busy: lfgBusy, joining: lfgJoining, room: lfgRoom, dif: lfgDif, q: lfgQ, ver: lfgVer }; } };
+        window._rb2p_lfg = { root: LFG, sid: lfgSid, state: function () { return { waiting: lfgWaiting, busy: lfgBusy, joining: lfgJoining, room: lfgRoom, q: lfgQ, ver: lfgVer }; } };
         lfgReady = true;
         if (lobby.dataset.active !== 'room') lfgWatch(true);
         if (lobby.dataset.active === 'find') lfgView('find');

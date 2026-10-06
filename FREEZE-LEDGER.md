@@ -1674,3 +1674,12 @@ each day into a viewable section".
 - **Entry layout fix:** `.potd-on > .rb-entry-main` gets `flex-shrink: 0` — the taller column spilled over the top of a
   sideways phone (the title at -5 px on 844x390).
 - Tests: find-player F1-F5 (test-only line `rooms/~lfgtest/<run>`, Z+digit room codes), potd-layout 11/11, lobby-phone 12/12.
+
+## V487 (2026-10-05): no difficulty in the find-a-player line — the pair picks it in the room
+- The owner: "no need to choose difficulty before game, that can be chosen after they match up".
+- The FIND screen loses its EASY/MED/HARD/MAX row ("Once you are matched, you pick the difficulty together — the same
+  for both."); entries are {name, ts, hb, v, u}; anyone in line matches anyone (the newer claims the oldest). The maker
+  still opens the room in SAME mode (keeping its own last pick as the start), and a matched room's status says "You
+  found a player! Pick the DEFENSE difficulty together (the same for both), then READY." — SAME mode shares either
+  player's DEFENSE click (config/sharedDifficulty).
+- Tests: find-player F1-F5 (F3 now: A's HARD click in the room reaches B and the room's config).
