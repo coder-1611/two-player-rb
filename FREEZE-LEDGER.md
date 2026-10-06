@@ -1683,3 +1683,21 @@ each day into a viewable section".
   found a player! Pick the DEFENSE difficulty together (the same for both), then READY." — SAME mode shares either
   player's DEFENSE click (config/sharedDifficulty).
 - Tests: find-player F1-F5 (F3 now: A's HARD click in the room reaches B and the room's config).
+
+## V488 (2026-10-05): a found player's room chat, a side chat mid-game, and the PLAYER FOUND alert
+- The owner: "add a chat feature inside the difficulty deciding screen if FROM lobby to decide these things, also send
+  a healthy alert if someone is matched up with you" — then "also have a side chat mid game".
+- **The mark:** the maker of a found-player room writes `rooms/{code}/lfg` {at, a, b}; only such a room gets a chat
+  (a friend's code gets none), and it comes back after a reload. Lines: `rooms/{code}/chat/{push}` {name, text, ts,
+  sid, role}, the last 50, 200 characters, no filter (names censored, as everywhere).
+- **The room:** a CHAT box under the status (a 300 px panel at the right on a screen 1180+ wide); the status reads
+  "Matched! Pick the difficulty together, then READY."
+- **Mid-game:** `hideLobby()` → `lfgView('game')` keeps the room chat's subscription and shows a CHAT chip bottom
+  right (`--rb-chip-r/b`, the bar beside the picture, like the other chips) that opens a side panel; while shut, a new
+  line from the opponent shows as an unread count and a 4.5 s peek. Its mousedown/pointerdown/touchstart and keys stop
+  at the panel (the engine reads keys on window.onkeydown); releases pass through, so a throw that ends over it lands.
+- **The alert:** a PLAYER FOUND card over the room (who you play, what next, LET'S GO), a soft rising sine chime
+  (replaces V486's square beeps), and in a background tab a system notification (permission asked once, on FIND A GAME
+  or a PLAY tap) plus the flashing tab title.
+- Tests: find-player 8/8 (F3b the card + room chat, F3c the side chat via the game view: unread 1 + peek, the panel, a
+  typed key never reaches a window keydown listener; F4b a friend's room: no chat, no chip, no card).
