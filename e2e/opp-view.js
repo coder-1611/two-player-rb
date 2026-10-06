@@ -15,7 +15,8 @@
 //       waiting, same quarter and score) and its page has no errors
 //   W5  when the waiting phone gets the ball (a turnover on downs), the opponent's screen goes away within 20 s
 //   W6  no direct link (a school network that blocks it): Firebase carries it — the screen still shows, under 15 KB/s,
-//       and the database keeps one record per role (rooms/{code}/view never grows)
+//       and the database keeps one record per role; V496: on the spare database (retrobowl-2p, view/{code}), nothing
+//       of it on the game's own (rooms/{code}/view)
 const L = require('./horn-lib');
 const TP = L.TP, sleep = L.sleep;
 let pass = 0, fail = 0, setup = '';
@@ -142,12 +143,13 @@ async function firebaseGame() {
         await L.realDown(OFF.page, { straight: true });
         await sleep(1000);
         const b1 = await vstats(OFF.page), secs = (Date.now() - t0) / 1000, bps = Math.round((b1.snd.bytes - b0.snd.bytes) / secs);
-        const node = await TP.fbGet('rooms/' + g.code + '/view');
+        const node = await (await fetch('https://retrobowl-2p-default-rtdb.firebaseio.com/view/' + g.code + '.json', { cache: 'no-store' })).json();   // V496: the spare database
+        const onMain = await TP.fbGet('rooms/' + g.code + '/view');
         const keys = node ? Object.keys(node) : [];
         const recs = keys.every(k => node[k] && typeof node[k] === 'object' && !Array.isArray(node[k]) && Object.keys(node[k]).every(f => typeof node[k][f] !== 'object'));
         check('W6 no direct link: Firebase carries the opponent\'s screen, under 15 KB/s, one record per role',
-              w.ms !== null && bps < 15360 && b1.net === 'fb' && keys.length <= 4 && recs,
-              JSON.stringify({ shownAfterMs: w.ms, bps, net: b1.net, viewKeys: keys, sent: b1.snd.sent - b0.snd.sent }));
+              w.ms !== null && bps < 15360 && b1.net === 'fb' && keys.length >= 1 && keys.length <= 4 && recs && !onMain,
+              JSON.stringify({ shownAfterMs: w.ms, bps, net: b1.net, viewKeys: keys, onMain: onMain ? Object.keys(onMain) : null, sent: b1.snd.sent - b0.snd.sent }));
     } finally { await g.cleanup(); }
 }
 

@@ -97,6 +97,12 @@
             if (!t) return url;
             return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'auth=' + t;
         }
+        // V496 (the owner: "we reached the firebase ... do the thing that does the least effect on the actual system"): a REST
+        // write answers with everything it wrote unless asked not to (print=silent: 204, no body) — and those answers are
+        // downloads: the 8 KB diag record every 5 s, the audit batches, a tap's eight field shots (~140 KB) came straight
+        // back. Every write here whose answer nobody reads asks for none; nothing else about them changes.
+        function fbSilent(u) { return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'print=silent'; }
+        window._rb2p_fbSilent = fbSilent;
         // V364: the REST transport, as a first-class path. Room MSZT: the
         // Firebase SDK's websocket went half-open on one phone at the exact
         // instant of a touchdown and every SDK write after it — the live
@@ -123,12 +129,12 @@
             return r;
         }
         async function fbRestPut(path, obj) {
-            var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+            var u = fbSilent(await fbAuthUrl(FB_REST_BASE + path + '.json'));
             var r = fbRestStatus(await fetchT(u, { method: 'PUT', body: JSON.stringify(obj) }, 8000));
             return r.ok;
         }
         async function fbRestPatch(path, obj) {
-            var u = await fbAuthUrl(FB_REST_BASE + path + '.json');
+            var u = fbSilent(await fbAuthUrl(FB_REST_BASE + path + '.json'));
             var r = fbRestStatus(await fetchT(u, { method: 'PATCH', body: JSON.stringify(obj) }, 8000));
             return r.ok;
         }
@@ -290,7 +296,7 @@
             var ctl = null; try { if (!keepalive && typeof AbortController !== 'undefined') { ctl = new AbortController(); setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 10000); } } catch (e) { ctl = null; }
             fbAuthUrl(FB_REST_BASE + 'rooms/' + auditRoom + '/audit/' + auditRole + '.json')
                 .then(function (u) {
-                    return fetch(u, { method: 'PATCH', body: JSON.stringify(batch), keepalive: !!keepalive, signal: ctl ? ctl.signal : undefined });
+                    return fetch(fbSilent(u), { method: 'PATCH', body: JSON.stringify(batch), keepalive: !!keepalive, signal: ctl ? ctl.signal : undefined });
                 }).then(function (r) {
                     auditFlushing = false;
                     if (r && r.ok) {
@@ -324,7 +330,7 @@
                     "setInterval(function(){var now=Date.now(),tg=now-lastTick;lastTick=now;if(tg>wk)wk=tg;postMessage({ping:1});var gap=now-lastPong;" +
                     "if(url&&gap>6000&&now-reported>10000){reported=now;var t=now;var b={};" +
                     "b[t+'_w'+(n++)]={t:t,k:'stall',ms:gap,vis:vis,kind:(wk>=gap-3000?'sleep':'hang'),wk:wk,srv:{'.sv':'timestamp'}};" +
-                    "fetch(url,{method:'PATCH',body:JSON.stringify(b)}).catch(function(){});}},2000);";
+                    "fetch(url+(url.indexOf('?')>=0?'&':'?')+'print=silent',{method:'PATCH',body:JSON.stringify(b)}).catch(function(){});}},2000);";
                 var w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
                 w.onmessage = function (e) { try { if (e.data && e.data.ping) w.postMessage({ pong: 1, vis: document.hidden ? 'H' : 'V' }); } catch (e2) {} };
                 window._rb2p_stallWorker = w;
@@ -340,7 +346,7 @@
             window.addEventListener('pagehide', function () { window._rb2p_audit('vis', { h: true, why: 'pagehide' }); auditFlush(true);
                 // V403: tell the other phone this one LEFT (tab closed / navigated away),
                 // not merely hid. keepalive lets the PUT outlive the page.
-                try { if (window._rb2p_hbUrl) fetch(window._rb2p_hbUrl, { method: 'PUT', keepalive: true, body: JSON.stringify({ ts: Date.now(), fps: 0, vis: 'X' }) }).catch(function () {}); } catch (eHX) {} });
+                try { if (window._rb2p_hbUrl) fetch(fbSilent(window._rb2p_hbUrl), { method: 'PUT', keepalive: true, body: JSON.stringify({ ts: Date.now(), fps: 0, vis: 'X' }) }).catch(function () {}); } catch (eHX) {} });
             document.addEventListener('visibilitychange', function () { window._rb2p_audit('vis', { h: !!document.hidden }); });
         } catch (eAV) {}
 
@@ -2002,7 +2008,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V495<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V496<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2168,7 +2174,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V495</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V496</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -17494,7 +17500,7 @@
                         if (tapInfo) entry.tap = tapInfo;
                         __rbTapShots.push(entry); while (__rbTapShots.length > 8) __rbTapShots.shift();
                         fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/taps/' + key + '.json')
-                            .then(function (u) { return fetch(u, { method: 'PUT', body: JSON.stringify(__rbTapShots) }); })
+                            .then(function (u) { return fetch(window._rb2p_fbSilent(u), { method: 'PUT', body: JSON.stringify(__rbTapShots) }); })
                             .catch(function () {});
                     };
                     push('tap');                                  // what the screen showed AT the tap
@@ -17838,7 +17844,7 @@
                     if (window.__rbLastShot) body.shot = window.__rbLastShot;
                     fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/diag/' + key + '.json')
                         .then(function (u) {
-                            return fetch(u, { method: 'PUT', body: JSON.stringify(body) });
+                            return fetch(window._rb2p_fbSilent(u), { method: 'PUT', body: JSON.stringify(body) });
                         }).catch(function () {});
                     // V327: mirror the rolling diag lines to a ROOM-scoped node.
                     // diag/ is admin-read-only, but rooms/ is readable with the
@@ -17855,7 +17861,7 @@
                             try { dbgLines = window._rb2p_readDiagLog().join('\n'); } catch (eRL) { dbgLines = String(body.diag || ''); }
                             fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/dbg/' + role + '.json')
                                 .then(function (u) {
-                                    return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: dbgLines }) });
+                                    return fetch(window._rb2p_fbSilent(u), { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: dbgLines }) });
                                 }).catch(function () {});
                             // V353d: the commentary ledger rides along — every line
                             // that appeared, and what licensed it.
@@ -17864,7 +17870,7 @@
                                 if (cmtLines) {
                                     fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/cmt/' + role + '.json')
                                         .then(function (u2) {
-                                            return fetch(u2, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: cmtLines }) });
+                                            return fetch(window._rb2p_fbSilent(u2), { method: 'PUT', body: JSON.stringify({ ts: Date.now(), log: cmtLines }) });
                                         }).catch(function () {});
                                 }
                             } catch (eCmt) {}
@@ -17907,7 +17913,7 @@
                         fbAuthUrl(hbBase + '/hb/' + role + '.json')
                             .then(function (u) {
                                 window._rb2p_hbUrl = u;   // V403: the pagehide beacon reuses it
-                                return fetch(u, {
+                                return fetch(window._rb2p_fbSilent(u), {
                                     method: 'PUT', body: JSON.stringify({
                                         ts: Date.now(), fps: diagFps,
                                         vis: document.hidden ? 'H' : 'V'
@@ -17940,7 +17946,7 @@
                     try { role = room ? (sessionStorage.getItem('rb_role_' + room) || '') : ''; } catch (e) {}
                     if (!room || !role) return false;
                     fbAuthUrl('https://realretrobowl2p-default-rtdb.firebaseio.com/rooms/' + room + '/hb/' + role + '.json')
-                        .then(function (u) { window._rb2p_hbUrl = u; return fetch(u, { method: 'PUT', body: JSON.stringify({ ts: Date.now(), fps: Number(window._rb2p_diagFps) || 0, vis: document.hidden ? 'H' : 'V' }) }); })
+                        .then(function (u) { window._rb2p_hbUrl = u; return fetch(window._rb2p_fbSilent(u), { method: 'PUT', body: JSON.stringify({ ts: Date.now(), fps: Number(window._rb2p_diagFps) || 0, vis: document.hidden ? 'H' : 'V' }) }); })
                         .catch(function () {});
                     if (window._rb2p_diagLog && why) window._rb2p_diagLog('HB now (' + why + ')');
                     return true;
@@ -21509,6 +21515,18 @@
         // direct path opens (school networks often block one), the waiting phone asks over Firebase and the phone with
         // the ball overwrites ONE node, rooms/{code}/view/{role}, about 6 times a second — the database never grows.
         var viewLinkInstalled = false;
+        // V496 (the owner: "we reached the firebase ... maybe use a different database we have set up"): the Firebase path
+        // of the opponent's screen — ~5 frames a second to every waiting phone with no direct link, the biggest stream the
+        // game's database carried that nothing else reads — runs on the spare database (the project retrobowl-2p: this
+        // game's first project, empty, with its own free allowance) at view/{code}/{w}{role}. Its rules allow those records
+        // only. If it cannot start, the game's own database carries it, as before.
+        var _viewDb = null;
+        function viewDb() {
+            if (_viewDb) return _viewDb;
+            try { _viewDb = FB.getDatabase(initializeApp({ databaseURL: window._rb2p_viewDbUrl || 'https://retrobowl-2p-default-rtdb.firebaseio.com/' }, 'rb2p-view')); }
+            catch (e) { _viewDb = db; try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW spare database unavailable — the game\'s own carries the picture'); } catch (e2) {} }
+            return _viewDb;
+        }
         function installViewLink() {
             if (viewLinkInstalled || !window._rb2p_view || !myRoom || !myRole || window._rb2p_viewNoLink) return;
             viewLinkInstalled = true;
@@ -21612,16 +21630,18 @@
                     if (remoteSet) { try { pc.addIceCandidate(c).catch(function () {}); } catch (e) {} } else pendingIce.push(c);
                 });
             }
-            // ---- the Firebase path
+            // ---- the Firebase path (V496: on the spare database; each record goes with this tab)
+            var vdb = viewDb(), vroot = vdb === db ? root + '/view' : 'view/' + myRoom;
+            try { FB.onDisconnect(FB.ref(vdb, vroot + '/' + me)).remove(); FB.onDisconnect(FB.ref(vdb, vroot + '/w' + me)).remove(); } catch (eOD) {}
             var fbFirstWant = true;
-            FB.onValue(FB.ref(db, root + '/view/w' + other), function (snap) {
+            FB.onValue(FB.ref(vdb, vroot + '/w' + other), function (snap) {
                 if (fbFirstWant) { fbFirstWant = false; return; }   // an old record from before this page
                 var v = snap.val(); if (!v) return;
                 theirFbWantAt = Date.now();
                 V.onWant(v.k | 0);
                 if (v.a) V.onAck(Number(v.a));
             });
-            FB.onValue(FB.ref(db, root + '/view/' + other), function (snap) {
+            FB.onValue(FB.ref(vdb, vroot + '/' + other), function (snap) {
                 var v = snap.val(); if (!v || !v.d) return;
                 try { V.onPacket(unb64(v.d), 'fb'); } catch (e) {}
             });
@@ -21632,7 +21652,7 @@
                 lastFbWant = now;
                 var rec = { t: now, k: key | 0 };
                 if (ack || pendingAck) rec.a = Math.max(ack || 0, pendingAck); pendingAck = 0;
-                FB.set(FB.ref(db, root + '/view/w' + me), rec).catch(function () {});
+                FB.set(FB.ref(vdb, vroot + '/w' + me), rec).catch(function () {});
             }
             V.attachNet({
                 mode: function () { return p2pUp() ? 'p2p' : (Date.now() - theirFbWantAt < 3500 ? 'fb' : null); },
@@ -21647,7 +21667,7 @@
                     var now = Date.now(); if (now - lastFbSend < 190) return false;
                     if (bytes.length > 60000) return false;
                     fbInFlight++; lastFbSend = now;
-                    FB.set(FB.ref(db, root + '/view/' + me), { d: b64(bytes), t: now }).then(function () { fbInFlight--; }, function () { fbInFlight--; });
+                    FB.set(FB.ref(vdb, vroot + '/' + me), { d: b64(bytes), t: now }).then(function () { fbInFlight--; }, function () { fbInFlight--; });
                     return true;
                 },
                 ack: function (seq) {

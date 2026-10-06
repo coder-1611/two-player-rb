@@ -35,7 +35,10 @@ const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const DRY = args.includes('--dry'), NOFLAG = DRY || args.includes('--no-flag');
 const ONLY = opt('--room', null);
-const MIN_AGE = Number(opt('--min-age-ms', 24 * 3600 * 1000));
+// V496 (the owner: "we reached the firebase ... the least effect on the actual system"): plays move to this Mac after 2 h,
+// not 24 — a day of recordings (~550 MB) was half the database's storage, over the free plan's 1 GB. Nothing reads them in
+// Firebase but this job (the 5 am highlights read this archive too), so nothing else changes.
+const MIN_AGE = Number(opt('--min-age-ms', 2 * 3600 * 1000));
 const log = m => console.log(new Date().toISOString() + ' ' + m);
 const auth = () => require('./fb-auth.js').token();
 

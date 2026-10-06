@@ -1814,3 +1814,24 @@ each day into a viewable section".
 - Not changed: the frames (exact), the Firebase rate (~5/s — the free plan's downloads are over their cap). The fallback's
   choppiness needs a relay that school networks let through (TURN over TLS on 443) — the owner's call (an account).
 - Tests: opp-view 7/7 (W2 99.9% pixel-identical, W3 exact frames, W6 Firebase).
+
+## V496 (2026-10-06): Firebase relief with the least change — silent REST writes, plays off after 2 h, the screen fallback on the spare database
+- The owner: "we reached the firebase, do the thing that does the least effect on the actual system, maybe use a different
+  database we have set up ... come up with good ideas". The database is still up (not disabled), over both free limits:
+  stored 1.13 GB / 1.07 (105%), downloaded 29.5 GB / 10.7 this cycle (275%).
+- **Measured (Cloud Monitoring + a 60 s profile, 3 pm CT):** 200-245k REST requests an hour at school hours (~60 a second)
+  with 300-527 MB billed an hour; ~47 MB an hour all night (open tabs and the Mac's jobs). Per minute: 1,802 `live`
+  writes and 984 `snap` writes (SDK), ~790 screen-fallback ops (300 KB of frames), ~350 audit batches, 168 diag records
+  (8.4 KB each, every 5 s a device). A REST write answers with everything it wrote unless asked not to.
+- **1. print=silent** (`fbSilent()`) on every REST write whose answer nothing reads: fbRestPut/fbRestPatch (outcomes, live
+  over REST, final, ot, clock...), the audit PATCH, the stall worker's PATCH, the heartbeats (and the pagehide beacon),
+  the diag / dbg / cmt mirrors, taps. Not the POSTs that read their new id (comments).
+- **2. plays-archive.js:** plays move to the Mac after 2 h (was 24 h) — a day of recordings (~550 MB) was half the
+  storage; only this job reads them in Firebase (the highlights read the archive too).
+- **3. The screen's Firebase fallback on the spare database** `retrobowl-2p` (this game's first project — empty, Spark,
+  its own 10 GB / 1 GB): `view/{code}/{w}{role}` (onDisconnect removes each tab's records), rules = those records only
+  (`.read` per room, `.write` a {t, d<90k} record or null; everything else denied — root write 401 checked). viewDb()
+  falls back to the game's own database if the second app cannot start. A V495 and a V496 phone in one game have no
+  Firebase fallback between them (their direct link is unaffected) — it lasts until they reload.
+- Tests: opp-view 7/7 (W6: the frames on the spare database, nothing at rooms/{code}/view). Effect to read in
+  .rb2p/fb-watch.log's hourly downloads tomorrow at school hours (was 300-527 MB/h).
