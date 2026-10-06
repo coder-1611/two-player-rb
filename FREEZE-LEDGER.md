@@ -1776,3 +1776,22 @@ each day into a viewable section".
 - A line entry counts as present for 150 s without a heartbeat (was 75): a background tab may beat once a minute.
 - Tests: find-player 12/12 (F1 the card/banner/crowd, F4 the banner match, F6 the card's timed offers + a quiet hour,
   F7 the open invite, F8 the record, F9 STOP LOOKING).
+
+## V494 (2026-10-06): a less crowded lobby on short touch tablets; buttons off the bottom edge on touch screens; one press = one chat toggle
+- The owner (a screenshot of the lobby on a ~1024x600 touch tablet): "A bit crowded. Also after opening a roster the html
+  rendered back button takes like 4 clicks ... This is with all html buttons and if I open chat in the middle of a game it
+  opens and then closes back in .5 seconds".
+- **The wide lobby is a class now** (html.rb-wide, set by the potd script's wideMq): 900 px wide, 5:4, and 560 px tall —
+  700 px on a touch screen, whose bigger buttons overflowed the left column at ~600 (the title cut off at the top, FIND A
+  PLAYER over NO ONE TO PLAY WITH?). Below that it is the one column with the PLAYS OF THE DAY chip. In the wide layout the
+  lobby's labels get line-height 1.6 (a wrapped DEFENSE DIFFICULTY FOR BOTH PLAYERS ran into itself).
+- **Touch screens: off the bottom edge.** The bottom edge belongs to the system (iPhone Safari's toolbar, a Chromebook's
+  shelf in tablet mode take the first taps there): the roster's BACK / ROSTER go top left, the in-game CHAT chip top right
+  under the version chip with its panel below it (210 px tall on a phone). Desktop is unchanged.
+- **CHAT: one press = one toggle** — it acts on the finger lifting off (pointerup) once per 700 ms, and a second activation
+  within 700 ms of opening is ignored as a bounce. The can-act monitor counts the chat as the player's own panel.
+- **Diag lines to read after the owner's next try:** "CHAT open/shut (tap|click|x|...)", "CHAT kept open (...)", "CHAT shut
+  (not in a game: ...)", "PREVIEW rb-preview-back down/up/act/cancel/up off the button".
+- In Chromium (mouse and touch emulation, a real game) the roster BACK took 1 press and the chat stayed open before and
+  after this change — the owner's device behaviour is not reproduced here; the diag lines are there for it.
+- Tests: potd-layout 12/12 (+1024x600 touch: one column), lobby-phone 12/12, find-player 12/12.

@@ -996,6 +996,14 @@
             font: bold 11px 'Press Start 2P', monospace; letter-spacing: 1px; color: #36e07a; background: rgba(10,10,20,.78); border: 2px solid #36e07a;
             border-radius: 8px; cursor: pointer; opacity: .9; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
         #rb-gchat-btn[hidden], #rb-gchat[hidden], #rb-gchat-peek[hidden] { display: none; }
+        /* V494 (the owner: "the back button takes like 4 clicks ... this is with all html buttons, and if I open chat in the
+           middle of a game it opens and then closes back in .5 seconds"): on a touch screen the bottom edge belongs to the
+           system — iPhone Safari's toolbar, a Chromebook's shelf in tablet mode take the first taps there — so the CHAT chip
+           sits top right under the version chip (its panel below it), and the roster's BACK / ROSTER top left */
+        html.rb-mobile #rb-gchat-btn { top: calc(var(--rb-chip-t, 6px) + 38px); bottom: auto; }
+        html.rb-mobile #rb-gchat, html.rb-mobile #rb-gchat-peek { top: calc(var(--rb-chip-t, 6px) + 80px); bottom: auto; }
+        html.rb-mobile #rb-gchat { height: min(210px, calc(100vh - var(--rb-chip-t, 6px) - 96px)); }   /* less of the field under it */
+        html.rb-mobile #rb-preview-back, html.rb-mobile #rb-preview-roster { top: max(10px, env(safe-area-inset-top)) !important; bottom: auto !important; }
         #rb-gchat-btn .n:not(:empty) { margin-left: 6px; padding: 2px 5px; background: #ff5d6c; color: #fff; border-radius: 3px; }
         #rb-gchat-btn.new { opacity: 1; animation: rb-gchat-ping .9s ease-in-out 3; }
         @keyframes rb-gchat-ping { 50% { transform: scale(1.12); } }
@@ -1588,29 +1596,32 @@
         #rb-potd-cue[hidden], #rb-lobby:not([data-active="entry"]) #rb-potd-cue { display: none; }
         html.rb-mobile #rb-potd-cue { bottom: max(12px, env(safe-area-inset-bottom)); right: max(14px, env(safe-area-inset-right)); }
         /* a wide screen (a desktop, a Chromebook, a tablet held sideways): the lobby on the left, the plays of the day on the
-           right, both whole on the first screen — the #1 replay takes the height that is left (fit() in the potd script) */
-        @media (min-width: 900px) and (min-height: 560px) and (min-aspect-ratio: 5/4) {
-            html #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"].potd-on {
+           right, both whole on the first screen — the #1 replay takes the height that is left (fit() in the potd script).
+           V494 (the owner: "a bit crowded" — a touch tablet ~1024x600: the left column overflowed, the title cut off at the
+           top and FIND A PLAYER over NO ONE TO PLAY WITH?): html.rb-wide, set by the potd script — the same 900 px / 5:4
+           as before, but a touch screen (bigger buttons) needs 700 px of height; below that it is the one column */
+        @media all {
+            html.rb-wide #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"].potd-on {
                 display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr) auto;
                 grid-template-areas: "main potd" "foot potd"; column-gap: clamp(24px, 3.5vw, 64px); row-gap: 12px; align-items: center;
                 height: 100%; max-height: 100%; box-sizing: border-box; padding: 22px clamp(20px, 3.5vw, 56px) 44px;
             }
-            html #rb-lobby .rb-screen[data-view="entry"].potd-on > * { margin-top: 0; margin-bottom: 0; }
-            html #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main,
-            html.rb-mobile #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { grid-area: main; min-height: 0; }
-            html #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot { grid-area: foot; align-self: end; }
-            #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-solo { margin-top: 4px; line-height: 1.6; }
-            html #rb-lobby .rb-screen[data-view="entry"].potd-on > #rb-potd { grid-area: potd; width: 100%; max-width: 940px; justify-self: center; }
-            #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-wordmark { font-size: clamp(22px, min(2.8vw, 8vh), 64px); }
-            .potd-on #rb-potd .potd-body { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; }
-            .potd-on #rb-potd .potd-more { grid-auto-flow: row; }
-            #rb-potd-cue { display: none !important; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > * { margin-top: 0; margin-bottom: 0; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { grid-area: main; min-height: 0; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot { grid-area: foot; align-self: end; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-solo { margin-top: 4px; line-height: 1.6; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > #rb-potd { grid-area: potd; width: 100%; max-width: 940px; justify-self: center; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-wordmark { font-size: clamp(22px, min(2.8vw, 8vh), 64px); }
+            html.rb-wide .potd-on #rb-potd .potd-body { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; }
+            html.rb-wide .potd-on #rb-potd .potd-more { grid-auto-flow: row; }
+            html.rb-wide #rb-potd-cue { display: none !important; }
+            html.rb-wide #rb-lobby .rb-entry-main .rb-sub, html.rb-wide #rb-lobby .rb-entry-main .prompt { line-height: 1.6; }   /* V494: a label that wraps in the narrow column never runs into itself */
         }
-        @media (min-width: 900px) and (min-height: 560px) and (max-height: 700px) and (min-aspect-ratio: 5/4) {
-            .potd-on #rb-potd .potd-why { -webkit-line-clamp: 2; }
+        @media (max-height: 700px) {
+            html.rb-wide .potd-on #rb-potd .potd-why { -webkit-line-clamp: 2; }
         }
-        @media (min-width: 900px) and (min-height: 560px) and (max-height: 640px) and (min-aspect-ratio: 5/4) {
-            #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-football { display: none; }
+        @media (max-height: 640px) {
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-football { display: none; }
         }
 </style>
 </head>
@@ -1991,7 +2002,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V493<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V494<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2157,7 +2168,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V493</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V494</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4937,18 +4948,19 @@
             }, true);
             function previewTapButton(btn, act) {
                 var down = false, firedAt = 0;
-                btn.addEventListener('pointerdown', function () { down = true; });
-                btn.addEventListener('pointercancel', function () { down = false; });
+                function pdiag(m) { try { if (window._rb2p_diagLog) window._rb2p_diagLog('PREVIEW ' + btn.id + ' ' + m); } catch (e) {} }   // V494: what each press did
+                btn.addEventListener('pointerdown', function (e) { down = true; pdiag('down ' + e.pointerType); });
+                btn.addEventListener('pointercancel', function () { down = false; pdiag('cancel'); });
                 btn.addEventListener('pointerup', function (e) {
-                    if (!down) return; down = false;
+                    if (!down) { pdiag('up without down'); return; } down = false;
                     var r = btn.getBoundingClientRect(), pad = 24;   // a finger that slid a little off still counts
-                    if (e.clientX < r.left - pad || e.clientX > r.right + pad || e.clientY < r.top - pad || e.clientY > r.bottom + pad) return;
+                    if (e.clientX < r.left - pad || e.clientX > r.right + pad || e.clientY < r.top - pad || e.clientY > r.bottom + pad) { pdiag('up off the button'); return; }
                     firedAt = Date.now(); previewSwallowClickUntil = firedAt + 700;
-                    act();
+                    pdiag('act (tap)'); act();
                 });
                 btn.addEventListener('click', function () {   // keyboard / a browser without pointer events
                     if (Date.now() - firedAt < 700) return;
-                    firedAt = Date.now(); act();
+                    firedAt = Date.now(); pdiag('act (click)'); act();
                 });
             }
             previewTapButton(previewBackBtn, function () { window._rb2p_exitRosterPreview(); });
@@ -19864,7 +19876,12 @@
             var CROOT = window._rb2p_potdCommentsRoot || 'rooms/~potd/c/';     // test seam
             var popups = window._rb2p_potdForce === true || !(window._rb2p_isTestRun && window._rb2p_isTestRun());
             var cur = null, sel = null, list = [], winners = {}, playing = null, R = null, daysLoaded = false;
-            var WIDE = window.matchMedia ? window.matchMedia('(min-width: 900px) and (min-height: 560px) and (min-aspect-ratio: 5/4)') : null;   // = the CSS
+            // V494: html.rb-wide is the wide layout (the CSS keys on it): 900 px wide, 5:4 or wider, and 560 px tall — 700 px on a
+            // touch screen, whose bigger buttons do not fit the left column in less
+            var WIDE = window.matchMedia ? window.matchMedia('(min-width: 900px) and (min-height: 560px) and (min-aspect-ratio: 5/4)') : null;
+            var WIDE_T = window.matchMedia ? window.matchMedia('(min-width: 900px) and (min-height: 700px) and (min-aspect-ratio: 5/4)') : null;
+            function wideMq() { var de = document.documentElement, m = de.classList.contains('rb-mobile') ? WIDE_T : WIDE; var on = !!(m && m.matches); de.classList.toggle('rb-wide', on); return on; }
+            wideMq(); window.addEventListener('resize', wideMq);
             function pub(path, query) {
                 if (SRC) return Promise.resolve(Object.prototype.hasOwnProperty.call(SRC, path) ? SRC[path] : null);
                 return fetch(PUB + path + '.json' + (query ? '?' + query : ''), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
@@ -19966,7 +19983,7 @@
             $go.addEventListener('click', watch);
             // a wide screen: the section beside the lobby, its replay as big as the height left allows (the comments and the
             // archive count as their closed rows: opening one scrolls the page, it does not shrink the replay)
-            function wide() { return !!(WIDE && WIDE.matches) && !$sec.hidden; }
+            function wide() { return wideMq() && !$sec.hidden; }
             function fit() {
                 try {
                     if (!wide()) { $sec.style.width = ''; $stage.style.width = ''; return; }
@@ -21291,15 +21308,32 @@
         function lfgGcShow() {
             var on = lfgInGame && lfgRcOn;
             $gcBtn.hidden = !on;
-            if (!on) { $gc.hidden = true; lfgGcOpen = false; $gcPeek.hidden = true; }
+            if (!on) { if (lfgGcOpen) lfgGcDiag('shut (not in a game: ' + (lfgInGame ? 'no chat' : 'view') + ')'); $gc.hidden = true; lfgGcOpen = false; $gcPeek.hidden = true; }
         }
-        function lfgGcToggle(open) {
+        var lfgGcTapAt = 0, lfgGcOpenedAt = 0;
+        function lfgGcDiag(m) { try { if (window._rb2p_diagLog) window._rb2p_diagLog('CHAT ' + m); } catch (e) {} }
+        function lfgGcTap(why) {
+            var now = Date.now();
+            if (now - lfgGcTapAt < 700) return;
+            lfgGcTapAt = now;
+            if (lfgGcOpen && now - lfgGcOpenedAt < 700) { lfgGcDiag('kept open (a second ' + why + ' ' + (now - lfgGcOpenedAt) + ' ms after opening)'); return; }
+            lfgGcToggle(!lfgGcOpen, why);
+        }
+        function lfgGcToggle(open, why) {
+            if (!!open !== lfgGcOpen) lfgGcDiag((open ? 'open' : 'shut') + ' (' + (why || '?') + ')');
+            if (open) lfgGcOpenedAt = Date.now();
             lfgGcOpen = !!open; $gc.hidden = !lfgGcOpen;
             if (lfgGcOpen) { lfgGcSeen = lfgGcLast; $gcN.textContent = ''; $gcPeek.hidden = true; $gcBtn.classList.remove('new'); if ($gcLog) $gcLog.scrollTop = $gcLog.scrollHeight; }
             else { try { $gcIn.blur(); } catch (e) {} }
         }
-        $gcBtn.addEventListener('click', function () { lfgGcToggle(!lfgGcOpen); });
-        $gc.querySelector('.rb-gchat-x').addEventListener('click', function () { lfgGcToggle(false); });
+        (function () {   // acts on the finger lifting off it (a click can be dropped when the finger moves a little), once
+            var down = false;
+            $gcBtn.addEventListener('pointerdown', function () { down = true; });
+            $gcBtn.addEventListener('pointercancel', function () { down = false; });
+            $gcBtn.addEventListener('pointerup', function () { if (!down) return; down = false; lfgGcTap('tap'); });
+            $gcBtn.addEventListener('click', function () { lfgGcTap('click'); });
+        })();
+        $gc.querySelector('.rb-gchat-x').addEventListener('click', function () { lfgGcToggle(false, 'x'); });
         document.getElementById('rb-gchat-form').addEventListener('submit', function (ev) {
             ev.preventDefault();
             if (!myRoom || lfgRcCode !== myRoom) return;
@@ -23197,7 +23231,7 @@
                             if (el && el !== cv && !(cv.contains && cv.contains(el))) {
                                 var coverName = el.id ? '#' + el.id : String(el.tagName || '').toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : '');
                                 // a panel the PLAYER opened (the "!" box, the roster, the version jump) is their choice, not a freeze
-                                var playerPanel = !!(el.closest && el.closest('#rb-complain-panel, #rb-complain, #rb-roster-overlay, #rb-verjump'));
+                                var playerPanel = !!(el.closest && el.closest('#rb-complain-panel, #rb-complain, #rb-roster-overlay, #rb-verjump, #rb-gchat, #rb-gchat-btn, #rb-gchat-peek'));
                                 if (playerPanel) { out.why = 'player panel ' + coverName; out.soft = true; return out; }
                                 out.can = false; out.why = 'covered by ' + coverName;
                                 return out;

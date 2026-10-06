@@ -12,7 +12,7 @@ const sleep = H.sleep;
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail++, console.log('  FAIL  ' + n + (d ? ' — ' + d : ''))); };
 const WIDE = [[1920, 855], [1536, 730], [1366, 635], [1280, 600], [1180, 820, 'tablet']];
-const NARROW = [[844, 390, 'phone'], [932, 430, 'phone'], [740, 360, 'phone'], [800, 900]];
+const NARROW = [[844, 390, 'phone'], [932, 430, 'phone'], [740, 360, 'phone'], [800, 900], [1024, 600, 'phone']];   // V494: a short touch tablet gets the one column
 
 async function open(browser, w, h, mobile, seams) {
     const page = await browser.newPage();
