@@ -1753,3 +1753,26 @@ each day into a viewable section".
 - The first --report run saved its problems as alerted, so the LaunchAgent's first real run stayed quiet. Now --report
   keeps the previous record. The first alert then went out: issue #1 "Firebase usage warning" (storage 103%, downloads
   234%), opened by github-actions, @coder-1611. GitHub's own check (workflow_dispatch, no kind) passed: all four answer.
+
+## V493 (2026-10-05): FIND A PLAYER phase 1 — a search card, the true crowd, the lobby banner, an open invite
+- The owner: "the lobby appears unattractive to new players since as soon as there are two players they get matched up.
+  Give me a plan for making sure players get matched up quick while not demotivating" (their idea: players online in
+  the last hour, matching in a black box) — then "build" (phase 1 of the plan).
+- **No list of who is in line** (it was nearly always empty — matching is instant): FIND A GAME turns the box into a
+  search card — a bobbing football, the clock, an honest word on the wait (the usual wait at this hour once the record
+  has 3+ matches for it; else "Busy right now — N players in the last hour" from 8 an hour, else "Quiet right now — the
+  busiest time is weekdays 9-11 am. Keep this tab open: it beeps and notifies you"), STOP LOOKING; after 45 s PLAY THE
+  COMPUTER (main-retro-bowl in a new tab — this tab keeps looking and calls them back), after 2 min an open invite
+  (COPY LINK: ?play=<sid>; the first to open it plays them; the page drops ?play= from its address).
+- **The true crowd** (never inflated, hidden when older than 30 min): "N players in the last hour · N games today" and a
+  feed (games being played right now, the last match made here, the #1 play of the day's headline). From
+  embedcode/lobbystats, published every 10 min by tools/alltime-stats.js (lobbyStats: the visits it already reads, the
+  audit archives' games, quiet.js's live list, rooms/~lfg/log), read once when FIND opens (a few hundred bytes).
+- **The banner**: while someone else is looking, every lobby's entry screen shows "A PLAYER WANTS A GAME RIGHT NOW —
+  PLAY THEM" (a phone: "SOMEONE WANTS A GAME — PLAY"); one tap claims them. Where it lies over the title, the title is
+  hidden while it shows (a sideways phone has no other free spot). The FIND button lost its "N WAITING" count.
+- **The record**: rooms/~lfg/log/{UTC day}/{push} — start (via), match (maker with via find/banner/invite, joiner with
+  the wait w), stop, solo, invite. Writes only.
+- A line entry counts as present for 150 s without a heartbeat (was 75): a background tab may beat once a minute.
+- Tests: find-player 12/12 (F1 the card/banner/crowd, F4 the banner match, F6 the card's timed offers + a quiet hour,
+  F7 the open invite, F8 the record, F9 STOP LOOKING).

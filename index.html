@@ -934,18 +934,38 @@
             background: rgba(8,20,52,.45); border: 3px solid #fff; box-shadow: 4px 4px 0 #0a1838; }
         #rb-lobby #rb-find-go { padding: 16px 30px; font-size: clamp(14px, 1.8vw, 18px); }
         #rb-lobby #rb-find-go.on { color: #b3261e; }
+        /* V493: the crowd (true numbers), the search card, the banner */
+        #rb-lobby .rb-find-crowd { margin: 0; font-size: 11px; letter-spacing: 1px; line-height: 1.8; color: #cdddff; }
+        #rb-lobby .rb-find-crowd b { color: #ffd23f; }
+        #rb-lobby .rb-find-crowd[hidden], #rb-lobby .rb-find-feed[hidden] { display: none; }
+        #rb-lobby .rb-find-feed { list-style: none; margin: -4px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; font-size: 9px; line-height: 1.7; color: #9fbcf0; }
+        #rb-lobby .rb-find-feed li::before { content: '\25B8  '; color: #36e07a; }
+        #rb-lobby .rb-find-idle, #rb-lobby .rb-find-search { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+        #rb-lobby .rb-find-idle[hidden], #rb-lobby .rb-find-search[hidden], #rb-lobby .rb-find-extra[hidden] { display: none; }
+        #rb-lobby .rb-find-ball { animation: rb-find-bob 1.6s ease-in-out infinite; }
+        @keyframes rb-find-bob { 0%, 100% { transform: rotate(-18deg) translateY(0); } 50% { transform: rotate(18deg) translateY(-8px); } }
+        @media (prefers-reduced-motion: reduce) { #rb-lobby .rb-find-ball { animation: none; } }
+        #rb-lobby .rb-find-searching { margin: 0; font-size: 12px; letter-spacing: 2px; color: #36e07a; }
+        #rb-lobby .rb-find-est { margin: 0; max-width: 40ch; font-size: 10px; line-height: 1.8; color: #cdddff; }
+        #rb-lobby .rb-find-extra { margin: 0; max-width: 42ch; font-size: 9px; line-height: 1.9; color: #9fbcf0; }
+        #rb-lobby .rb-find-extra a { color: #ffd23f; }
+        #rb-lobby #rb-find-copy { font: bold 9px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 6px 8px; margin-left: 4px; color: #0a1838; background: #ffd23f;
+            border: 2px solid #0a1838; cursor: pointer; }
+        #rb-lfg-banner { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 45; width: max-content; max-width: calc(100vw - 24px);
+            padding: 10px 14px; font: 10px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1.6; text-align: center; color: #0a1838; background: #36e07a;
+            border: 3px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; animation: rb-lfg-pulse 1.4s ease-in-out infinite; }
+        #rb-lfg-banner b { text-decoration: underline; }
+        #rb-lfg-banner .sm { display: none; }
+        /* a phone says it shorter; where the banner lies over the title, the title steps aside while it shows (lfgBanner) —
+           lower down a sideways phone's first screen has no room (PLAY 2P, CODE/JOIN, the corner chips) */
+        html.rb-mobile #rb-lfg-banner { font-size: 9px; padding: 8px 10px; }
+        html.rb-mobile #rb-lfg-banner .lg { display: none; }
+        html.rb-mobile #rb-lfg-banner .sm { display: inline; }
+        #rb-lfg-banner[hidden], #rb-lobby:not([data-active="entry"]) #rb-lfg-banner { display: none; }
+        @keyframes rb-lfg-pulse { 50% { box-shadow: 4px 4px 0 #0a1838, 0 0 0 7px rgba(54,224,122,.35); } }
+        @media (prefers-reduced-motion: reduce) { #rb-lfg-banner { animation: none; } }
         #rb-lobby .rb-find-sub { margin: 0; font-size: 9px; line-height: 1.7; color: #9fbcf0; }
         #rb-lobby .rb-find-state { margin: 0; min-height: 14px; font-size: 10px; line-height: 1.7; color: #ffd23f; }
-        #rb-lobby .rb-find-list { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; max-height: 210px; overflow-y: auto; }
-        #rb-lobby .rb-find-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(0,0,0,.25); font-size: 10px; text-align: left; }
-        #rb-lobby .rb-find-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; line-height: 1.5; }
-        #rb-lobby .rb-find-list li .ago { color: #8fa1b3; font-size: 8px; white-space: nowrap; }
-        #rb-lobby .rb-find-list li button { font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 8px 10px; color: #0a1838; background: #ffd23f;
-            border: 3px solid #0a1838; cursor: pointer; }
-        #rb-lobby .rb-find-list li.me { outline: 2px dashed #36e07a; outline-offset: -2px; }
-        #rb-lobby .rb-find-list li.none { justify-content: center; color: #8fa1b3; background: none; line-height: 1.7; text-align: center; }
-        #rb-lobby .rb-find-newer { margin: 0; font-size: 8px; color: #8fa1b3; line-height: 1.6; }
-        #rb-lobby .rb-find-newer[hidden] { display: none; }
         #rb-lobby .rb-chat-log { list-style: none; margin: 0; padding: 8px; width: 100%; box-sizing: border-box; height: 230px; overflow-y: auto;
             display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,.28); text-align: left; font-size: 10px; line-height: 1.7; }
         #rb-lobby .rb-chat-log li { color: #e8f0ff; overflow-wrap: anywhere; }
@@ -1971,7 +1991,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V492<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V493<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2093,15 +2113,23 @@
         <!-- ======================= FIND A PLAYER (V486) ======================= -->
         <div data-view="find" class="rb-screen">
             <h1 class="rb-roomtitle">FIND A <span class="code">PLAYER</span></h1>
-            <p class="rb-find-note">The site is still growing, so you may not find someone right away. Keep this page open &mdash; it beeps when a player joins. Most players are on weekdays around midday (Central time).</p>
+            <p class="rb-find-crowd" id="rb-find-crowd" hidden></p>
+            <ul class="rb-find-feed" id="rb-find-feed" hidden></ul>
             <div class="rb-find-cols">
                 <div class="rb-find-box">
-                    <button id="rb-find-go" class="rb-cta" type="button">FIND A GAME</button>
-                    <p class="rb-find-sub">Once you are matched, you pick the difficulty together &mdash; the same for both.</p>
+                    <div class="rb-find-idle" id="rb-find-idle">
+                        <button id="rb-find-go" class="rb-cta" type="button">FIND A GAME</button>
+                        <p class="rb-find-sub">Once you are matched, you pick the difficulty together &mdash; the same for both.</p>
+                    </div>
+                    <div class="rb-find-search" id="rb-find-search" hidden>
+                        <div class="rb-football rb-find-ball" aria-hidden="true"><span class="lace-h"></span><span class="lace-v"></span><span class="lace-rungs"></span></div>
+                        <p class="rb-find-searching">FINDING YOU A PLAYER &nbsp;<span id="rb-find-clock">0:00</span></p>
+                        <p class="rb-find-est" id="rb-find-est"></p>
+                        <p class="rb-find-extra" id="rb-find-solo" hidden>While you wait: <a id="rb-find-solo-link" href="https://main-retro-bowl.vercel.app/" target="_blank" rel="noopener">PLAY THE COMPUTER &#8599;</a><br>This tab keeps looking and calls you back.</p>
+                        <p class="rb-find-extra" id="rb-find-invite" hidden>Invite anyone &mdash; the first person to open this link plays you. <button type="button" id="rb-find-copy">COPY LINK</button></p>
+                        <button id="rb-find-stop" class="rb-join-btn" type="button">STOP LOOKING</button>
+                    </div>
                     <p class="rb-find-state" id="rb-find-state" aria-live="polite"></p>
-                    <p class="rb-sub">WAITING NOW</p>
-                    <ul class="rb-find-list" id="rb-find-list"></ul>
-                    <p class="rb-find-newer" id="rb-find-newer" hidden>More players are waiting on a newer version &mdash; reload the page to see them.</p>
                 </div>
                 <div class="rb-find-box">
                     <p class="rb-sub">LOBBY CHAT</p>
@@ -2110,8 +2138,11 @@
                     <p class="rb-chat-tip">Keep personal info (your school, address, phone) to yourself.</p>
                 </div>
             </div>
+            <p class="rb-find-note">The site is still growing, so you may not find someone right away. Keep this page open &mdash; it beeps when a player joins. Most players are on weekdays around midday (Central time).</p>
             <button id="rb-find-back" class="rb-join-btn" type="button">&#9664; BACK</button>
         </div>
+        <!-- V493: someone is looking for a game right now — every lobby sees it, one tap plays them -->
+        <button id="rb-lfg-banner" type="button" hidden>&#9889; <span class="lg">A PLAYER WANTS A GAME RIGHT NOW &mdash; <b>PLAY THEM</b></span><span class="sm">SOMEONE WANTS A GAME &mdash; <b>PLAY</b></span></button>
         <!-- V488: a found player — the alert -->
         <div id="rb-match" hidden role="alertdialog" aria-modal="true" aria-labelledby="rb-match-title">
             <div class="rb-match-card">
@@ -2126,7 +2157,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V492</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V493</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -20101,7 +20132,7 @@
             })();
             window._rb2p_potd = { show: show, watch: watch, loadDays: loadDays, loadComments: loadComments, fit: fit, cue: cue,
                 stage: function (rank) { var e = list[rank - 1]; if (e) stage(e); return !!e; },
-                state: function () { return { cur: cur && cur.date, rank: sel && sel.rank, n: list.length, playing: !!playing, winners: winners, wide: wide() }; } };
+                state: function () { return { cur: cur && cur.date, rank: sel && sel.rank, n: list.length, playing: !!playing, winners: winners, wide: wide(), headline: list[0] ? list[0].headline || '' : '' }; } };
         })();
 
         // ===== V475: full screen for the replay screens (the play of the day, the inbox) =====
@@ -20927,7 +20958,16 @@
         // growing and you may not find someone. Figure out the best and most easy way to group people") =====
         // rooms/~lfg — the rooms rules (any signed-in player); `audited` keeps the pre-V419 room sweep off it:
         //   q/{sid}    one player in line: {name, ts (joined the line), hb (every 20 s), v (build), u (device uid)};
-        //              onDisconnect takes it away with the tab; an entry 75 s without a heartbeat is ignored
+        //              onDisconnect takes it away with the tab; an entry 150 s without a heartbeat is ignored (V493: a
+        //              tab in the background may beat only once a minute)
+        //   log/{day}  V493: the line's record — start / match (maker, joiner: the wait) / stop / solo / invite; the Mac
+        //              publishes embedcode/lobbystats from it (the usual wait by hour) with the site's true numbers
+        // V493 (the owner's plan: "make sure players get matched up quick while not demotivating"): no list of who is in
+        // line (it was nearly always empty — matching is instant — and an empty list says "nobody plays here"). Instead:
+        // the true crowd up top (players in the last hour, games today, games being played now — never inflated), a
+        // search card (a clock, an honest estimate, after 45 s PLAY THE COMPUTER in another tab, after 2 min an open
+        // invite link — ?play=SID, the first to open it plays you), and on every lobby's entry screen a banner while
+        // someone is looking: one tap plays them.
         //   chat/{id}  the lobby chat, the last 50 shown, read only while the FIND screen is open
         // ONE line, no difficulty in it (V487, the owner: "no need to choose difficulty before game, that can be chosen
         // after they match up"): anyone in line matches anyone, and the pair picks the difficulty in the room — SAME mode
@@ -20943,62 +20983,100 @@
         var lfgQ = {}, lfgOffset = 0, lfgWaiting = false, lfgSince = 0, lfgBusy = false, lfgJoining = false, lfgRoom = null, lfgNoteUntil = 0, lfgPostedAt = 0;
         var lfgUnsubQ = null, lfgUnsubMe = null, lfgUnsubChat = null, lfgHbT = null, lfgTickT = null, lfgClaimT = null, lfgAc = null, lfgKept = false;
         var $find = document.getElementById('rb-find'), $findN = document.getElementById('rb-find-n'), $findGo = document.getElementById('rb-find-go'),
-            $findState = document.getElementById('rb-find-state'), $findList = document.getElementById('rb-find-list'), $findNewer = document.getElementById('rb-find-newer'),
+            $findState = document.getElementById('rb-find-state'), $findIdle = document.getElementById('rb-find-idle'), $findSearch = document.getElementById('rb-find-search'),
+            $findClock = document.getElementById('rb-find-clock'), $findEst = document.getElementById('rb-find-est'), $findSolo = document.getElementById('rb-find-solo'),
+            $findInvite = document.getElementById('rb-find-invite'), $findCrowd = document.getElementById('rb-find-crowd'), $findFeed = document.getElementById('rb-find-feed'),
+            $banner = document.getElementById('rb-lfg-banner'),
             $chatLog = document.getElementById('rb-chat-log'), $chatForm = document.getElementById('rb-chat-form'), $chatIn = document.getElementById('rb-chat-input');
+        var LFG_T = (function () { var t = { solo: 45, invite: 120 }; try { if (window._rb2p_lfgTimes) Object.assign(t, window._rb2p_lfgTimes); } catch (e) {} return t; })();   // test seam
+        var lfgVia = 'find', lfgStats = null, lfgStatsAt = 0, lfgQLoaded = false;
+        var lfgInvite = (function () { try { var p = new URLSearchParams(location.search).get('play'); return p && /^[a-z0-9]{6,24}$/i.test(p) ? p : ''; } catch (e) { return ''; } })();
+        if (lfgInvite) { try { var uI = new URL(location.href); uI.searchParams.delete('play'); history.replaceState(null, '', uI.pathname + uI.search + uI.hash); } catch (eI) {} }
         function lfgNow() { return Date.now() + lfgOffset; }   // the server's clock: every page compares the same times
         function lfgUid() { try { return window._rb2p_uid ? String(window._rb2p_uid() || '') : ''; } catch (e) { return ''; } }
         function lfgName(n) { var c = window._rb2p_censorName ? window._rb2p_censorName(n) : String(n || ''); return c || 'a player'; }
-        function lfgOk(e) { return !!(e && typeof e === 'object' && e.ts && Number(e.v) === lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 75000); }
+        function lfgOk(e) { return !!(e && typeof e === 'object' && e.ts && Number(e.v) === lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 150000); }
         function lfgSay(t, holdMs) { if ($findState) $findState.textContent = t || ''; lfgNoteUntil = holdMs ? Date.now() + holdMs : 0; }
         function lfgClock() { var x = Math.max(0, Math.round((lfgNow() - (lfgSince || lfgNow())) / 1000)); return Math.floor(x / 60) + ':' + ('0' + x % 60).slice(-2); }
-        function lfgAgo(ts) { var m = Math.floor((lfgNow() - Number(ts || 0)) / 60000); return m < 1 ? 'JUST NOW' : m + ' MIN'; }
+        function lfgAgo(ts) { var m = Math.floor((lfgNow() - Number(ts || 0)) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ago'; }
+        function lfgLog(k, extra) {   // V493: the line's record (writes only — nothing on the page reads it)
+            try { FB.set(FB.push(FB.ref(db, LFG + '/log/' + new Date(lfgNow()).toISOString().slice(0, 10))), Object.assign({ k: k, t: lfgNow(), v: lfgVer }, extra || {})).catch(function () {}); } catch (e) {}
+        }
+        // the site's true numbers (embedcode/lobbystats: public, a few hundred bytes, published every 10 min by the Mac)
+        function lfgLoadStats(force) {
+            if (!force && Date.now() - lfgStatsAt < 5 * 60e3) return;
+            lfgStatsAt = Date.now();
+            var src = window._rb2p_lobbyStatsSrc;   // test seam
+            (src ? Promise.resolve(src) : fetch('https://realretrobowl2p-default-rtdb.firebaseio.com/embedcode/lobbystats.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }))
+              .then(function (st) { if (st && typeof st === 'object') { lfgStats = st; lfgCrowd(); lfgEst(); } }).catch(function () {});
+        }
+        function lfgCtHour() { try { return Number(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false })) % 24; } catch (e) { return new Date().getHours(); } }
+        function lfgCrowd() {   // only what is true and fresh: a number older than 30 minutes is not shown
+            var st = lfgStats, fresh = !!(st && lfgNow() - Number(st.at || 0) < 30 * 60e3), parts = [], items = [];
+            if (fresh && st.lastHour > 0) parts.push('<b>' + Number(st.lastHour) + '</b> player' + (st.lastHour === 1 ? '' : 's') + ' in the last hour');
+            if (fresh && st.today && st.today.games > 0) parts.push('<b>' + Number(st.today.games) + '</b> game' + (st.today.games === 1 ? '' : 's') + ' today');
+            if ($findCrowd) { $findCrowd.innerHTML = parts.join(' &middot; '); $findCrowd.hidden = !parts.length; }
+            if (fresh && st.playingNow > 0) items.push(st.playingNow + (st.playingNow === 1 ? ' game is' : ' games are') + ' being played right now');
+            if (st && st.lobby && st.lobby.lastMatchAt && lfgNow() - st.lobby.lastMatchAt < 6 * 3600e3) items.push('last match made here ' + lfgAgo(st.lobby.lastMatchAt));
+            try { var hp = window._rb2p_potd && window._rb2p_potd.state().headline; if (hp) items.push('#1 play of the day: ' + (window._rb2p_censor ? window._rb2p_censor(hp) : hp)); } catch (eP) {}
+            if ($findFeed) { $findFeed.textContent = ''; items.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; $findFeed.appendChild(li); }); $findFeed.hidden = !items.length; }
+        }
+        function lfgEst() {   // the search card's honest word on the wait
+            if (!$findEst) return;
+            var st = lfgStats, w = st && st.waitByHour ? st.waitByHour[lfgCtHour()] : null, fresh = !!(st && lfgNow() - Number(st.at || 0) < 30 * 60e3), t;
+            if (w != null) t = 'Usually about ' + (w < 90 ? '1 minute' : Math.round(w / 60) + ' minutes') + ' at this hour.';
+            else if (fresh && st.lastHour >= 8) t = 'Busy right now — ' + st.lastHour + ' players in the last hour.';
+            else if (fresh) t = 'Quiet right now — the busiest time is weekdays 9–11 am. Keep this tab open: it beeps and notifies you when a player joins.';
+            else t = 'Keep this tab open: it beeps and notifies you when a player joins.';
+            if ($findEst.textContent !== t) $findEst.textContent = t;
+        }
+        // someone else is looking: every lobby's entry screen says so, and one tap plays them
+        function lfgBanner() {
+            if (!$banner) return;
+            var others = lfgLine().filter(function (k) { return !lfgMine(k); });
+            var show = !lfgWaiting && !lfgBusy && !lfgJoining && !myRoom && others.length > 0;
+            if ($banner.hidden === show) $banner.hidden = !show;
+            $banner.dataset.sid = show ? others[0] : '';
+            var wm = document.querySelector('#rb-lobby .rb-screen[data-view="entry"] .rb-wordmark'), cover = false;   // the title steps aside under it
+            if (wm && show) { var a = $banner.getBoundingClientRect(), b = wm.getBoundingClientRect(); cover = a.width > 0 && !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top); }
+            if (wm && wm.style.visibility !== (cover ? 'hidden' : '')) wm.style.visibility = cover ? 'hidden' : '';
+        }
+        function lfgTryInvite() {   // ?play=SID — the first to open the link plays that player
+            if (!lfgInvite || !rb2pName() || myRoom || lfgBusy || lfgJoining || !lfgQLoaded) return;
+            var k = lfgInvite, e = lfgQ[k]; lfgInvite = '';
+            if (k !== lfgSid && lfgOk(e) && !e.m) { lfgVia = 'invite'; lfgClaim(k); }
+            else { showView('find'); lfgSay('That player already found a game — tap FIND A GAME to play someone else.', 10000); }
+        }
         function lfgLine() {   // who is in line (fresh, this build, not being matched), first come first
             return Object.keys(lfgQ).filter(function (k) { return lfgOk(lfgQ[k]) && !lfgQ[k].m; })
                 .sort(function (x, y) { return (Number(lfgQ[x].ts) - Number(lfgQ[y].ts)) || (x < y ? -1 : 1); });
         }
         function lfgMine(k) { var u = lfgUid(); return k === lfgSid || !!(u && lfgQ[k] && lfgQ[k].u === u); }   // this tab, or another tab of this device
         // the button, the clock, the ages — every second
-        function lfgTick() {
-            var others = lfgLine().filter(function (k) { return !lfgMine(k); }).length;
-            if ($findN) $findN.textContent = lfgWaiting ? 'LOOKING ' + lfgClock() : (others ? others + ' WAITING' : '');
-            if ($find) $find.classList.toggle('live', !lfgWaiting && others > 0);
-            if ($findGo) { $findGo.textContent = lfgWaiting ? 'STOP LOOKING' : 'FIND A GAME'; $findGo.classList.toggle('on', lfgWaiting); }
-            if (lfgWaiting && !lfgBusy && !lfgJoining && Date.now() > lfgNoteUntil) {
-                var e = lfgQ[lfgSid];
-                if (!(e && e.m)) lfgSay('Looking for a player… ' + lfgClock() + (others ? '' : ' — nobody else is in line yet.'));
+        function lfgTick() {   // every second: the button, the search card, the banner, an open invite
+            if ($findN) $findN.textContent = lfgWaiting ? 'LOOKING ' + lfgClock() : '';   // V493: no count — the banner tells
+            if ($find) $find.classList.remove('live');
+            if ($findIdle && $findIdle.hidden !== lfgWaiting) $findIdle.hidden = lfgWaiting;
+            if ($findSearch && $findSearch.hidden === lfgWaiting) $findSearch.hidden = !lfgWaiting;
+            if (lfgWaiting) {
+                var waited = lfgSince ? (lfgNow() - lfgSince) / 1000 : 0;
+                if ($findClock) $findClock.textContent = lfgClock();
+                if ($findSolo) $findSolo.hidden = waited < LFG_T.solo;
+                if ($findInvite) $findInvite.hidden = waited < LFG_T.invite;
+                lfgEst();
             }
-            if ($findList) Array.prototype.forEach.call($findList.querySelectorAll('.ago[data-ts]'), function (a) { a.textContent = lfgAgo(a.dataset.ts); });
+            if (lfgWaiting && !lfgBusy && !lfgJoining && Date.now() > lfgNoteUntil) { var e = lfgQ[lfgSid]; if (!(e && e.m) && $findState && $findState.textContent) lfgSay('', 0); }
+            lfgBanner(); lfgTryInvite();
+            if (lobby.dataset.active === 'find') lfgLoadStats();
         }
-        // the list — rebuilt only when the line changes (a button rebuilt under a finger loses the tap)
-        function lfgList() {
-            lfgTick();
-            if ($findNewer) $findNewer.hidden = !Object.keys(lfgQ).some(function (k) { var e = lfgQ[k]; return e && Number(e.v) > lfgVer && lfgNow() - Number(e.hb || e.ts || 0) < 75000; });
-            if (!$findList) return;
-            var keys = lfgLine();
-            $findList.textContent = '';
-            if (!keys.length) { var n0 = document.createElement('li'); n0.className = 'none'; n0.textContent = 'Nobody yet. Tap FIND A GAME and you are first in line.'; $findList.appendChild(n0); return; }
-            keys.forEach(function (k) {
-                var e = lfgQ[k], li = document.createElement('li'), mine = lfgMine(k);
-                if (k === lfgSid) li.className = 'me';
-                var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = k === lfgSid ? 'YOU' : lfgName(e.name);
-                var ago = document.createElement('span'); ago.className = 'ago'; ago.dataset.ts = String(e.ts); ago.textContent = lfgAgo(e.ts);
-                li.appendChild(nm); li.appendChild(ago);
-                if (!mine) {
-                    var b = document.createElement('button'); b.type = 'button'; b.textContent = 'PLAY'; b.dataset.sid = k;
-                    b.title = 'Play ' + lfgName(e.name);
-                    b.addEventListener('click', function () { lfgUnlock(); lfgAskNotify(); lfgClaim(k); });
-                    li.appendChild(b);
-                }
-                $findList.appendChild(li);
-            });
-        }
+        function lfgList() { lfgTick(); }   // V493: no list of who is in line any more (a black box)
         // the line, watched while the lobby's entry or FIND screen is up (and while this page is in line)
         function lfgWatch(on) {
             if (on && !lfgUnsubQ) {
-                lfgUnsubQ = FB.onValue(FB.ref(db, LFG + '/q'), function (sn) { lfgQ = sn.val() || {}; lfgList(); lfgScan(); }, function () {});
+                lfgUnsubQ = FB.onValue(FB.ref(db, LFG + '/q'), function (sn) { lfgQ = sn.val() || {}; lfgQLoaded = true; lfgList(); lfgScan(); }, function () {});
                 if (!lfgTickT) lfgTickT = setInterval(lfgTick, 1000);
             } else if (!on && lfgUnsubQ && !lfgWaiting) {
-                lfgUnsubQ(); lfgUnsubQ = null; lfgQ = {};
+                lfgUnsubQ(); lfgUnsubQ = null; lfgQ = {}; lfgQLoaded = false;
                 if (lfgTickT) { clearInterval(lfgTickT); lfgTickT = null; }
             }
         }
@@ -21012,6 +21090,7 @@
         function lfgStart() {
             if (!rb2pName()) { showNameGate(); return; }
             if (myRoom) return;
+            if (!lfgSince) lfgLog('start', { via: lfgVia });
             lfgWaiting = true; lfgSince = lfgSince || lfgNow();
             lfgWatch(true); lfgPost(); lfgMeWatch(true);
             if (!lfgHbT) lfgHbT = setInterval(function () {
@@ -21065,8 +21144,8 @@
         async function lfgClaim(k) {
             if (lfgBusy || lfgJoining || myRoom) return;
             if (!rb2pName()) { showNameGate(); return; }
-            var wasWaiting = lfgWaiting, restart = false;
-            lfgBusy = true;
+            var wasWaiting = lfgWaiting, restart = false, since0 = lfgSince, via0 = wasWaiting ? 'find' : lfgVia;
+            lfgBusy = true; lfgVia = 'find';
             try {
                 if (wasWaiting) {   // out of line first — unless someone has just claimed ME (then that match goes ahead)
                     var out = await FB.runTransaction(FB.ref(db, LFG + '/q/' + lfgSid), function (cur) { if (cur && cur.m) return; return null; });
@@ -21102,6 +21181,7 @@
                 enterRoom(code, 'a', false);
                 FB.set(FB.ref(db, LFG + '/q/' + k + '/m/code'), code).catch(function () {});
                 lfgMatched(got.name);
+                lfgLog('match', { role: 'maker', via: via0, w: wasWaiting && since0 ? lfgNow() - since0 : 0 }); lfgSince = 0;
                 setTimeout(function () { lfgNoShow(code); }, 45000);
             } catch (e) {
                 lfgSay('Connection error: ' + (e && e.message || e), 6000);
@@ -21115,6 +21195,7 @@
             if (lfgJoining) return;
             lfgJoining = true;
             lfgRoom = { code: code, name: name, at: Date.now() };
+            var since0 = lfgSince;
             lfgStop(true);
             lfgSay('Found ' + lfgName(name) + ' — joining…', 20000);
             try {
@@ -21123,6 +21204,7 @@
                 lfgJoining = false;
                 enterRoom(code, role, false);   // the JOIN path; the room's SAME mode and difficulty come with it
                 lfgMatched(name);
+                lfgLog('match', { role: 'joiner', w: since0 ? lfgNow() - since0 : 0 }); lfgSince = 0;
             } catch (e) {
                 lfgRoom = null; lfgJoining = false; if (!myRoom) lfgStart(); lfgSay('Connection error — still looking.', 6000);
             } finally { lfgJoining = false; }
@@ -21295,7 +21377,7 @@
         }
         function lfgView(name) {
             if (!lfgReady) return;
-            if (name === 'find') { lfgWatch(true); lfgChat(true); lfgKeep(); lfgList(); setTimeout(function () { if ($chatLog) $chatLog.scrollTop = $chatLog.scrollHeight; }, 50); }
+            if (name === 'find') { lfgWatch(true); lfgChat(true); lfgKeep(); lfgList(); lfgLoadStats(); lfgCrowd(); setTimeout(function () { if ($chatLog) $chatLog.scrollTop = $chatLog.scrollHeight; }, 50); }
             else if (name === 'entry') { lfgWatch(true); lfgChat(false); lfgTick(); }
             else if (name === 'room') { if (lfgWaiting) lfgStop(); lfgChat(false); lfgWatch(false); lfgRoomChat(myRoom); }
             else if (name === 'game') { lfgChat(false); lfgWatch(false); lfgRoomChat(myRoom); lfgGcSeen = lfgGcLast; }   // the side chat
@@ -21323,9 +21405,27 @@
         (function () { var bk = document.getElementById('rb-find-back'); if (bk) bk.addEventListener('click', function () { showView('entry'); }); })();   // your place in line is kept
         if ($findGo) $findGo.addEventListener('click', function () {
             lfgUnlock(); lfgAskNotify();
-            if (lfgWaiting) { lfgStop(); lfgSay('Stopped looking.', 3000); }
-            else { lfgSince = 0; lfgSay('', 0); lfgStart(); }
+            if (lfgWaiting) return;
+            lfgSince = 0; lfgSay('', 0); lfgVia = 'find'; lfgStart(); lfgTick();
         });
+        (function () {
+            var stop = document.getElementById('rb-find-stop'), solo = document.getElementById('rb-find-solo-link'), copy = document.getElementById('rb-find-copy');
+            if (stop) stop.addEventListener('click', function () {
+                if (!lfgWaiting) return;
+                lfgLog('stop', { w: lfgSince ? lfgNow() - lfgSince : 0 }); lfgStop(); lfgSay('Stopped looking.', 3000); lfgTick();
+            });
+            if (solo) solo.addEventListener('click', function () { lfgLog('solo', { w: lfgSince ? lfgNow() - lfgSince : 0 }); });   // the search goes on in this tab
+            if (copy) copy.addEventListener('click', function () {
+                var link = location.origin + location.pathname + '?play=' + lfgSid;
+                lfgLog('invite', { w: lfgSince ? lfgNow() - lfgSince : 0 });
+                try { navigator.clipboard.writeText(link).then(function () { copy.textContent = 'LINK COPIED'; }, function () { copy.textContent = link; }); } catch (eC) { copy.textContent = link; }
+            });
+            if ($banner) $banner.addEventListener('click', function () {
+                var k = $banner.dataset.sid; if (!k) return;
+                if (!rb2pName()) { showNameGate(); return; }
+                lfgUnlock(); lfgAskNotify(); lfgVia = 'banner'; $banner.hidden = true; lfgClaim(k);
+            });
+        })();
         try { FB.onValue(FB.ref(db, '.info/serverTimeOffset'), function (sn) { lfgOffset = Number(sn.val()) || 0; }); } catch (eOff) {}
         window._rb2p_lfg = { root: LFG, sid: lfgSid, view: function (n) { lfgView(n); }, state: function () { return { waiting: lfgWaiting, busy: lfgBusy, joining: lfgJoining, room: lfgRoom, q: lfgQ, ver: lfgVer }; } };
         lfgReady = true;

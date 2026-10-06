@@ -206,6 +206,40 @@ async function weekly() {
     return { thisWeek, lastWeek, weekdays: days.map(d => localDay(d.getTime())), doors, warnings, last14 };
 }
 
+// V493 (the owner's lobby plan: "show the real crowd" — true numbers, never inflated): embedcode/lobbystats, public and a
+// few hundred bytes, read by a lobby when FIND A PLAYER opens — players in the last hour and today (the visits read above),
+// games today (the audit archives, via weekly()), games being played right now (quiet.js's list: rooms with real play in
+// the last minutes), and the line's own record (rooms/~lfg/log, written by the pages): searches and matches today, the
+// last match, and the usual wait by hour of the day (the median of the matched waits of the last 14 days, once an hour has 3)
+async function lobbyStats(visitDays, wk) {
+    const now = Date.now(), today = localDay(now), hourAgo = now - 3600e3;
+    const lastHour = new Set(), todaySet = new Set();
+    for (const v of Object.values(visitDays || {})) for (const k in v) {
+        const r = v[k]; if (!r || !r.ts || isTest(r) || r.src === 'solo') continue;
+        const id = r.uid || k;
+        if (r.ts >= hourAgo) lastHour.add(id);
+        if (localDay(r.ts) === today) todaySet.add(id);
+    }
+    const t14 = ((wk && wk.last14) || []).find(x => x.day === today);
+    let playingNow = 0;
+    try {
+        const q = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'freeze-watch', 'quiet.js')], { encoding: 'utf8', timeout: 90000 });
+        const line = String(q.stdout || '').trim().split('\n').pop() || '';
+        if (/^LIVE/.test(line)) playingNow = (line.match(/\b[A-Z]{4}\b(?= \()/g) || []).length;
+    } catch (e) {}
+    const rd = await dayReader(), logs = [];
+    for (let i = 13; i >= 0; i--) { const k = new Date(now - i * 86400e3).toISOString().slice(0, 10); const v = await rd.day('rooms/~lfg/log', k); for (const x of Object.values(v || {})) if (x && x.t) logs.push(x); }
+    const ctHour = ms => Number(new Date(ms).toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false })) % 24;
+    const matches = logs.filter(x => x.k === 'match' && x.role === 'maker'), waited = logs.filter(x => x.k === 'match' && x.role === 'joiner' && x.w >= 0);
+    const byHour = {}; for (const x of waited) (byHour[ctHour(x.t)] = byHour[ctHour(x.t)] || []).push(x.w);
+    const waitByHour = {}; for (const [h, ws] of Object.entries(byHour)) if (ws.length >= 3) { ws.sort((p, q) => p - q); waitByHour[h] = Math.round(ws[Math.floor(ws.length / 2)] / 1000); }
+    const isToday = x => localDay(x.t) === today;
+    return { at: now, lastHour: lastHour.size, today: { players: todaySet.size, games: t14 ? t14.games : 0 }, playingNow,
+             lobby: { searchesToday: logs.filter(x => x.k === 'start' && isToday(x)).length, matchesToday: matches.filter(isToday).length,
+                      lastMatchAt: matches.length ? Math.max(...matches.map(x => x.t)) : 0 },
+             waitByHour, busiest: 'weekdays 9-11 am' };
+}
+
 (async () => {
     const a = fromArchives();
     const d = await fromDb();
@@ -226,10 +260,12 @@ async function weekly() {
         notes: 'two-player games and hours from the audit archives (recorded games since 2026-09-02, idle gaps over 5 min excluded); visits/devices since the visit beacon (2026-09-14); solo since 2026-09-21' };
     console.log(JSON.stringify(stats, null, 1).slice(0, 6000));
     console.log('device profiles: ' + (devs ? devs.summary.devices + ' devices, ' + devs.summary.played + ' played a two-player game, ' + devs.summary.newToday + ' new today' : 'none'));
+    let lobby = null; try { lobby = await lobbyStats(d.visitDays, stats.weekly); console.log('lobby stats: ' + JSON.stringify(lobby)); } catch (e) { console.error('lobby stats: ' + (e && e.message)); }
     if (dry) return;
     const tok = await ownerToken();
     const r = await fetch(DB + 'stats/alltime.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify(stats) });
     console.log('published stats/alltime: ' + r.status);
+    if (lobby) { const rl = await fetch(DB + 'embedcode/lobbystats.json?access_token=' + tok, { method: 'PUT', body: JSON.stringify(lobby) }); console.log('published embedcode/lobbystats: ' + rl.status); }   // V493
     if (devs) {
         // V444: the Devices tab's list (one card per device: its first username, kind, games, W-L, last seen) and, apart,
         // every device's full profile (usernames, games, reports) — read one at a time when a card is opened. Each is
