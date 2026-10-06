@@ -1835,3 +1835,24 @@ each day into a viewable section".
   Firebase fallback between them (their direct link is unaffected) — it lasts until they reload.
 - Tests: opp-view 7/7 (W6: the frames on the spare database, nothing at rooms/{code}/view). Effect to read in
   .rb2p/fb-watch.log's hourly downloads tomorrow at school hours (was 300-527 MB/h).
+
+## V497 (2026-10-06): the opponent's screen over a relay when no direct path opens; Firebase's fallback at its real 5 a second
+- The owner: "The offense mirroring is REALLY slow, maybe 3 fps, fix".
+- **Measured (the audit archive's VIEW diag lines):** the direct link opened in 57 of 68 games on Sunday 10-04 (84%), 83 of
+  194 on Monday (43%), 70 of 233 today (30%) — school networks block the direct path. Every other game ran on the Firebase
+  fallback at 2.9-3.0 frames a second (every V495 game's VIEW stats; the owner's AFUW and NMTG on V496 too).
+- **Why 3 and not 5-6:** the fallback captured every 166 ms but its send gate wanted 190 ms since the last write, so every
+  other capture was dropped (one frame per 332 ms). Now a capture every 200 ms and a 150 ms gate: 5 a second. About 2 KB a
+  frame on the spare database (2.7 MB for ~650 frames since V496) — 5 a second fits its free 10 GB at today's use.
+- **The relay:** `api/turn.js` (a Vercel function) mints Cloudflare TURN credentials with the mac-remote key
+  (CF_TURN_KEY_ID / CF_TURN_API_TOKEN: sensitive production env on the Vercel project, never in the repo), 24 h each; the CDN
+  keeps one answer an hour. The page fetches it once a session (sessionStorage), the signalling waits for it (4 s at most,
+  then STUN only), and each RTCPeerConnection gets STUN + Cloudflare's TURN (udp 3478/443, tcp 3478/80, tls 5349/443; port 53
+  filtered). A direct path still wins where one opens. The diag line says which path: `direct link open (<nid>, relay tcp to
+  srflx)`. Cloudflare's free 1,000 GB a month covers it with room (est. 15-30 GB a month for the game).
+- Also: B keeps ICE candidates that arrive before its answer begins (they were dropped), and "answer failed" is no longer
+  logged when a newer offer replaced the answer (AAJM, AYIP, QXGS, RSSD, GHOP had it).
+- Seams: `_rb2p_relayUrl`, `_rb2p_viewNoRelay`, `_rb2p_viewRelayOnly` (iceTransportPolicy relay), `_rb2p_viewPath`.
+- Tests: opp-view 8/8 — W3 direct 50.5 frames a second, W6 Firebase 4+ a second (was 3), W8 relay-only (no direct path at
+  all): the screen over Cloudflare's relay, 15+ a second. To read on devices tomorrow at school: the share of games whose
+  diag says `direct link open (…relay…)`, and VIEW stats `p2p` vs `fb`.

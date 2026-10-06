@@ -16,7 +16,9 @@
 //   W5  when the waiting phone gets the ball (a turnover on downs), the opponent's screen goes away within 20 s
 //   W6  no direct link (a school network that blocks it): Firebase carries it — the screen still shows, under 15 KB/s,
 //       and the database keeps one record per role; V496: on the spare database (retrobowl-2p, view/{code}), nothing
-//       of it on the game's own (rooms/{code}/view)
+//       of it on the game's own (rooms/{code}/view); V497: 4+ frames a second (it was 3 — a send gate dropped every other one)
+//   W8  (V497) no direct path at all (relay-only, as a school network leaves it): Cloudflare's relay carries the link —
+//       the screen shows over it, the path is a relay, 15+ frames a second through a real down
 const L = require('./horn-lib');
 const TP = L.TP, sleep = L.sleep;
 let pass = 0, fail = 0, setup = '';
@@ -147,15 +149,33 @@ async function firebaseGame() {
         const onMain = await TP.fbGet('rooms/' + g.code + '/view');
         const keys = node ? Object.keys(node) : [];
         const recs = keys.every(k => node[k] && typeof node[k] === 'object' && !Array.isArray(node[k]) && Object.keys(node[k]).every(f => typeof node[k][f] !== 'object'));
-        check('W6 no direct link: Firebase carries the opponent\'s screen, under 15 KB/s, one record per role',
-              w.ms !== null && bps < 15360 && b1.net === 'fb' && keys.length >= 1 && keys.length <= 4 && recs && !onMain,
-              JSON.stringify({ shownAfterMs: w.ms, bps, net: b1.net, viewKeys: keys, onMain: onMain ? Object.keys(onMain) : null, sent: b1.snd.sent - b0.snd.sent }));
+        const fps = (b1.snd.sent - b0.snd.sent) / secs;
+        check('W6 no direct link: Firebase carries the opponent\'s screen, 4+ frames a second, under 15 KB/s, one record per role',
+              w.ms !== null && fps >= 4 && bps < 15360 && b1.net === 'fb' && keys.length >= 1 && keys.length <= 4 && recs && !onMain,
+              JSON.stringify({ shownAfterMs: w.ms, fps: +fps.toFixed(1), bps, net: b1.net, viewKeys: keys, onMain: onMain ? Object.keys(onMain) : null, sent: b1.snd.sent - b0.snd.sent }));
+    } finally { await g.cleanup(); }
+}
+
+async function relayGame() {
+    const g = await TP.startTwoPlayerGame({ beforeReady: async (page) => { await page.evaluate(u => { window._rb2p_viewRelayOnly = true; if (u) window._rb2p_relayUrl = u; }, process.env.RELAY_URL || ''); } });   // RELAY_URL: a local api/turn.js
+    try {
+        await sleep(6000);
+        const o = await L.offense(g, 40000); if (!o.ok) { setup = setup || 'nobody has the ball (relay game)'; return; }
+        const OFF = o.off, DEF = OFF === g.a ? g.b : g.a;
+        const w = await L.until(async () => ({ ok: await shown(DEF.page) && (await vstats(DEF.page)).rcv.mode === 'p2p' }), 30000, 500);
+        const path = await DEF.page.evaluate(() => window._rb2p_viewPath || null);
+        const s0 = await vstats(OFF.page), t0 = Date.now();
+        await L.realDown(OFF.page, { straight: true });
+        await sleep(1000);
+        const s1 = await vstats(OFF.page), secs = (Date.now() - t0) / 1000, fps = (s1.snd.sent - s0.snd.sent) / secs;
+        check('W8 no direct path: the relay carries the link — the screen shows over it, 15+ frames a second',
+              w.ms !== null && /relay/.test(path || '') && fps >= 15, JSON.stringify({ shownAfterMs: w.ms, path, fps: +fps.toFixed(1), net: s1.net }));
     } finally { await g.cleanup(); }
 }
 
 (async () => {
     console.log('=== V450 THE OPPONENT\'S SCREEN ON THE WAIT SCREEN ===');
-    try { await directGame(); await firebaseGame(); }
+    try { await directGame(); await firebaseGame(); await relayGame(); }
     catch (e) { fail++; console.log('  FAIL  ' + (e && e.stack || e)); }
     finally {
         if (setup) console.log('  SETUP ' + setup + ' — inconclusive');

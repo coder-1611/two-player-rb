@@ -2008,7 +2008,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V496<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V497<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2174,7 +2174,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V496</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V497</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15862,7 +15862,9 @@
     // with no blending (V478) the viewer sees exactly the frames that arrive, so the direct link sends EVERY frame the game
     // draws (60 a second, the game's own rate; was 30, and 15-20 on a slow phone) — encoded after the paint, so the
     // sender's game is untouched. Firebase (the fallback) stays about 5 a second (the free plan's downloads).
-    function capInterval() { return NET && NET.mode() === 'fb' ? 166 : 16; }
+    // V497: Firebase's frames every 200 ms — 5 a second, the rate it was meant to have (its send gate dropped every other
+    // 166 ms capture: 3 a second); the spare database's free downloads hold 5 (about 2 KB a frame)
+    function capInterval() { return NET && NET.mode() === 'fb' ? 200 : 16; }
     // the per-frame encoding (the link's delta + the recorder's) runs in the task after the paint: the engine's frame
     // presents first; the encode fills the idle time before the next one
     var AP = { q: [], ch: null };
@@ -21537,6 +21539,47 @@
             var theirFbWantAt = 0, fbInFlight = 0, lastFbSend = 0, lastFbWant = 0, pendingAck = 0;
             var ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
             function diag(m) { try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW ' + m); } catch (e) {} }
+            // V497 (the owner: "The offense mirroring is REALLY slow, maybe 3 fps, fix"): school networks block the direct
+            // path (the link opened in 30-43% of school-day games, 84% at the weekend) and the rest got Firebase's 3 frames a
+            // second. A relay now carries the same link when no direct path opens — Cloudflare's TURN, its credentials from
+            // the game's own endpoint (api/turn.js, 24 h each, kept for the tab's session). The phones still try a direct path
+            // first. The signalling waits for the relay list (4 s at most, then STUN only as before) so the first offer has it.
+            var relayList = [], relayP = null, early = {};
+            function relayIce() {
+                if (relayP) return relayP;
+                var p = relayP = new Promise(function (resolve) {
+                    if (window._rb2p_viewNoRelay) return resolve();
+                    try { var c = JSON.parse(sessionStorage.getItem('rb2p_relay') || 'null'); if (c && c.ice && c.ice.length && c.exp - Date.now() > 3 * 3600e3) { relayList = c.ice; return resolve(); } } catch (e) {}
+                    function again() { if (relayP === p) relayP = null; }   // a failed fetch is tried again by the next offer
+                    setTimeout(function () { if (!relayList.length) { diag('no relay yet (4 s) — direct path only'); again(); } resolve(); }, 4000);
+                    fetch(window._rb2p_relayUrl || 'https://two-player-rb.vercel.app/api/turn', { cache: 'no-store' })
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (j) {
+                            var ice = [];
+                            ((j && j.iceServers) || []).forEach(function (s) {
+                                var urls = [].concat(s.urls || []).filter(function (u) { return /^turns?:/.test(u) && !/:53\b/.test(u); });   // port 53: browsers refuse it
+                                if (urls.length && s.username) ice.push({ urls: urls, username: s.username, credential: s.credential });
+                            });
+                            if (ice.length) { relayList = ice; try { sessionStorage.setItem('rb2p_relay', JSON.stringify({ ice: ice, exp: j.exp })); } catch (e) {} }
+                            else { diag('no relay (' + (j ? 'empty answer' : 'no answer') + ')'); again(); }
+                            resolve();
+                        }, function () { diag('no relay (unreachable)'); again(); resolve(); });
+                });
+                return p;
+            }
+            // which path the link took — direct (host / srflx) or the relay, and over what — in the diag log and for the tests
+            function linkPath() {
+                var tag = nid || answeredNid, myPc = pc;
+                function say(k) { window._rb2p_viewPath = k; diag('direct link open (' + tag + ', ' + k + ')'); }
+                if (!myPc || !myPc.getStats) return say('?');
+                myPc.getStats().then(function (rep) {
+                    var pair = null;
+                    rep.forEach(function (s) { if (s.type === 'transport' && s.selectedCandidatePairId) pair = rep.get(s.selectedCandidatePairId); });
+                    if (!pair) rep.forEach(function (s) { if (!pair && s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s; });
+                    var l = pair && rep.get(pair.localCandidateId), r = pair && rep.get(pair.remoteCandidateId);
+                    say(l ? l.candidateType + (l.relayProtocol ? ' ' + l.relayProtocol : '') + ' to ' + (r ? r.candidateType : '?') : '?');
+                }, function () { say('?'); });
+            }
             function p2pUp() { return !!(dc && dc.readyState === 'open' && performance.now() - lastPong < 4000); }
             function vu(n) { var o = []; while (n >= 128) { o.push((n % 128) | 128); n = Math.floor(n / 128); } o.push(n); return o; }
             function rvu(u8, i) { var v = 0, m = 1, c; do { c = u8[i++]; v += (c & 127) * m; m *= 128; } while (c & 128); return v; }
@@ -21551,7 +21594,7 @@
                     case 2: V.onAck(rvu(u8, 1)); break;
                     case 3: V.onWant(u8[1] | 0); break;
                     case 4: { var r = new Uint8Array(u8); r[0] = 5; dcSend(r); break; }
-                    case 5: lastPong = performance.now(); if (!upSaid) { upSaid = true; diag('direct link open (' + nid + ')'); } break;
+                    case 5: lastPong = performance.now(); if (!upSaid) { upSaid = true; linkPath(); } break;
                 }
             }
             setInterval(function () {
@@ -21564,7 +21607,7 @@
             }
             function newPc() {
                 closePc();
-                pc = new RTCPeerConnection({ iceServers: ICE });
+                pc = new RTCPeerConnection({ iceServers: ICE.concat(relayList), iceTransportPolicy: window._rb2p_viewRelayOnly ? 'relay' : 'all' });
                 dc = pc.createDataChannel('view', { negotiated: true, id: 3, ordered: false, maxRetransmits: 0 });
                 dc.binaryType = 'arraybuffer';
                 dc.onmessage = onDc;
@@ -21590,6 +21633,7 @@
             async function offer() {
                 if (!hasRTC || me !== 'a') return;
                 try {
+                    if (!relayList.length) await relayIce();   // V497: a retry fetches the relay list again if it failed
                     newPc();
                     nid = sid + '.' + (++tries);
                     var myPc = pc;
@@ -21602,18 +21646,20 @@
             }
             async function answer(v) {
                 if (!hasRTC) return;
+                var myPc = null;
                 try {
                     newPc();
                     answeredNid = v.n;
-                    var myPc = pc;
+                    myPc = pc;
+                    var q = early[v.n]; early = {}; if (q) pendingIce = q;   // V497: its candidates that came first
                     await FB.remove(FB.ref(db, root + '/rtc/cb')).catch(function () {});
                     await myPc.setRemoteDescription({ type: 'offer', sdp: v.sdp }); remoteSet = true; flushIce();
                     var a = await myPc.createAnswer(); await myPc.setLocalDescription(a);
                     if (myPc !== pc) return;
                     await FB.set(FB.ref(db, root + '/rtc/b'), { sid: sid, n: v.n, ans: myPc.localDescription.sdp, ts: Date.now() });
-                } catch (e) { diag('answer failed: ' + String(e && e.message || e).slice(0, 60)); }
+                } catch (e) { if (myPc === pc) diag('answer failed: ' + String(e && e.message || e).slice(0, 60)); }   // V497: not when a newer offer replaced it
             }
-            if (hasRTC) {
+            if (hasRTC) relayIce().then(function () {   // V497: the relay list first (4 s at most)
                 if (me === 'b') FB.set(FB.ref(db, root + '/rtc/b'), { sid: sid, hello: 1, ts: Date.now() }).catch(function () {});
                 FB.onValue(FB.ref(db, root + '/rtc/' + other), function (snap) {
                     var v = snap.val(); if (!v) return;
@@ -21624,12 +21670,16 @@
                     }
                 });
                 FB.onChildAdded(FB.ref(db, root + '/rtc/c' + other), function (snap) {
-                    var v = snap.val(); if (!v || !pc) return;
-                    var want = me === 'a' ? nid : answeredNid; if (v.n !== want) return;
+                    var v = snap.val(); if (!v) return;
                     var c; try { c = JSON.parse(v.c); } catch (e) { return; }
+                    var want = me === 'a' ? nid : answeredNid;
+                    if (!pc || v.n !== want) {   // V497: B keeps a candidate that came before its answer began (it was dropped)
+                        if (me === 'b' && v.n && v.n !== answeredNid) { var q = early[v.n] || (early[v.n] = []); if (q.length < 50) q.push(c); }
+                        return;
+                    }
                     if (remoteSet) { try { pc.addIceCandidate(c).catch(function () {}); } catch (e) {} } else pendingIce.push(c);
                 });
-            }
+            });
             // ---- the Firebase path (V496: on the spare database; each record goes with this tab)
             var vdb = viewDb(), vroot = vdb === db ? root + '/view' : 'view/' + myRoom;
             try { FB.onDisconnect(FB.ref(vdb, vroot + '/' + me)).remove(); FB.onDisconnect(FB.ref(vdb, vroot + '/w' + me)).remove(); } catch (eOD) {}
@@ -21658,13 +21708,14 @@
                 mode: function () { return p2pUp() ? 'p2p' : (Date.now() - theirFbWantAt < 3500 ? 'fb' : null); },
                 canSend: function (queued) {
                     if (p2pUp()) return !dc || dc.bufferedAmount < 131072;
-                    return Date.now() - theirFbWantAt < 3500 && fbInFlight + (queued | 0) < 2 && Date.now() - lastFbSend >= 190;
+                    return Date.now() - theirFbWantAt < 3500 && fbInFlight + (queued | 0) < 2 && Date.now() - lastFbSend >= 150;
                 },
                 send: function (bytes) {
                     if (p2pUp()) { var u = new Uint8Array(bytes.length + 1); u[0] = 1; u.set(bytes, 1); return dcSend(u); }
-                    // two writes in flight at most (one connection, applied in order); about 5 a second
+                    // two writes in flight at most (one connection, applied in order); 5 a second (V497: the gate was 190 ms
+                    // against a capture every 166 ms, so every other frame was dropped — 3 a second in every school game)
                     if (Date.now() - theirFbWantAt >= 3500 || fbInFlight >= 2) return false;
-                    var now = Date.now(); if (now - lastFbSend < 190) return false;
+                    var now = Date.now(); if (now - lastFbSend < 150) return false;
                     if (bytes.length > 60000) return false;
                     fbInFlight++; lastFbSend = now;
                     FB.set(FB.ref(vdb, vroot + '/' + me), { d: b64(bytes), t: now }).then(function () { fbInFlight--; }, function () { fbInFlight--; });
