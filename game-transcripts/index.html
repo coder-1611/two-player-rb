@@ -65,6 +65,9 @@
   .pill.flag  { color:var(--red);   border-color:color-mix(in srgb,var(--red) 45%,transparent); }
   .pill.wait  { color:var(--amber); border-color:color-mix(in srgb,var(--amber) 45%,transparent); }
   .pill.live  { color:var(--blue);  border-color:color-mix(in srgb,var(--blue) 45%,transparent); }
+  /* V490 (the owner: "in game transcripts highlight lobby games"): a game FIND A PLAYER made (rooms/{code}/lfg) */
+  .pill.lobby { color:var(--green); border-color:color-mix(in srgb,var(--green) 55%,transparent); background:color-mix(in srgb,var(--green) 14%,transparent); }
+  .card.lobby { border-color:color-mix(in srgb,var(--green) 55%,var(--line)); box-shadow:inset 4px 0 0 var(--green); }
   button, .btn { font:inherit; font-weight:600; color:var(--bg); background:var(--green); border:0; border-radius:8px; padding:9px 14px; cursor:pointer; text-decoration:none; display:inline-block; }
   button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
   button:focus-visible,.btn:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
@@ -186,7 +189,7 @@
     const rd = read || ((path, lastKeyOnly) => get(path, lastKeyOnly ? 'orderBy=%22$key%22&limitToLast=1' : ''));
     async function readRoom(code) {
       // only the newest audit key is needed (the whole key list was 7 MB across all rooms)
-      const [audA, auditedRec, flag, outcomes, who, gamesRec] = await Promise.all([rd('rooms/' + code + '/audit/a', true), rd('rooms/' + code + '/audited'), rd('rooms/' + code + '/flag'), rd('rooms/' + code + '/outcomes'), rd('rooms/' + code + '/names'), rd('rooms/' + code + '/games')]);
+      const [audA, auditedRec, flag, outcomes, who, gamesRec, lfgRec] = await Promise.all([rd('rooms/' + code + '/audit/a', true), rd('rooms/' + code + '/audited'), rd('rooms/' + code + '/flag'), rd('rooms/' + code + '/outcomes'), rd('rooms/' + code + '/names'), rd('rooms/' + code + '/games'), rd('rooms/' + code + '/lfg')]);   // V490: the lobby mark
       if (!audA) return;                                     // no transcript = nothing to tell
       const keys = Object.keys(audA); const lastKey = keys.sort().pop(); const lastT = lastKey ? Number(lastKey.split('_')[0]) : 0;
       // the heartbeat only matters for 'in progress' / 'abandoned', and both need game events in the last 24h
@@ -194,7 +197,7 @@
       // V391: a backgrounded tab pings forever — 'in progress' needs a VISIBLE phone that pinged in the last 3 minutes
       const visibleNow = hb && Object.values(hb).some(h => h && h.vis === 'V' && Date.now() - Number(h.ts) < 3 * 60 * 1000);
       const abandoned = !visibleNow && Date.now() - lastT < 24 * 3600 * 1000 && hb && Object.values(hb).some(h => h && Date.now() - Number(h.ts) < 3 * 60 * 1000);
-      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), who, lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned,
+      rows.push({ code, names: withWho(names(outcomes), who), team: names(outcomes), who, lastT, audited: auditedRec, flag, live: !!visibleNow, abandoned: !!abandoned, lobby: !!lfgRec,
                  games: auditedRec && typeof auditedRec.games === 'number' ? auditedRec.games : (gamesRec ? Object.keys(gamesRec).length : 0) });   // V428: the checker's count of real games
     }
     async function worker() {
@@ -207,8 +210,13 @@
     await Promise.all(Array.from({ length: Math.min(read ? 64 : 8, codes.length) }, worker));
     rows.sort((x, y) => y.lastT - x.lastT);
     const showTests = new URLSearchParams(location.search).get('tests') === '1';
+    const onlyLobby = new URLSearchParams(location.search).get('lobby') === '1';   // V490
     const real = rows.filter(r => !isTestRoom(r));
-    const shown = showTests ? rows : real;
+    const shown = (showTests ? rows : real).filter(r => !onlyLobby || r.lobby);
+    const nLobby = (showTests ? rows : real).filter(r => r.lobby).length;
+    const lobbyHtml = '<p class="when" style="margin:0 0 12px">' + (onlyLobby ? 'Showing only the ' : '') + '<span class="pill lobby">LOBBY MATCH</span> ' + nLobby + ' game' + (nLobby === 1 ? '' : 's') +
+      ' made by FIND A PLAYER (the matches are marked from V488, Oct 5) · ' + (onlyLobby ? '<a href="?' + (showTests ? 'tests=1' : '') + '">all games</a>' : '<a href="?lobby=1' + (showTests ? '&tests=1' : '') + '">only those</a>') + '</p>';
+    if (onlyLobby && !shown.length) { app.innerHTML = lobbyHtml + '<div class="empty">No game has come from FIND A PLAYER yet.</div>'; return; }
     if (!shown.length) { app.innerHTML = '<div class="empty">No recorded games yet. Play one on V365 or later and it will appear here.' + (rows.length ? ' <a href="?tests=1">Show ' + rows.length + ' test-harness games</a>' : '') + '</div>'; return; }
     const foot = (!showTests && rows.length > real.length) ? '<p class="when" style="text-align:center;margin-top:18px">' + (rows.length - real.length) + ' test-harness game' + (rows.length - real.length === 1 ? '' : 's') + ' hidden · <a href="?tests=1">show them</a></p>' : (showTests ? '<p class="when" style="text-align:center;margin-top:18px"><a href="?">hide test-harness games</a></p>' : '');
     // V387: bug reports from the in-game "!" box, newest first
@@ -313,7 +321,7 @@
       playersHtml = '<h2 style="margin:0 0 10px">Who is playing</h2><div class="card"><div style="display:flex;gap:24px;flex-wrap:wrap">' + block('Today', agg.today) + block('Last 7 days', agg.week) + '</div>' + freezeHtml + allHtml +
         '<p class="when" style="margin:10px 0 0">Days are your local calendar days (' + esc((Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time')) + '). Devices = distinct browsers by anonymous id. Solo = the plain single-player game at main-retro-bowl.vercel.app; "played" = a match was on its field for 20 seconds or more. Solo counting began 2026-09-21.</p></div>';
     } catch (e) { playersHtml = ''; }
-    app.innerHTML = playersHtml + complaintsHtml + shown.map(r => {
+    app.innerHTML = playersHtml + complaintsHtml + lobbyHtml + shown.map(r => {
       const IMPL = ['NOT NOTICEABLE', 'BALL / DOWN MOVED', 'SCORE OR CLOCK CHANGED', 'GAME FROZE OR ENDED WRONGLY'];
       // V437 (the owner: "the no freeze and game frozen tags are showing up the same time"): the top grade is named by
       // what it was in THIS game, and the freeze pill counts every stall the checker flags — the two can no longer disagree
@@ -327,7 +335,7 @@
       const fKind = r.audited && r.audited.frozenKind === 'permanent' ? ' · PERMANENT' : (r.audited && r.audited.frozenKind === 'temporary' ? ' · TEMPORARY' : '');
       const froze = r.audited && r.audited.frozenMeasured ? (Number(r.audited.frozenSec) > 0 ? '<span class="pill ' + (fKind === ' · TEMPORARY' ? 'i2' : 'i3') + '">FROZE ' + Number(r.audited.frozenSec) + 's' + fKind + '</span> ' : (untimedOf(r) ? '<span class="pill i3" title="' + esc(r.audited.frozenUntimed.join(', ')) + '">FROZE · NOT TIMED</span> ' : '<span class="pill clean">NO FREEZE</span> ')) : '';
       const pill = done + froze + (r.live ? '<span class="pill live">IN PROGRESS</span>' : r.abandoned ? '<span class="pill i0">LEFT OPEN, NOBODY PLAYING</span> ' + (r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + implOf(r) + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : '') : r.flag ? (typeof r.flag.worst === 'number' ? '<span class="pill i' + r.flag.worst + '">' + implOf(r) + '</span> ' : '') + '<span class="pill flag">' + r.flag.n + ' PROBLEM' + (r.flag.n === 1 ? '' : 'S') + '</span>' : r.audited ? '<span class="pill clean">CLEAN</span>' : '<span class="pill wait">NOT CHECKED YET</span>');
-      return '<a class="card row" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
+      return '<a class="card row' + (r.lobby ? ' lobby' : '') + '" href="?room=' + esc(r.code) + '" style="text-decoration:none;color:inherit"><div class="grow"><div class="code">' + esc(r.code) + (r.lobby ? ' <span class="pill lobby">LOBBY MATCH</span>' : '') + (r.games > 1 ? ' <span class="pill i0">' + r.games + ' GAMES</span>' : '') + '</div><div class="teams">' + esc(r.names.a) + ' vs ' + esc(r.names.b) + '</div><div class="when">' + esc(fmtWhen(r.lastT)) + '</div></div>' + pill + '</a>';
     }).join('') + foot;
   }
 
@@ -336,7 +344,8 @@
     app.innerHTML = '<div class="empty">Reading ' + esc(code) + '…</div>';
     let aud, outcomes, fin;
     let who = null, myComplaints = [];
-    try { [aud, outcomes, fin, who] = await Promise.all([get('rooms/' + code + '/audit'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/final'), get('rooms/' + code + '/names')]); }
+    let lfgRec = null;
+    try { [aud, outcomes, fin, who, lfgRec] = await Promise.all([get('rooms/' + code + '/audit'), get('rooms/' + code + '/outcomes'), get('rooms/' + code + '/final'), get('rooms/' + code + '/names'), get('rooms/' + code + '/lfg')]); }
     catch (e) { app.innerHTML = '<div class="empty err">' + esc(e.message) + '</div>'; return; }
     if (!aud || (!aud.a && !aud.b)) { app.innerHTML = '<div class="empty">No transcript for ' + esc(code) + ' (played before V365, or already cleaned up). <a href="?">All games</a></div>'; return; }
     const R = window.RB2P_AUDIT;
@@ -390,7 +399,7 @@
       .replace(/\b(?:a|b) says (\d+)-(\d+)/g, (m) => m)
       .replace(/(\d+(?:\.\d+)?)s after a boot/g, (m, n) => Math.round(Number(n)) + ' seconds after a refresh')
       .replace(/\bboot\b/g, 'refresh');
-    let html = '<div class="card"><div class="row"><div class="grow"><div class="code">' + esc(code) + '</div><div class="teams">' + esc(nm.a) + ' vs ' + esc(nm.b) + ' · ' + esc(fmtWhen(tl[0].t)) + ' · ' + dur + ' min' + (live ? ' · still going' : ended ? '' : ' · abandoned') + '</div></div>' + verdict + '</div>' +
+    let html = '<div class="card' + (lfgRec ? ' lobby' : '') + '"><div class="row"><div class="grow"><div class="code">' + esc(code) + (lfgRec ? ' <span class="pill lobby">LOBBY MATCH</span>' : '') + '</div><div class="teams">' + esc(nm.a) + ' vs ' + esc(nm.b) + ' · ' + esc(fmtWhen(tl[0].t)) + ' · ' + dur + ' min' + (live ? ' · still going' : ended ? '' : ' · abandoned') + '</div></div>' + verdict + '</div>' +
       '<div class="score" style="margin-top:10px"><span class="you">' + sa[0] + '</span> <span style="color:var(--mute)">–</span> <span class="opp">' + sa[1] + '</span></div><div class="teams">' + esc(nm.a) + ' – ' + esc(nm.b) + '</div>' +
       '<p style="margin:12px 0 0">' + esc(summary) + (tl.clockSkewMs ? ' The two phones\' clocks differed by about ' + Math.abs(tl.clockSkewMs / 1000).toFixed(0) + ' seconds; ' + esc(nm.b) + '\'s lines were shifted to match.' : '') + '</p><div style="margin-top:12px"><a class="btn" href="?" style="background:transparent;color:var(--ink);border:1px solid var(--line)">← All games</a></div></div>';
 

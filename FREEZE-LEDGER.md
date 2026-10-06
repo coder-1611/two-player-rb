@@ -1713,3 +1713,15 @@ each day into a viewable section".
 - The PLAYER FOUND card stays for matched players only.
 - Tests: find-player 8/8 (F4b: a code room — no chat while alone, the chat once the friend joins by the code, the chip
   in the game, no card on either page).
+
+## V490 (2026-10-05): game transcripts mark the games FIND A PLAYER made
+- The owner: "how many people have joined using lobby so far? In game transcripts highlight lobby games".
+- `game-transcripts/index.html`: each room's reads include `rooms/{code}/lfg` (the mark a matched room's maker writes,
+  V488+); such a game's card gets a green bar/border and a LOBBY MATCH pill, in the list and on its own page; a line
+  above the games counts them, with `?lobby=1` (only those).
+- Checked end to end in the harness: two pages matched by the line (room Z560), READY on both, the real game started
+  in 3 s, the CHAT chip showed bottom right in the game, a line arrived as 1 unread + a peek; the transcripts list
+  (`?tests=1&lobby=1`) showed Z560 as a LOBBY MATCH card, and its page too.
+- The count at the time: 0 real games from the line since the mark (V488, 8:55 PM); the 11 marked rooms were all test
+  rooms. Lobby chat: 6 lines — MikeishimYT, Wintergreen16, SohamDesktop. FMGF (V486) and RKRV (V487) were SAME-mode
+  2P games during V486-V487, when matches were not marked yet — they may or may not have come from the line.
