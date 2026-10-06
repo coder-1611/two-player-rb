@@ -1635,3 +1635,17 @@ each day into a viewable section".
   gives the 40/30/20/10 brief). `points()`: offense MAX 55 (HARD 8, MED 2, EASY 0, unknown 2; defense flat 10),
   yardage 1/3 a yard (was 0.5). The brief says so. Today's pool D stays as it is on the owner's Chromebook.
 - Tests: potd 9/9, inbox 4/4, highlights 8/8.
+
+## V485 (2026-10-05): the slur filter — names and lines on the public page are censored
+- The owner: "censor the slur". Game BNPD's player A named himself "wisdom" + the n-word, run into one word; the
+  12:15 preview had his play at #5, and the 5 am job puts the top 3's names on the public front page. The comment
+  filter (V468) matches whole words only, so it let that name through.
+- **`index.html` SLUR-FILTER block:** the worst slurs match anywhere in a word, the short ones (raccoon, spice) only
+  as a word, after the stand-ins 0 1 3 4 5 7 @ $ ! |, with dots/dashes ignored and spelled-out letters joined; each
+  letter of a match becomes `*` ("wisdom******"). A name of nothing but a slur shows as "a player". No lookbehind
+  (older iPads). Used on every name, headline and line of the front page (big screen, cards, archive, banner,
+  congrats) and the device inbox; the comment filter refuses a slur inside a word, in a comment or a name.
+- **`tools/highlights/censor.js`** runs the page's own block in Node; `daily.js buildEntries` publishes the censored
+  name/headline/fan line (if the filter cannot load, no name is published).
+- Over all 571 recorded usernames it censors 7, all real slurs (6 n-word forms, 1 r-word); nothing else moved.
+- Tests: censor C1-C2, potd 10/10 (D12 new), inbox 4/4, highlights 8/8.

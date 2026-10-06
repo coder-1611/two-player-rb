@@ -285,6 +285,7 @@ async function fillDifficulty(plays) {
 // replays are potdPlays/{date}~2 and ~3 (fetched only on WATCH). Only #1's device uid is published (its congrats, its flair).
 async function buildEntries(top, n, keyOf) {   // the published words + numbers for each play (rank order)
     top = (top || []).filter(t => t && t.pick && t.f && t.play).slice(0, n);
+    let CEN = null; try { CEN = require('./censor.js'); } catch (e) { log('the slur filter did not load (' + e.message + '): no names published'); }
     const tok = await require(path.join(REPO, 'tools', 'fb-auth.js')).token();
     const get = async p => { try { const r = await fetch(DB + p + '.json?auth=' + tok, { cache: 'no-store' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
     // the front page's words: the judge's fan line, else its reason without the contact sheet's frame numbers — a
@@ -306,8 +307,10 @@ async function buildEntries(top, n, keyOf) {   // the published words + numbers 
         if (binds.length) { uid = binds[binds.length - 1].uid || ''; if (!name) name = binds[binds.length - 1].name || ''; }
         const ends = f.events.filter(e => e.kind === 'td' || e.kind === 'end').map(e => e.t);
         const toMs = Math.round((ends.length ? Math.max(...ends) : Math.max(0, ...f.events.map(e => e.t))) + 2500);
+        // V485 (the owner: "censor the slur"): the page's slur filter on the name and the judge's words (no filter, no name)
         const e = { rank: i + 1, key: keyOf(i), id: pick.id, at: play.at, room: play.room, side: credRole === play.role ? 'offense' : 'defense',
-                    name: String(name).slice(0, 40), hero: f.hero || '', headline: pick.headline, why: short(pick.fan || noFrames(pick.why)), q: play.q, clk: play.clk,
+                    name: CEN ? CEN.censorName(String(name).slice(0, 40)) : '', hero: f.hero || '', headline: CEN ? CEN.censor(pick.headline) : pick.headline,
+                    why: CEN ? CEN.censor(short(pick.fan || noFrames(pick.why))) : short(pick.fan || noFrames(pick.why)), q: play.q, clk: play.clk,
                     dif: play.dif || '', toMs };
         e.uid = uid;   // V473: each of the top 3's makers gets the congrats (only #1's before)
         entries.push(e);

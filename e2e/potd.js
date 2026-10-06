@@ -115,6 +115,11 @@ async function open(browser, seams, ownStorage) {
         console.log('  D10: ' + JSON.stringify({ d10, stored10 }));
         check('D10 a second comment right away posts; a swear word is refused (never stored); a stored one is not shown',
               /again right away/.test(d10.list) && /Keep it clean/.test(d10.msg) && !stored10.some(t => /sh1t/.test(t)) && !/\$hit/.test(d10.list) && /sh1t/.test(d10.input), JSON.stringify({ d10, stored10 }));
+        // ---- D12 (V485, the owner: "censor the slur"): the page's slur filter is on, and a slur inside a word is refused in a comment ----
+        const d12 = await page.evaluate(() => ({ name: window._rb2p_censor('wisdom' + 'nig' + 'ger'), who: document.getElementById('rb-potd-who').textContent,
+            refused: window._rb2p_potdSwears('lol' + 'nig' + 'ger' + 'lol'), clean: window._rb2p_potdSwears('what a run') }));
+        check('D12 the slur filter: a name is censored (wisdom******), a slur inside a word is refused, a clean line is not',
+              d12.name === 'wisdom******' && d12.refused === true && d12.clean === false && !!d12.who, JSON.stringify(d12));
         // ---- D7 ----
         const before7 = await page.evaluate(() => document.querySelectorAll('#rb-potd-days button').length);
         await page.evaluate(() => { document.querySelector('#rb-potd-past > summary').click(); });
