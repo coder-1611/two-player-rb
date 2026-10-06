@@ -2002,7 +2002,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V494<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V495<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2168,7 +2168,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V494</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V495</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16207,6 +16207,8 @@
         var L = r.left + (w - W) / 2, T = r.top + (h - H) / 2;
         cv.style.left = Math.round(L) + 'px'; cv.style.top = Math.round(T) + 'px'; cv.style.width = Math.round(W) + 'px'; cv.style.height = Math.round(H) + 'px';
         var dpr = Math.min(window.devicePixelRatio || 1, 3), pw = Math.round(W * dpr), ph = Math.round(H * dpr);   // V476: full resolution always, as V450
+        if (RCV.cap720 && pw * ph > 1280 * 720) { var k720 = Math.sqrt(1280 * 720 / (pw * ph)); pw = Math.round(pw * k720); ph = Math.round(ph * k720); }   // V495: a slow page
+        var ir = RCV.cap720 ? 'pixelated' : ''; if (cv.style.imageRendering !== ir) cv.style.imageRendering = ir;
         if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
         if (RCV.frame) { var fs = RCV.frame.style; fs.left = cv.style.left; fs.top = cv.style.top; fs.width = cv.style.width; fs.height = cv.style.height; }
         if (RCV.chip) {
@@ -16241,7 +16243,7 @@
     }
     function hide() {
         if (!RCV.showing) return;
-        RCV.showing = false;
+        RCV.showing = false; RCV.statAt = 0; RCV.slowSince = 0;
         try { var ecH = document.getElementById('canvas'); if (ecH) ecH.style.visibility = ''; } catch (eV) {}   // V455: this phone's game again
         if (RCV.cv) RCV.cv.style.display = 'none';
         if (RCV.chip) RCV.chip.style.display = 'none';
@@ -16255,6 +16257,25 @@
         RCV.rafGap = RCV.rafGap * 0.9 + Math.min(gap, 400) * 0.1;
         var lite = false;   // V476: always full resolution, as V450 (V451 drew a slow page's replay at CSS resolution)
         if (lite !== RCV.lite) { RCV.lite = lite; place(); }
+        // V495 (the owner: "reduce to 720p if too laggy"): a page that cannot keep up — its frames slower than ~45 a second,
+        // or a replay draw over 8 ms — for 3 s straight draws the opponent's screen at 1280x720 at most for the rest of the
+        // page (pixel art, upscaled crisp). Every frame still drawn, exactly as sent.
+        if (!RCV.cap720) {
+            if (RCV.rafGap > 22 || RCV.tickMs > 8) { if (!RCV.slowSince) RCV.slowSince = now; else if (now - RCV.slowSince > 3000) {
+                RCV.cap720 = true; place();
+                try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW 720p from now (page ' + Math.round(1000 / RCV.rafGap) + ' fps, draw ' + RCV.tickMs.toFixed(1) + ' ms)'); } catch (eD) {}
+            } } else RCV.slowSince = 0;
+        }
+        // V495: what the waiting phone saw, every 10 s in the game's diag log (the link's mode, frames in and drawn, late
+        // redraws, the delay, the draw cost, the page's own rate)
+        if (!RCV.statAt) { RCV.statAt = now; RCV.statRx = RCV.rx; RCV.statDrawn = RCV.drawn; RCV.statLate = RCV.starved; }
+        else if (now - RCV.statAt > 10000) {
+            var sec = (now - RCV.statAt) / 1000, dn = RCV.drawn - RCV.statDrawn;
+            try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW stats ' + (RCV.mode || '?') + ' · in ' + ((RCV.rx - RCV.statRx) / sec).toFixed(1) + '/s · drawn ' + (dn / sec).toFixed(1) +
+                '/s · late ' + (dn ? Math.round(100 * (RCV.starved - RCV.statLate) / dn) : 0) + '% · delay ' + Math.round(RCV.delay) + ' ms · draw ' + RCV.tickMs.toFixed(1) + ' ms · page ' +
+                Math.round(1000 / Math.max(1, RCV.rafGap)) + ' fps' + (RCV.cap720 ? ' · 720p' : '')); } catch (eS) {}
+            RCV.statAt = now; RCV.statRx = RCV.rx; RCV.statDrawn = RCV.drawn; RCV.statLate = RCV.starved;
+        }
         return true;
     }
     function tick() {
@@ -16269,12 +16290,18 @@
             var minOff = Infinity, offs = RCV.offs, jit = [];
             for (var i = 0; i < offs.length; i++) if (offs[i][1] < minOff) minOff = offs[i][1];
             for (var j = 0; j < offs.length; j++) jit.push(offs[j][1] - minOff);
-            var target = Math.max(50, Math.min(900, median(RCV.gaps) * 1.6 + pctl(jit, 0.9) + 10));   // V476: V450's
-            RCV.delay += Math.max(-1.5, Math.min(1.5, target - RCV.delay));
+            // V495 (the owner: "the offense mirroring is really laggy, figure out a way to fix it without impeding quality ...
+            // fix without blending"): V450's delay (1.6 frame gaps + the jitter, and +4 ms on every redraw with no newer frame
+            // in hand, up to 0.9 s) kept a NEXT frame to glide toward — with exact frames (V478) it only added lag: on Firebase
+            // (about 5 frames a second, half the games — no direct link on a school network) it crept to most of a second
+            // behind. Now the delay covers the arrival jitter only (its 90th percentile + 8 ms, 15-400 ms) and falls fast; a
+            // redraw counts as late only when the next frame is overdue (1.5 gaps), the picture actually holding.
+            var target = Math.max(15, Math.min(400, pctl(jit, 0.9) + 8));
+            RCV.delay += Math.max(-3, Math.min(1.5, target - RCV.delay));
             var playT = now - minOff - RCV.delay, fs = RCV.frames, A = null, B = null;
             for (var k = fs.length - 1; k >= 0; k--) if (fs[k].t <= playT) { A = fs[k]; B = fs[k + 1] || null; break; }
             if (!A) A = fs[0];
-            if (!B) { RCV.starved++; RCV.delay = Math.min(900, RCV.delay + 4); RCV.R.draw(A, null); }
+            if (!B) { if (playT - A.t > median(RCV.gaps) * 1.5 + 4) RCV.starved++; RCV.R.draw(A, null); }
             else {
                 // V478 (the owner: "THERE SHOULD BE NO SLIDING OR BLENDING, the key thing to notice is if the down marker
                 // moves instantaneously or slides"; "the shadows are floating around and other random sprites are also just
@@ -16335,7 +16362,7 @@
             return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed,
                             capOver: +capOverMs().toFixed(2), capInt: capInterval(), capFrameMs: +(CAP.capFrameMs || 0).toFixed(2), plainFrameMs: +(CAP.plainFrameMs || 0).toFixed(2) },
                      rcv: { rx: RCV.rx, bytes: RCV.rxBytes, frames: RCV.frames.length, showing: RCV.showing, drawn: RCV.drawn, starved: RCV.starved, delay: Math.round(RCV.delay),
-                            decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed, morphs: RCV.morphs, resized: RCV.resized, stretched: RCV.stretched, tickMs: +RCV.tickMs.toFixed(2), tickMax: Math.round(RCV.tickMax), skipped: RCV.skipped, lite: RCV.lite, software: !!(RCV.R && RCV.R.software) }, net: NET ? NET.mode() : null };
+                            decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed, morphs: RCV.morphs, resized: RCV.resized, stretched: RCV.stretched, tickMs: +RCV.tickMs.toFixed(2), tickMax: Math.round(RCV.tickMax), skipped: RCV.skipped, cap720: !!RCV.cap720, lite: RCV.lite, software: !!(RCV.R && RCV.R.software) }, net: NET ? NET.mode() : null };
         },
         // test seams: render one decoded frame (no interpolation) to a canvas of the sender's size
         testRender: function (seq) { var f = RCV.bySeq.get(seq); if (!f) return null; var cv = document.createElement('canvas'); cv.width = f.cw; cv.height = f.ch; new Renderer(cv, true).draw(f, null); return cv.toDataURL('image/png'); },

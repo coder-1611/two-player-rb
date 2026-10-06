@@ -1795,3 +1795,22 @@ each day into a viewable section".
 - In Chromium (mouse and touch emulation, a real game) the roster BACK took 1 press and the chat stayed open before and
   after this change — the owner's device behaviour is not reproduced here; the diag lines are there for it.
 - Tests: potd-layout 12/12 (+1024x600 touch: one column), lobby-phone 12/12, find-player 12/12.
+
+## V495 (2026-10-06): the opponent's screen — the delay covers the jitter only (no blending); 720p on a page that cannot keep up
+- The owner: "the offense mirroring is really laggy, figure out a way to fix it without impeding quality. Worst case scenario
+  give an option or reduce to 720p if too laggy, but fix without blending".
+- **Found:** last 3 days, 1,774 of 3,326 screen shows ran on Firebase (127 of 256 games never had a direct link; links
+  dropped 600 times for 783 opens). The sending phone is not the problem (its fps on offense: median 60 with the direct
+  link and with Firebase; under 40 fps 16% vs 20%). V450's receiver delay — 1.6 frame gaps + p90 jitter + 10 ms, and +4
+  ms on every redraw with no NEXT frame in hand (up to 900 ms) — was there to glide toward that next frame; with exact
+  frames (V478) it only added lag, and on Firebase (~3-5 frames a second) it crept to ~0.6 s.
+- **Now:** target = p90 jitter + 8 ms (15-400 ms), falling up to 3 ms a redraw; "late" counts only a redraw whose next
+  frame is overdue (1.5 gaps). A/B on the Firebase fallback, the same harness, two real downs: delay median 603 ms
+  (589-642) → 75 ms (39-400), late 0% both. Direct link (opp-view W3): delay 15 ms, drawn 55.9/s, late 0%.
+- **720p:** a page whose frames run slower than ~45/s or whose replay draw costs over 8 ms, for 3 s, draws the opponent's
+  screen at 1280x720 at most (image-rendering: pixelated) for the rest of the page — every frame still drawn as sent.
+- **Diag:** "VIEW stats <mode> · in N/s · drawn N/s · late N% · delay N ms · draw N ms · page N fps [· 720p]" every 10 s
+  while the screen shows; "VIEW 720p from now (...)" when it caps.
+- Not changed: the frames (exact), the Firebase rate (~5/s — the free plan's downloads are over their cap). The fallback's
+  choppiness needs a relay that school networks let through (TURN over TLS on 443) — the owner's call (an account).
+- Tests: opp-view 7/7 (W2 99.9% pixel-identical, W3 exact frames, W6 Firebase).
