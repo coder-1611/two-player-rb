@@ -138,6 +138,33 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const landed = Math.abs(st.players.lv.r - 982.5) < 1e-9 && out.changed.has('lv') && Object.keys(io.db.rooms['~elo'].q || {}).length === 0 && st.games['LEAV_' + T0 + '_left'].applied;
         check('E8 the job waits 10 minutes (they may come back), then takes the points and drops the note', waited && landed, JSON.stringify({ waited, r: st.players.lv.r, left: Object.keys(io.db.rooms['~elo'].q || {}) }));
     }
+    // E9 (V509): the late leave — under a minute left, a forfeit: 3 x what a loss to that player costs, to the player who stayed
+    {
+        const base = () => ({ players: { lv: { r: 1000, n: 10, w: 5, l: 5, d: 0, nm: 'Kai', fd: {}, peak: 1000 }, sty: { r: 1100, n: 40, w: 20, l: 20, d: 0, nm: 'Lee', fd: {}, peak: 1100 } }, games: {} });
+        const rec = (o) => Object.assign({ mode: 'same', uids: { a: 'lv', b: 'sty' }, fin: {} }, o || {});
+        const L = (o) => Object.assign({ role: 'a', by: 'b', q: 4, clk: 1, qmins: 2, su: 29, so: 7 }, o || {});   // Q4 0:01, the leaver down 22
+        const go = (st, o) => E.leavePenalty(st, Object.assign({ gid: 'LATE_1_left', code: 'LATE', start: T0, rec: rec(), names: { a: 'Kai', b: 'Lee' }, left: L(), now: T0 }, o));
+        const loss = E.K(10) * E.expected(1000, 1100);                                        // what a loss would have cost: ~34 x 0.36 = 12.3
+        const s1 = base(), r1 = go(s1, {});
+        const s2 = base(), r2 = go(s2, { left: L({ su: 0, so: 21, clk: 59 }) });               // ahead with 0:59 left: still a forfeit
+        const s3 = base(), r3 = go(s3, { left: L({ clk: 60 }) });                              // 1:00 left: the whole-minute formula (0.25 x 1 x 22)
+        const r4 = go(base(), { names: { a: 'SOHAM 2', b: 'Lee' } });                          // exempt
+        const r5 = go(base(), { rec: rec({ fin: { a: { su: 7, so: 29 } } }) });               // the leaver's phone recorded the final
+        const r6 = go(base(), { left: L({ q: 5, clk: 30, su: 3, so: 3 }) });                   // overtime, 0:30, tied: a forfeit too
+        const want = Math.round(3 * loss * 100) / 100;
+        const ok = r1.applied && r1.rule === 'late' && r1.penalty === want && Math.abs(s1.players.lv.r - (1000 - want)) < 1e-9 && Math.abs(s1.players.sty.r - (1100 + want)) < 1e-9 &&
+                   r1.ouid === 'sty' && r1.or1 === Math.round(1100 + want) && s1.players.lv.n === 10 && s1.players.sty.w === 20 &&
+                   r2.applied && r2.penalty === want && r3.applied && r3.rule !== 'late' && r3.penalty === 5.5 && Math.abs(s3.players.sty.r - 1100) < 1e-9 &&
+                   !r4.applied && /soham/.test(r4.why) && !r5.applied && /recorded the final/.test(r5.why) && r6.applied && r6.rule === 'late';
+        check('E9 under a minute left: the leaver loses 3 x a loss (' + want + ') and the stayer gains it, whatever the score; 1:00 left is the old formula; exempt / own final: nothing',
+              ok, JSON.stringify({ want, r1: [r1.rule, r1.penalty, s1.players.lv.r, s1.players.sty.r], r2: r2.penalty, r3: [r3.rule, r3.penalty], r4: r4.why, r5: r5.why, r6: r6.rule }));
+        // the run: the stayer's new rating is published too
+        const st = base(), note = { c: 'LATE', s: T0, t: T0, left: L() };
+        const io = fakeDb({ rooms: { LATE: { games: { [T0]: rec() }, names: { a: 'Kai', b: 'Lee' } }, '~elo': { q: { ['LATE_' + T0 + '_left']: note } } } });
+        const out = await E.run(st, io, T0 + 10 * 60000 + 1000);
+        check('E10 the job publishes both: the leaver and the player who stayed', out.changed.has('lv') && out.changed.has('sty') && st.games['LATE_' + T0 + '_left'].rule === 'late',
+              JSON.stringify([...out.changed]));
+    }
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('FATAL', e); process.exit(2); });

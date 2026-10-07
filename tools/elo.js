@@ -13,6 +13,12 @@
 //     (rooms/~elo/q/{code}_{start}_left: the leaver's role, the score and the clock when they went). 10 minutes later, if
 //     the game was not finished after all, the leaver of a ranked game (two devices, SAME) loses 0.25 x the whole minutes
 //     of game time left x |the point difference| — unless their name has "soham" in it. No win or loss is recorded.
+//   · V509 (the owner: "there is a trend of people leaving with one second left. Make it that if people leave with less
+//     than a minute left they lose 3x the original points lost and the guy who stays gets those points"): under a minute
+//     of game time left the whole-minute formula is 0 — a free way out of a loss (5 such leaves on 7 Oct, all at 0 points).
+//     Now a leave with under 60 s left is a forfeit, as in chess: the leaver loses 3 x what a loss to that player costs
+//     (their K x E), whatever the score, and the player who stayed gains exactly that. Not when the leaver's own phone
+//     recorded the final (it finished the game on their side). Still no win or loss recorded; soham names still exempt.
 //   · the owner's set ratings (st.manual: [{ uid, r, at }]) stand; tools/elo-backfill.js replays them in order
 //   · V502 (the owner: "Right now don't have any anti cheating rules yet"): the V500 limit of 3 ranked code games a day per
 //     player is OFF; --friendly-limit N turns it back on (a FIND A PLAYER game — the room's first game after its lfg match
@@ -40,6 +46,7 @@ const NOW = () => Number(opt('--now', Date.now()));
 const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, BOARD_MIN = 5, BOARD_N = 50, KEEP_G_MS = 2 * 86400e3;
 const LEAVE_WAIT_MS = Number(opt('--leave-wait-ms', 10 * 60000));   // V506: they may come back and finish
 const EXEMPT = /soham/i;                                              // V506: the owner's names never pay it
+const LATE_SEC = 60, LATE_X = 3;                                      // V509: under a minute left, 3 x a loss, to the stayer
 const log = m => console.log(new Date().toISOString().slice(0, 19).replace('T', ' ') + ' ' + m);
 let CEN = null; try { CEN = require('./highlights/censor.js'); } catch (e) {}
 const cleanName = n => { const s = String(n || '').trim().slice(0, 16); return CEN && CEN.censorName ? CEN.censorName(s) : s; };
@@ -102,6 +109,20 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     const q = Number(L.q) || 1, clk = Math.max(0, Number(L.clk) || 0), qmins = Number(L.qmins) || 2;
     const leftSec = q >= 5 ? clk : clk + Math.max(0, 4 - q) * qmins * 60;
     out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
+    if (leftSec < LATE_SEC) {   // V509: the late leave — a forfeit, 3 x a loss, to the player who stayed
+        if (fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
+        const P = player(st, uid), O = ouid ? player(st, ouid) : null;
+        const lost = K(P.n) * expected(P.r, O ? O.r : 1000);
+        out.rule = 'late'; out.secs = leftSec; out.lost = Math.round(lost * 100) / 100; out.penalty = Math.round(LATE_X * lost * 100) / 100;
+        out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); P.left = (P.left || 0) + 1;
+        if (name && !P.nm) P.nm = name.slice(0, 16);
+        if (O) {
+            out.ouid = ouid; out.or0 = Math.round(O.r); O.r += out.penalty; out.or1 = Math.round(O.r); O.peak = Math.max(O.peak || 1000, O.r);
+            const oname = String((g.names || {})[other] || ''); if (oname && !O.nm) O.nm = oname.slice(0, 16);
+        }
+        out.applied = true;
+        return out;
+    }
     out.penalty = Math.round(0.25 * out.minutes * out.diff * 100) / 100;
     if (!(out.penalty > 0)) { out.why = out.diff ? 'no whole minute was left' : 'the score was tied'; return out; }
     const P = player(st, uid);
@@ -136,9 +157,11 @@ async function run(st, io, now, opts) {
             const namesL = (await io.get('rooms/' + it.code + '/names')) || {};
             const resL = leavePenalty(st, { gid: gidL, code: it.code, start: it.start, rec: recL, names: namesL, left: it.left, now });
             st.games[gidL] = resL;
-            if (resL.applied) changed.add(resL.uid);
+            if (resL.applied) { changed.add(resL.uid); if (resL.ouid) changed.add(resL.ouid); }
             await io.del(QUEUE + '/' + it.key);
-            log((resL.applied ? 'LEFT ' : 'leave, no penalty ') + gidL + ' ' + resL.role + (resL.applied ? ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.minutes + ' min x ' + resL.diff + ' pts x 0.25)' : ' — ' + resL.why));
+            log((resL.applied ? 'LEFT ' : 'leave, no penalty ') + gidL + ' ' + resL.role + (!resL.applied ? ' — ' + resL.why
+                : resL.rule === 'late' ? ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.secs + ' s left, 3 x a loss of ' + resL.lost + ')' + (resL.ouid ? ', the stayer ' + resL.or0 + '->' + resL.or1 : '')
+                : ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.minutes + ' min x ' + resL.diff + ' pts x 0.25)'));
             continue;
         }
         const gid = it.code + '_' + it.start;

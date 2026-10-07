@@ -78,6 +78,8 @@ if (require.main === module) (async () => {   // (loading this file runs nothing
     const manual = (prev && prev.manual) || [];
     const adj = manual.map(m => ({ at: Number(m.at), uid: m.uid, set: Number(m.r) }))
         .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && x.uid).map(x => ({ at: Number(x.at), uid: x.uid, minus: Number(x.penalty) || 0 })))
+        .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && x.rule === 'late' && x.ouid)   // V509: the stayer's gain
+            .map(x => ({ at: Number(x.at), uid: x.ouid, minus: -(Number(x.penalty) || 0) })))
         .sort((x, y) => x.at - y.at);
     const st = { players: {}, games: {}, manual }, why = {};
     const applyAdj = until => { while (adj.length && adj[0].at <= until) { const a = adj.shift(), P = st.players[a.uid] || (st.players[a.uid] = { r: 1000, n: 0, w: 0, l: 0, d: 0, nm: '', fd: {}, last: 0, peak: 1000 });
