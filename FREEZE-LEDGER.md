@@ -2056,3 +2056,15 @@ each day into a viewable section".
   runs every 60 s), EVERY leave hands the leaver's points to the stayer, and a game finished after all undoes the leave
   before it is rated. The result is published at embedcode/elo/g/{code_start_left}; the staying page shows
   "OPPONENT LEFT THE GAME — +N RATING TO YOU". e2e/elo-math 11/11 (E8 at once + published, E11 undo); v506-leave 2/2.
+
+## V511 (2026-10-07): the opponent's screen — phones and tablets send 30 a second, computers every frame
+- The owner, after the 7 Oct measurements (same device, same day: 6 of 25 device-days played much choppier with the full-
+  rate direct link than with the 5-a-second fallback; the worst 23 vs 60 fps): "if it's a phone do 30 fps, if desktop or
+  laptop do 60 fps".
+- _rb2p_deviceIsPhone(ua, platform, touch points): Chromebooks (touch or not) are computers; iPhone / iPad / Android /
+  "Mobile" are phones, and so are an iPad or an Android phone asking for the desktop site (MacIntel + touch, ARM Linux +
+  touch). capInterval(): Firebase 200 ms as before; direct link 33 ms on a phone (every other frame — exact frames, no
+  blending), 16 ms on a computer (V479). The waiting phone needs no change (late = overdue against the measured spacing).
+  The sender logs "VIEW sending N a second on p2p (phone|computer)" once per link mode. Seam _rb2p_viewPhone.
+- Of the 6 devices measured worse, 4 were Chromebooks (stay at 60 under this rule), 1 Android phone, 1 iPad.
+- e2e/v511-phone-rate.js 3/3: P1 9 real user agents, P2 phone 26.8 frames/s with 0% late, P3 computer 52.7 frames/s.

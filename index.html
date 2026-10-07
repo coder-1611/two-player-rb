@@ -2120,7 +2120,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V510<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V511<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2306,7 +2306,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V510</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V511</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16025,7 +16025,20 @@
     // sender's game is untouched. Firebase (the fallback) stays about 5 a second (the free plan's downloads).
     // V497: Firebase's frames every 200 ms — 5 a second, the rate it was meant to have (its send gate dropped every other
     // 166 ms capture: 3 a second); the spare database's free downloads hold 5 (about 2 KB a frame)
-    function capInterval() { return NET && NET.mode() === 'fb' ? 200 : 16; }
+    // V511 (the owner, after the 7 Oct measurements — the full rate cost some senders their own game: "if it's a phone do 30
+    // fps, if desktop or laptop do 60 fps"): a phone or a tablet sends its screen 30 times a second on the direct link (every
+    // other frame — exact frames, nothing blended); a computer, Chromebooks included, every frame as V479. Firebase stays 5.
+    window._rb2p_deviceIsPhone = function (ua, plat, tp) {
+        ua = String(ua || ''); plat = String(plat || ''); tp = Number(tp) || 0;
+        if (/CrOS/.test(ua)) return false;                              // a Chromebook is a laptop, touch screen or not
+        if (/iPhone|iPod|iPad|Android|Mobile/i.test(ua)) return true;  // phones and tablets
+        if (/MacIntel/.test(plat) && tp > 1) return true;               // an iPad asking for desktop sites
+        if (/^Linux arm|aarch64/i.test(plat) && tp > 0) return true;    // an Android phone asking for desktop sites
+        return false;
+    };
+    var VIEW_PHONE = (function () { try { return window._rb2p_deviceIsPhone(navigator.userAgent, navigator.platform, navigator.maxTouchPoints); } catch (e) { return false; } })();
+    function senderIsPhone() { return window._rb2p_viewPhone != null ? !!window._rb2p_viewPhone : VIEW_PHONE; }   // test seam
+    function capInterval() { return NET && NET.mode() === 'fb' ? 200 : (senderIsPhone() ? 33 : 16); }
     // the per-frame encoding (the link's delta + the recorder's) runs in the task after the paint: the engine's frame
     // presents first; the encode fills the idle time before the next one
     var AP = { q: [], ch: null };
@@ -16058,6 +16071,10 @@
         if (!forLink) return;
         try {
             var mode = NET && NET.mode(); if (!mode) return;
+            if (SND.rateSaid !== mode) {   // V511: the rate this device sends at, once per link mode, in the game's diag log
+                SND.rateSaid = mode;
+                try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW sending ' + ({ 200: 5, 33: 30 }[capInterval()] || 60) + ' a second on ' + mode + ' (' + (senderIsPhone() ? 'phone' : 'computer') + ')'); } catch (eR) {}
+            }
             if (!NET.canSend(SND.inFlight)) return;   // decided BEFORE encoding: a frame that cannot go is not built
             var shot = SND.shotWanted; if (shot) { SND.shotWanted = false; SND.shotGrab = true; }
             SND.inFlight++;   // V479: its place is held now; it is built after the paint
