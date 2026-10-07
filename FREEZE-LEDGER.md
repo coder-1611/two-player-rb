@@ -2005,3 +2005,14 @@ each day into a viewable section".
 - The RANKINGS note explains the penalty. The owner's rating: the Chromebook "soham" (KrwziFQu) 1100 -> 1112.
 - Tests: elo-math 8/8 (E7 the formula, the soham exemption, tie / finished / unranked / overtime; E8 the 10-minute wait),
   v506-leave 2/2 (a real game: one closes the tab, the other notes it, the job takes 17.5; a "SohamTest" leaver pays nothing).
+
+## V507 (2026-10-07): a popup that explains the rankings and highlights the leaving penalty
+- The owner: "add a thingy that pops up on the screen now explaining the rankings, no need to get into mechanisms, and
+  highlighting the leaving penalty".
+- #rb-rankintro (the news popup's look): NEW: RANKINGS — every ranked game moves your rating, beat better players to climb
+  faster; "your past games already count — your rating is N" (or "Everyone starts at 1000."); ranked = played to the end,
+  two devices, SAME; a red box "DON'T LEAVE EARLY — leaving a ranked game before it ends costs you rating points; the more time
+  left and the bigger the score gap, the more you lose". SEE RANKINGS (opens the board) / GOT IT. Once per device
+  (localStorage rb2p_rankintro_v1), on the lobby's first screen only, never in a game, never over another popup (waits); not
+  in test runs (seam _rb2p_rankIntroForce). Fits a sideways phone (a max-height 520 px compact style).
+- Checked headless: shows in 5-7 s, GOT IT hides it and it stays gone after a reload; fits 1366x768, 874x402, 740x360.
