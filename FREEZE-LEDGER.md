@@ -2029,3 +2029,30 @@ each day into a viewable section".
   The credit at the catch is gone. V352's reconcile stays (now a no-op when the plays are right).
 - Tests: v429-passline 4/4 on EASY (P4 new: each receiver's catches = the completions credited to him: 3 completions, 9/14/8
   yards); the test now keeps the drive at 1st & 10 and plays EASY (MAX's tier left the bot with no completions to compare).
+
+## V509 (2026-10-07): leaving a ranked game with under a minute left = 3x a loss, to the player who stayed
+- The owner: "there is a trend of people leaving with one second left. Make it that if people leave with less than a minute
+  left they lose 3x the original points lost and the guy who stays gets those points". The V506 formula (0.25 x WHOLE
+  minutes x |diff|) is 0 under a minute: 5 leaves on 7 Oct (QBCT 0:21 down 22, SMEP 0:40 down 25, KHTD 0:12, IDJD 0:48,
+  KYCC 0:56 tied) all cost nothing.
+- Now (tools/elo.js): under 60 s of game time left it is a forfeit, as in chess — the leaver loses 3 x K x E (what a loss to
+  that player costs), whatever the score, and the stayer gains exactly that. Not when the leaver's own phone recorded the
+  final; soham names exempt; no win/loss recorded. The popup and the RANKINGS note say so; devices that saw the first popup
+  see it once more as NEW: LEAVING RULE (rb2p_rankintro_v2). e2e/elo-math E9-E10.
+
+## V510 (2026-10-07): RRJQ — a page that changed rooms mid-match ran the new game on the old wiring; leave points at once
+- The owner: "game rrjq, kept taking possession from me and giving it to opponent". Justin's page started RGEM (FIND A
+  PLAYER, as a) at 14:29:39; at 14:30:02 — 45 s after it made the room — lfgNoShow saw lastPlayers.b empty (Retro's
+  presence had blinked) and, 25 s into the match, left the room WITHOUT a reload, put the page back in line; the owner's
+  banner tap matched it 2 s later into RRJQ as b. installFirebaseMatchSync is once per page: otherRole stayed 'b', so every
+  hand-off Justin sent wrote turn owner=b ("TURN-> b (send-OTHER)" from b), his REST poll read his own outcomes back
+  ("recv ... via rest-poll" of his own ts) and re-took the ball, and the owner's TURN-HEAL parked him each time. Justin's
+  audit stream kept writing to RGEM/audit/a (RRJQ had none from b); his flow gid stayed 'pending'.
+- Fix: lfgInMatch() — the no-show timer, lfgStart, the match watch, lfgJoin and lfgClaim never act from a match (the watch
+  takes the page out of line); enterRoom takes a page out of the line; and the backstop: installFirebaseMatchSync remembers
+  its room|role and a different one reloads the page (it rejoins via rb_room / rb_role_ and resumes a running match).
+- The owner: "give point to opponent immediately after one leaves": the staying page notes a leave 20 s after the leaver's
+  page closed (was 2 min) or at once after 60 s of silence; the job applies it at its next run (no 10-min wait; the job now
+  runs every 60 s), EVERY leave hands the leaver's points to the stayer, and a game finished after all undoes the leave
+  before it is rated. The result is published at embedcode/elo/g/{code_start_left}; the staying page shows
+  "OPPONENT LEFT THE GAME — +N RATING TO YOU". e2e/elo-math 11/11 (E8 at once + published, E11 undo); v506-leave 2/2.

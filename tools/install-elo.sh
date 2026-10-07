@@ -1,6 +1,6 @@
 #!/bin/bash
 # tools/install-elo.sh — V500 (the owner: "create an elo system ... like chess elo"). One LaunchAgent on this Mac:
-#   com.rb2p.elo   every 2 minutes: tools/elo.js — rates the finished games the phones noted (rooms/~elo/q) and publishes
+#   com.rb2p.elo   every minute (V510; was 2): tools/elo.js — rates the finished games the phones noted (rooms/~elo/q) and publishes
 #                  embedcode/elo (the board, each player, each game's change); its truth is .rb2p/elo/state.json
 # Install from the MAIN tree (~/Projects/two-player-rb). Re-run to update; `launchctl unload ~/Library/LaunchAgents/com.rb2p.elo.plist` stops it.
 set -e
@@ -24,7 +24,7 @@ cat > "$HOME/Library/LaunchAgents/$LABEL.plist" <<PL
   </dict>
   <key>WorkingDirectory</key><string>$REPO</string>
   <key>RunAtLoad</key><true/>
-  <key>StartInterval</key><integer>120</integer>
+  <key>StartInterval</key><integer>60</integer>
   <key>StandardOutPath</key><string>$RB2P/elo.log</string>
   <key>StandardErrorPath</key><string>$RB2P/elo.log</string>
 </dict></plist>

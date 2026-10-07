@@ -129,14 +129,18 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
                    !r5.applied && /not a ranked/.test(r5.why) && r6.applied && r6.minutes === 2 && r6.penalty === 3.5;
         check('E7 the leaving penalty: 0.25 x 5 min x 14 = 17.5 off; soham names exempt; none when tied, finished, unranked; overtime uses its clock', ok,
               JSON.stringify({ r1: [r1.minutes, r1.diff, r1.penalty, s1.players.lv.r], r2: r2.why, r3: r3.why, r4: r4.why, r5: r5.why, r6: [r6.minutes, r6.penalty] }));
-        // E8: the run — a note under 10 minutes old waits; at 10 minutes the penalty lands and the note goes
+        // E8 (V510, the owner: "give point to opponent immediately after one leaves"): the run applies a leave at once —
+        // the leaver's points go to the player who stayed, the note goes, and the result is published for the staying phone
         const st = base(), note = { c: 'LEAV', s: T0, t: T0 + 600000, left: L() };
         const io = fakeDb({ rooms: { LEAV: { games: { [T0]: rec() }, names: { a: 'Kai', b: 'Lee' } }, '~elo': { q: { ['LEAV_' + T0 + '_left']: note } } } });
-        await E.run(st, io, T0 + 600000 + 5 * 60000);
-        const waited = !!io.db.rooms['~elo'].q && Object.keys(io.db.rooms['~elo'].q).length === 1 && st.players.lv.r === 1000;
-        const out = await E.run(st, io, T0 + 600000 + 10 * 60000 + 1000);
-        const landed = Math.abs(st.players.lv.r - 982.5) < 1e-9 && out.changed.has('lv') && Object.keys(io.db.rooms['~elo'].q || {}).length === 0 && st.games['LEAV_' + T0 + '_left'].applied;
-        check('E8 the job waits 10 minutes (they may come back), then takes the points and drops the note', waited && landed, JSON.stringify({ waited, r: st.players.lv.r, left: Object.keys(io.db.rooms['~elo'].q || {}) }));
+        const out = await E.run(st, io, T0 + 600000 + 1000);
+        await E.publish(st, io, out.changed, out.done, T0 + 600000 + 1000);
+        const g = ((io.db.embedcode || {}).elo || {}).g || {}, pubL = g['LEAV_' + T0 + '_left'];
+        const landed = Math.abs(st.players.lv.r - 982.5) < 1e-9 && Math.abs(st.players.sty.r - 1017.5) < 1e-9 && out.changed.has('lv') && out.changed.has('sty') &&
+                       Object.keys(io.db.rooms['~elo'].q || {}).length === 0 && st.games['LEAV_' + T0 + '_left'].applied;
+        const shown = !!(pubL && pubL.leave && pubL.applied && pubL.b && pubL.b.d === 18 && pubL.a && pubL.a.d === -17);
+        check('E8 a leave lands at the first run: -17.5 from the leaver, +17.5 to the player who stayed, the note gone, the result published (b +18)', landed && shown,
+              JSON.stringify({ lv: st.players.lv.r, sty: st.players.sty && st.players.sty.r, pubL, left: Object.keys(io.db.rooms['~elo'].q || {}) }));
     }
     // E9 (V509): the late leave — under a minute left, a forfeit: 3 x what a loss to that player costs, to the player who stayed
     {
@@ -154,9 +158,9 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const want = Math.round(3 * loss * 100) / 100;
         const ok = r1.applied && r1.rule === 'late' && r1.penalty === want && Math.abs(s1.players.lv.r - (1000 - want)) < 1e-9 && Math.abs(s1.players.sty.r - (1100 + want)) < 1e-9 &&
                    r1.ouid === 'sty' && r1.or1 === Math.round(1100 + want) && s1.players.lv.n === 10 && s1.players.sty.w === 20 &&
-                   r2.applied && r2.penalty === want && r3.applied && r3.rule !== 'late' && r3.penalty === 5.5 && Math.abs(s3.players.sty.r - 1100) < 1e-9 &&
+                   r2.applied && r2.penalty === want && r3.applied && r3.rule !== 'late' && r3.penalty === 5.5 && Math.abs(s3.players.sty.r - 1105.5) < 1e-9 &&
                    !r4.applied && /soham/.test(r4.why) && !r5.applied && /recorded the final/.test(r5.why) && r6.applied && r6.rule === 'late';
-        check('E9 under a minute left: the leaver loses 3 x a loss (' + want + ') and the stayer gains it, whatever the score; 1:00 left is the old formula; exempt / own final: nothing',
+        check('E9 under a minute left: the leaver loses 3 x a loss (' + want + ') and the stayer gains it, whatever the score; 1:00 left is the minute formula (to the stayer too); exempt / own final: nothing',
               ok, JSON.stringify({ want, r1: [r1.rule, r1.penalty, s1.players.lv.r, s1.players.sty.r], r2: r2.penalty, r3: [r3.rule, r3.penalty], r4: r4.why, r5: r5.why, r6: r6.rule }));
         // the run: the stayer's new rating is published too
         const st = base(), note = { c: 'LATE', s: T0, t: T0, left: L() };
@@ -164,6 +168,19 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const out = await E.run(st, io, T0 + 10 * 60000 + 1000);
         check('E10 the job publishes both: the leaver and the player who stayed', out.changed.has('lv') && out.changed.has('sty') && st.games['LATE_' + T0 + '_left'].rule === 'late',
               JSON.stringify([...out.changed]));
+        // E11 (V510): they came back and both phones recorded the final — the leave is undone, then the game is rated
+        const st2 = base(), recF = rec({ fin: { a: { su: 7, so: 14, uid: 'lv' }, b: { su: 14, so: 7, uid: 'sty' } } });
+        const io2 = fakeDb({ rooms: { LATE: { games: { [T0]: rec() }, names: { a: 'Kai', b: 'Lee' } }, '~elo': { q: { ['LATE_' + T0 + '_left']: note } } } });
+        await E.run(st2, io2, T0 + 1000);   // the leave lands
+        const afterLeave = [st2.players.lv.r, st2.players.sty.r];
+        io2.db.rooms.LATE.games[T0] = recF;   // ...they came back and finished: both finals
+        io2.db.rooms['~elo'].q = { ['LATE_' + T0]: { c: 'LATE', s: T0, t: T0 + 60000 } };
+        const out2 = await E.run(st2, io2, T0 + 60000 + 30000);
+        const lvEnd = st2.players.lv.r, styEnd = st2.players.sty.r, Lg = st2.games['LATE_' + T0 + '_left'], Gg = st2.games['LATE_' + T0];
+        const okU = afterLeave[0] < 1000 && afterLeave[1] > 1100 && Lg.reversed && Gg && Gg.ranked && Gg.a.r0 === 1000 && Gg.b.r0 === 1100 && lvEnd < 1000 && styEnd > 1100 &&
+                    out2.done.some(d => d.leave && d.reversed);
+        check('E11 they came back and finished: the leave is undone (both back to 1000 / 1100) and the game is rated from there', okU,
+              JSON.stringify({ afterLeave, reversed: Lg.reversed, game: Gg && [Gg.ranked, Gg.a, Gg.b], end: [lvEnd, styEnd] }));
     }
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);

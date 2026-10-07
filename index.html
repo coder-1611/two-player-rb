@@ -2080,7 +2080,7 @@
             <p>Every ranked game now moves your <b>rating</b>. Win to climb the leaderboard &mdash; beat better players and you climb faster.</p>
             <p id="rb-rankintro-me">Everyone starts at 1000.</p>
             <p>A game is ranked when you play it <b>to the end</b>, on <b>two devices</b>, with the <b>SAME</b> difficulty.</p>
-            <div class="warn"><b>&#9888; DON'T LEAVE EARLY</b>Leaving a ranked game before it ends costs you rating points &mdash; the more time left and the bigger the score gap, the more you lose. <b class="late">Leave in the last minute and you lose 3&times; what a loss costs &mdash; and the player who stayed gets those points.</b></div>
+            <div class="warn"><b>&#9888; DON'T LEAVE EARLY</b>Leaving a ranked game before it ends costs you rating points &mdash; the more time left and the bigger the score gap, the more you lose &mdash; and the player who stayed gets them. <b class="late">Leave in the last minute and you lose 3&times; what a loss costs.</b></div>
             <div class="row"><button id="rb-rankintro-see" type="button">SEE RANKINGS</button><button id="rb-rankintro-ok" class="later" type="button">GOT IT</button></div>
         </div>
     </div>
@@ -2120,7 +2120,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V509<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V510<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2280,7 +2280,7 @@
             <h1 class="rb-roomtitle">RANK<span class="code">INGS</span></h1>
             <p class="rb-rank-me" id="rb-rank-me"></p>
             <ol class="rb-rank-list" id="rb-rank-list"></ol>
-            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. Leave a ranked game before it ends and you lose 0.25 &times; the whole minutes left &times; the point difference. Leave with under a minute left and you lose 3 &times; what a loss to that player costs, whatever the score &mdash; and the player who stayed gets those points. You show on the board after 5 ranked games.</p>
+            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. Leave a ranked game before it ends and you lose 0.25 &times; the whole minutes left &times; the point difference; with under a minute left, 3 &times; what a loss to that player costs, whatever the score. Either way the player who stayed gets those points right away &mdash; and if you come back and finish the game, it is undone. You show on the board after 5 ranked games.</p>
             <button id="rb-ranks-back" class="rb-join-btn" type="button">&#9664; BACK</button>
         </div>
         <!-- ======================= WATCH LIVE (V500) ======================= -->
@@ -2306,7 +2306,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V509</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V510</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -13029,6 +13029,9 @@
                     var silentMs = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
                     var silent = !left && !hidLast && silentMs > 12000;   // two missed heartbeats (was 20s)
                     var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (silent ? "OPPONENT'S PHONE STOPPED RESPONDING" : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT'));
+                    // V510: a ranked game's leave gives this player the leaver's points — say how many, once the job has
+                    var gain = Number(window._rb2p_leaveGain) || 0;
+                    if ((left || silent) && gain > 0) want = 'OPPONENT LEFT THE GAME \u2014 +' + gain + ' RATING TO YOU';
                     if (st.textContent !== want) st.textContent = want;
                 } catch (e) {}
             };
@@ -20756,6 +20759,7 @@
         function enterRoom(code, role, restoring) {
             myRoom = code;
             myRole = role;
+            try { if (lfgWaiting && !lfgBusy && !lfgJoining) lfgStop(); } catch (eLq) {}   // V510: a page in a room is out of the line
             try { FB.set(FB.ref(db, 'rooms/' + code + '/names/' + role), rb2pName() || '?').catch(function () {}); } catch (eNm) {}   // V387
             myReady = false;
             gameStarted = false;
@@ -21323,7 +21327,7 @@
         }
         function lfgStart() {
             if (!rb2pName()) { showNameGate(); return; }
-            if (myRoom) return;
+            if (myRoom || lfgInMatch()) return;   // V510: never in line from a room or a match
             if (!lfgSince) lfgLog('start', { via: lfgVia });
             lfgWaiting = true; lfgSince = lfgSince || lfgNow();
             lfgWatch(true); lfgPost(); lfgMeWatch(true);
@@ -21347,6 +21351,7 @@
                 lfgUnsubMe = FB.onValue(FB.ref(db, LFG + '/q/' + lfgSid), function (sn) {
                     var v = sn.val();
                     if (!lfgWaiting || lfgBusy || lfgJoining) return;
+                    if (myRoom || lfgInMatch()) { lfgStop(); return; }   // V510: in a room or a match — out of line, no join
                     if (!v || !v.ts) { if (Date.now() - lfgPostedAt > 5000) lfgPost(); return; }   // my place vanished (a blip): back, same place
                     if (v.m && v.m.code) { lfgJoin(String(v.m.code), v.m.name); return; }
                     if (v.m) {
@@ -21376,7 +21381,7 @@
         }
         var lfgFailed = {};   // an entry a claim just failed on: the scan leaves it alone for 10 s
         async function lfgClaim(k) {
-            if (lfgBusy || lfgJoining || myRoom) return;
+            if (lfgBusy || lfgJoining || myRoom || lfgInMatch()) return;   // V510: not from a match
             if (!rb2pName()) { showNameGate(); return; }
             var wasWaiting = lfgWaiting, restart = false, since0 = lfgSince, via0 = wasWaiting ? 'find' : lfgVia;
             lfgBusy = true; lfgVia = 'find';
@@ -21426,7 +21431,7 @@
             }
         }
         async function lfgJoin(code, name) {
-            if (lfgJoining) return;
+            if (lfgJoining || myRoom || lfgInMatch()) return;   // V510
             lfgJoining = true;
             lfgRoom = { code: code, name: name, at: Date.now() };
             var since0 = lfgSince;
@@ -21443,8 +21448,15 @@
                 lfgRoom = null; lfgJoining = false; if (!myRoom) lfgStart(); lfgSay('Connection error — still looking.', 6000);
             } finally { lfgJoining = false; }
         }
+        // V510: a page in a match never acts on the line (RRJQ: the no-show timer below fired 25 s into RGEM's match —
+        // the other seat's presence had blinked — left the room without a reload, put the page back in line, and the
+        // line moved it into another room mid-game on the old room's wiring)
+        function lfgInMatch() {
+            try { return !!gameStarted || document.documentElement.classList.contains('rb-in-match') || !!(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom()); } catch (e) { return false; }
+        }
         function lfgNoShow(code) {   // the maker's room, 45 s on, still one seat empty: back in line
             if (!lfgRoom || lfgRoom.code !== code || myRoom !== code) return;
+            if (lfgInMatch()) return;   // V510: the match started — the seat is not empty, whatever presence says
             if (lastPlayers && lastPlayers.b) return;
             lfgRoom = null;
             Promise.resolve(leaveRoom()).then(function () {
@@ -21817,14 +21829,36 @@
         // beacon) or silent for over a minute — this page notes it, once, with the score and the clock at the moment they
         // went: rooms/~elo/q/{room}_{game}_left. The Mac's rating job waits 10 more minutes (they may come back and finish:
         // then nothing happens) and takes 0.25 x the whole minutes left x the point difference from whoever left first.
+        // V510 (the owner: "give point to opponent immediately after one leaves"): noted 20 s after their page closed (a
+        // reload that comes straight back never counts), or at once after a minute of silence; the job applies it at its
+        // next run (every minute) and gives the points to the player who stayed — and undoes it if they come back and the
+        // game is finished after all. This page then shows the points it got on the waiting screen.
         var leaveW = { key: null, since: 0, snap: null, sent: false };
+        window._rb2p_leaveGain = 0;
+        function leaveResultPoll(gid, role) {   // the job's result for this leave (embedcode/elo/g/{gid}): the points I got
+            var tries = 0;
+            (function poll() {
+                if (++tries > 30 || leaveW.key + '_left' !== gid) return;
+                eloGetX(eloPub() + '/g/' + gid, 6000).then(function (v) {
+                    if (leaveW.key + '_left' !== gid) return;
+                    if (v && v.leave) {
+                        var mine = v[role], d = mine ? Number(mine.d) || 0 : 0;
+                        if (v.applied && !v.reversed && d > 0) { window._rb2p_leaveGain = d; if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the leave gave me +' + d + ' (' + (v.rule || '') + ')'); }
+                        if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus();
+                        return;
+                    }
+                    setTimeout(poll, 8000);
+                }, function () { setTimeout(poll, 8000); });
+            })();
+        }
         setInterval(function () {
             try {
                 if (!myRoom || !myRole || window._rb2p_gameOverReported === true || !(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) { leaveW.since = 0; leaveW.snap = null; return; }
                 var gk = eloGameKey(); if (!gk) return;
-                if (leaveW.key !== myRoom + '_' + gk) leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false };
+                if (leaveW.key !== myRoom + '_' + gk) { leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false }; window._rb2p_leaveGain = 0; }
                 if (leaveW.sent) return;
-                var gone = (window._rb2p_oppLeft && window._rb2p_oppLeft()) || (window._rb2p_oppSilentMs && window._rb2p_oppSilentMs() > 60000);
+                var closed = !!(window._rb2p_oppLeft && window._rb2p_oppLeft());
+                var gone = closed || (window._rb2p_oppSilentMs && window._rb2p_oppSilentMs() > 60000);
                 if (!gone) { leaveW.since = 0; leaveW.snap = null; return; }
                 if (!leaveW.since) {   // the moment they went: the score and the clock then
                     var em = RB.engineState(); if (!em) return;
@@ -21833,7 +21867,8 @@
                                     su: Number(em.userScore) || 0, so: Number(em.opponentScore) || 0 };
                     return;
                 }
-                if (Date.now() - leaveW.since < (Number(window._rb2p_leaveWaitMs) || 120000)) return;
+                var waitMs = window._rb2p_leaveWaitMs != null ? Number(window._rb2p_leaveWaitMs) || 0 : (closed ? 20000 : 0);   // V510 (was 2 minutes)
+                if (Date.now() - leaveW.since < waitMs) return;
                 leaveW.sent = true;
                 var note = { c: myRoom, s: Number(gk), t: Date.now(),
                              left: Object.assign({ role: myRole === 'a' ? 'b' : 'a', by: myRole, at: leaveW.since, qmins: Number(window._rb2p_quarterMins) || 2 }, leaveW.snap) };
@@ -21841,6 +21876,7 @@
                 FB.set(FB.ref(db, lp), note).catch(function () {});
                 if (window._rb2p_fbRestPut) window._rb2p_fbRestPut(lp, note);
                 if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the other player left ' + Math.round((Date.now() - leaveW.since) / 1000) + ' s ago — noted (Q' + leaveW.snap.q + ' ' + leaveW.snap.clk + ' s, ' + leaveW.snap.su + '-' + leaveW.snap.so + ')');
+                leaveResultPoll(myRoom + '_' + gk + '_left', myRole);   // V510
             } catch (e) {}
         }, 5000);
         // RANKINGS: the board (the top 50 with 5+ ranked games; names censored for slurs on the Mac and again here)
@@ -22395,9 +22431,26 @@
             diag('link ready (' + me + (hasRTC ? ', direct + Firebase' : ', Firebase only') + ')');
         }
 
+        var _rb2pFbSyncFor = '';
         function installFirebaseMatchSync() {
-            if (_rb2pFbSyncInstalled) return;
-            _rb2pFbSyncInstalled = true;
+            // V510 (room RRJQ, the owner: "kept taking possession from me and giving it to opponent"): this wiring is
+            // installed once per page, and its room and roles are fixed then (otherRole, the subscriptions, the audit
+            // stream). A page that started a match in RGEM as a, then entered RRJQ as b without a reload (FIND A PLAYER's
+            // no-show timer left RGEM 25 s into its match and put it back in line) ran the new game on the old wiring:
+            // every hand-off it sent named ITSELF the turn owner ("TURN-> b (send-OTHER)" from b), its own poll fed its
+            // sends back to it, and the other phone's TURN-HEAL parked its player each time. A different room or role
+            // now gets a fresh page — the reload rejoins the room (rb_room / rb_role_) and resumes a running match.
+            var forNow = String(myRoom || '') + '|' + String(myRole || '');
+            if (_rb2pFbSyncInstalled) {
+                if (_rb2pFbSyncFor && myRoom && myRole && forNow !== _rb2pFbSyncFor) {
+                    try { if (window._rb2p_diagLog) window._rb2p_diagLog('MATCH WIRING was for ' + _rb2pFbSyncFor + ', now ' + forNow + ' — reloading for a fresh page'); } catch (eD) {}
+                    try { if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'stale-wiring-reload', was: _rb2pFbSyncFor, now: forNow }); } catch (eA) {}
+                    if (!window._rb2p_staleWiringNoReload) setTimeout(function () { try { location.reload(); } catch (eR) {} }, 50);   // test seam
+                    window._rb2p_staleWiring = forNow;
+                }
+                return;
+            }
+            _rb2pFbSyncInstalled = true; _rb2pFbSyncFor = (myRoom && myRole) ? forNow : '';
             installViewLink();   // V450: the opponent's screen on the WAIT screen
             var staleBadge = document.getElementById('rb-fb-badge');
             if (staleBadge && staleBadge.parentNode) staleBadge.parentNode.removeChild(staleBadge);
