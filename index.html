@@ -2074,7 +2074,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V500<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V501<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2260,7 +2260,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V500</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V501</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -21650,10 +21650,15 @@
         // (each game's change). This page reads them, and shows an estimate on the stats screen until the official change.
         function eloPub() { return window._rb2p_eloPath || 'embedcode/elo'; }   // (tests: their own copy)
         var eloMine = null, eloRoomInfo = { room: null, lobby: false }, eloFin = null;
-        // the player: this browser's anonymous sign-in (the SDK's — present from the page's start), else the REST one
+        // the player: this browser's anonymous REST sign-in (kept in localStorage) — the same id every past game's bind
+        // carries (V392's device uid), so the ratings rebuilt from past games (tools/elo-backfill.js, V501) are this player's.
+        // Read off the token itself (the visit tracker's _rb2p_uid is not on every page); empty until the first REST call.
         function eloUid() {
-            try { var au = FBA.getAuth(app); if (au && au.currentUser && au.currentUser.uid) return String(au.currentUser.uid); } catch (e) {}
-            try { return window._rb2p_uid ? String(window._rb2p_uid() || '') : ''; } catch (e2) { return ''; }
+            try {
+                var t = window._fbTokPeek ? window._fbTokPeek() : null; if (!t) return '';
+                var j = JSON.parse(atob(String(t.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+                return String(j.user_id || j.sub || '');
+            } catch (e) { return ''; }
         }
         window._rb2p_eloUid = eloUid;
         function eloDay(ms) { try { return new Date(ms || Date.now()).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }); } catch (e) { return ''; } }

@@ -1918,3 +1918,19 @@ each day into a viewable section".
 - Tests: elo-math 6/6 (the K schedule, flattening, the 3-a-day limit and a lobby game, the unranked reasons, the queue, the
   publish with a censored name), v500-ranked-watch 7/7 (two devices + a watcher: the list, the relayed picture, the count,
   the chat, EXIT, the final rated 1000 -> 1032 / 968 on both stats screens), opp-view 8/8.
+
+## V501 (2026-10-06): the ratings rebuilt from every past game, as if the system had always run; the rating's id = the device id
+- The owner: "use past games to give everybody a rating, pretend the rating system has always been like this"; "games played
+  on the same device against each other don't count".
+- **The id:** V500 used the SDK's anonymous uid; every past game's bind carries the REST sign-in's uid (V392's device id, kept
+  in localStorage) — a different account. eloUid() now reads the REST token itself (_fbTokPeek; the visit tracker's
+  _rb2p_uid is not on every page), so a player's rebuilt rating is theirs. tools/elo.js leaves a V500 game unranked ("played
+  on V500, before the ratings used the device id") unless the rebuild covered it.
+- **tools/elo-backfill.js:** every finished game in audits/*.json (the alltime-stats split), oldest first, through elo.js's
+  own rate(): the device ids from each role's latest bind (ids from 2026-09-17 on), both 'final' entries, the mode from the
+  game record (V470+; older games recorded none and count as SAME), FIND A PLAYER from rooms/{code}/lfg, names from the
+  binds else rooms/{code}/names. Dry run by default; --write saves the state (a copy of the old one kept), publishes
+  embedcode/elo/r (every player) and top, and drops the queue notes it covered. Dry run on 6 Oct: 623 finished games ->
+  414 ranked (31 no id, 72 one final, 49 over 3 code games a day, 7 one device, 9 disagreeing, 41 different difficulties);
+  368 players, 40 on the board.
+- Tests: v500-ranked-watch 7/7 (the REST ids on two devices), elo-math 6/6.

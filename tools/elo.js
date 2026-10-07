@@ -45,6 +45,7 @@ function rate(st, g) {   // g = { gid, code, start, rec, names, lobby, now }
     const out = { gid: g.gid, code: g.code, start: g.start, at: g.now, ranked: false, why: '', lobby: !!g.lobby };
     const ua = String(uids.a || (fin.a && fin.a.uid) || ''), ub = String(uids.b || (fin.b && fin.b.uid) || '');
     out.ua = ua; out.ub = ub;
+    if (String(rec.ver || '') === 'V500') { out.why = 'played on V500, before the ratings used the device id'; return out; }   // V501: V500 wrote the SDK's uid
     if (!fin.a || !fin.b) { out.why = 'only one phone recorded the final'; return out; }
     if (Number(fin.a.su) !== Number(fin.b.so) || Number(fin.a.so) !== Number(fin.b.su)) { out.why = 'the two phones disagree on the score'; return out; }
     out.sa = Number(fin.a.su); out.sb = Number(fin.a.so);
