@@ -338,13 +338,19 @@ function keyMoments(f, n) {
 // point, ... the clutch things are 20 seconds, overtime plays get 1.2x boost and spectacularness is a raw score out of 16
 // ... + 2 times (stiff arms and jukes)". The numeric parts; the judge adds its raw spectacular score (0-16); an overtime
 // play's total is x1.2.
+// V515 (the owner: "reduce the importance of game situation in exchange for spectacularness"): the situation bonuses, the
+// 4th-down conversion and the overtime boost are halved (an overtime go-ahead / last-20-s winner 10, a last-20-s tyer 6, a
+// 4th-quarter go-ahead or tie 3, a score at 0:00 3; a 4th down 5 + half the yards to go; overtime x1.1) and the judge's
+// spectacularness counts 3x (0-16 raw: up to 48). On 7 Oct's short list the top 5 went from three goal-line overtime /
+// 4th-down scores (spectacular 2-5 of 16) to breakaways (9-14 of 16); #1 stayed.
+const SPEC_X = 3, OT_X = 1.1;
 const DIF_PTS = { max: 45, ultramax: 45, hard: 8, medium: 2, easy: 0 };   // V482: 40; V484 (the owner: "from tomorrow make offense max +55"): 55; V499 ("make max worth 45 points"): 45
 function points(f) {
     const offense = f.heroSide !== 'D', kick = !!f.kick || /kick|punt|fg/i.test(String(f.via || ''));
     // V483 (the owner: "in defensive plays no difficulty boost, maybe just +10"): a pick or a fumble return gets a flat 10
     const dk = String(f.dif || '').toLowerCase(), difficulty = !offense ? 10 : (DIF_PTS[dk] != null ? DIF_PTS[dk] : 2);   // not recorded: as MED
     const conv = offense && !kick && f.down >= 1 && f.down <= 4 && (f.td || (f.gain != null && f.toGo > 0 && f.gain >= f.toGo));
-    const td = f.td ? 20 : 0, firstDown = conv ? 5 : 0, fourth = conv && f.down === 4 ? 10 + Math.round(f.toGo) : 0;
+    const td = f.td ? 20 : 0, firstDown = conv ? 5 : 0, fourth = conv && f.down === 4 ? (10 + Math.round(f.toGo)) / 2 : 0;   // V515: half (was 10 + the yards)
     const yards = Math.round(Math.max(0, offense ? (f.gain || 0) : (f.returnYds || 0)) / 3 * 10) / 10;   // V484 (the owner: "reduce yardage weight to 1/3"): 1/3 a yard
     let situation = 0;
     const late = f.endClk != null ? f.endClk : f.clk;
@@ -352,11 +358,11 @@ function points(f) {
         const b = f.scoreBefore, a = f.scoreAfter;
         const m0 = offense ? b[0] - b[1] : b[1] - b[0], m1 = offense ? a[0] - a[1] : a[1] - a[0];   // the scoring side's margin
         const goAhead = m0 <= 0 && m1 > 0, ties = m0 < 0 && m1 === 0;
-        if (f.q >= 5 && goAhead) situation += 20;                       // overtime: any go-ahead score wins it
-        else if (f.q === 4 && late <= 20 && goAhead) situation += 20;   // a game-winner in the last 20 s
-        else if (f.q === 4 && late <= 20 && ties) situation += 12;      // a game-tyer in the last 20 s
-        else if (f.q === 4 && (goAhead || ties)) situation += 6;        // go-ahead / tying earlier in the 4th
-        if ((f.q === 2 || f.q >= 4) && late === 0) situation += 5;      // scored as the clock hit 0:00
+        if (f.q >= 5 && goAhead) situation += 10;                       // overtime: any go-ahead score wins it (V515: 10, was 20)
+        else if (f.q === 4 && late <= 20 && goAhead) situation += 10;   // a game-winner in the last 20 s (V515: 10, was 20)
+        else if (f.q === 4 && late <= 20 && ties) situation += 6;       // a game-tyer in the last 20 s (V515: 6, was 12)
+        else if (f.q === 4 && (goAhead || ties)) situation += 3;        // go-ahead / tying earlier in the 4th (V515: 3, was 6)
+        if ((f.q === 2 || f.q >= 4) && late === 0) situation += 3;      // scored as the clock hit 0:00 (V515: 3, was 5)
     }
     if (f.scoreBefore && Math.abs(f.scoreBefore[0] - f.scoreBefore[1]) >= 21) situation -= 5;   // a blowout
     const jukes = (f.missedTackles || 0) + (f.beaten || 0);           // dove and missed + left behind (never both)
@@ -364,6 +370,6 @@ function points(f) {
     const base = difficulty + td + firstDown + fourth + yards + situation + moves;
     return { difficulty, td, firstDown, fourth, yards, situation, stiffArms: f.stiffArms || 0, jukes, moves, base: Math.round(base * 10) / 10, ot: f.q >= 5 };
 }
-const pointsTotal = (p, raw) => Math.round((p.base + Math.max(0, Math.min(16, Number(raw) || 0))) * (p.ot ? 1.2 : 1) * 10) / 10;
+const pointsTotal = (p, raw) => Math.round((p.base + SPEC_X * Math.max(0, Math.min(16, Number(raw) || 0))) * (p.ot ? OT_X : 1) * 10) / 10;   // V515: 3x spectacular, x1.1 overtime
 
-module.exports = { decodeTrack, features, scoreOf, story, title, keyMoments, inflate, PX, MID, points, pointsTotal };
+module.exports = { decodeTrack, features, scoreOf, story, title, keyMoments, inflate, PX, MID, points, pointsTotal, SPEC_X, OT_X };

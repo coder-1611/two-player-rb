@@ -2098,3 +2098,13 @@ each day into a viewable section".
 - tools/highlights/features.js: when the marker is at or past the goal line, toGo = the yards to the goal line (50 - y0)
   and the play's story says "& goal" — the 4th-down bonus, the conversion check and the judge's text all use it.
 - daily.js: a preview's README names its own window ("From Wed 5:00 AM to 6:30 PM") instead of "The 24 hours to".
+
+## V515 (2026-10-07): play of the day — game situation weighs less, spectacle more
+- The owner: "reduce the importance of game situation in exchange for spectacularness". Today's preview ranked a 2-yard QB
+  dive (spectacular 3/16) #2 and a 1-yard catch (2/16) #3 on the overtime go-ahead +20, the 4th-down bonus and x1.2.
+- features.js: the situation bonuses halved (an overtime go-ahead / last-20-s winner 10, a last-20-s tyer 6, a 4th-quarter
+  go-ahead or tie 3, a score at 0:00 3; the blowout -5 kept), a converted 4th down (10 + the yards needed) / 2, overtime x1.1
+  (was 1.2), and the judge's spectacularness counts 3x (SPEC_X: 0-16 raw, up to 48). daily.js tells the judge the same.
+- 7 Oct's short list recomputed with the same judge scores: the top 5 became YYAB (Henry OT run, 14/16, stays #1), FGKP
+  (85-yd TD, 14/16, was #4), IFMG (66-yd TD run, 12/16, was #13), SZUF (30-yd TD catch, 9/16, was #8), FMBK (19-yd TD run,
+  13/16, was #12); the three goal-line overtime / 4th-down scores (2-5 of 16) dropped out.

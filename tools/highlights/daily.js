@@ -68,10 +68,10 @@ const NOFB = has('--no-firebase'), NOVIDEO = has('--no-video'), FORCE = has('--f
 // own folder ("YYYY-MM-DD preview"; runs/YYYY-MM-DD-preview), and not a day's run (the next real run still judges its plays)
 const PREVIEW = has('--preview');
 // V481: --formula points — the owner's points formula (features.js points()): the judge scores only "spectacularness"
-// (0-16) for every candidate; the code adds the measured points and ranks by the total (x1.2 in overtime)
+// (0-16) for every candidate; the code adds the measured points and ranks by the total (V515: the raw score x3, overtime x1.1)
 const FORMULA = opt('--formula', 'points');   // V484 (the owner: "I like this formula"): the standard from 6 Oct; --formula weights: JUDGE.md's 40/30/20/10
 const ptsText = p => 'difficulty ' + p.difficulty + ' + TD ' + p.td + ' + first down ' + p.firstDown + ' + 4th-down ' + p.fourth + ' + yards ' + p.yards +
-    ' + situation ' + p.situation + ' + moves ' + p.moves + ' (' + p.stiffArms + ' stiff arm' + (p.stiffArms === 1 ? '' : 's') + ', ' + p.jukes + ' juke' + (p.jukes === 1 ? '' : 's') + ') = ' + p.base + (p.ot ? ', OVERTIME x1.2' : '');
+    ' + situation ' + p.situation + ' + moves ' + p.moves + ' (' + p.stiffArms + ' stiff arm' + (p.stiffArms === 1 ? '' : 's') + ', ' + p.jukes + ' juke' + (p.jukes === 1 ? '' : 's') + ') = ' + p.base + (p.ot ? ', OVERTIME x' + F.OT_X : '');
 const HEIGHT = Number(opt('--height', 1080));
 const JUDGE_CMD = opt('--judge-cmd', null);
 const SHORT_MAX = 24;
@@ -460,12 +460,12 @@ async function guardState() {
             const head = ['# THIS RUN\'S SCORING — the owner\'s points formula (it replaces the weighting below)', '',
                 'Every play\'s BASE points are already computed from the game\'s own numbers (`base_points` and `points_breakdown` in plays.tsv; the breakdown under each candidate in candidates.md):', '',
                 '- Difficulty (the defense beaten): MAX 45, HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
-                '- Touchdown +20; first down +5 (a converted 4th down gets it too); a converted 4th down +10 + the yards needed (4th & 19 converted: +29, plus the +5)',
+                '- Touchdown +20; first down +5 (a converted 4th down gets it too); a converted 4th down: half of (10 + the yards needed) (4th & 10 converted: +10, plus the +5)',
                 '- Yardage: +1/3 point per yard',
-                '- Situation: a game-winner (a go-ahead score) in the last 20 s of the 4th quarter, or any go-ahead score in overtime, +20; a game-tyer in the last 20 s +12; a go-ahead or tying score earlier in the 4th +6; a score as the clock hits 0:00 +5; a blowout (a 21+ point margin before the play) -5',
+                '- Situation (the owner wants it to weigh less than spectacle): a game-winner (a go-ahead score) in the last 20 s of the 4th quarter, or any go-ahead score in overtime, +10; a game-tyer in the last 20 s +6; a go-ahead or tying score earlier in the 4th +3; a score as the clock hits 0:00 +3; a blowout (a 21+ point margin before the play) -5',
                 '- Moves: +4 per stiff arm and per juke (a defender who dove and missed, or was left behind)', '',
                 '**Your part: a raw SPECTACULARNESS score from 0 to 16 for every short-listed play** — how incredible it looks in the frames: jukes, broken tackles, stiff arms that put a defender down, hurdles, a catch in traffic, a ball that hangs.', '',
-                '**TOTAL = (base points + your raw score), x1.2 if the play is in overtime.** Pick the five with the highest TOTAL (interceptions only if EXTREMELY impressive, as below).', '',
+                '**TOTAL = (base points + ' + F.SPEC_X + ' x your raw score), x' + F.OT_X + ' if the play is in overtime.** Spectacle now outweighs the moment: a goal-line score that wins in overtime is not a top play unless it looks incredible. Pick the five with the highest TOTAL (interceptions only if EXTREMELY impressive, as below).', '',
                 'In top5.json give each pick a `"raw"` (your 0-16) and a `"total"`, and add `"scores": { "<id>": <raw>, ... }` with your raw score for EVERY short-listed play.', '',
                 'Everything else in this brief (looking at every sheet, the output format, the headline, the fan line) still applies.', '', '---', ''].join('\n');
             fs.writeFileSync(path.join(work, 'JUDGE.md'), head + fs.readFileSync(path.join(work, 'JUDGE.md'), 'utf8'));
