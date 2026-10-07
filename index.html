@@ -2119,7 +2119,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V507<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V508<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2305,7 +2305,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V507</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V508</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5869,7 +5869,7 @@
                                     var s0 = window._rb2p_feedStat0 || {};
                                     var qbPassDelta = 0, qbRushAttDelta = 0, qbRushYdDelta = 0;
                                     var qbAttDelta = 0;                 // V346: pass-attempt delta — the ONLY licence for an incompletion line
-                                    var rcvName = '', rcvBest = 0.01;   // largest non-QB receiving-yds move
+                                    var rcvName = '', rcvBest = 0.01, rcvP = null;   // largest non-QB receiving-yds move (V508: and his roster struct)
                                     var runName = '', runBest = 0;      // strongest non-QB rush signal
                                     var rcvYdDelta = null, runYdDelta = null;   // V353f: the yardage itself
                                     rosterEach(function (p, i2) {
@@ -5887,6 +5887,7 @@
                                             if (Math.abs(dPy) > rcvBest) {   // this non-QB gained receiving yards = the target
                                                 rcvBest = Math.abs(dPy);
                                                 rcvYdDelta = dPy;               // V353f: SIGNED, for the yardage
+                                                rcvP = p;                       // V508: the catch is credited to him
                                                 try { rcvName = String(_Ai(p, 'lname') || '').toUpperCase(); } catch (e) {}
                                             }
                                             // A carry: rush ATTEMPT or rush YARDS moved. Checking both
@@ -5999,6 +6000,17 @@
                                             su: Number(emA.userScore) || 0, so: Number(emA.opponentScore) || 0,
                                             y0: Number(window._rb2p_feedYard0), d0: Number(window._rb2p_feedDown0) });
                                     } catch (eSA) {}
+                                    // V508 (the owner, room SCGU: "kittle has 2 rec ... but longest of 16" — he caught 3, Jennings was
+                                    // credited 5 for 3): a reception is credited HERE, to the player the engine credited the receiving
+                                    // yards to (the same verdict as this line), not at the catch to whoever stood nearest the ball. A
+                                    // completion that moved no yards falls back to the line's receiver by name.
+                                    try {
+                                        if (evt.k === 'pass' && evt.rcv && String(evt.rcv) !== String(qbNm || '')) {
+                                            var recP = (rcvP && rcvName === String(evt.rcv)) ? rcvP : null;
+                                            if (!recP) rosterEach(function (p3) { if (!recP && (Number(_Ai(p3, 'position')) || 0) !== 1 && String(_Ai(p3, 'lname') || '').toUpperCase() === String(evt.rcv)) recP = p3; });
+                                            if (recP) _Yi(recP, 'stat_receive', (Number(_Ai(recP, 'stat_receive')) || 0) + 1);
+                                        }
+                                    } catch (eRc) {}
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V326 DEBUG — stat deltas per play
                                         'cFEED ' + evt.k + ' rcv=' + (evt.rcv || '-') + ' rb=' + (evt.rb || '-') +
                                         ' qbPass=' + qbPassDelta.toFixed(1) + ' qbRush=' + qbRushAttDelta +
@@ -6069,26 +6081,10 @@
                     // _7j IS the roster struct the box score reads. (The QB is in the
                     // backfield, far from the downfield catch, so "nearest OF" = the
                     // receiver, not the passer.)
-                    if (bkp === 5) {
-                        var rcx = ball.x, rcy = ball.y, rcv = null, rcvD2 = 1e12, op, odx, ody, od2;
-                        for (i = 0; i < all.length; i++) {
-                            op = all[i];
-                            if (!op || op._HL2 || !op._eE2 || op._eE2._fE2 !== 'obj_playerOF') continue;
-                            if (!op._7j || op._7j === -4) continue;   // rostered skill players only
-                            odx = op.x - rcx; ody = op.y - rcy; od2 = odx * odx + ody * ody;
-                            if (od2 < rcvD2) { rcvD2 = od2; rcv = op; }
-                        }
-                        if (rcv && rcvD2 <= 40 * 40) {
-                            try {
-                                _Yi(rcv._7j, 'stat_receive', (Number(_Ai(rcv._7j, 'stat_receive')) || 0) + 1);
-                                if (!window._rb2p_defDiag) window._rb2p_defDiag = { playEnds: 0, endKp: {}, tck: 0, sck: 0, intc: 0, rec: 0, noStarred: 0, outOfRange: 0 };
-                                window._rb2p_defDiag.rec = (window._rb2p_defDiag.rec || 0) + 1;
-                                console.log('[2P OFF] RECEPTION by ' + _Ai(rcv._7j, 'fname') + ' ' +
-                                            _Ai(rcv._7j, 'lname') + ' — stat_receive=' + _Ai(rcv._7j, 'stat_receive'));
-                            } catch (eR) {}
-                        }
-                        return;
-                    }
+                    // V508: the reception is credited when the play settles (the cFEED verdict: whoever the engine credited
+                    // the receiving yards to) — V193's credit here, to the offensive player nearest the ball at the catch,
+                    // went to the wrong man (SCGU: Kittle 2 for 3, Jennings 5 for 3)
+                    if (bkp === 5) return;
                     if (bkp !== 4 && bkp !== 11) return;   // 4 = BALL_DOWN (tackle), 11 = BALL_SACKED
                     var isSack = (bkp === 11);
                     // INT-RETURN GUARD: on an interception (or any turnover return),

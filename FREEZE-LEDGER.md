@@ -2016,3 +2016,16 @@ each day into a viewable section".
   (localStorage rb2p_rankintro_v1), on the lobby's first screen only, never in a game, never over another popup (waits); not
   in test runs (seam _rb2p_rankIntroForce). Fits a sideways phone (a max-height 520 px compact style).
 - Checked headless: shows in 5-7 s, GOT IT hides it and it stays gone after a reload; fits 1366x768, 874x402, 740x360.
+
+## V508 (2026-10-07): a reception is credited to the player the engine credited the receiving yards to
+- The owner: "how come in SCGU kittle has 2 rec 1 yards but longest of 16". SCGU game 2 (12:33-12:46 pm): Kittle caught 3
+  (13, 13, 16 — the play-by-play and the engine agree), the engine's own receiving yards were right (41.5, longest 15.9 ->
+  16, rooms/SCGU/box/a), but the catch COUNT was 2; Jennings caught 3 and was credited 5. (No "1 yard" in any stored
+  number — the yards field read 41.)
+- Cause: V193 credited stat_receive at the catch (ball state 5) to the offensive player NEAREST the ball — a crossing
+  receiver or a blocker standing by the catch got it; V352's reconcile then only fixed the TOTAL (to the QB's completions).
+- Now: the catch is credited when the play settles, with the play-by-play's own verdict — to the non-QB whose receiving
+  yards (stat_yards) moved on that play (rcvP); a completion that moved no yards falls back to the line's receiver by name.
+  The credit at the catch is gone. V352's reconcile stays (now a no-op when the plays are right).
+- Tests: v429-passline 4/4 on EASY (P4 new: each receiver's catches = the completions credited to him: 3 completions, 9/14/8
+  yards); the test now keeps the drive at 1st & 10 and plays EASY (MAX's tier left the bot with no completions to compare).
