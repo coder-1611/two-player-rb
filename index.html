@@ -988,6 +988,72 @@
             padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
         }
         html.rb-mobile #rb-lobby .rb-chat-log { height: 170px; }
+        /* ---- V500: RANKINGS (the rating) and WATCH LIVE (watch a game being played, with the watchers' chat) ---- */
+        #rb-lobby .rb-more-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+        #rb-lobby .rb-more-row button { font-family: 'Press Start 2P', monospace; font-size: 10px; letter-spacing: 1px; line-height: 1; color: #fff;
+            background: rgba(8,20,52,.6); border: 3px solid #fff; padding: 9px 12px; cursor: pointer; box-shadow: 3px 3px 0 #0a1838; transition: transform .07s; }
+        #rb-lobby .rb-more-row button:hover { transform: translate(-1px,-1px); }
+        #rb-lobby .rb-more-row .n:not(:empty) { margin-left: 8px; padding: 2px 5px; background: #ffd23f; color: #0a1838; font-size: 9px; }
+        .rb-live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff3b3b; margin-right: 8px; box-shadow: 0 0 6px #ff3b3b; vertical-align: 1px; }
+        #rb-lobby[data-active="ranks"] .rb-screen[data-view="ranks"], #rb-lobby[data-active="watch"] .rb-screen[data-view="watch"] {
+            position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
+            gap: 14px; width: 100%; max-height: 100vh; overflow-y: auto; padding: 40px 24px 56px; text-align: center; box-sizing: border-box;
+        }
+        html.rb-mobile #rb-lobby[data-active="ranks"] .rb-screen[data-view="ranks"], html.rb-mobile #rb-lobby[data-active="watch"] .rb-screen[data-view="watch"] {
+            gap: 10px; justify-content: flex-start; max-height: 100%;
+            padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+        }
+        #rb-lobby .rb-rank-me { margin: 0; font-size: 11px; line-height: 1.8; color: #ffd23f; }
+        #rb-lobby .rb-rank-list, #rb-lobby .rb-watch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+        #rb-lobby .rb-rank-list { width: min(640px, 100%); }
+        #rb-lobby .rb-rank-list li { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) 4.6em 6.4em; gap: 10px; align-items: center; padding: 8px 10px;
+            background: rgba(8,20,52,.45); border: 2px solid rgba(255,255,255,.35); font-size: 10px; line-height: 1.4; text-align: left; font-variant-numeric: tabular-nums; }
+        #rb-lobby .rb-rank-list li .rk { color: #9fbcf0; }
+        #rb-lobby .rb-rank-list li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+        #rb-lobby .rb-rank-list li .r { color: #ffd23f; text-align: right; }
+        #rb-lobby .rb-rank-list li .wl { color: #9fbcf0; text-align: right; font-size: 9px; }
+        #rb-lobby .rb-rank-list li.me { border-color: #36e07a; }
+        #rb-lobby .rb-rank-list li.none, #rb-lobby .rb-watch-list li.none { display: block; padding: 12px; text-align: center; color: #8fa1b3; font-size: 10px; line-height: 1.8;
+            background: rgba(8,20,52,.45); border: 2px solid rgba(255,255,255,.35); box-shadow: none; }
+        #rb-lobby .rb-rank-note, #rb-lobby .rb-watch-note { margin: 0; max-width: 640px; font-size: 9px; line-height: 1.9; color: #9fbcf0; }
+        #rb-lobby .rb-watch-list { width: min(760px, 100%); }
+        #rb-lobby .rb-watch-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(8,20,52,.45); border: 3px solid #fff;
+            box-shadow: 4px 4px 0 #0a1838; text-align: left; }
+        #rb-lobby .rb-watch-list li .g { flex: 1; min-width: 0; font-size: 10px; line-height: 1.8; color: #fff; overflow-wrap: anywhere; }
+        #rb-lobby .rb-watch-list li .g .sc { color: #ffd23f; }
+        #rb-lobby .rb-watch-list li .g small { display: block; color: #9fbcf0; font-size: 8px; }
+        #rb-lobby .rb-watch-list li button { flex: none; font: bold 10px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 10px 12px; color: #0a1838;
+            background: #36e07a; border: 3px solid #0a1838; cursor: pointer; }
+        #rb-lobby .rb-rank-tag { margin: 0; font-size: 9px; letter-spacing: 1px; line-height: 1.7; color: #36e07a; }
+        #rb-lobby .rb-rank-tag.off { color: #9fbcf0; }
+        #rb-lobby .rb-rank-tag[hidden] { display: none; }
+        /* the watcher's screen: a dark ground under the live picture; the bar and the watchers' chat above it */
+        #rb-spec-bg { position: fixed; inset: 0; z-index: 1590; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
+            box-sizing: border-box; background: #0b1631; font: 12px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1.9; color: #9fbcf0; text-align: center; }
+        #rb-spec-bg b { color: #ffd23f; font-weight: normal; }
+        #rb-spec-hud { position: fixed; inset: 0; z-index: 1650; pointer-events: none; font-family: 'Press Start 2P', monospace; }
+        #rb-spec-bg[hidden], #rb-spec-hud[hidden], #rb-spec-hud [hidden] { display: none !important; }
+        #rb-spec-hud .bar { pointer-events: auto; position: absolute; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); display: flex; align-items: center;
+            gap: 10px; max-width: calc(100vw - 16px); padding: 7px 10px; background: rgba(8,14,30,.86); border: 3px solid #fff; color: #fff; font-size: 9px; line-height: 1.4;
+            box-shadow: 0 4px 14px rgba(0,0,0,.45); }
+        #rb-spec-hud .bar .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        #rb-spec-hud .bar .sc { color: #ffd23f; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        #rb-spec-hud .bar button, #rb-spec-hud .chat-tog { font: bold 9px 'Press Start 2P', monospace; padding: 7px 9px; color: #0a1838; background: #ffd23f; border: 2px solid #0a1838;
+            cursor: pointer; flex: none; }
+        #rb-spec-hud .chat-tog { pointer-events: auto; position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); }
+        #rb-spec-hud .chat { pointer-events: auto; position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom));
+            width: min(300px, calc(100vw - 20px)); display: flex; flex-direction: column; gap: 6px; padding: 8px; box-sizing: border-box; background: rgba(8,14,30,.84); border: 3px solid #fff; }
+        #rb-spec-hud .chat .hd { display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #9fbcf0; letter-spacing: 1px; }
+        #rb-spec-hud .chat .hd button { font: bold 8px 'Press Start 2P', monospace; padding: 4px 6px; color: #fff; background: transparent; border: 2px solid #fff; cursor: pointer; }
+        #rb-spec-hud .chat ul { list-style: none; margin: 0; padding: 4px; height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; font-size: 9px; line-height: 1.6;
+            color: #e8f0ff; text-align: left; background: rgba(0,0,0,.25); }
+        #rb-spec-hud .chat ul li { overflow-wrap: anywhere; }
+        #rb-spec-hud .chat ul li b { color: #ffd23f; margin-right: 6px; font-weight: normal; }
+        #rb-spec-hud .chat ul li.me b { color: #36e07a; }
+        #rb-spec-hud .chat ul li.none { color: #8fa1b3; }
+        #rb-spec-hud .chat form { display: flex; gap: 6px; }
+        #rb-spec-hud .chat input { flex: 1; min-width: 0; font: 10px 'Press Start 2P', monospace; padding: 8px; border: 2px solid #fff; background: #0a1838; color: #fff; }
+        #rb-spec-hud .chat form button { font: bold 9px 'Press Start 2P', monospace; padding: 0 8px; color: #0a1838; background: #ffd23f; border: 2px solid #0a1838; cursor: pointer; }
         /* ---- V488: the room chat (a found player's room only) and the PLAYER FOUND alert ---- */
         #rb-lobby .rb-room-chat { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(520px, 100%); padding: 10px 12px; box-sizing: border-box;
             background: rgba(8,20,52,.45); border: 3px solid #fff; box-shadow: 4px 4px 0 #0a1838; }
@@ -2008,7 +2074,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V499<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V500<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2029,6 +2095,10 @@
                 <div class="rb-find-row">
                     <span class="rb-sub">NO CODE?</span>
                     <button id="rb-find" type="button">FIND A PLAYER<span class="n" id="rb-find-n"></span></button>
+                </div>
+                <div class="rb-more-row">
+                    <button id="rb-ranks-btn" type="button">RANKINGS<span class="n" id="rb-my-rating"></span></button>
+                    <button id="rb-watch-btn" type="button"><i class="rb-live-dot" aria-hidden="true"></i>WATCH LIVE<span class="n" id="rb-watch-n"></span></button>
                 </div>
                 <p id="rb-entry-msg" class="msg"></p>
             </div>
@@ -2090,6 +2160,7 @@
             </div>
             <p class="you-are">YOU ARE: <b id="rb-you-role">—</b></p>
             <p class="status" id="rb-status">Waiting for opponent…</p>
+            <p class="rb-rank-tag" id="rb-rank-tag" hidden></p>
             <div class="rb-room-chat" id="rb-room-chat" hidden>
                 <p class="rb-sub">CHAT</p>
                 <ul class="rb-chat-log" id="rb-room-chat-log"></ul>
@@ -2158,6 +2229,21 @@
             <p class="rb-find-note">The site is still growing, so you may not find someone right away. Keep this page open &mdash; it beeps when a player joins. Most players are on weekdays around midday (Central time).</p>
             <button id="rb-find-back" class="rb-join-btn" type="button">&#9664; BACK</button>
         </div>
+        <!-- ======================= RANKINGS (V500) ======================= -->
+        <div data-view="ranks" class="rb-screen">
+            <h1 class="rb-roomtitle">RANK<span class="code">INGS</span></h1>
+            <p class="rb-rank-me" id="rb-rank-me"></p>
+            <ol class="rb-rank-list" id="rb-rank-list"></ol>
+            <p class="rb-rank-note">Everyone starts at 1000. Your rating moves a lot in your first games and settles as you play more, like chess. FIND A PLAYER games always count; games with a friend's code count up to 3 a day. Both players need the SAME difficulty. You show on the board after 5 ranked games.</p>
+            <button id="rb-ranks-back" class="rb-join-btn" type="button">&#9664; BACK</button>
+        </div>
+        <!-- ======================= WATCH LIVE (V500) ======================= -->
+        <div data-view="watch" class="rb-screen">
+            <h1 class="rb-roomtitle">WATCH <span class="code">LIVE</span></h1>
+            <ul class="rb-watch-list" id="rb-watch-list"></ul>
+            <p class="rb-watch-note">Watch a game that is being played right now and chat with the other watchers. The players don't see the watchers' chat.</p>
+            <button id="rb-watch-back" class="rb-join-btn" type="button">&#9664; BACK</button>
+        </div>
         <!-- V493: someone is looking for a game right now — every lobby sees it, one tap plays them -->
         <button id="rb-lfg-banner" type="button" hidden>&#9889; <span class="lg">A PLAYER WANTS A GAME RIGHT NOW &mdash; <b>PLAY THEM</b></span><span class="sm">SOMEONE WANTS A GAME &mdash; <b>PLAY</b></span></button>
         <!-- V488: a found player — the alert -->
@@ -2174,12 +2260,24 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V499</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V500</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
         <div class="rb-crt-scan" aria-hidden="true"></div>
         <div class="rb-crt-vig" aria-hidden="true"></div>
+    </div>
+
+    <!-- V500: WATCH LIVE — the watcher's screen -->
+    <div id="rb-spec-bg" hidden><p id="rb-spec-wait">CONNECTING TO THE GAME&hellip;</p><p id="rb-spec-score"></p></div>
+    <div id="rb-spec-hud" hidden>
+        <div class="bar"><span class="rb-live-dot" aria-hidden="true"></span><span class="who" id="rb-spec-who"></span><span class="sc" id="rb-spec-sc"></span><button type="button" id="rb-spec-exit">EXIT</button></div>
+        <button type="button" class="chat-tog" id="rb-spec-tog">CHAT</button>
+        <div class="chat" id="rb-spec-chat" hidden>
+            <div class="hd"><span>WATCHERS' CHAT <span id="rb-spec-n"></span></span><button type="button" id="rb-spec-hide" aria-label="Hide the chat">&#9660;</button></div>
+            <ul id="rb-spec-log"></ul>
+            <form id="rb-spec-form"><input id="rb-spec-input" maxlength="200" placeholder="Say something" autocomplete="off"><button type="submit">SEND</button></form>
+        </div>
     </div>
 
     <!-- ============ MOBILE BOOTSTRAP (V214) ============
@@ -15858,8 +15956,9 @@
                 caps: 0, chain: Promise.resolve(), inFlight: 0 };
     var RCV = { lastDrawAt: 0, lastTickAt: 0, rafGap: 16, pauseUntil: 0, slowSince: 0, lite: false, skipN: 0, skipped: 0, tickMs: 0, tickMax: 0, stretched: 0, morphs: 0, resized: 0, chain: Promise.resolve(), queued: 0, frames: [], bySeq: new Map(), lastRxAt: 0, offs: [], gaps: [], lastT: -1, delay: 120, cv: null, R: null, chip: null, raf: 0,
                 showing: false, lastWantAt: 0, needKey: true, rx: 0, rxBytes: 0, drawn: 0, starved: 0, decodeFail: 0, lastAckSent: 0, mode: null, failed: false };
-    function amWaiting() { return window._rb2p_userIsWaitingForOpponent === true; }
-    function inMatch() { try { return !!(window.RB && RB.isEngineInMatchRoom()); } catch (e) { return false; } }
+    // V500 (WATCH LIVE): a watcher's page shows the replay with no match of its own — API.spec set by the watch screen
+    function amWaiting() { return !!(API && API.spec) || window._rb2p_userIsWaitingForOpponent === true; }
+    function inMatch() { if (API && API.spec) return true; try { return !!(window.RB && RB.isEngineInMatchRoom()); } catch (e) { return false; } }
     // 30 frames a second on the direct link (the replay glides between them), 5-6 on Firebase; a phone whose capture +
     // encode runs long gives up frames rather than its own smoothness
     // V462 (the owner: "slight lag in second half offense ever since we added the pixel by pixel recreation"; a player:
@@ -16137,7 +16236,8 @@
         if (RCV.failed || !u8 || !u8.length) return;
         if (u8[0] === 0x5A || u8[0] === 0x5B || RCV.queued) {
             RCV.queued++;
-            RCV.chain = RCV.chain.then(function () { return expand(u8); }).then(function (x) { RCV.queued--; onPacketNow(x, via); }, function () { RCV.queued--; RCV.needKey = true; });
+            var gen = RCV.gen;   // V500: a watcher's source switch drops what is still being unpacked
+            RCV.chain = RCV.chain.then(function () { return expand(u8); }).then(function (x) { RCV.queued--; if (gen === RCV.gen) onPacketNow(x, via); }, function () { RCV.queued--; RCV.needKey = true; });
             return;
         }
         onPacketNow(u8, via);
@@ -16255,7 +16355,9 @@
         try { if (window._rb2p_teamName) nm = String(window._rb2p_teamName(window._rb2p_oppTeamUid) || nm).toUpperCase(); } catch (e1) {}
         RCV.frame.style.boxShadow = 'inset 0 0 0 3px ' + acc + ', inset 0 0 22px ' + acc + '99';
         RCV.chip.style.borderColor = acc;
+        if (API.spec) { acc = API.spec.acc || acc; nm = String(API.spec.team || 'THE GAME').toUpperCase(); }   // V500: a watcher sees whose screen it is
         RCV.chip.innerHTML = '<span class="dot"></span>LIVE \u00b7 ' + nm.replace(/[<>&]/g, '') + '\u2019S SCREEN';
+        if (RCV.mark) RCV.mark.style.display = API.spec ? 'none' : '';
         place();   // V457: the chip is sized by its text
         RCV.cv.style.display = 'block'; RCV.chip.style.display = 'block'; RCV.frame.style.display = 'block';
         // V455: this phone's own game canvas, covered by the replay, is not composited while it is covered. Two full-screen
@@ -16382,6 +16484,21 @@
     var API = window._rb2p_view = {
         audit: false, off: false, prewarm: prewarm,
         attachNet: function (net) { NET = net; installCapture(); recFlagRefresh(true); },
+        // V500 (WATCH LIVE): a watcher's page — spec = { team, acc } (whose screen it shows) or null to stop; resetRx when
+        // the picture's source changes (the other phone got the ball: a new chain); askKey — the waiting phone asks the
+        // phone with the ball for a keyframe for its watchers (with its own capabilities)
+        spec: null,
+        spectate: function (spec) {
+            API.spec = spec || null;
+            if (!API.spec) { hide(); return; }
+            if (RCV.showing) { hide(); }
+        },
+        resetRx: function () {
+            RCV.gen = (RCV.gen || 0) + 1; RCV.frames = []; RCV.bySeq = new Map(); RCV.offs = []; RCV.gaps = []; RCV.lastT = -1;
+            RCV.needKey = true; RCV.lastRxAt = 0; RCV.queued = 0; RCV.chain = Promise.resolve();
+        },
+        askKey: function () { try { if (NET) NET.want(1 | ZF); } catch (e) {} },
+        swapNet: function (net) { var old = NET; NET = net || null; return old; },
         onPacket: onPacket, onAck: onAck, onWant: onWant,
         stats: function () {
             return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed,
@@ -16624,6 +16741,8 @@
                       '<span class="rb-fin-num" style="' + jersey(oppC, 'clamp(74px,10vw,142px)') + '">' + oppScore + '</span>' +
                       '<span style="font-family:\'Anton\',sans-serif;font-size:clamp(22px,2.6vw,36px);letter-spacing:1px;text-transform:uppercase;color:' + CHALK + ';">' + esc(oppTeam) + '</span>' +
                     '</div>' +
+                    // V500: the rating — an estimate first, then the Mac's own change (window._rb2p_eloFinalPaint)
+                    '<div id="rb-final-elo" style="display:none;margin-top:22px;font-family:\'Press Start 2P\',monospace;font-size:clamp(10px,1.2vw,13px);letter-spacing:1px;line-height:1.8;text-align:center;color:' + GOLD + ';"></div>' +
                     // V454: RUN IT BACK — the rematch on the same code, the screen's first action
                     '<div class="rb-fin-again" style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:30px;">' +
                       '<button id="rb-final-again" type="button">' +
@@ -16646,6 +16765,7 @@
                   '</div>' +
                 '</div>';
             if (window._rb2p_arenaApply) window._rb2p_arenaApply();
+            try { if (window._rb2p_eloFinalPaint) window._rb2p_eloFinalPaint(); } catch (eEP) {}   // V500: the rating line survives a re-render
             finalOverlay.style.display = 'block';
             try { if (window._rb2p_hideFinalSoon) window._rb2p_hideFinalSoon(); } catch (eFS) {}   // V403
             try { sessionStorage.removeItem('rb2p_matchLive'); } catch (eML4) {}
@@ -16808,6 +16928,7 @@
         window._rb2p_reportGameOver = function (report) {
             localFinalReport = report || {};
             try { if (window._rb2p_audit) window._rb2p_audit('final', { su: Number(localFinalReport.score), so: Number(localFinalReport.oppScore) }); } catch (eAF) {}   // V365
+            try { if (window._rb2p_eloGameOver) window._rb2p_eloGameOver(localFinalReport); } catch (eEG) {}   // V500: the rating
             // V198: NEVER publish a degenerate report. If the engine roster wasn't
             // resolvable at the game-over instant, collectBoxScore returns an empty
             // {team:'', players:[]} — which is exactly what made the opponent column
@@ -18981,6 +19102,7 @@
             lobby.style.display = 'flex';
             showLeaveGameBtn(false);   // in the lobby, not the game
             try { lfgView(name); } catch (eLV) {}   // V486: the waiting line follows the screen
+            try { if (window._rb2p_viewChanged) window._rb2p_viewChanged(name); } catch (eVC) {}   // V500: rankings, watch live
             // V451: the opponent's-screen replay gets its one-time setup done here, while the players pick teams
             if (name === 'room') { try { if (window._rb2p_view && window._rb2p_view.prewarm) window._rb2p_view.prewarm(); } catch (eW) {} }
             if (name === 'entry') {
@@ -21519,6 +21641,353 @@
         if (lobby.dataset.active !== 'room') lfgWatch(true);
         if (lobby.dataset.active === 'find') lfgView('find');
 
+        // ===== V500 (the owner, 6 Oct): RANKINGS — "create an elo system where everybody is a 1000 and at first points
+        // fluctuate a lot but as account gets more games it flattens out, like chess elo ... stops cheating from friendly
+        // matches by saying you can't have more than 3 ranked games in a non lobby set up per day ... a leaderboard with
+        // names censored if slurs" — and WATCH LIVE: "create watch games going on thing, where people can spectate games and
+        // chat around". A rating is decided on the Mac (tools/elo.js, every 2 minutes) from what BOTH phones record at the
+        // final — no phone writes its own. It publishes embedcode/elo: top (the board), r/{uid} (each player), g/{room_game}
+        // (each game's change). This page reads them, and shows an estimate on the stats screen until the official change.
+        function eloPub() { return window._rb2p_eloPath || 'embedcode/elo'; }   // (tests: their own copy)
+        var eloMine = null, eloRoomInfo = { room: null, lobby: false }, eloFin = null;
+        // the player: this browser's anonymous sign-in (the SDK's — present from the page's start), else the REST one
+        function eloUid() {
+            try { var au = FBA.getAuth(app); if (au && au.currentUser && au.currentUser.uid) return String(au.currentUser.uid); } catch (e) {}
+            try { return window._rb2p_uid ? String(window._rb2p_uid() || '') : ''; } catch (e2) { return ''; }
+        }
+        window._rb2p_eloUid = eloUid;
+        function eloDay(ms) { try { return new Date(ms || Date.now()).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
+        function eloGetX(p, ms) {
+            return window._rb2p_fbRestGetX ? window._rb2p_fbRestGetX(p, ms || 6000).then(function (r) { return r && r.ok ? r.val : null; }, function () { return null; }) : Promise.resolve(null);
+        }
+        function eloK(n) { return 16 + 48 * Math.exp(-(Number(n) || 0) / 10); }   // tools/elo.js's K (for the estimate only)
+        function eloRating(p) { return Math.round(p && p.r != null ? Number(p.r) : 1000); }
+        function eloLoadMine() {
+            var u = eloUid(); if (!u) { eloPaint(); return Promise.resolve(null); }
+            return eloGetX(eloPub() + '/r/' + u).then(function (v) { eloMine = v || null; eloPaint(); return eloMine; });
+        }
+        function eloPaint() {
+            var el = document.getElementById('rb-my-rating'); if (el) el.textContent = String(eloRating(eloMine));
+            eloRoomTag();
+        }
+        // the room: RANKED or not, as far as this page can tell (the Mac decides — the partner's daily count matters too)
+        function eloRoomTag() {
+            var el = document.getElementById('rb-rank-tag'); if (!el) return;
+            if (!myRoom) { el.hidden = true; return; }
+            var used = (eloMine && eloMine.fdd === eloDay()) ? (Number(eloMine.fd) || 0) : 0, lobbyGame = eloRoomInfo.room === myRoom && eloRoomInfo.lobby;
+            var off = window._rb2p_diffMode !== 'same' ? 'NOT RANKED — BOTH PLAYERS NEED THE SAME DIFFICULTY (PICK SAME)'
+                    : (!lobbyGame && used >= 3 ? 'NOT RANKED — YOU PLAYED YOUR 3 RANKED GAMES WITH A CODE TODAY (FIND A PLAYER GAMES ALWAYS COUNT)' : '');
+            el.hidden = false;
+            el.className = 'rb-rank-tag' + (off ? ' off' : '');
+            el.textContent = off || ('★ RANKED GAME' + (lobbyGame ? ' · FIND A PLAYER' : ' · ' + (3 - used) + ' OF 3 CODE GAMES LEFT TODAY'));
+        }
+        function eloRoomCheck(code) {   // a FIND A PLAYER room's first game is a lobby game (a rematch counts as a code game)
+            eloRoomInfo = { room: code, lobby: false };
+            Promise.all([eloGetX('rooms/' + code + '/lfg', 5000), eloGetX('rooms/' + code + '/games', 5000)]).then(function (r) {
+                var at = Number(r[0] && r[0].at) || 0;
+                var later = Object.keys(r[1] || {}).some(function (k) { return Number(k) > at; });
+                if (eloRoomInfo.room === code) { eloRoomInfo.lobby = !!at && !later; eloRoomTag(); }
+            });
+        }
+        // this game's record key: role a's start (the record's key); role b learns it from the record (tagGameDif)
+        window._rb2p_rememberGameKey = function (room, key) {
+            window._rb2p_gameKey = key ? String(key) : null;
+            try { if (key) sessionStorage.setItem('rb2p_gameKey', room + ':' + key); else sessionStorage.removeItem('rb2p_gameKey'); } catch (e) {}
+        };
+        function eloGameKey() {
+            if (window._rb2p_gameKey) return String(window._rb2p_gameKey);
+            try { var s = String(sessionStorage.getItem('rb2p_gameKey') || ''), i = s.indexOf(':'); if (i > 0 && s.slice(0, i) === myRoom) return s.slice(i + 1); } catch (e) {}
+            return '';
+        }
+        // the final: this side's result into the game's own record, and a note on the queue the Mac's rating job reads
+        window._rb2p_eloGameOver = function (rep) {
+            try {
+                if (myRole === 'a' && myRoom) FB.remove(FB.ref(db, 'rooms/~live/' + myRoom)).catch(function () {});   // off the WATCH LIVE list
+                var gk = eloGameKey(); if (!gk || !myRoom || !myRole) return;
+                var fin = { su: Number(rep && rep.score) || 0, so: Number(rep && rep.oppScore) || 0, t: Date.now(), uid: eloUid() };
+                var p1 = 'rooms/' + myRoom + '/games/' + gk + '/fin/' + myRole, p2 = (window._rb2p_eloQueue || 'rooms/~elo/q') + '/' + myRoom + '_' + gk, q = { c: myRoom, s: Number(gk), t: Date.now() };
+                FB.set(FB.ref(db, p1), fin).catch(function () {}); FB.set(FB.ref(db, p2), q).catch(function () {});
+                if (window._rb2p_fbRestPut) { window._rb2p_fbRestPut(p1, fin); window._rb2p_fbRestPut(p2, q); }   // and over REST (a dead socket at the horn)
+                eloFin = { key: myRoom + '_' + gk, room: myRoom, gk: gk, role: myRole, su: fin.su, so: fin.so, est: null, off: null, until: Date.now() + 8 * 60000 };
+                eloEstimate(eloFin); setTimeout(function () { eloPoll(eloFin); }, 30000);
+                if (window._rb2p_diagLog) window._rb2p_diagLog('ELO result recorded (' + p2.slice(6) + ' ' + fin.su + '-' + fin.so + ')');
+            } catch (e) {}
+        };
+        function eloEstimate(F) {
+            eloGetX('rooms/' + F.room + '/games/' + F.gk).then(function (rec) {
+                rec = rec || {};
+                var other = F.role === 'a' ? 'b' : 'a', ou = rec.uids && rec.uids[other], mu = eloUid();
+                if (rec.mode !== 'same') { F.est = { off: 'NOT RANKED — THE PLAYERS HAD DIFFERENT DIFFICULTIES' }; eloFinPaint(); return; }
+                if (!ou || !mu || ou === mu) { F.est = { off: '' }; eloFinPaint(); return; }
+                return Promise.all([eloGetX(eloPub() + '/r/' + mu), eloGetX(eloPub() + '/r/' + ou)]).then(function (rr) {
+                    var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]);
+                    var used = A.fdd === eloDay() ? (Number(A.fd) || 0) : 0, lobbyGame = eloRoomInfo.room === F.room && eloRoomInfo.lobby;
+                    if (!lobbyGame && used >= 3) { F.est = { off: 'NOT RANKED — YOUR 3 RANKED GAMES WITH A CODE TODAY ARE DONE' }; eloFinPaint(); return; }
+                    var S = F.su > F.so ? 1 : F.su < F.so ? 0 : 0.5, E = 1 / (1 + Math.pow(10, (rb - ra) / 400));
+                    F.est = { r0: ra, d: Math.round(eloK(A.n) * (S - E)) };
+                    eloFinPaint();
+                });
+            });
+        }
+        function eloPoll(F) {
+            if (eloFin !== F || F.off || Date.now() > F.until) return;
+            eloGetX(eloPub() + '/g/' + F.key).then(function (g) {
+                if (eloFin !== F) return;
+                if (g) { F.off = g; eloFinPaint(); eloLoadMine(); return; }
+                setTimeout(function () { eloPoll(F); }, 20000);
+            });
+        }
+        function eloFinPaint() {
+            var el = document.getElementById('rb-final-elo'), F = eloFin; if (!el) return;
+            var txt = '', sg = function (d) { return (d >= 0 ? '+' : '') + d; };
+            if (F && F.off) {
+                var mine = F.off[F.role];
+                txt = F.off.ranked && mine ? 'RANKED · RATING ' + mine.r0 + ' → ' + mine.r1 + ' (' + sg(mine.d) + ')'
+                    : 'NOT RANKED' + (F.off.why ? ' — ' + String(F.off.why).toUpperCase() : '');
+            } else if (F && F.est) {
+                txt = F.est.off != null ? F.est.off : 'RANKED · RATING ' + F.est.r0 + ' → ABOUT ' + (F.est.r0 + F.est.d) + ' (' + sg(F.est.d) + ') · CONFIRMING…';
+            }
+            el.textContent = txt; el.style.display = txt ? '' : 'none';
+        }
+        window._rb2p_eloFinalPaint = eloFinPaint;
+        // RANKINGS: the board (the top 50 with 5+ ranked games; names censored for slurs on the Mac and again here)
+        function ranksOpen() {
+            var $list = document.getElementById('rb-rank-list'), $me = document.getElementById('rb-rank-me');
+            if ($list && !$list.children.length) { var z0 = document.createElement('li'); z0.className = 'none'; z0.textContent = 'LOADING…'; $list.appendChild(z0); }
+            Promise.all([eloGetX(eloPub() + '/top', 8000), eloLoadMine()]).then(function (res) {
+                var top = res[0] || {}, list = Array.isArray(top.list) ? top.list : [], u = eloUid(), meRank = 0;
+                if ($list) {
+                    $list.textContent = '';
+                    list.forEach(function (p, i) {
+                        if (!p) return;
+                        var li = document.createElement('li');
+                        if (p.u && u && u.indexOf(String(p.u)) === 0) { li.className = 'me'; meRank = i + 1; }
+                        [['rk', '#' + (i + 1)], ['nm', lfgName(p.nm)], ['r', String(Math.round(Number(p.r) || 0))], ['wl', (p.w || 0) + '-' + (p.l || 0) + (p.d ? '-' + p.d : '')]].forEach(function (c) {
+                            var sp = document.createElement('span'); sp.className = c[0]; sp.textContent = c[1]; li.appendChild(sp);
+                        });
+                        $list.appendChild(li);
+                    });
+                    if (!$list.children.length) { var z = document.createElement('li'); z.className = 'none'; z.textContent = 'NO ONE ON THE BOARD YET — PLAY 5 RANKED GAMES TO BE THE FIRST'; $list.appendChild(z); }
+                }
+                if ($me) {
+                    var n = Number(eloMine && eloMine.n) || 0;
+                    $me.textContent = 'YOUR RATING ' + eloRating(eloMine) + ' · ' + n + ' RANKED GAME' + (n === 1 ? '' : 'S') + (meRank ? ' · #' + meRank : (n < 5 ? ' · ON THE BOARD AFTER 5' : ''));
+                }
+            });
+        }
+
+        // ---- WATCH LIVE: the list (rooms/~live/{code}, kept fresh by each game's player a) and the watcher's screen ----
+        var watchTimer = 0, roomTagTimer = 0;
+        function specTeam(uid) { try { return window._rb2p_teamName && uid ? String(window._rb2p_teamName(Number(uid)) || '') : ''; } catch (e) { return ''; } }
+        function specAcc(uid) { try { return window._rb2p_teamAccent && uid ? window._rb2p_teamAccent(Number(uid)) || '' : ''; } catch (e) { return ''; } }
+        function liveGames(all) {
+            var now = Date.now(), list = [];
+            Object.keys(all || {}).forEach(function (k) { var g = all[k]; if (g && g.code && now - Number(g.t) < 45000 && (window._rb2p_watchAll || !/^Z\d/.test(g.code))) list.push(g); });
+            return list.sort(function (x, y) { return (Number(y.w) || 0) - (Number(x.w) || 0) || Number(y.t) - Number(x.t); });
+        }
+        function watchCountLoad() {
+            eloGetX('rooms/~live', 5000).then(function (all) { var el = document.getElementById('rb-watch-n'), n = liveGames(all).length; if (el) el.textContent = n ? String(n) : ''; });
+        }
+        function clockTxt(t) { t = Math.max(0, Math.round(Number(t) || 0)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); }
+        function watchListLoad() {
+            var $l = document.getElementById('rb-watch-list'); if (!$l) return;
+            eloGetX('rooms/~live', 6000).then(function (all) {
+                if (lobby.dataset.active !== 'watch') return;
+                var list = liveGames(all);
+                $l.textContent = '';
+                if (!list.length) { var z = document.createElement('li'); z.className = 'none'; z.textContent = 'NO GAMES BEING PLAYED RIGHT NOW — CHECK BACK SOON (MOST ARE ON WEEKDAYS AROUND MIDDAY, CENTRAL TIME)'; $l.appendChild(z); }
+                list.forEach(function (g) {
+                    var li = document.createElement('li'), d = document.createElement('div'); d.className = 'g';
+                    var line = document.createElement('div');
+                    line.appendChild(document.createTextNode(lfgName(g.an) + ' (' + (specTeam(g.at) || 'TEAM A') + ') '));
+                    var sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = (Number(g.sa) || 0) + ' – ' + (Number(g.sb) || 0); line.appendChild(sc);
+                    line.appendChild(document.createTextNode(' ' + lfgName(g.bn) + ' (' + (specTeam(g.bt) || 'TEAM B') + ')'));
+                    var sm = document.createElement('small');
+                    sm.textContent = (Number(g.q) >= 5 ? 'OVERTIME' : 'Q' + (Number(g.q) || 1)) + ' ' + clockTxt(g.clk) + ' · ' + String(g.dif || '').toUpperCase() + (g.mode === 'same' ? '' : ' (DIFFERENT)') +
+                        (Number(g.w) > 0 ? ' · ' + g.w + ' WATCHING' : '');
+                    d.appendChild(line); d.appendChild(sm); li.appendChild(d);
+                    var b = document.createElement('button'); b.type = 'button'; b.textContent = 'WATCH';
+                    b.addEventListener('click', function () { specStart(g); });
+                    li.appendChild(b); $l.appendChild(li);
+                });
+            });
+        }
+        window._rb2p_viewChanged = function (name) {
+            if (watchTimer) { clearInterval(watchTimer); watchTimer = 0; }
+            if (roomTagTimer) { clearInterval(roomTagTimer); roomTagTimer = 0; }
+            if (name === 'ranks') ranksOpen();
+            if (name === 'watch') { watchListLoad(); watchTimer = setInterval(watchListLoad, 15000); }
+            if (name === 'entry') { eloLoadMine(); watchCountLoad(); }
+            if (name === 'room' && myRoom) { eloRoomCheck(myRoom); eloLoadMine(); eloRoomTag(); roomTagTimer = setInterval(eloRoomTag, 1500); }
+        };
+        (function () {
+            var on = function (id, f) { var el = document.getElementById(id); if (el) el.addEventListener('click', f); };
+            on('rb-ranks-btn', function () { showView('ranks'); });
+            on('rb-watch-btn', function () { showView('watch'); });
+            on('rb-ranks-back', function () { showView('entry'); });
+            on('rb-watch-back', function () { showView('entry'); });
+            setTimeout(function () { if (lobby.dataset.active === 'entry') { eloLoadMine(); watchCountLoad(); } }, 4000);   // after sign-in
+        })();
+
+        // the watcher's screen. Each player's page passes the frames it gets (while it waits) on to its watchers — the
+        // picture is the screen of the player with the ball, exactly as the waiting player sees it.
+        var SPEC = null;
+        var $specBg = document.getElementById('rb-spec-bg'), $specHud = document.getElementById('rb-spec-hud'), $specWait = document.getElementById('rb-spec-wait'),
+            $specScore = document.getElementById('rb-spec-score'), $specWho = document.getElementById('rb-spec-who'), $specSc = document.getElementById('rb-spec-sc'),
+            $specChat = document.getElementById('rb-spec-chat'), $specTog = document.getElementById('rb-spec-tog'), $specLog = document.getElementById('rb-spec-log'),
+            $specForm = document.getElementById('rb-spec-form'), $specIn = document.getElementById('rb-spec-input'), $specN = document.getElementById('rb-spec-n');
+        function specIce() {   // STUN + V497's relay (api/turn.js; the list kept for the tab)
+            var base = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+            try { var c = JSON.parse(sessionStorage.getItem('rb2p_relay') || 'null'); if (c && c.ice && c.ice.length && c.exp - Date.now() > 3600e3) return Promise.resolve(base.concat(c.ice)); } catch (e) {}
+            var f = fetch(window._rb2p_relayUrl || 'https://two-player-rb.vercel.app/api/turn', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+                var ice = [];
+                ((j && j.iceServers) || []).forEach(function (s) { var urls = [].concat(s.urls || []).filter(function (u) { return /^turns?:/.test(u) && !/:53\b/.test(u); }); if (urls.length && s.username) ice.push({ urls: urls, username: s.username, credential: s.credential }); });
+                if (ice.length) { try { sessionStorage.setItem('rb2p_relay', JSON.stringify({ ice: ice, exp: j.exp })); } catch (e) {} }
+                return base.concat(ice);
+            }, function () { return base; });
+            return Promise.race([f, new Promise(function (res) { setTimeout(function () { res(base); }, 4000); })]);
+        }
+        function specSend(S, u8) {   // to the phone passing the picture on now, or to both before the first frame
+            var sent = false;
+            ['a', 'b'].forEach(function (r) { var p = S.peers[r]; if ((!S.src || S.src === r) && p && p.dc && p.dc.readyState === 'open') { try { p.dc.send(u8); sent = true; } catch (e) {} } });
+            return sent;
+        }
+        function specPeerClose(p) {
+            try { if (p.offA) p.offA(); } catch (e0) {} try { if (p.offC) p.offC(); } catch (e1) {}
+            try { if (p.dc) p.dc.close(); } catch (e2) {} try { if (p.pc) p.pc.close(); } catch (e3) {}
+        }
+        async function specPeer(S, role) {
+            if (SPEC !== S) return;
+            var key = S.sid + '_' + role, n = Math.random().toString(36).slice(2, 8), wr = 'rooms/' + S.code + '/watch/';
+            if (S.peers[role]) specPeerClose(S.peers[role]);
+            var p = S.peers[role] = { n: n, pc: null, dc: null, remote: false, ice: [] };
+            var ice = await specIce();
+            if (SPEC !== S || S.peers[role] !== p) return;
+            try {
+                var pc = p.pc = new RTCPeerConnection({ iceServers: ice });
+                var dc = p.dc = pc.createDataChannel('watch', { negotiated: true, id: 7, ordered: true });
+                dc.binaryType = 'arraybuffer';
+                dc.onmessage = function (ev) { specOnData(S, role, new Uint8Array(ev.data)); };
+                dc.onopen = function () { if (SPEC === S) specWaitText(); };
+                pc.onicecandidate = function (e) { if (e.candidate && SPEC === S && S.peers[role] === p) FB.set(FB.push(FB.ref(db, wr + 'c/' + key + '/s')), { n: n, c: JSON.stringify(e.candidate) }).catch(function () {}); };
+                pc.onconnectionstatechange = function () {
+                    if (pc.connectionState === 'failed' && SPEC === S && S.peers[role] === p) setTimeout(function () { if (SPEC === S && S.peers[role] === p) specPeer(S, role); }, 4000);
+                };
+                p.offA = FB.onValue(FB.ref(db, wr + 'a/' + key), function (snap) {
+                    var v = snap.val(); if (!v || v.n !== n || p.remote) return;
+                    pc.setRemoteDescription({ type: 'answer', sdp: v.sdp }).then(function () { p.remote = true; p.ice.forEach(function (c) { pc.addIceCandidate(c).catch(function () {}); }); p.ice = []; }).catch(function () {});
+                });
+                p.offC = FB.onChildAdded(FB.ref(db, wr + 'c/' + key + '/p'), function (cs) {
+                    var cv = cs.val(); if (!cv || cv.n !== n) return; var c; try { c = JSON.parse(cv.c); } catch (e) { return; }
+                    if (p.remote) pc.addIceCandidate(c).catch(function () {}); else p.ice.push(c);
+                });
+                var o = await pc.createOffer(); await pc.setLocalDescription(o);
+                if (SPEC !== S || S.peers[role] !== p) return;
+                ['o/', 'a/', 'c/'].forEach(function (k) { try { FB.onDisconnect(FB.ref(db, wr + k + key)).remove(); } catch (e) {} });
+                await FB.set(FB.ref(db, wr + 'o/' + key), { n: n, sdp: pc.localDescription.sdp, t: Date.now() });
+                // no link in 25 s (a player on an older build, or 4 watchers already): ask again
+                setTimeout(function () { if (SPEC === S && S.peers[role] === p && !(p.dc && p.dc.readyState === 'open')) specPeer(S, role); }, 25000);
+            } catch (e) { setTimeout(function () { if (SPEC === S && S.peers[role] === p) specPeer(S, role); }, 8000); }
+        }
+        function specOnData(S, role, u8) {
+            if (SPEC !== S || !u8.length || u8[0] !== 1) return;
+            var V = window._rb2p_view; if (!V) return;
+            if (S.src !== role) {   // the phone passing frames on changed: the other player has the ball — a new chain
+                S.src = role; V.resetRx();
+                var drv = role === 'a' ? 'b' : 'a', tuid = drv === 'a' ? S.g.at : S.g.bt;
+                V.spectate({ team: specTeam(tuid) || lfgName(drv === 'a' ? S.g.an : S.g.bn), acc: specAcc(tuid) });
+            }
+            S.lastFrameAt = Date.now();
+            V.onPacket(u8.subarray(1), 'relay');
+        }
+        function specScore() {
+            var S = SPEC; if (!S) return;
+            var la = S.live.a, lb = S.live.b, d = null, dr = 'a';
+            if (la && la.iHaveBall && !(lb && lb.iHaveBall && (S.liveAt.b || 0) > (S.liveAt.a || 0))) { d = la; dr = 'a'; }
+            else if (lb && lb.iHaveBall) { d = lb; dr = 'b'; }
+            else if (la || lb) { d = (S.liveAt.a || 0) >= (S.liveAt.b || 0) ? (la || lb) : (lb || la); dr = d === la ? 'a' : 'b'; }
+            if (!d) return;
+            var sa = Number(dr === 'a' ? d.myScore : d.oppScore) || 0, sb = Number(dr === 'a' ? d.oppScore : d.myScore) || 0, q = Number(d.quarter) || 1;
+            S.score = (specTeam(S.g.at) || 'A') + ' ' + sa + ' – ' + sb + ' ' + (specTeam(S.g.bt) || 'B') + ' · ' + (q >= 5 ? 'OT' : 'Q' + q) + ' ' + clockTxt((Number(d.minutesLeft) || 0) * 60 + (Number(d.secondsLeft) || 0));
+            if ($specSc) $specSc.textContent = sa + ' – ' + sb;
+            if ($specScore) $specScore.textContent = S.score;
+        }
+        function specWaitText() {
+            var S = SPEC; if (!S || !$specWait) return;
+            var open = ['a', 'b'].some(function (r) { var p = S.peers[r]; return p && p.dc && p.dc.readyState === 'open'; });
+            var heard = Math.max(S.liveAt.a || 0, S.liveAt.b || 0);
+            $specWait.textContent = S.final ? 'FINAL' : (!open ? 'CONNECTING TO THE GAME…' : (Date.now() - heard > 60000 ? 'THE GAME IS PAUSED — A PLAYER IS AWAY' : 'WAITING FOR THE NEXT PLAY…'));
+        }
+        function specStart(g) {
+            var V = window._rb2p_view;
+            if (SPEC || !g || !g.code || !V || !V.spectate || !V.swapNet || typeof RTCPeerConnection !== 'function') return;
+            var S = SPEC = { code: String(g.code), g: g, sid: 'w' + Math.random().toString(36).slice(2, 10), peers: {}, src: null, lastKey: 0, offs: [], live: {}, liveAt: {}, timers: [], final: null, startedAt: Date.now() };
+            try { if (V.prewarm) V.prewarm(); } catch (e) {}
+            S.prevNet = V.swapNet({ mode: function () { return 'relay'; }, canSend: function () { return false; }, send: function () { return false; }, ack: function () {},
+                want: function (flags) { if ((flags & 1) && SPEC === S && Date.now() - S.lastKey > 1500) { S.lastKey = Date.now(); specSend(S, new Uint8Array([3])); } } });
+            V.resetRx(); V.spectate({ team: '', acc: '' });
+            lobby.style.display = 'none'; try { lfgView('spectate'); } catch (eLV) {}
+            if ($specWho) $specWho.textContent = lfgName(g.an) + ' vs ' + lfgName(g.bn);
+            if ($specSc) $specSc.textContent = (Number(g.sa) || 0) + ' – ' + (Number(g.sb) || 0);
+            if ($specScore) $specScore.textContent = '';
+            var narrow = window.innerWidth < 760 || document.documentElement.classList.contains('rb-mobile');
+            if ($specChat) $specChat.hidden = narrow; if ($specTog) $specTog.hidden = !narrow;
+            if ($specBg) $specBg.hidden = false; if ($specHud) $specHud.hidden = false;
+            var wr = 'rooms/' + S.code + '/watch/', sRef = FB.ref(db, wr + 's/' + S.sid);
+            try { FB.onDisconnect(sRef).remove(); } catch (e) {}
+            var beat = function () { if (SPEC === S) FB.set(sRef, { t: Date.now(), nm: String(rb2pName() || '').slice(0, 16) }).catch(function () {}); };
+            beat(); S.timers.push(setInterval(beat, 15000));
+            ['a', 'b'].forEach(function (r) {
+                S.offs.push(FB.onValue(FB.ref(db, 'rooms/' + S.code + '/live/' + r), function (sn) { S.live[r] = sn.val(); S.liveAt[r] = Date.now(); specScore(); }, function () {}));
+            });
+            S.offs.push(FB.onValue(FB.ref(db, 'rooms/' + S.code + '/final'), function (sn) {
+                var f = sn.val() || {}, any = f.a || f.b;
+                if (any && Number(any.ts) > S.startedAt - 30 * 60000) { S.final = any; specWaitText(); }
+            }, function () {}));
+            S.offs.push(FB.onValue(FB.query(FB.ref(db, wr + 'chat'), FB.limitToLast(50)), function (sn) { lfgChatRender($specLog, sn, 'No messages yet. Say hi.'); }, function () {}));
+            S.offs.push(FB.onValue(FB.ref(db, wr + 's'), function (sn) {
+                var n = 0, now = Date.now(); sn.forEach(function (c) { var v = c.val(); if (v && now - (Number(v.t) || 0) < 45000) n++; });
+                if ($specN) $specN.textContent = n > 1 ? '(' + n + ' WATCHING)' : '';
+            }, function () {}));
+            specPeer(S, 'a'); specPeer(S, 'b');
+            S.timers.push(setInterval(specWaitText, 1000));
+            if (window._rb2p_diagLog) window._rb2p_diagLog('WATCH started ' + S.code);
+        }
+        function specStop(back) {
+            var S = SPEC; if (!S) return; SPEC = null;
+            S.timers.forEach(function (t) { clearInterval(t); });
+            S.offs.forEach(function (off) { try { off(); } catch (e) {} });
+            var wr = 'rooms/' + S.code + '/watch/';
+            ['a', 'b'].forEach(function (r) {
+                if (S.peers[r]) specPeerClose(S.peers[r]);
+                ['o/', 'a/', 'c/'].forEach(function (k) { FB.remove(FB.ref(db, wr + k + S.sid + '_' + r)).catch(function () {}); });
+            });
+            FB.remove(FB.ref(db, wr + 's/' + S.sid)).catch(function () {});
+            var V = window._rb2p_view; if (V) { V.spectate(null); V.resetRx(); if (V.swapNet) V.swapNet(S.prevNet || null); }
+            if ($specBg) $specBg.hidden = true; if ($specHud) $specHud.hidden = true;
+            showView(back || 'watch');
+        }
+        window._rb2p_specStart = specStart; window._rb2p_specStop = specStop;   // test seams
+        window._rb2p_specState = function () { var S = SPEC; return S ? { code: S.code, src: S.src, open: ['a', 'b'].filter(function (r) { var p = S.peers[r]; return p && p.dc && p.dc.readyState === 'open'; }), final: !!S.final } : null; };
+        (function () {
+            var on = function (el, ev, f) { if (el) el.addEventListener(ev, f); };
+            on(document.getElementById('rb-spec-exit'), 'click', function () { specStop('watch'); });
+            on($specTog, 'click', function () { if ($specChat) $specChat.hidden = false; if ($specTog) $specTog.hidden = true; });
+            on(document.getElementById('rb-spec-hide'), 'click', function () { if ($specChat) $specChat.hidden = true; if ($specTog) $specTog.hidden = false; });
+            on($specIn, 'keydown', function (ev) { ev.stopPropagation(); });   // typing is not the game's
+            on($specIn, 'keyup', function (ev) { ev.stopPropagation(); });
+            on($specForm, 'submit', function (ev) {
+                ev.preventDefault();
+                var S = SPEC; if (!S) return;
+                var t = String(($specIn && $specIn.value) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+                if (!t) return;
+                $specIn.value = '';
+                FB.set(FB.push(FB.ref(db, 'rooms/' + S.code + '/watch/chat')), { name: String(rb2pName() || 'Watcher').slice(0, 16), text: t, ts: Date.now(), sid: lfgSid, u: eloUid() })
+                  .catch(function () { if ($specIn && !$specIn.value) $specIn.value = t; });
+                setTimeout(function () { if ($specLog) $specLog.scrollTop = $specLog.scrollHeight; }, 60);
+            });
+        })();
+
         // ---- Match start ----
         // V185: all Firebase match glue (send wiring, opponent-outcome receive,
         // the in-game badge, live score/clock push + mirror) lives here so BOTH
@@ -21608,7 +22077,7 @@
             function onDc(ev) {
                 var u8 = new Uint8Array(ev.data); if (!u8.length) return;
                 switch (u8[0]) {
-                    case 1: V.onPacket(u8.subarray(1), 'p2p'); break;
+                    case 1: V.onPacket(u8.subarray(1), 'p2p'); if (WATCH.n) watchForward(u8); break;   // V500: and to the watchers
                     case 2: V.onAck(rvu(u8, 1)); break;
                     case 3: V.onWant(u8[1] | 0); break;
                     case 4: { var r = new Uint8Array(u8); r[0] = 5; dcSend(r); break; }
@@ -21711,7 +22180,75 @@
             });
             FB.onValue(FB.ref(vdb, vroot + '/' + other), function (snap) {
                 var v = snap.val(); if (!v || !v.d) return;
-                try { V.onPacket(unb64(v.d), 'fb'); } catch (e) {}
+                try {
+                    var pk = unb64(v.d); V.onPacket(pk, 'fb');
+                    if (WATCH.n) { var fw = new Uint8Array(pk.length + 1); fw[0] = 1; fw.set(pk, 1); watchForward(fw); }   // V500
+                } catch (e) {}
+            });
+            // ---- V500 (the owner: "create watch games going on thing, where people can spectate games and chat around"):
+            // WATCHERS. While this phone waits it passes every frame packet it gets on to up to 4 watchers, unchanged — they
+            // hold the same frames, so they decode exactly as this phone does (a delta's base is a frame this phone had and
+            // confirmed); the phone with the ball does no extra work. A watcher offers at watch/o/{sid}_{role}, this phone
+            // answers at watch/a/…, the candidates go through watch/c/…/{s|p}; one ordered channel per watcher (nothing
+            // lost: a gap would break its chain). A watcher with nothing to build on asks for a keyframe through this phone.
+            var WATCH = { peers: {}, n: 0, lastKeyAsk: 0 }, wroot = root + '/watch';
+            function watchCount() { var n = 0; for (var k in WATCH.peers) if (WATCH.peers[k].dc && WATCH.peers[k].dc.readyState === 'open') n++; WATCH.n = n; }
+            function watchForward(u8) {
+                for (var k in WATCH.peers) {
+                    var w = WATCH.peers[k];
+                    if (w.dc && w.dc.readyState === 'open' && w.dc.bufferedAmount < 1048576) { try { w.dc.send(u8); } catch (e) {} }
+                }
+            }
+            function watchClose(sid) {
+                var w = WATCH.peers[sid]; if (!w) return;
+                delete WATCH.peers[sid];
+                try { if (w.offC) w.offC(); } catch (e0) {}
+                try { if (w.dc) w.dc.close(); } catch (e1) {} try { if (w.pc) w.pc.close(); } catch (e2) {}
+                watchCount();
+            }
+            function watchOffer(snap) {
+                var key = snap.key, v = snap.val(); if (!v || !v.sdp || !v.n || !key) return;
+                var cut = key.lastIndexOf('_'); if (cut < 1 || key.slice(cut + 1) !== me) return;   // offers to this role only
+                var sid = key.slice(0, cut), old = WATCH.peers[sid];
+                if (old && old.n === v.n) return;
+                if (old) watchClose(sid);
+                if (Object.keys(WATCH.peers).length >= 4 || Date.now() - (Number(v.t) || 0) > 60000 || typeof RTCPeerConnection !== 'function') return;
+                var w = { n: v.n, pc: null, dc: null, remote: false, ice: [] };
+                WATCH.peers[sid] = w;
+                (async function () {
+                    try {
+                        if (!relayList.length) await relayIce();
+                        if (WATCH.peers[sid] !== w) return;
+                        var pc = w.pc = new RTCPeerConnection({ iceServers: ICE.concat(relayList) });
+                        var dc = w.dc = pc.createDataChannel('watch', { negotiated: true, id: 7, ordered: true });
+                        dc.binaryType = 'arraybuffer';
+                        dc.onopen = function () { watchCount(); V.askKey(); diag('watcher joined (' + WATCH.n + ' watching)'); };
+                        dc.onclose = function () { watchCount(); };
+                        dc.onmessage = function (ev) {   // 3 = the watcher has nothing to build on
+                            var u = new Uint8Array(ev.data);
+                            if (u[0] === 3 && Date.now() - WATCH.lastKeyAsk > 1500) { WATCH.lastKeyAsk = Date.now(); V.askKey(); }
+                        };
+                        pc.onicecandidate = function (e) { if (e.candidate && WATCH.peers[sid] === w) FB.set(FB.push(FB.ref(db, wroot + '/c/' + key + '/p')), { n: w.n, c: JSON.stringify(e.candidate) }).catch(function () {}); };
+                        pc.onconnectionstatechange = function () { if (pc.connectionState === 'failed' || pc.connectionState === 'closed') { if (WATCH.peers[sid] === w) watchClose(sid); } };
+                        w.offC = FB.onChildAdded(FB.ref(db, wroot + '/c/' + key + '/s'), function (cs) {
+                            var cv = cs.val(); if (!cv || cv.n !== w.n) return;
+                            var c; try { c = JSON.parse(cv.c); } catch (e) { return; }
+                            if (w.remote) pc.addIceCandidate(c).catch(function () {}); else w.ice.push(c);
+                        });
+                        await pc.setRemoteDescription({ type: 'offer', sdp: v.sdp });
+                        w.remote = true; w.ice.forEach(function (c) { pc.addIceCandidate(c).catch(function () {}); }); w.ice = [];
+                        var ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+                        if (WATCH.peers[sid] !== w) return;
+                        await FB.set(FB.ref(db, wroot + '/a/' + key), { n: w.n, sdp: pc.localDescription.sdp, t: Date.now() });
+                    } catch (e) { diag('watcher failed: ' + String(e && e.message || e).slice(0, 60)); if (WATCH.peers[sid] === w) watchClose(sid); }
+                })();
+            }
+            if (hasRTC) { FB.onChildAdded(FB.ref(db, wroot + '/o'), watchOffer); FB.onChildChanged(FB.ref(db, wroot + '/o'), watchOffer); }
+            // the watcher count on this phone's room badge (and the live list): watch/s/{sid} = { t } every 15 s while watching
+            FB.onValue(FB.ref(db, wroot + '/s'), function (snap) {
+                var n = 0, now = Date.now(); snap.forEach(function (c) { var v = c.val(); if (v && now - (Number(v.t) || 0) < 45000) n++; });
+                window._rb2p_watchers = n;
+                try { if (typeof window._rb2p_badgeWatchers === 'function') window._rb2p_badgeWatchers(n); } catch (e) {}
             });
             function fbWant(key, ack) {
                 var now = Date.now();
@@ -22202,10 +22739,33 @@
                     var mode = (window._rb2p_diffMode === 'same') ? 'SAME' : 'DIFF';
                     label += ' • DIF:' + dif + '(' + mode + ')';
                 } catch (eD) {}
+                if (Number(window._rb2p_watchers) > 0) label += ' • ' + window._rb2p_watchers + ' WATCHING';   // V500
                 badge.textContent = label;
             }
             updateBadge();
             setInterval(updateBadge, 500);
+            // V500: WATCH LIVE — the lobby's list of games being played. Player a keeps rooms/~live/{code} fresh (every 15 s)
+            // while the game runs; it goes at the final (_rb2p_eloGameOver) and with this page (onDisconnect)
+            if (myRole === 'a') (function () {
+                var liveRef = FB.ref(db, 'rooms/~live/' + myRoom), names = {}, room = myRoom;
+                try { FB.onDisconnect(liveRef).remove(); } catch (eOD) {}
+                FB.onValue(FB.ref(db, 'rooms/' + room + '/names'), function (sn) { names = sn.val() || {}; }, function () {});
+                var pub = function () {
+                    try {
+                        if (myRoom !== room) return;
+                        if (window._rb2p_gameOverReported === true) { FB.remove(liveRef).catch(function () {}); return; }
+                        if (!(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) return;
+                        var em = RB.engineState(); if (!em) return;
+                        FB.set(liveRef, { code: room, t: Date.now(), an: String(names.a || rb2pName() || '').slice(0, 16), bn: String(names.b || '').slice(0, 16),
+                            at: Number(window._rb2p_myTeamUid) || 0, bt: Number(window._rb2p_oppTeamUid) || 0,
+                            sa: Number(em.userScore) || 0, sb: Number(em.opponentScore) || 0, q: Number(em.engineQuarter) || 1,
+                            clk: (Number(em.engineMinutesLeft) || 0) * 60 + (Number(em.engineSecondsLeft) || 0),
+                            dif: String((window._rb2p_difficultyPref && window._rb2p_difficultyPref()) || ''), mode: window._rb2p_diffMode === 'same' ? 'same' : 'different',
+                            w: Number(window._rb2p_watchers) || 0 }).catch(function () {});
+                    } catch (e) {}
+                };
+                setTimeout(pub, 4000); setInterval(pub, 15000);
+            })();
 
             // ---- Live state sync ----
             // While I'm on offense, push my local score + clock every 500ms
@@ -24226,12 +24786,14 @@
                 var gmDif = ''; try { gmDif = String(window._rb2p_difficultyPref() || ''); } catch (eGD) {}
                 try { if (gmDif) sessionStorage.setItem('rb2p_difficulty', gmDif); } catch (eGP) {}   // V498: the game keeps its level (another tab cannot change it)
                 var gmMode = window._rb2p_diffMode === 'same' ? 'same' : 'different';
+                var gmUid = ''; try { gmUid = window._rb2p_eloUid ? window._rb2p_eloUid() : String((window._rb2p_uid && window._rb2p_uid()) || ''); } catch (eGU) {}   // V500: the rating's player
+                try { if (window._rb2p_rememberGameKey) window._rb2p_rememberGameKey(myRoom, myRole === 'a' ? gmMs : null); } catch (eGK) {}
                 if (myRole === 'a') {
                     FB.remove(FB.ref(db, 'rooms/' + myRoom + '/audited')).catch(function () {});
                     FB.remove(FB.ref(db, 'rooms/' + myRoom + '/outcomes')).catch(function () {});
                     FB.remove(FB.ref(db, 'rooms/' + myRoom + '/p6')).catch(function () {});
                     FB.set(FB.ref(db, 'rooms/' + myRoom + '/games/' + gmMs), { ts: gmMs, by: myRole, qmins: currentQuarterMins, ver: gmVer,
-                        mode: gmMode, dif: gmMode === 'same' ? gmDif : '', difs: { a: gmDif } }).catch(function () {});
+                        mode: gmMode, dif: gmMode === 'same' ? gmDif : '', difs: { a: gmDif }, uids: { a: gmUid } }).catch(function () {});
                 } else {
                     (function tagGameDif(room, tries) {   // b: this game's record is the newest one within 90 s of b's own start
                         if (tries > 12 || !window._rb2p_fbRestGetX) return;
@@ -24240,6 +24802,8 @@
                             Object.keys((r && r.ok && r.val) || {}).forEach(function (k) { var n = Number(k); if (Math.abs(n - gmMs) < 90000 && n > best) best = n; });
                             if (!best) { setTimeout(function () { tagGameDif(room, tries + 1); }, 5000); return; }
                             FB.set(FB.ref(db, 'rooms/' + room + '/games/' + best + '/difs/b'), gmDif).catch(function () {});
+                            FB.set(FB.ref(db, 'rooms/' + room + '/games/' + best + '/uids/b'), gmUid).catch(function () {});   // V500
+                            try { if (window._rb2p_rememberGameKey && myRoom === room) window._rb2p_rememberGameKey(room, best); } catch (eRK) {}
                         }).catch(function () { setTimeout(function () { tagGameDif(room, tries + 1); }, 5000); });
                     })(myRoom, 0);
                 }

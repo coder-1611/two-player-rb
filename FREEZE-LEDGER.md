@@ -1888,3 +1888,33 @@ each day into a viewable section".
 - The owner: "make max worth 45 points, and increase value of total jukes and stiff arms". tools/highlights/features.js
   DIF_PTS max/ultramax 55 -> 45; moves = 4 x (stiff arms + jukes) (was 2); the judge's brief says the same. On today's
   preview: Jennings 130, Kittle 122.7, Rice 115.7, Hubbard 110.4 (the plain overtime catch leaves the top 3), Flowers 110.3.
+
+## V500 (2026-10-06): RANKINGS (an Elo rating, a 3-a-day limit on code games, a censored board) and WATCH LIVE (spectate + chat)
+- The owner: "create watch games going on thing, where people can spectate games and chat around. Then create an elo system
+  where everybody is a 1000 and at first points fluctuate a lot but as account gets more games it flattens out, like chess
+  elo ... a system that stops cheating from friendly matches by saying you can't have more than 3 ranked games in a non
+  lobby set up per day ... a leaderboard with names censored if slurs" (then: "no need for leaving penalty rn").
+- **The rating is decided on the Mac, never by a phone** (the rooms are writable by any signed-in player): tools/elo.js
+  (LaunchAgent com.rb2p.elo, every 2 min, tools/install-elo.sh; truth .rb2p/elo/state.json). At each final both phones
+  write rooms/{code}/games/{start}/fin/{role} = {su, so, t, uid} and the note rooms/~elo/q/{code}_{start}; the game record
+  carries uids/{a,b} (the SDK's anonymous uid — _rb2p_eloUid) and mode. A game is RANKED when both finals agree, two
+  different players, SAME difficulty, and — unless it is a FIND A PLAYER game (the room's first game after its lfg match;
+  a rematch is a code game) — neither player already had 3 ranked code games that day (Central). Unranked games keep the
+  reason. Elo: start 1000, E = 1/(1+10^((Rb-Ra)/400)), K = 16 + 48·e^(-n/10) (64 -> ~34 at 10 games -> ~16 at 40).
+  Published (admin): embedcode/elo/top (5+ games, top 50, names censored), r/{uid} (r, n, W-L-T, today's code games),
+  g/{code_start} (each game's change; pruned after 2 days).
+- **The page:** RANKINGS and WATCH LIVE under FIND A PLAYER (the button shows the player's rating / the live games count);
+  the RANKINGS screen (the board, "your rating", the rules); the room's tag (RANKED GAME · n OF 3 CODE GAMES LEFT TODAY, or
+  NOT RANKED and why); the stats screen's line (an estimate at once, then the Mac's change: RANKED · RATING 1000 -> 1032
+  (+32)). Seams: _rb2p_eloQueue, _rb2p_eloPath.
+- **WATCH LIVE:** player a keeps rooms/~live/{code} (names, teams, score, quarter, clock, difficulty, watchers) fresh every
+  15 s; the list reads it. A watcher links to BOTH players (rooms/{code}/watch/o|a|c/{sid}_{role}, the relay ICE); the
+  WAITING player passes every frame packet it gets on to up to 4 watchers, unchanged (an ordered channel: the watcher holds
+  the same frames, so it decodes exactly as the waiting phone does) — the phone with the ball does no extra work. A source
+  change resets the watcher's decoder (_rb2p_view.resetRx); a watcher with nothing to build on asks for a keyframe through
+  the waiting phone (askKey). The view module's spectate mode (API.spec: the chip names the screen's team, no OPPONENT
+  mark). The watchers' chat rooms/{code}/watch/chat (the players don't see it; unfiltered like the other chats; names
+  censored); presence watch/s/{sid} -> "N WATCHING" on the players' badges. Seams: _rb2p_specStart/Stop/State, _rb2p_watchAll.
+- Tests: elo-math 6/6 (the K schedule, flattening, the 3-a-day limit and a lobby game, the unranked reasons, the queue, the
+  publish with a censored name), v500-ranked-watch 7/7 (two devices + a watcher: the list, the relayed picture, the count,
+  the chat, EXIT, the final rated 1000 -> 1032 / 968 on both stats screens), opp-view 8/8.
