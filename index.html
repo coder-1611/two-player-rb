@@ -2120,7 +2120,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V512<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V513<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2306,7 +2306,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V512</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V513</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -15997,9 +15997,9 @@
     //   NET.mode() -> 'p2p' | 'fb' | null      NET.send(bytes) -> true if sent      NET.canSend(queued) -> room for one more
     //   NET.ack(seq)                           NET.want(key)  (the waiting phone asks for frames / a keyframe)
     var NET = null;
-    var SND = { costMs: 0, shotWanted: false, shot: null, seq: 0, ring: [], acked: 0, wantUntil: 0, forceKey: true, lastKeyAt: 0, lastKeySeq: 0, lastCapAt: 0, bytes: 0, sent: 0, keys: 0, since: 0, failed: false,
+    var SND = { costMs: 0, capDue: 0, shotWanted: false, shot: null, seq: 0, ring: [], acked: 0, wantUntil: 0, forceKey: true, lastKeyAt: 0, lastKeySeq: 0, lastCapAt: 0, bytes: 0, sent: 0, keys: 0, since: 0, failed: false,
                 caps: 0, chain: Promise.resolve(), inFlight: 0 };
-    var RCV = { lastDrawAt: 0, lastTickAt: 0, rafGap: 16, pauseUntil: 0, slowSince: 0, lite: false, skipN: 0, skipped: 0, tickMs: 0, tickMax: 0, stretched: 0, morphs: 0, resized: 0, chain: Promise.resolve(), queued: 0, frames: [], bySeq: new Map(), lastRxAt: 0, offs: [], gaps: [], lastT: -1, delay: 120, cv: null, R: null, chip: null, raf: 0,
+    var RCV = { lastDrawAt: 0, lastTickAt: 0, rafGap: 16, pauseUntil: 0, slowSince: 0, lite: false, skipN: 0, skipped: 0, tickMs: 0, tickMax: 0, stretched: 0, morphs: 0, resized: 0, chain: Promise.resolve(), queued: 0, frames: [], bySeq: new Map(), lastRxAt: 0, offs: [], gaps: [], lastT: -1, pt: null, ptLast: 0, tickGaps: [], tgt: null, ph: 0, overSince: 0, fixAt: 0, cadA: null, cadN: 0, cadRuns: 0, cadBad: 0, cadDrops: 0, cadDropped: false, delay: 120, cv: null, R: null, chip: null, raf: 0,
                 showing: false, lastWantAt: 0, needKey: true, rx: 0, rxBytes: 0, drawn: 0, starved: 0, decodeFail: 0, lastAckSent: 0, mode: null, failed: false };
     // V500 (WATCH LIVE): a watcher's page shows the replay with no match of its own — API.spec set by the watch screen
     function amWaiting() { return !!(API && API.spec) || window._rb2p_userIsWaitingForOpponent === true; }
@@ -16051,8 +16051,16 @@
     }
     CAP.wantFrame = function () {
         var now = performance.now(), link = false, rec = false;
-        if (!SND.failed && NET && now - SND.lastCapAt >= capInterval() - 4 &&
-            !(Date.now() > SND.wantUntil || !NET.mode() || amWaiting() || !inMatch() || document.hidden)) { link = true; SND.lastCapAt = now; }
+        // V513: a fixed schedule (every 1000/30 ms on a phone, 1000/60 on a computer, 200 on Firebase) — the frame nearest each
+        // due time. The old gate (29 ms since the last capture) let a jittery pair of frames (14 + 14 ms) skip one: 10% of a
+        // phone's frames came 50 ms apart instead of 33, a hitch in the picture
+        var ivE = { 16: 1000 / 60, 33: 1000 / 30 }[capInterval()] || capInterval();
+        var capOk = window._rb2p_viewCapOld ? now - SND.lastCapAt >= capInterval() - 4 : now >= SND.capDue - Math.min(6, ivE * 0.3);   // test seam: the V512 gate
+        if (!SND.failed && NET && capOk &&
+            !(Date.now() > SND.wantUntil || !NET.mode() || amWaiting() || !inMatch() || document.hidden)) {
+            link = true; SND.lastCapAt = now;
+            SND.capDue = now - SND.capDue > ivE ? now + ivE : SND.capDue + ivE;   // fell behind (a pause): start the schedule again
+        }
         // V458 the recorder; V462: while the link is capturing at least as often, only on the link's own frames — its own
         // timer captured extra frames (with the link: nearly every frame)
         if (REC.active && !REC.failed && inMatch() && !document.hidden && now - REC.lastCapAt >= recInterval() - 4) {
@@ -16296,6 +16304,11 @@
     // receiver: decode, keep ~3 s of frames, ack, play behind a jitter buffer
     function onPacket(u8, via) {
         if (RCV.failed || !u8 || !u8.length) return;
+        var ns = window._rb2p_viewNetSim;   // V513 test seam: { mean, spike } — a jittery network on this page (ms; exponential + spikes)
+        if (ns && !u8.__ns) {
+            var dly = -(Number(ns.mean) || 0) * Math.log(1 - Math.random()) + (Math.random() < (Number(ns.spike) || 0) ? 40 + 60 * Math.random() : 0);
+            u8.__ns = 1; setTimeout(function () { onPacket(u8, via); }, dly); return;
+        }
         if (u8[0] === 0x5A || u8[0] === 0x5B || RCV.queued) {
             RCV.queued++;
             var gen = RCV.gen;   // V500: a watcher's source switch drops what is still being unpacked
@@ -16411,7 +16424,7 @@
     }
     function show() {
         if (RCV.showing || !ensureCanvas()) return;
-        RCV.showing = true; RCV.lastTickAt = 0; RCV.pauseUntil = 0; place();
+        RCV.showing = true; RCV.lastTickAt = 0; RCV.pauseUntil = 0; RCV.pt = null; RCV.ptLast = 0; RCV.cadA = null; place();   // V513: a fresh clock
         var acc = '#ff5b6e', nm = 'OPPONENT';
         try { if (window._rb2p_teamAccent) acc = window._rb2p_teamAccent(window._rb2p_oppTeamUid) || acc; } catch (e0) {}
         try { if (window._rb2p_teamName) nm = String(window._rb2p_teamName(window._rb2p_oppTeamUid) || nm).toUpperCase(); } catch (e1) {}
@@ -16457,17 +16470,18 @@
         }
         // V495: what the waiting phone saw, every 10 s in the game's diag log (the link's mode, frames in and drawn, late
         // redraws, the delay, the draw cost, the page's own rate)
-        if (!RCV.statAt) { RCV.statAt = now; RCV.statRx = RCV.rx; RCV.statDrawn = RCV.drawn; RCV.statLate = RCV.starved; }
+        if (!RCV.statAt) { RCV.statAt = now; RCV.statRx = RCV.rx; RCV.statDrawn = RCV.drawn; RCV.statLate = RCV.starved; RCV.statRuns = RCV.cadRuns; RCV.statBad = RCV.cadBad; }
         else if (now - RCV.statAt > 10000) {
             var sec = (now - RCV.statAt) / 1000, dn = RCV.drawn - RCV.statDrawn;
             try { if (window._rb2p_diagLog) window._rb2p_diagLog('VIEW stats ' + (RCV.mode || '?') + ' · in ' + ((RCV.rx - RCV.statRx) / sec).toFixed(1) + '/s · drawn ' + (dn / sec).toFixed(1) +
                 '/s · late ' + (dn ? Math.round(100 * (RCV.starved - RCV.statLate) / dn) : 0) + '% · delay ' + Math.round(RCV.delay) + ' ms · draw ' + RCV.tickMs.toFixed(1) + ' ms · page ' +
-                Math.round(1000 / Math.max(1, RCV.rafGap)) + ' fps' + (RCV.cap720 ? ' · 720p' : '')); } catch (eS) {}
-            RCV.statAt = now; RCV.statRx = RCV.rx; RCV.statDrawn = RCV.drawn; RCV.statLate = RCV.starved;
+                Math.round(1000 / Math.max(1, RCV.rafGap)) + ' fps' + (RCV.cap720 ? ' · 720p' : '') +
+                (RCV.cadRuns > RCV.statRuns ? ' · even ' + Math.round(100 - 100 * (RCV.cadBad - RCV.statBad) / (RCV.cadRuns - RCV.statRuns)) + '%' : '')); } catch (eS) {}   // V513
+            RCV.statAt = now; RCV.statRx = RCV.rx; RCV.statDrawn = RCV.drawn; RCV.statLate = RCV.starved; RCV.statRuns = RCV.cadRuns; RCV.statBad = RCV.cadBad;
         }
         return true;
     }
-    function tick() {
+    function tick(vsTs) {   // V513: the refresh's own timestamp (requestAnimationFrame's argument) drives the play clock
         RCV.raf = 0;
         var t0 = performance.now();
         try {
@@ -16486,11 +16500,61 @@
             // behind. Now the delay covers the arrival jitter only (its 90th percentile + 8 ms, 15-400 ms) and falls fast; a
             // redraw counts as late only when the next frame is overdue (1.5 gaps), the picture actually holding.
             var target = Math.max(15, Math.min(400, pctl(jit, 0.9) + 8));
-            RCV.delay += Math.max(-3, Math.min(1.5, target - RCV.delay));
-            var playT = now - minOff - RCV.delay, fs = RCV.frames, A = null, B = null;
+            // V513 (the owner: "why is the mirror still uneven? Please fix"): the play clock was `now - transit floor - delay`
+            // with the delay re-aimed every redraw (-3 / +1.5 ms a frame: the picture ran up to 18% fast or 9% slow as the
+            // jitter estimate moved), the floor jumping when its sample left the 4 s window, and the clock free to sit on a
+            // frame's edge (a frame shown 1 refresh, the next 3). On school Wi-Fi 15-22% of frames were shown for the wrong
+            // number of refreshes (a simulation of this exact code; 3-5% with the clock below). Now the clock moves one
+            // whole refresh per refresh (the page's own timing jitter drops out), WAITS while the next frame is late (no
+            // rush after it), sits half a refresh from the frames' edges, and gives back latency only one refresh at a
+            // time after half a second of a frame too much — the same exact frames, each shown as long as it was drawn.
+            var vs = (typeof vsTs === 'number' && vsTs > 0 && Math.abs(vsTs - now) < 100) ? vsTs : now;
+            var tgap = RCV.ptLast ? vs - RCV.ptLast : 0; RCV.ptLast = vs;
+            if (tgap > 0) { RCV.tickGaps.push(Math.min(tgap, 200)); if (RCV.tickGaps.length > 30) RCV.tickGaps.shift(); }
+            var Rr = RCV.tickGaps.length ? median(RCV.tickGaps) : 16.7, P = median(RCV.gaps), fs = RCV.frames, waitLate = false, playT;
+            var v512 = window._rb2p_viewPlayout === 'v512';   // test seam: the V512 clock, for A/B runs on one page
+            if (v512) { RCV.delay += Math.max(-3, Math.min(1.5, target - RCV.delay)); playT = now - minOff - RCV.delay; RCV.pt = null; }
+            else {
+                var TU = window._rb2p_viewTune || {};   // test seam: { pct, dead } — the jitter covered, the extra delay allowed (frames)
+                var tgtNow = TU.pct ? Math.max(15, Math.min(400, pctl(jit, TU.pct) + 8)) : target;
+                RCV.tgt = RCV.tgt == null ? tgtNow : RCV.tgt + (tgtNow - RCV.tgt) * 0.05;   // the safe delay, smoothed
+                var ideal = vs - minOff - RCV.tgt;
+                if (RCV.pt == null || tgap > 1000 || ideal - RCV.pt > 150) { RCV.pt = ideal; RCV.overSince = 0; }   // start, a long pause, or far behind: one jump
+                else {
+                    var cur = -1;
+                    for (var c = fs.length - 1; c >= 0; c--) if (fs[c].t <= RCV.pt) { cur = c; break; }
+                    waitLate = cur >= 0 && cur + 1 >= fs.length && RCV.pt + tgap - fs[cur].t >= P * 1.5;   // the next frame is late: wait for it
+                    if (!waitLate) RCV.pt += tgap;   // real time, refresh by refresh — no drift
+                }
+                if (ideal - RCV.pt > P * (TU.dead || 1) + Rr) {   // a frame and a refresh more delay than needed for a whole second: one refresh less
+                    if (!RCV.overSince) RCV.overSince = now;
+                    else if (now - RCV.overSince > 1000 && now - RCV.fixAt > 500) { RCV.pt += Rr; RCV.fixAt = now; }
+                } else RCV.overSince = 0;
+                playT = RCV.pt;
+            }
+            var A = null, B = null;
             for (var k = fs.length - 1; k >= 0; k--) if (fs[k].t <= playT) { A = fs[k]; B = fs[k + 1] || null; break; }
             if (!A) A = fs[0];
-            if (!B) { if (playT - A.t > median(RCV.gaps) * 1.5 + 4) RCV.starved++; RCV.R.draw(A, null); }
+            if (!v512) {
+                var G = Math.min(P, Rr), phE = (((playT - A.t) % G) + G) % G - G / 2;   // the clock's distance from the middle of a frame's slot
+                RCV.ph = RCV.ph * 0.9 + phE * 0.1;
+                RCV.pt -= Math.max(-0.4, Math.min(0.4, RCV.ph * 0.15));
+                RCV.delay = now - minOff - playT;
+            }
+            // the cadence, for the stats line: was each frame shown for as many refreshes as it was drawn for?
+            if (tgap > Rr * 1.5) RCV.cadDropped = true;   // this page missed a refresh (its own load): not the playout's doing
+            if (A !== RCV.cadA) {
+                if (RCV.cadA) {
+                    if (RCV.cadDropped) RCV.cadDrops++;
+                    else {
+                        RCV.cadRuns++;
+                        if (A.seq !== RCV.cadA.seq + 1) { if (A.seq > RCV.cadA.seq + 1) RCV.cadBad++; }
+                        else if (RCV.cadN !== Math.max(1, Math.round((A.t - RCV.cadA.t) / Rr))) RCV.cadBad++;
+                    }
+                }
+                RCV.cadA = A; RCV.cadN = 1; RCV.cadDropped = false;
+            } else RCV.cadN++;
+            if (!B) { if (waitLate || playT - A.t > median(RCV.gaps) * 1.5 + 4) RCV.starved++; RCV.R.draw(A, null); }
             else {
                 // V478 (the owner: "THERE SHOULD BE NO SLIDING OR BLENDING, the key thing to notice is if the down marker
                 // moves instantaneously or slides"; "the shadows are floating around and other random sprites are also just
@@ -16557,7 +16621,7 @@
         },
         resetRx: function () {
             RCV.gen = (RCV.gen || 0) + 1; RCV.frames = []; RCV.bySeq = new Map(); RCV.offs = []; RCV.gaps = []; RCV.lastT = -1;
-            RCV.needKey = true; RCV.lastRxAt = 0; RCV.queued = 0; RCV.chain = Promise.resolve();
+            RCV.needKey = true; RCV.lastRxAt = 0; RCV.queued = 0; RCV.chain = Promise.resolve(); RCV.pt = null; RCV.cadA = null;   // V513
         },
         askKey: function () { try { if (NET) NET.want(1 | ZF); } catch (e) {} },
         swapNet: function (net) { var old = NET; NET = net || null; return old; },
@@ -16566,7 +16630,7 @@
             return { snd: { seq: SND.seq, acked: SND.acked, sent: SND.sent, bytes: SND.bytes, keys: SND.keys, wanted: Date.now() < SND.wantUntil, failed: SND.failed || CAP.failed,
                             capOver: +capOverMs().toFixed(2), capInt: capInterval(), capFrameMs: +(CAP.capFrameMs || 0).toFixed(2), plainFrameMs: +(CAP.plainFrameMs || 0).toFixed(2) },
                      rcv: { rx: RCV.rx, bytes: RCV.rxBytes, frames: RCV.frames.length, showing: RCV.showing, drawn: RCV.drawn, starved: RCV.starved, delay: Math.round(RCV.delay),
-                            decodeFail: RCV.decodeFail, mode: RCV.mode, failed: RCV.failed, morphs: RCV.morphs, resized: RCV.resized, stretched: RCV.stretched, tickMs: +RCV.tickMs.toFixed(2), tickMax: Math.round(RCV.tickMax), skipped: RCV.skipped, cap720: !!RCV.cap720, lite: RCV.lite, software: !!(RCV.R && RCV.R.software) }, net: NET ? NET.mode() : null };
+                            decodeFail: RCV.decodeFail, cadRuns: RCV.cadRuns, cadBad: RCV.cadBad, cadDrops: RCV.cadDrops, mode: RCV.mode, failed: RCV.failed, morphs: RCV.morphs, resized: RCV.resized, stretched: RCV.stretched, tickMs: +RCV.tickMs.toFixed(2), tickMax: Math.round(RCV.tickMax), skipped: RCV.skipped, cap720: !!RCV.cap720, lite: RCV.lite, software: !!(RCV.R && RCV.R.software) }, net: NET ? NET.mode() : null };
         },
         // test seams: render one decoded frame (no interpolation) to a canvas of the sender's size
         testRender: function (seq) { var f = RCV.bySeq.get(seq); if (!f) return null; var cv = document.createElement('canvas'); cv.width = f.cw; cv.height = f.ch; new Renderer(cv, true).draw(f, null); return cv.toDataURL('image/png'); },
@@ -22064,6 +22128,48 @@
             var heard = Math.max(S.liveAt.a || 0, S.liveAt.b || 0);
             $specWait.textContent = S.final ? 'FINAL' : (!open ? 'CONNECTING TO THE GAME…' : (Date.now() - heard > 60000 ? 'THE GAME IS PAUSED — A PLAYER IS AWAY' : 'WAITING FOR THE NEXT PLAY…'));
         }
+        // V514 (the owner: "audience should be able to see stats screen, but no you win or you lose"): when the game ends a
+        // watcher gets the players' stats screen — the scoreline and both box cards, built from the two phones' final reports
+        // (rooms/{code}/final/{a,b}; the second fills in when it lands) — headed by the winner's name, never YOU WIN / YOU
+        // LOSE. No RUN IT BACK, no rating, no share; BACK TO WATCH LIVE returns to the list.
+        function specFinal(S) {
+            if (SPEC !== S || !S.finals) return;
+            var A = S.finals.a, B = S.finals.b; if (!A && !B) return;
+            var sa = A ? Number(A.score) || 0 : Number(B.oppScore) || 0, sb = A ? Number(A.oppScore) || 0 : Number(B.score) || 0;
+            var ta = A ? A.team : (B.oppTeam || ''), tb = B ? B.team : (A.oppTeam || '');
+            var na = lfgName(S.g.an), nb = lfgName(S.g.bn);
+            var acc = function (uid, d) { try { return (window._rb2p_teamAccent && window._rb2p_teamAccent(uid)) || d; } catch (e) { return d; } };
+            var aC = acc(S.g.at, '#4fe08c'), bC = acc(S.g.bt, '#ff6b7c'), GOLD = '#ffcf4d', CHALK = '#f3efe2';
+            var title = sa > sb ? na + ' WINS' : sb > sa ? nb + ' WINS' : 'TIE GAME';
+            var jersey = function (fill) {
+                return "font-family:'Anton',sans-serif;font-size:clamp(74px,10vw,142px);line-height:.82;color:" + fill + ';' +
+                    'text-shadow:2px 0 #f3efe2,-2px 0 #f3efe2,0 2px #f3efe2,0 -2px #f3efe2,2px 2px #f3efe2,-2px -2px #f3efe2,2px -2px #f3efe2,-2px 2px #f3efe2,0 0 44px ' + fill + 'bb;';
+            };
+            var waiting = function (nm) { return '<section style="border-radius:4px;background:rgba(11,18,13,.6);border:1px solid rgba(243,239,226,.12);padding:30px 18px;text-align:center;color:#b6b2a4;font-size:13px;">waiting for ' + esc(nm) + '’s stats…</section>'; };
+            var team = function (x) { return '<span style="font-family:\'Anton\',sans-serif;font-size:clamp(22px,2.6vw,36px);letter-spacing:1px;text-transform:uppercase;color:' + CHALK + ';">' + esc(x) + '</span>'; };
+            finalOverlay.innerHTML =
+                '<div style="position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse 90% 60% at 50% 8%,' + GOLD + '26 0%,transparent 60%),linear-gradient(168deg,#16233f 0%,#0d1830 52%,#070d1c 100%);"></div>' +
+                '<div class="rb-scroll" style="position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;z-index:2;padding:64px max(24px, env(safe-area-inset-right)) max(60px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));">' +
+                  '<div style="max-width:1120px;margin:0 auto;display:flex;flex-direction:column;align-items:center;">' +
+                    '<span style="font-weight:600;font-size:13px;letter-spacing:12px;color:' + CHALK + ';opacity:.7;">◆ FINAL ◆</span>' +
+                    '<span class="rb-fin-title" style="font-family:\'Anton\',sans-serif;font-size:clamp(46px,7vw,104px);letter-spacing:2px;line-height:.95;text-transform:uppercase;text-align:center;color:' + GOLD + ';text-shadow:0 0 50px rgba(255,207,77,.45),0 6px 0 rgba(0,0,0,.4);margin-top:6px;overflow-wrap:anywhere;">' + esc(title) + '</span>' +
+                    '<div class="rb-fin-scoreline" style="display:flex;align-items:center;justify-content:center;gap:clamp(14px,2.4vw,32px);margin-top:34px;flex-wrap:wrap;">' +
+                      team(ta || na) + '<span class="rb-fin-num" style="' + jersey(aC) + '">' + sa + '</span>' +
+                      '<span style="font-family:\'Anton\',sans-serif;font-size:clamp(30px,4vw,56px);color:' + GOLD + ';opacity:.8;">/</span>' +
+                      '<span class="rb-fin-num" style="' + jersey(bC) + '">' + sb + '</span>' + team(tb || nb) +
+                    '</div>' +
+                    '<div style="margin-top:14px;font-family:\'Press Start 2P\',monospace;font-size:clamp(9px,1.1vw,12px);letter-spacing:1px;color:#9fbcf0;text-align:center;">' + esc(na) + ' vs ' + esc(nb) + '</div>' +
+                    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,540px));gap:24px;margin-top:36px;width:100%;justify-content:center;">' +
+                      (A ? teamColumnHtml(A, aC) : waiting(na)) + (B ? teamColumnHtml(B, bC) : waiting(nb)) +
+                    '</div>' +
+                    '<button id="rb-specfinal-back" type="button" style="margin-top:42px;font-family:\'Anton\',sans-serif;font-size:clamp(16px,1.8vw,20px);letter-spacing:2px;text-transform:uppercase;color:' + CHALK + ';background:transparent;border:2px solid rgba(243,239,226,.55);border-radius:3px;padding:12px 34px;cursor:pointer;">BACK TO WATCH LIVE</button>' +
+                  '</div>' +
+                '</div>';
+            finalOverlay.dataset.spec = '1';
+            finalOverlay.style.display = 'block';
+            var bk = document.getElementById('rb-specfinal-back');
+            if (bk) bk.addEventListener('click', function () { specStop('watch'); });
+        }
         function specStart(g) {
             var V = window._rb2p_view;
             if (SPEC || !g || !g.code || !V || !V.spectate || !V.swapNet || typeof RTCPeerConnection !== 'function') return;
@@ -22087,8 +22193,9 @@
                 S.offs.push(FB.onValue(FB.ref(db, 'rooms/' + S.code + '/live/' + r), function (sn) { S.live[r] = sn.val(); S.liveAt[r] = Date.now(); specScore(); }, function () {}));
             });
             S.offs.push(FB.onValue(FB.ref(db, 'rooms/' + S.code + '/final'), function (sn) {
-                var f = sn.val() || {}, any = f.a || f.b;
-                if (any && Number(any.ts) > S.startedAt - 30 * 60000) { S.final = any; specWaitText(); }
+                var f = sn.val() || {}, fresh = function (x) { return x && Number(x.ts) > S.startedAt - 30 * 60000 ? x : null; };
+                var fa = fresh(f.a), fb = fresh(f.b);
+                if (fa || fb) { S.final = fa || fb; S.finals = { a: fa, b: fb }; specWaitText(); specFinal(S); }   // V514: the stats screen
             }, function () {}));
             S.offs.push(FB.onValue(FB.query(FB.ref(db, wr + 'chat'), FB.limitToLast(50)), function (sn) { lfgChatRender($specLog, sn, 'No messages yet. Say hi.'); }, function () {}));
             S.offs.push(FB.onValue(FB.ref(db, wr + 's'), function (sn) {
@@ -22100,6 +22207,7 @@
             if (window._rb2p_diagLog) window._rb2p_diagLog('WATCH started ' + S.code);
         }
         function specStop(back) {
+            if (finalOverlay.dataset.spec === '1') { finalOverlay.style.display = 'none'; finalOverlay.innerHTML = ''; finalOverlay.dataset.spec = ''; }   // V514
             var S = SPEC; if (!S) return; SPEC = null;
             S.timers.forEach(function (t) { clearInterval(t); });
             S.offs.forEach(function (off) { try { off(); } catch (e) {} });

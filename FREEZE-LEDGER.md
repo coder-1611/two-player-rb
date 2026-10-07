@@ -2068,3 +2068,25 @@ each day into a viewable section".
   The sender logs "VIEW sending N a second on p2p (phone|computer)" once per link mode. Seam _rb2p_viewPhone.
 - Of the 6 devices measured worse, 4 were Chromebooks (stay at 60 under this rule), 1 Android phone, 1 iPad.
 - e2e/v511-phone-rate.js 3/3: P1 9 real user agents, P2 phone 26.8 frames/s with 0% late, P3 computer 52.7 frames/s.
+
+## V513 (2026-10-07): the opponent's screen shows each frame as long as it was drawn; watchers get the stats screen
+- The owner: "why is the mirror still uneven? Please fix". Three causes, measured (a line-for-line simulation of the V512
+  play clock under school-Wi-Fi jitter: 15-22% of frames shown for the wrong number of refreshes, ~0% on a clean link):
+  1. the play clock (`now - transit floor - delay`) re-aimed its delay every redraw (-3/+1.5 ms a frame: the picture ran up
+     to 18% fast / 9% slow), its floor jumped when the sample left the 4 s window, and it could sit on a frame's edge (one
+     frame shown 1 refresh, the next 3 — worst at 30 fps, which V511 made every phone's rate);
+  2. the sender's 29-ms gate let a jittery pair of frames skip a capture: 10% of a phone's frames came 50 ms apart, not 33.
+- Now: the play clock advances by the refresh's own timestamp (requestAnimationFrame's argument — no drift), WAITS while the
+  next frame is late (no catch-up rush), sits half a slot from the frames' edges (a slow phase nudge, 0.4 ms a refresh at
+  most), smooths its safe delay, and gives latency back one refresh at a time after a whole second of a frame + a refresh
+  too much (one jump if 150 ms behind). The sender captures on a fixed schedule (1000/30 ms on a phone, 1000/60 on a
+  computer, 200 on Firebase — the frame nearest each due time). The receiver's 10 s stats line adds "even N%" (frames shown
+  for the right number of refreshes; a frame during which the page itself missed a refresh is left out).
+- e2e/v513-cadence.js — BEFORE (V512's gate + clock, seams _rb2p_viewCapOld / _rb2p_viewPlayout='v512') vs AFTER on one game,
+  alternating: phone 30 fps + jitter 71.8->91.5, 77.3->84.3, 87.6->89.2; clean 60 fps 94.8->97.2, 94.4->99.8; 60 fps + jitter
+  87.5->82.7, 82.1->87.2, 87.9->86.7 (a wash: runs differ ~5 points). Every frame arrives (353/353, no decode failures) —
+  the remaining skips are frames the sender's compression sends in pairs. Seams: _rb2p_viewNetSim {mean, spike} (arrival
+  jitter on the waiting page), _rb2p_viewTune {pct, dead}. opp-view 8/8.
+- The owner: "audience should be able to see stats screen, but no you win or you lose": WATCH LIVE now opens the players'
+  stats screen when the game ends (rooms/{code}/final/{a,b}; the second side fills in when it lands) — the scoreline and
+  both box cards, headed "<WINNER> WINS" / TIE GAME, no RUN IT BACK / rating / share; BACK TO WATCH LIVE. e2e/v513-spec-final 3/3.
