@@ -592,21 +592,29 @@
     <link rel="icon" type="image/jpeg" href="favicon.jpg?v=350">
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=457">
     <meta name="apple-mobile-web-app-title" content="Retro Bowl 2P" />
-    <title>Retro Bowl 2P — Play Two-Player Retro Bowl in Your Browser</title>
+    <title>Retro Bowl Multiplayer — Play Retro Bowl Online With Friends (2 Player)</title>
     <meta name="description"
-        content="Play Retro Bowl two-player in your browser. Create a room, share the code, and go head-to-head with a friend on any phone or laptop — no download, no sign-up." />
+        content="Play Retro Bowl multiplayer online for free: real 2-player Retro Bowl against a friend or a random opponent, right in your browser. See their screen live, climb the rankings. No download, works on Chromebook." />
     <!-- The cache-bust script above sends first-time visitors to ?v=<token>, which would
          otherwise present Google a brand-new URL on every crawl. This pins the indexable
          address to the clean homepage. -->
     <link rel="canonical" href="https://two-player-rb.vercel.app/" />
     <!-- V401: social cards + structured data + landing pages -->
-    <meta property="og:title" content="Retro Bowl 2P — Play Two-Player Retro Bowl in Your Browser" />
-    <meta property="og:description" content="Create a room, share the 4-letter code, and play a friend head-to-head. Free, no download, no sign-up." />
+    <!-- V504 (the owner: "In SEO, retro bowl multiplayer or retro bowl online show very low results. Fix by also highlighting
+         multiplayer and online"): the title, description, cards and data lead with Retro Bowl Multiplayer / Retro Bowl Online -->
+    <meta property="og:title" content="Retro Bowl Multiplayer — Play Retro Bowl Online With Friends" />
+    <meta property="og:description" content="Real 2-player Retro Bowl online: play a friend with a room code or get matched with a random player. Free, in your browser, no download." />
     <meta property="og:url" content="https://two-player-rb.vercel.app/" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://two-player-rb.vercel.app/favicon.jpg" />
-    <meta name="twitter:card" content="summary" />
-    <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"Retro Bowl 2P","url":"https://two-player-rb.vercel.app/","description":"A free fan-made two-player mode for Retro Bowl. Create a room, share the code, and play a friend head-to-head in the browser.","genre":"Sports","playMode":"MultiPlayer","numberOfPlayers":{"@type":"QuantitativeValue","value":2},"applicationCategory":"Game","operatingSystem":"Any (web browser)","gamePlatform":["Web browser","Chromebook","iOS","Android"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true}</script>
+    <meta property="og:site_name" content="Retro Bowl 2P" />
+    <meta property="og:image" content="https://two-player-rb.vercel.app/img/retro-bowl-multiplayer-gameplay.jpg" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="720" />
+    <meta property="og:image:alt" content="A Retro Bowl multiplayer game: a receiver breaks free downfield" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Retro Bowl Multiplayer — Play Retro Bowl Online With Friends" />
+    <meta name="twitter:image" content="https://two-player-rb.vercel.app/img/retro-bowl-multiplayer-gameplay.jpg" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"Retro Bowl 2P","alternateName":["Retro Bowl Multiplayer","Retro Bowl Online"],"url":"https://two-player-rb.vercel.app/"},{"@type":"VideoGame","name":"Retro Bowl Multiplayer","alternateName":["Retro Bowl Online","Retro Bowl 2 Player","Retro Bowl 2P"],"url":"https://two-player-rb.vercel.app/","image":"https://two-player-rb.vercel.app/img/retro-bowl-multiplayer-gameplay.jpg","description":"Free online multiplayer for Retro Bowl: two players, two devices, head-to-head in the browser. Play a friend with a 4-letter room code or get matched with a random player, watch the other player's screen live, chat, and climb the rankings.","genre":"Sports","playMode":["MultiPlayer","SinglePlayer"],"numberOfPlayers":{"@type":"QuantitativeValue","minValue":1,"maxValue":2},"applicationCategory":"Game","operatingSystem":"Any (web browser)","gamePlatform":["Web browser","Chromebook","iOS","Android","Windows","macOS"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isAccessibleForFree":true}]}</script>
 
     <!-- Retro pixel font for the 2P lobby (V211 redesign) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -865,6 +873,9 @@
                          3px 3px 0 #0a1838, -3px -3px 0 #0a1838, 3px -3px 0 #0a1838, -3px 3px 0 #0a1838, 0 10px 0 rgba(10,24,56,.55);
             animation: rb-glow 5s ease-in-out infinite;
         }
+        /* V504: the headline says what it is — Retro Bowl online multiplayer (its own fill: the wordmark's is clipped to a gradient) */
+        #rb-lobby .rb-wordmark .rb-h1-sub { display: block; margin-top: .55em; font-size: max(9px, .2em); letter-spacing: .34em; line-height: 1.2;
+            color: #cdddff; -webkit-text-fill-color: #cdddff; background: none; text-shadow: 2px 2px 0 #0a1838; animation: none; }
         #rb-lobby .rb-wordmark .accent {
             color: transparent; -webkit-text-fill-color: transparent;
             background-image: linear-gradient(180deg, #5bffa0 0%, #36e07a 100%);
@@ -2072,9 +2083,9 @@
                     <div class="rb-football" aria-hidden="true">
                         <span class="lace-h"></span><span class="lace-v"></span><span class="lace-rungs"></span>
                     </div>
-                    <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
+                    <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V503<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V504<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2125,7 +2136,7 @@
             <div class="rb-entry-foot">
                 <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
                 <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
-                <p class="rb-solo rb-links"><a href="/how-to-play/">HOW TO PLAY</a> &middot; <a href="/play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="/unblocked/">UNBLOCKED</a></p>
+                <p class="rb-solo rb-links"><a href="multiplayer/">RETRO BOWL MULTIPLAYER</a> &middot; <a href="online/">PLAY RETRO BOWL ONLINE</a> &middot; <a href="how-to-play/">HOW TO PLAY</a> &middot; <a href="play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="unblocked/">UNBLOCKED</a></p>
                 <p class="rb-solo rb-links">BUILT BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=lobby" rel="author">LOCAL WEB TECH</a></p>
             </div>
         </div>
@@ -2260,7 +2271,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V503</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V504</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->

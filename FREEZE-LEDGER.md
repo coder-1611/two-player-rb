@@ -1960,3 +1960,21 @@ each day into a viewable section".
   used by the players' link (relayIce) and the watcher's (specIce). Seams: _rb2p_relayDbOff, _rb2p_relayDbPath.
 - Tests: opp-view 8/8 — W8 now blocks vercel.app (_rb2p_relayUrl unreachable): the credentials come from the database and
   the relay carries the link.
+
+## V504 (2026-10-07): search — Retro Bowl Multiplayer and Retro Bowl Online
+- The owner: "In SEO, retro bowl multiplayer or retro bowl online show very low results. Fix by also highlighting multiplayer
+  and online".
+- The home page: title "Retro Bowl Multiplayer — Play Retro Bowl Online With Friends (2 Player)"; the description, the
+  Open Graph / Twitter cards (a real gameplay image, summary_large_image) and the JSON-LD (@graph: WebSite with alternate
+  names Retro Bowl Multiplayer / Retro Bowl Online; VideoGame "Retro Bowl Multiplayer", alternateName Retro Bowl Online /
+  2 Player / 2P, playMode Multi + Single) all lead with multiplayer and online; the headline reads RETRO BOWL 2P · ONLINE
+  MULTIPLAYER (a small line under the wordmark); the footer links RETRO BOWL MULTIPLAYER and PLAY RETRO BOWL ONLINE (links
+  relative now, so they work under github.io's /two-player-rb/ too).
+- Two new landing pages, real content + FAQPage JSON-LD + a gameplay screenshot each (frames from the day's play-of-the-day
+  videos, img/): /multiplayer/ ("Retro Bowl Multiplayer — Play Retro Bowl Online Against Real People": the three ways to
+  play, the live opponent screen, rankings, settings, plays of the day, FAQ) and /online/ ("Play Retro Bowl Online — Free in
+  Your Browser, 2 Player or Solo": online vs another player, solo, where it works, how to start, FAQ).
+- The other landing pages' titles: "Retro Bowl Unblocked — 2 Player Multiplayer, Free Online", "Play Retro Bowl With Friends
+  Online — Retro Bowl Multiplayer", "How to Play Retro Bowl Multiplayer — Controls, Rooms and Rules"; every page links the
+  new two. sitemap.xml lists 6 pages with lastmod; the 6 URLs pinged through IndexNow with the existing key (da9af5e) — Bing,
+  DuckDuckGo, Yandex.
