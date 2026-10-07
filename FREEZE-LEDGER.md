@@ -1946,3 +1946,17 @@ each day into a viewable section".
   no longer reads rooms/{code}/lfg and games for the tag.
 - The rebuild re-run: 623 finished games -> 463 ranked (the 49 over-the-limit games now count), 373 players, 50 on the board.
 - Tests: elo-math 6/6 (E3: no limit by default; --friendly-limit 3 still works), v500-ranked-watch 7/7.
+
+## V503 (2026-10-07): the relay's credentials from the game's own database — every door gets the relay (and watchers connect)
+- The owner: "i was able to watch 1 game but after that none of them are loading".
+- **Measured (7:41 am, 5 live games, all V502):** every player on the web.app door (VPTG, FNYB, LCNU, EEHJ) logged "VIEW no
+  relay (unreachable)" every ~20 s — vercel.app (api/turn) is blocked at their school, which is why they use web.app — so
+  their link to the other phone ran on Firebase ("VIEW stats fb", 5 frames a second) and a watcher's link never opened: the
+  owner's Mac offered to EEHJ six times and to VPTG five, answers came, no connection (no direct path, no relay). GTQR's
+  players (vercel.app) got the relay: "direct link open (…, relay …)" — the relay itself works at that school.
+- tools/turn-publish.js (LaunchAgent com.rb2p.turn, every 30 min, tools/install-turn.sh — the Cloudflare key copied from
+  mac-remote's plist by plistlib, never printed): embedcode/turn = { iceServers, exp, at }, 48 h credentials minted again
+  when under 24 h are left. window._rb2p_relayCreds(): the database first (embedcode/turn via REST), then api/turn —
+  used by the players' link (relayIce) and the watcher's (specIce). Seams: _rb2p_relayDbOff, _rb2p_relayDbPath.
+- Tests: opp-view 8/8 — W8 now blocks vercel.app (_rb2p_relayUrl unreachable): the credentials come from the database and
+  the relay carries the link.

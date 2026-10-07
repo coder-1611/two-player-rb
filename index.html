@@ -2074,7 +2074,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V502<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V503<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2260,7 +2260,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V502</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V503</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -21833,7 +21833,7 @@
         function specIce() {   // STUN + V497's relay (api/turn.js; the list kept for the tab)
             var base = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
             try { var c = JSON.parse(sessionStorage.getItem('rb2p_relay') || 'null'); if (c && c.ice && c.ice.length && c.exp - Date.now() > 3600e3) return Promise.resolve(base.concat(c.ice)); } catch (e) {}
-            var f = fetch(window._rb2p_relayUrl || 'https://two-player-rb.vercel.app/api/turn', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+            var f = window._rb2p_relayCreds().then(function (j) {   // V503: the database first, then vercel.app
                 var ice = [];
                 ((j && j.iceServers) || []).forEach(function (s) { var urls = [].concat(s.urls || []).filter(function (u) { return /^turns?:/.test(u) && !/:53\b/.test(u); }); if (urls.length && s.username) ice.push({ urls: urls, username: s.username, credential: s.credential }); });
                 if (ice.length) { try { sessionStorage.setItem('rb2p_relay', JSON.stringify({ ice: ice, exp: j.exp })); } catch (e) {} }
@@ -22003,6 +22003,21 @@
         // game's database carried that nothing else reads — runs on the spare database (the project retrobowl-2p: this
         // game's first project, empty, with its own free allowance) at view/{code}/{w}{role}. Its rules allow those records
         // only. If it cannot start, the game's own database carries it, as before.
+        // V503 (the owner: "i was able to watch 1 game but after that none of them are loading"): the relay's credentials —
+        // the game's own database first (embedcode/turn, published by tools/turn-publish.js), then vercel.app's api/turn.
+        // The web.app door's players (vercel.app is blocked at their school) never reached api/turn: "VIEW no relay
+        // (unreachable)", their link fell back to Firebase and no watcher could connect. Resolves { iceServers, exp } or null.
+        window._rb2p_relayCreds = function () {
+            var fromDb = (window._rb2p_relayDbOff || !window._rb2p_fbRestGetX) ? Promise.resolve(null)
+                : window._rb2p_fbRestGetX(window._rb2p_relayDbPath || 'embedcode/turn', 4000).then(function (r) {
+                    var v = r && r.ok && r.val; return v && v.iceServers && Number(v.exp) - Date.now() > 3600e3 ? v : null;
+                }, function () { return null; });
+            return fromDb.then(function (v) {
+                if (v) return v;
+                return fetch(window._rb2p_relayUrl || 'https://two-player-rb.vercel.app/api/turn', { cache: 'no-store' })
+                    .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
+            });
+        };
         var _viewDb = null;
         function viewDb() {
             if (_viewDb) return _viewDb;
@@ -22033,8 +22048,7 @@
                     try { var c = JSON.parse(sessionStorage.getItem('rb2p_relay') || 'null'); if (c && c.ice && c.ice.length && c.exp - Date.now() > 3 * 3600e3) { relayList = c.ice; return resolve(); } } catch (e) {}
                     function again() { if (relayP === p) relayP = null; }   // a failed fetch is tried again by the next offer
                     setTimeout(function () { if (!relayList.length) { diag('no relay yet (4 s) — direct path only'); again(); } resolve(); }, 4000);
-                    fetch(window._rb2p_relayUrl || 'https://two-player-rb.vercel.app/api/turn', { cache: 'no-store' })
-                        .then(function (r) { return r.ok ? r.json() : null; })
+                    window._rb2p_relayCreds()   // V503: the database first, then vercel.app
                         .then(function (j) {
                             var ice = [];
                             ((j && j.iceServers) || []).forEach(function (s) {

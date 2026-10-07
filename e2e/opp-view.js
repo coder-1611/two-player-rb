@@ -18,7 +18,8 @@
 //       and the database keeps one record per role; V496: on the spare database (retrobowl-2p, view/{code}), nothing
 //       of it on the game's own (rooms/{code}/view); V497: 4+ frames a second (it was 3 — a send gate dropped every other one)
 //   W8  (V497) no direct path at all (relay-only, as a school network leaves it): Cloudflare's relay carries the link —
-//       the screen shows over it, the path is a relay, 15+ frames a second through a real down
+//       the screen shows over it, the path is a relay, 15+ frames a second through a real down; V503: with vercel.app
+//       unreachable (the web.app door at a school) — the relay's credentials come from the database (embedcode/turn)
 const L = require('./horn-lib');
 const TP = L.TP, sleep = L.sleep;
 let pass = 0, fail = 0, setup = '';
@@ -157,7 +158,7 @@ async function firebaseGame() {
 }
 
 async function relayGame() {
-    const g = await TP.startTwoPlayerGame({ beforeReady: async (page) => { await page.evaluate(u => { window._rb2p_viewRelayOnly = true; if (u) window._rb2p_relayUrl = u; }, process.env.RELAY_URL || ''); } });   // RELAY_URL: a local api/turn.js
+    const g = await TP.startTwoPlayerGame({ beforeReady: async (page) => { await page.evaluate(() => { window._rb2p_viewRelayOnly = true; window._rb2p_relayUrl = 'https://127.0.0.1:9/blocked'; }); } });   // V503: vercel.app blocked — the credentials come from the database
     try {
         await sleep(6000);
         const o = await L.offense(g, 40000); if (!o.ok) { setup = setup || 'nobody has the ball (relay game)'; return; }
