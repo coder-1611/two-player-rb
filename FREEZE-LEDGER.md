@@ -1990,3 +1990,18 @@ each day into a viewable section".
   "Retro Bowl 2 Player Unblocked — Multiplayer, Play Free Online in Your Browser"; "Play Retro Bowl With Friends Online —
   Two-Player Retro Bowl Multiplayer"; "How to Play Retro Bowl 2P Multiplayer — Two-Player Controls, Rooms and Rules";
   "Retro Bowl Multiplayer — Play Two-Player Retro Bowl Online Against Real People". Pinged IndexNow again.
+
+## V506 (2026-10-07): the leaving penalty (soham names exempt); the owner's rating set to 1112
+- The owner: "add a leaving penalty for pepole who leave first in a ranked game. Make soham rating 1112 and make any username
+  with soham in it exempts" (the formula, 6 Oct: "elo - 0.25(minutes left in int)|point differential|").
+- The page (the player who stays): when the other player has been gone 2 minutes in a game still running — their pagehide
+  beacon (_rb2p_oppLeft) or silent over a minute — it notes it once, with the score and clock at the moment they went:
+  rooms/~elo/q/{room}_{game}_left = { c, s, t, left: { role, by, at, q, clk, qmins, su, so } }. Seam: _rb2p_leaveWaitMs.
+- tools/elo.js: 10 minutes after the note (--leave-wait-ms), unless the game was finished after all (both fins), the leaver
+  of a ranked game (two devices, SAME) loses 0.25 x floor(minutes of game time left: the quarter's clock + the quarters to
+  come; overtime its own clock) x |point difference| — no win or loss recorded; a leaver whose name (that game's, or their
+  board name) contains "soham" (any case) pays nothing; a tie or under a whole minute takes nothing. --set-rating UID=R sets
+  a rating (st.manual); tools/elo-backfill.js replays set ratings and the leave penalties at their own time.
+- The RANKINGS note explains the penalty. The owner's rating: the Chromebook "soham" (KrwziFQu) 1100 -> 1112.
+- Tests: elo-math 8/8 (E7 the formula, the soham exemption, tie / finished / unranked / overtime; E8 the 10-minute wait),
+  v506-leave 2/2 (a real game: one closes the tab, the other notes it, the job takes 17.5; a "SohamTest" leaver pays nothing).

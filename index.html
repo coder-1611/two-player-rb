@@ -2085,7 +2085,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V505<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V506<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2245,7 +2245,7 @@
             <h1 class="rb-roomtitle">RANK<span class="code">INGS</span></h1>
             <p class="rb-rank-me" id="rb-rank-me"></p>
             <ol class="rb-rank-list" id="rb-rank-list"></ol>
-            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. You show on the board after 5 ranked games.</p>
+            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. Leave a ranked game before it ends and you lose 0.25 &times; the whole minutes left &times; the point difference. You show on the board after 5 ranked games.</p>
             <button id="rb-ranks-back" class="rb-join-btn" type="button">&#9664; BACK</button>
         </div>
         <!-- ======================= WATCH LIVE (V500) ======================= -->
@@ -2271,7 +2271,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V505</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V506</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -21755,6 +21755,38 @@
             el.textContent = txt; el.style.display = txt ? '' : 'none';
         }
         window._rb2p_eloFinalPaint = eloFinPaint;
+        // V506: THE LEAVING PENALTY (the owner: "add a leaving penalty for pepole who leave first in a ranked game"; the
+        // formula, 6 Oct: "elo - 0.25(minutes left in int)|point differential|"; "make any username with soham in it exempt").
+        // When the other player has been gone for 2 minutes in a game still running — their page closed (its pagehide
+        // beacon) or silent for over a minute — this page notes it, once, with the score and the clock at the moment they
+        // went: rooms/~elo/q/{room}_{game}_left. The Mac's rating job waits 10 more minutes (they may come back and finish:
+        // then nothing happens) and takes 0.25 x the whole minutes left x the point difference from whoever left first.
+        var leaveW = { key: null, since: 0, snap: null, sent: false };
+        setInterval(function () {
+            try {
+                if (!myRoom || !myRole || window._rb2p_gameOverReported === true || !(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) { leaveW.since = 0; leaveW.snap = null; return; }
+                var gk = eloGameKey(); if (!gk) return;
+                if (leaveW.key !== myRoom + '_' + gk) leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false };
+                if (leaveW.sent) return;
+                var gone = (window._rb2p_oppLeft && window._rb2p_oppLeft()) || (window._rb2p_oppSilentMs && window._rb2p_oppSilentMs() > 60000);
+                if (!gone) { leaveW.since = 0; leaveW.snap = null; return; }
+                if (!leaveW.since) {   // the moment they went: the score and the clock then
+                    var em = RB.engineState(); if (!em) return;
+                    leaveW.since = Date.now();
+                    leaveW.snap = { q: Number(em.engineQuarter) || 1, clk: (Number(em.engineMinutesLeft) || 0) * 60 + (Number(em.engineSecondsLeft) || 0),
+                                    su: Number(em.userScore) || 0, so: Number(em.opponentScore) || 0 };
+                    return;
+                }
+                if (Date.now() - leaveW.since < (Number(window._rb2p_leaveWaitMs) || 120000)) return;
+                leaveW.sent = true;
+                var note = { c: myRoom, s: Number(gk), t: Date.now(),
+                             left: Object.assign({ role: myRole === 'a' ? 'b' : 'a', by: myRole, at: leaveW.since, qmins: Number(window._rb2p_quarterMins) || 2 }, leaveW.snap) };
+                var lp = (window._rb2p_eloQueue || 'rooms/~elo/q') + '/' + myRoom + '_' + gk + '_left';
+                FB.set(FB.ref(db, lp), note).catch(function () {});
+                if (window._rb2p_fbRestPut) window._rb2p_fbRestPut(lp, note);
+                if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the other player left ' + Math.round((Date.now() - leaveW.since) / 1000) + ' s ago — noted (Q' + leaveW.snap.q + ' ' + leaveW.snap.clk + ' s, ' + leaveW.snap.su + '-' + leaveW.snap.so + ')');
+            } catch (e) {}
+        }, 5000);
         // RANKINGS: the board (the top 50 with 5+ ranked games; names censored for slurs on the Mac and again here)
         function ranksOpen() {
             var $list = document.getElementById('rb-rank-list'), $me = document.getElementById('rb-rank-me');

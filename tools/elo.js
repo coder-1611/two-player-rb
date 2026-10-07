@@ -8,6 +8,12 @@
 //   · a game is RANKED when both phones recorded the same final, the players are two different devices, and both had the
 //     SAME difficulty. Otherwise it is kept unranked, with the reason. A game whose second final never came is unranked
 //     after 10 minutes. A phone cannot write its own rating: only this job does.
+//   · V506 (the owner: "add a leaving penalty for pepole who leave first in a ranked game"; the formula: "elo - 0.25(minutes
+//     left in int)|point differential|"; "make any username with soham in it exempt"): the player who stays notes a leave
+//     (rooms/~elo/q/{code}_{start}_left: the leaver's role, the score and the clock when they went). 10 minutes later, if
+//     the game was not finished after all, the leaver of a ranked game (two devices, SAME) loses 0.25 x the whole minutes
+//     of game time left x |the point difference| — unless their name has "soham" in it. No win or loss is recorded.
+//   · the owner's set ratings (st.manual: [{ uid, r, at }]) stand; tools/elo-backfill.js replays them in order
 //   · V502 (the owner: "Right now don't have any anti cheating rules yet"): the V500 limit of 3 ranked code games a day per
 //     player is OFF; --friendly-limit N turns it back on (a FIND A PLAYER game — the room's first game after its lfg match
 //     — never counts toward it). The per-day counts are still kept.
@@ -18,6 +24,7 @@
 //     — the stats screen shows it), at
 //   node tools/elo.js            one run (what the LaunchAgent does)
 //   node tools/elo.js --report   the board, nothing changed
+//   node tools/elo.js --set-rating UID-OR-PREFIX=1112   the owner sets a rating (kept in st.manual; published at once)
 //   --queue P --pub P --state F --include-test --now MS --token-file F   (tests)
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -31,6 +38,8 @@ const INCLUDE_TEST = has('--include-test'), REPORT = has('--report');
 const FRIENDLY_LIMIT = Number(opt('--friendly-limit', 0)) || 0;   // V502: 0 = off
 const NOW = () => Number(opt('--now', Date.now()));
 const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, BOARD_MIN = 5, BOARD_N = 50, KEEP_G_MS = 2 * 86400e3;
+const LEAVE_WAIT_MS = Number(opt('--leave-wait-ms', 10 * 60000));   // V506: they may come back and finish
+const EXEMPT = /soham/i;                                              // V506: the owner's names never pay it
 const log = m => console.log(new Date().toISOString().slice(0, 19).replace('T', ' ') + ' ' + m);
 let CEN = null; try { CEN = require('./highlights/censor.js'); } catch (e) {}
 const cleanName = n => { const s = String(n || '').trim().slice(0, 16); return CEN && CEN.censorName ? CEN.censorName(s) : s; };
@@ -77,6 +86,31 @@ function rate(st, g, opts) {   // g = { gid, code, start, rec, names, lobby, now
     return out;
 }
 
+// V506: the leaving penalty — the leaver of a ranked game, 0.25 x whole minutes left x |point difference|
+function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, now }
+    const rec = g.rec || {}, fin = rec.fin || {}, uids = rec.uids || {}, L = g.left || {};
+    const role = L.role === 'a' || L.role === 'b' ? L.role : '', other = role === 'a' ? 'b' : 'a';
+    const out = { gid: g.gid, code: g.code, start: g.start, at: g.now, leave: true, applied: false, why: '', role };
+    if (fin.a && fin.b) { out.why = 'the game was finished after all'; return out; }
+    const uid = role ? String(uids[role] || (fin[role] && fin[role].uid) || '') : '', ouid = role ? String(uids[other] || (fin[other] && fin[other].uid) || '') : '';
+    out.uid = uid;
+    if (!uid) { out.why = 'the player who left could not be identified'; return out; }
+    if (uid === ouid) { out.why = 'the same device played both sides'; return out; }
+    if (rec.mode !== 'same') { out.why = 'not a ranked game (the players had different difficulties)'; return out; }
+    const name = String((g.names || {})[role] || ''), known = st.players[uid] && st.players[uid].nm;
+    if (EXEMPT.test(name) || EXEMPT.test(String(known || ''))) { out.why = 'exempt: the name has soham in it'; return out; }
+    const q = Number(L.q) || 1, clk = Math.max(0, Number(L.clk) || 0), qmins = Number(L.qmins) || 2;
+    const leftSec = q >= 5 ? clk : clk + Math.max(0, 4 - q) * qmins * 60;
+    out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
+    out.penalty = Math.round(0.25 * out.minutes * out.diff * 100) / 100;
+    if (!(out.penalty > 0)) { out.why = out.diff ? 'no whole minute was left' : 'the score was tied'; return out; }
+    const P = player(st, uid);
+    out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); P.left = (P.left || 0) + 1;
+    if (name && !P.nm) P.nm = name.slice(0, 16);
+    out.applied = true;
+    return out;
+}
+
 function board(st) {
     return Object.keys(st.players).map(u => Object.assign({ u }, st.players[u])).filter(p => p.n >= BOARD_MIN)
         .sort((x, y) => y.r - x.r || y.n - x.n).slice(0, BOARD_N)
@@ -90,10 +124,23 @@ function pubPlayer(st, uid, now) {
 // one pass over the queue. io = { get(path, query), put, patch, del } (tests pass a fake)
 async function run(st, io, now, opts) {
     const q = (await io.get(QUEUE)) || {};
-    const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0 }))
+    const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0, left: q[k].left || null }))
         .sort((a, b) => a.start - b.start);
     const changed = new Set(), done = [];
     for (const it of items) {
+        if (it.left) {   // V506: a leave the other player noted
+            const gidL = it.code + '_' + it.start + '_left';
+            if (st.games[gidL] || (!INCLUDE_TEST && /^Z\d/.test(it.code))) { await io.del(QUEUE + '/' + it.key); continue; }
+            if (now - it.t < LEAVE_WAIT_MS) continue;   // they may come back and finish the game
+            const recL = (await io.get('rooms/' + it.code + '/games/' + it.start)) || {};
+            const namesL = (await io.get('rooms/' + it.code + '/names')) || {};
+            const resL = leavePenalty(st, { gid: gidL, code: it.code, start: it.start, rec: recL, names: namesL, left: it.left, now });
+            st.games[gidL] = resL;
+            if (resL.applied) changed.add(resL.uid);
+            await io.del(QUEUE + '/' + it.key);
+            log((resL.applied ? 'LEFT ' : 'leave, no penalty ') + gidL + ' ' + resL.role + (resL.applied ? ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.minutes + ' min x ' + resL.diff + ' pts x 0.25)' : ' — ' + resL.why));
+            continue;
+        }
         const gid = it.code + '_' + it.start;
         if (st.games[gid]) { await io.del(QUEUE + '/' + it.key); continue; }   // rated before (a second phone's note)
         if (!INCLUDE_TEST && /^Z\d/.test(it.code)) { await io.del(QUEUE + '/' + it.key); continue; }   // the e2e harness's rooms
@@ -165,6 +212,20 @@ async function main() {
         return;
     }
     const io = restIO(await ownerToken());
+    const setR = opt('--set-rating', '');
+    if (setR) {   // V506 (the owner: "Make soham rating 1112")
+        const [who, val] = setR.split('='), r = Number(val);
+        const ids = Object.keys(st.players).filter(u => u === who || u.indexOf(who) === 0);
+        if (ids.length !== 1 || !isFinite(r)) throw new Error('--set-rating: ' + ids.length + ' players match ' + who + ' (need exactly 1) or bad value ' + val);
+        const P = st.players[ids[0]], was = Math.round(P.r);
+        P.r = r; P.peak = Math.max(P.peak || 1000, r);
+        (st.manual = st.manual || []).push({ uid: ids[0], r, at: now, was });
+        save(st);
+        await io.patch(PUB + '/r', { [ids[0]]: pubPlayer(st, ids[0], now) });
+        await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        log('SET ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + ') ' + was + ' -> ' + r);
+        return;
+    }
     const { changed, done } = await run(st, io, now);
     save(st);
     if (done.length || changed.size || !st.boardAt || now - st.boardAt > 30 * 60000) {
@@ -177,4 +238,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { log('FATAL ' + (e && e.message || e)); process.exit(2); });
-else module.exports = { K, expected, dayOf, rate, run, publish, board, pubPlayer };
+else module.exports = { K, expected, dayOf, rate, leavePenalty, run, publish, board, pubPlayer };

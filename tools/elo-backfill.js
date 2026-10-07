@@ -73,8 +73,17 @@ if (require.main === module) (async () => {   // (loading this file runs nothing
         if (gs.some(g => !g.names.a || !g.names.b)) roomNames[c] = (await get('rooms/' + c + '/names')) || {};
         if (gs.some(g => g.start >= Date.parse('2026-10-05T05:00:00Z'))) { const lf = await get('rooms/' + c + '/lfg'); if (lf && Number(lf.at)) lfgAt[c] = Number(lf.at); }
     }
-    const st = { players: {}, games: {} }, why = {};
+    // V506: the owner's set ratings and the live leave penalties stand — replayed at their own time
+    let prev = null; try { prev = JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch (e) {}
+    const manual = (prev && prev.manual) || [];
+    const adj = manual.map(m => ({ at: Number(m.at), uid: m.uid, set: Number(m.r) }))
+        .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && x.uid).map(x => ({ at: Number(x.at), uid: x.uid, minus: Number(x.penalty) || 0 })))
+        .sort((x, y) => x.at - y.at);
+    const st = { players: {}, games: {}, manual }, why = {};
+    const applyAdj = until => { while (adj.length && adj[0].at <= until) { const a = adj.shift(), P = st.players[a.uid] || (st.players[a.uid] = { r: 1000, n: 0, w: 0, l: 0, d: 0, nm: '', fd: {}, last: 0, peak: 1000 });
+        if (a.set != null) { P.r = a.set; P.peak = Math.max(P.peak || 1000, a.set); } else P.r -= a.minus; } };
     for (const g of all) {
+        applyAdj(g.start);
         const gid = g.code + '_' + g.start;
         const names = { a: g.names.a || (roomNames[g.code] || {}).a || '', b: g.names.b || (roomNames[g.code] || {}).b || '' };
         let lobby = false;
@@ -85,8 +94,10 @@ if (require.main === module) (async () => {   // (loading this file runs nothing
         st.games[gid] = res;
         const k = res.ranked ? 'ranked' : res.why; why[k] = (why[k] || 0) + 1;
     }
+    applyAdj(Infinity);
+    if (prev) for (const k of Object.keys(prev.games || {})) if (prev.games[k] && prev.games[k].leave) st.games[k] = prev.games[k];
     const board = E.board(st);
-    console.log(all.length + ' finished games; ' + JSON.stringify(why));
+    console.log(all.length + ' finished games; ' + JSON.stringify(why) + (manual.length ? '; ' + manual.length + ' set rating(s) replayed' : ''));
     console.log(Object.keys(st.players).length + ' players rated; ' + board.length + ' on the board (5+ games)');
     board.slice(0, 25).forEach((p, i) => console.log('  #' + (i + 1) + ' ' + p.nm + ' ' + p.r + ' (' + p.w + '-' + p.l + (p.d ? '-' + p.d : '') + ', ' + p.n + ' games)'));
     if (!WRITE) { console.log('(dry run — --write to save and publish)'); return; }

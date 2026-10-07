@@ -9,6 +9,9 @@
 //       (after 10 minutes — before that it waits); a final under 20 s old waits for the other phone
 //   E5  the run: the queue notes are deleted when done; a second phone's note for a game already rated is dropped
 //   E6  the publish: r/{uid} (rating, games, today's code games), g/{game} (the change), top (5+ games, names censored)
+//   E7  V506 the leaving penalty: 0.25 x whole minutes left x |point difference|; soham names exempt; none when tied,
+//       finished after all or unranked; overtime counts its own clock
+//   E8  the job waits 10 minutes after the note (they may come back), then takes the points and drops the note
 const E = require('../tools/elo.js');
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail++, console.log('  FAIL  ' + n + (d ? ' — ' + d : ''))); };
@@ -108,6 +111,32 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         check('E6 the publish: each player (rating, games, today\'s code games), each game\'s change, the board (5+ games, the name censored)',
               !!(c && c.n === 5 && c.fdd === day && g0 && g0.ranked && g0.a && top && top.list.length === 2 && top.list[0].nm === 'wisdom******' && top.list[0].u === 'uidC0000'),
               JSON.stringify({ c, g0, top }));
+    }
+    // E7 + E8 (V506): the leaving penalty — 0.25 x whole minutes left x |point difference| from the player who left first
+    {
+        const base = () => ({ players: { lv: { r: 1000, n: 3, w: 1, l: 2, d: 0, nm: 'Kai', fd: {}, peak: 1000 } }, games: {} });
+        const rec = (o) => Object.assign({ mode: 'same', uids: { a: 'lv', b: 'sty' }, fin: {} }, o || {});
+        const L = (o) => Object.assign({ role: 'a', by: 'b', q: 2, clk: 90, qmins: 2, su: 14, so: 0 }, o || {});   // Q2 1:30, 2-minute quarters, 14 apart
+        const go = (st, o) => E.leavePenalty(st, Object.assign({ gid: 'LEAV_1_left', code: 'LEAV', start: T0, rec: rec(), names: { a: 'Kai', b: 'Lee' }, left: L(), now: T0 }, o));
+        const s1 = base(), r1 = go(s1, {});                                                   // 1:30 + Q3 + Q4 = 5:30 -> 5 minutes; 0.25 x 5 x 14 = 17.5
+        const r2 = go(base(), { names: { a: 'xX SohamTest Xx', b: 'Lee' } });                 // exempt
+        const r3 = go(base(), { left: L({ su: 7, so: 7 }) });                                 // tied: nothing to take
+        const r4 = go(base(), { rec: rec({ fin: { a: { su: 3, so: 7 }, b: { su: 7, so: 3 } } }) });   // finished after all
+        const r5 = go(base(), { rec: rec({ mode: 'different' }) });                           // not ranked
+        const r6 = go(base(), { left: L({ q: 5, clk: 125, su: 3, so: 10 }) });                // overtime: 2 whole minutes x 7 = 3.5
+        const ok = r1.applied && r1.minutes === 5 && r1.diff === 14 && r1.penalty === 17.5 && Math.abs(s1.players.lv.r - 982.5) < 1e-9 &&
+                   !r2.applied && /soham/.test(r2.why) && !r3.applied && /tied/.test(r3.why) && !r4.applied && /finished/.test(r4.why) &&
+                   !r5.applied && /not a ranked/.test(r5.why) && r6.applied && r6.minutes === 2 && r6.penalty === 3.5;
+        check('E7 the leaving penalty: 0.25 x 5 min x 14 = 17.5 off; soham names exempt; none when tied, finished, unranked; overtime uses its clock', ok,
+              JSON.stringify({ r1: [r1.minutes, r1.diff, r1.penalty, s1.players.lv.r], r2: r2.why, r3: r3.why, r4: r4.why, r5: r5.why, r6: [r6.minutes, r6.penalty] }));
+        // E8: the run — a note under 10 minutes old waits; at 10 minutes the penalty lands and the note goes
+        const st = base(), note = { c: 'LEAV', s: T0, t: T0 + 600000, left: L() };
+        const io = fakeDb({ rooms: { LEAV: { games: { [T0]: rec() }, names: { a: 'Kai', b: 'Lee' } }, '~elo': { q: { ['LEAV_' + T0 + '_left']: note } } } });
+        await E.run(st, io, T0 + 600000 + 5 * 60000);
+        const waited = !!io.db.rooms['~elo'].q && Object.keys(io.db.rooms['~elo'].q).length === 1 && st.players.lv.r === 1000;
+        const out = await E.run(st, io, T0 + 600000 + 10 * 60000 + 1000);
+        const landed = Math.abs(st.players.lv.r - 982.5) < 1e-9 && out.changed.has('lv') && Object.keys(io.db.rooms['~elo'].q || {}).length === 0 && st.games['LEAV_' + T0 + '_left'].applied;
+        check('E8 the job waits 10 minutes (they may come back), then takes the points and drops the note', waited && landed, JSON.stringify({ waited, r: st.players.lv.r, left: Object.keys(io.db.rooms['~elo'].q || {}) }));
     }
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);

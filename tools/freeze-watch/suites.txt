@@ -84,3 +84,4 @@ home-screen
 v498-clock-pin
 elo-math
 v500-ranked-watch
+v506-leave
