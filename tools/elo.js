@@ -29,12 +29,14 @@
 //     — never counts toward it). The per-day counts are still kept.
 //   · Elo: everyone starts at 1000; E = 1 / (1 + 10^((Rb - Ra) / 400)); a player's K = 16 + 48·e^(-n/10), n = their ranked
 //     games so far (64 at the first, ~34 at 10, ~22 at 20, ~16 from 40 on): big swings at first, flat later; a tie is 0.5
-//   · the truth is .rb2p/elo/state.json; it publishes embedcode/elo: top (the board: 5+ games, the top 50, names censored
+//   · the truth is .rb2p/elo/state.json; it publishes embedcode/elo: top (the board: everyone with 5+ games — V512, the owner:
+//     "list every one"; it was the top 50 — names censored
 //     for slurs), r/{uid} (each player: rating, games, W-L-T, today's ranked code games), g/{code_start} (each game's change
 //     — the stats screen shows it), at
 //   node tools/elo.js            one run (what the LaunchAgent does)
 //   node tools/elo.js --report   the board, nothing changed
 //   node tools/elo.js --set-rating UID-OR-PREFIX=1112   the owner sets a rating (kept in st.manual; published at once)
+//   node tools/elo.js --board    publish the board now (it is otherwise republished on a change or every 30 minutes)
 //   --queue P --pub P --state F --include-test --now MS --token-file F   (tests)
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -47,7 +49,7 @@ const PUB = opt('--pub', 'embedcode/elo');
 const INCLUDE_TEST = has('--include-test'), REPORT = has('--report');
 const FRIENDLY_LIMIT = Number(opt('--friendly-limit', 0)) || 0;   // V502: 0 = off
 const NOW = () => Number(opt('--now', Date.now()));
-const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, BOARD_MIN = 5, BOARD_N = 50, KEEP_G_MS = 2 * 86400e3;
+const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, BOARD_MIN = 5, BOARD_N = Infinity, KEEP_G_MS = 2 * 86400e3;   // V512: everyone with 5+ (was the top 50)
 const LEAVE_WAIT_MS = Number(opt('--leave-wait-ms', 0));   // V510: at once (V506 waited 10 minutes); a finished game undoes it
 const EXEMPT = /soham/i;                                              // V506: the owner's names never pay it
 const LATE_SEC = 60, LATE_X = 3;                                      // V509: under a minute left, 3 x a loss, to the stayer
@@ -256,6 +258,11 @@ async function main() {
         return;
     }
     const io = restIO(await ownerToken());
+    if (has('--board')) {   // V512: the board now
+        await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        log('BOARD published: ' + board(st).length + ' players');
+        return;
+    }
     const setR = opt('--set-rating', '');
     if (setR) {   // V506 (the owner: "Make soham rating 1112")
         const [who, val] = setR.split('='), r = Number(val);
