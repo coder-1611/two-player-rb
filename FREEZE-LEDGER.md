@@ -1883,3 +1883,8 @@ each day into a viewable section".
 - Tests: v498-clock-pin 5/5 (K1 re-stamp keeps 1:09 over a copied 0:01, takes a real 6 s run-off; K2 a pinned waiting
   clock follows the driver; K3 a "Q 0:00" frame does not pin; K4 another tab picking EASY leaves the game on MAX),
   v382-clockgate 7/7, v354-holdstamp 4/4, game-dif 2/2.
+
+## V499 (2026-10-06): plays of the day — MAX 45, a juke or a stiff arm 4 points
+- The owner: "make max worth 45 points, and increase value of total jukes and stiff arms". tools/highlights/features.js
+  DIF_PTS max/ultramax 55 -> 45; moves = 4 x (stiff arms + jukes) (was 2); the judge's brief says the same. On today's
+  preview: Jennings 130, Kittle 122.7, Rice 115.7, Hubbard 110.4 (the plain overtime catch leaves the top 3), Flowers 110.3.

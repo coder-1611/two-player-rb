@@ -335,7 +335,7 @@ function keyMoments(f, n) {
 // point, ... the clutch things are 20 seconds, overtime plays get 1.2x boost and spectacularness is a raw score out of 16
 // ... + 2 times (stiff arms and jukes)". The numeric parts; the judge adds its raw spectacular score (0-16); an overtime
 // play's total is x1.2.
-const DIF_PTS = { max: 55, ultramax: 55, hard: 8, medium: 2, easy: 0 };   // V482: 40; V484 (the owner: "from tomorrow make offense max +55"): 55
+const DIF_PTS = { max: 45, ultramax: 45, hard: 8, medium: 2, easy: 0 };   // V482: 40; V484 (the owner: "from tomorrow make offense max +55"): 55; V499 ("make max worth 45 points"): 45
 function points(f) {
     const offense = f.heroSide !== 'D', kick = !!f.kick || /kick|punt|fg/i.test(String(f.via || ''));
     // V483 (the owner: "in defensive plays no difficulty boost, maybe just +10"): a pick or a fumble return gets a flat 10
@@ -357,7 +357,7 @@ function points(f) {
     }
     if (f.scoreBefore && Math.abs(f.scoreBefore[0] - f.scoreBefore[1]) >= 21) situation -= 5;   // a blowout
     const jukes = (f.missedTackles || 0) + (f.beaten || 0);           // dove and missed + left behind (never both)
-    const moves = 2 * ((f.stiffArms || 0) + jukes);
+    const moves = 4 * ((f.stiffArms || 0) + jukes);                  // V499 (the owner: "increase value of total jukes and stiff arms"): 4 each (was 2)
     const base = difficulty + td + firstDown + fourth + yards + situation + moves;
     return { difficulty, td, firstDown, fourth, yards, situation, stiffArms: f.stiffArms || 0, jukes, moves, base: Math.round(base * 10) / 10, ot: f.q >= 5 };
 }

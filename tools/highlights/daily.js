@@ -459,11 +459,11 @@ async function guardState() {
         if (FORMULA === 'points') {
             const head = ['# THIS RUN\'S SCORING — the owner\'s points formula (it replaces the weighting below)', '',
                 'Every play\'s BASE points are already computed from the game\'s own numbers (`base_points` and `points_breakdown` in plays.tsv; the breakdown under each candidate in candidates.md):', '',
-                '- Difficulty (the defense beaten): MAX 55, HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
+                '- Difficulty (the defense beaten): MAX 45, HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
                 '- Touchdown +20; first down +5 (a converted 4th down gets it too); a converted 4th down +10 + the yards needed (4th & 19 converted: +29, plus the +5)',
                 '- Yardage: +1/3 point per yard',
                 '- Situation: a game-winner (a go-ahead score) in the last 20 s of the 4th quarter, or any go-ahead score in overtime, +20; a game-tyer in the last 20 s +12; a go-ahead or tying score earlier in the 4th +6; a score as the clock hits 0:00 +5; a blowout (a 21+ point margin before the play) -5',
-                '- Moves: +2 per stiff arm and per juke (a defender who dove and missed, or was left behind)', '',
+                '- Moves: +4 per stiff arm and per juke (a defender who dove and missed, or was left behind)', '',
                 '**Your part: a raw SPECTACULARNESS score from 0 to 16 for every short-listed play** — how incredible it looks in the frames: jukes, broken tackles, stiff arms that put a defender down, hurdles, a catch in traffic, a ball that hangs.', '',
                 '**TOTAL = (base points + your raw score), x1.2 if the play is in overtime.** Pick the five with the highest TOTAL (interceptions only if EXTREMELY impressive, as below).', '',
                 'In top5.json give each pick a `"raw"` (your 0-16) and a `"total"`, and add `"scores": { "<id>": <raw>, ... }` with your raw score for EVERY short-listed play.', '',
