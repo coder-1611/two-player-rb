@@ -2090,3 +2090,11 @@ each day into a viewable section".
 - The owner: "audience should be able to see stats screen, but no you win or you lose": WATCH LIVE now opens the players'
   stats screen when the game ends (rooms/{code}/final/{a,b}; the second side fills in when it lands) — the scoreline and
   both box cards, headed "<WINNER> WINS" / TIE GAME, no RUN IT BACK / rating / share; BACK TO WATCH LIVE. e2e/v513-spec-final 3/3.
+
+## V514 (2026-10-07): play of the day — "4th & goal" yards to go are the yards to the goal line
+- The judge, on the 7 Oct evening preview: "TFOP shows '4th & Goal' at the 2 but is recorded as 4th & 9 (4th-down bonus
+  19), and AEKI-b shows '4th & Goal' at the 6 but is recorded as 4th & 10 (bonus 20)". The engine keeps its first-down
+  marker past the goal line, and the owner's formula ("4th down conversion 10 + num of yards") read that marker.
+- tools/highlights/features.js: when the marker is at or past the goal line, toGo = the yards to the goal line (50 - y0)
+  and the play's story says "& goal" — the 4th-down bonus, the conversion check and the judge's text all use it.
+- daily.js: a preview's README names its own window ("From Wed 5:00 AM to 6:30 PM") instead of "The 24 hours to".

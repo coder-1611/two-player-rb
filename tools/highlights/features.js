@@ -84,7 +84,10 @@ function features(play) {
     let lastLive = -1; for (let i = 0; i < F.length; i++) if (live(F[i])) lastLive = i;
     const y0 = isFinite(out.y0) ? out.y0 : fwd(snapX);
     const snapSpot = Math.abs(y0) < 0.5 ? 'midfield' : (y0 < 0 ? 'own ' : 'opp ') + Math.round(50 - Math.abs(y0));
-    const toGo = out.toGo < 0.5 ? 'inches' : String(Math.max(1, Math.round(out.toGo)));
+    // V514 (the judge, 7 Oct preview: TFOP "shows '4th & Goal' at the 2 but is recorded as 4th & 9 (4th-down bonus 19)"): the
+    // engine keeps its first-down marker past the goal line; inside it the yards to go are the yards to the goal line
+    if (isFinite(y0) && out.toGo > 0 && out.toGo >= 50 - y0 - 0.5) { out.goal = true; out.toGo = Math.max(0.5, 50 - y0); }
+    const toGo = out.goal ? 'goal' : out.toGo < 0.5 ? 'inches' : String(Math.max(1, Math.round(out.toGo)));
     ev(F[0].t, 'snap', 'snap at ' + snapSpot + (out.down >= 1 && out.down <= 4 ? ' (' + ['', '1st', '2nd', '3rd', '4th'][out.down] + ' & ' + toGo + ')' : ''), null, 3);
 
     // the pass: thrown (the frame before the ball first flies), caught / intercepted / dropped

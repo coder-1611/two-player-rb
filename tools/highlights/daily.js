@@ -541,7 +541,8 @@ async function guardState() {
         status.picks = picks.map(p => p.id);
         // 5. the videos and the README
         const lines = ['# Top ' + picks.length + ' plays' + (PREVIEW ? ' so far (a preview, ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ')' : '') + ' — ' + new Date(UNTIL).toDateString(), '',
-            'The 24 hours to ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ': **' + feats.length + ' plays** in **' + status.games + ' game' + (status.games === 1 ? '' : 's') + '**. ' +
+            (Math.abs(UNTIL - SINCE - 24 * 3600e3) < 60000 ? 'The 24 hours to ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })   // V514: a preview's own window
+                : 'From ' + new Date(SINCE).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) + ' to ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + ': **' + feats.length + ' plays** in **' + status.games + ' game' + (status.games === 1 ? '' : 's') + '**. ' +
             (judged ? 'Picked by Claude ' + (JUDGE_CMD ? '(test judge)' : 'Sonnet 5.5') + ', which read every play\'s numbers and looked at the frames of the ' + short.length + ' short-listed ones.'
                     : '**The judge failed (' + judgeNote + '), so these are the five with the highest measured score, unjudged.**'), ''];
         for (const p of picks) {
