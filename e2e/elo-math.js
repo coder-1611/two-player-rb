@@ -3,8 +3,8 @@
 // per day ... a leaderboard with names censored if slurs"). tools/elo.js on a fake database (no browser, no Firebase):
 //   E1  everyone starts at 1000; the first game moves both by 32 (K 64 at the first game, 16 + 48·e^(-n/10) after)
 //   E2  it flattens: after 30 ranked games a win against an equal player moves about 9; an upset moves more than a favourite's win
-//   E3  3 ranked CODE games a day: the 4th game between two friends is unranked (both players' counts); a FIND A PLAYER game
-//       (the room's first game after its lfg match) still counts that day; a rematch in a lobby room is a code game
+//   E3  V502: no daily limit by default (4 code games between two friends all count); --friendly-limit 3 brings back V500's
+//       rule: the 4th is unranked, a FIND A PLAYER game (the room's first game after its lfg match) still counts, a rematch does not
 //   E4  unranked with the reason: different difficulties, one device on both sides, the phones disagree, one final only
 //       (after 10 minutes — before that it waits); a final under 20 s old waits for the other phone
 //   E5  the run: the queue notes are deleted when done; a second phone's note for a game already rated is dropped
@@ -53,19 +53,21 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         check('E2 it flattens: 30 games in, an even win moves 9; an upset moves more than a favourite\'s win', r.a.d === 9 && ups.a.d > fav.a.d && fav.a.d > 0,
               JSON.stringify({ even: r.a.d, favourite: fav.a.d, upset: ups.a.d }));
     }
-    // E3: four code games between two friends on one day, then a FIND A PLAYER game, then a rematch in that lobby room
+    // E3: four code games between two friends on one day, then a FIND A PLAYER game, then a rematch in that lobby room —
+    // V502 ("Right now don't have any anti cheating rules yet"): with no limit (the default) all six count; the limit is
+    // still there for later (--friendly-limit 3): the 4th code game is unranked, the lobby game counts, its rematch does not
     {
-        const st = { players: {}, games: {} };
-        const g = [0, 1, 2, 3].map(i => game('FRND', T0 + i * 900000));
-        const lob = game('LOBY', T0 + 4 * 900000), rem = game('LOBY', T0 + 5 * 900000);
-        const io = fakeDb({ rooms: { FRND: room(g), LOBY: room([lob, rem], null, T0 + 4 * 900000 - 60000),
-                                     '~elo': { q: queue(g.map(x => ['FRND', x.ts, x.ts + 600000]).concat([['LOBY', lob.ts, lob.ts + 600000], ['LOBY', rem.ts, rem.ts + 600000]])) } } });
-        const out = await E.run(st, io, T0 + 6 * 900000 + 700000);
-        const by = Object.fromEntries(out.done.map(d => [d.gid, d]));
-        const r = g.map(x => by['FRND_' + x.ts].ranked), lr = by['LOBY_' + lob.ts], rr = by['LOBY_' + rem.ts];
-        check('E3 3 ranked code games a day: the 4th is unranked; a FIND A PLAYER game still counts; its rematch is a code game (unranked too)',
-              r.join() === 'true,true,true,false' && /3 ranked code games/.test(by['FRND_' + g[3].ts].why) && lr.ranked && lr.lobby && !rr.ranked && !rr.lobby,
-              JSON.stringify({ code: r, lobby: { ranked: lr.ranked, lobby: lr.lobby }, rematch: { ranked: rr.ranked, why: rr.why } }));
+        const mk = () => { const g = [0, 1, 2, 3].map(i => game('FRND', T0 + i * 900000)), lob = game('LOBY', T0 + 4 * 900000), rem = game('LOBY', T0 + 5 * 900000);
+            return { g, lob, rem, io: fakeDb({ rooms: { FRND: room(g), LOBY: room([lob, rem], null, T0 + 4 * 900000 - 60000),
+                '~elo': { q: queue(g.map(x => ['FRND', x.ts, x.ts + 600000]).concat([['LOBY', lob.ts, lob.ts + 600000], ['LOBY', rem.ts, rem.ts + 600000]])) } } }) }; };
+        const A0 = mk(), out0 = await E.run({ players: {}, games: {} }, A0.io, T0 + 6 * 900000 + 700000);
+        const B = mk(), out3 = await E.run({ players: {}, games: {} }, B.io, T0 + 6 * 900000 + 700000, { friendlyLimit: 3 });
+        const by0 = Object.fromEntries(out0.done.map(d => [d.gid, d])), by3 = Object.fromEntries(out3.done.map(d => [d.gid, d]));
+        const all0 = out0.done.length === 6 && out0.done.every(d => d.ranked);
+        const r3 = B.g.map(x => by3['FRND_' + x.ts].ranked), lr = by3['LOBY_' + B.lob.ts], rr = by3['LOBY_' + B.rem.ts];
+        check('E3 no daily limit by default (all 6 count); --friendly-limit 3 still makes the 4th code game and the lobby rematch unranked',
+              all0 && r3.join() === 'true,true,true,false' && /3 ranked code games/.test(by3['FRND_' + B.g[3].ts].why) && lr.ranked && lr.lobby && !rr.ranked && !rr.lobby,
+              JSON.stringify({ noLimit: out0.done.map(d => d.ranked), limit3: { code: r3, lobby: lr.ranked, rematch: rr.ranked } }));
     }
     // E4
     {

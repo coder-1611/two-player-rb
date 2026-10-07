@@ -1934,3 +1934,15 @@ each day into a viewable section".
   414 ranked (31 no id, 72 one final, 49 over 3 code games a day, 7 one device, 9 disagreeing, 41 different difficulties);
   368 players, 40 on the board.
 - Tests: v500-ranked-watch 7/7 (the REST ids on two devices), elo-math 6/6.
+
+## V502 (2026-10-06): no anti-cheat rules for now — the 3-a-day limit on ranked code games is off (and the rebuild counts those games)
+- The owner: "account for the 3 friend a day rule games, for rn as they weren't trying to hack the system ... Right now don't
+  have any anti cheating rules yet".
+- tools/elo.js: the daily limit is OFF by default (--friendly-limit N brings it back; the per-day counts are still kept and a
+  FIND A PLAYER game still never counts toward it). The rules now: both phones' finals agree, two different devices (the
+  owner's rule), SAME difficulty. tools/elo-backfill.js rebuilds with no limit (and no longer runs when required).
+- The page: the room tag is "★ RANKED GAME — PLAY IT TO THE END AND IT CHANGES BOTH RATINGS" (or NOT RANKED — SAME
+  difficulty needed); the stats screen's estimate has no daily check; the RANKINGS note says how the rating moves. The room
+  no longer reads rooms/{code}/lfg and games for the tag.
+- The rebuild re-run: 623 finished games -> 463 ranked (the 49 over-the-limit games now count), 373 players, 50 on the board.
+- Tests: elo-math 6/6 (E3: no limit by default; --friendly-limit 3 still works), v500-ranked-watch 7/7.

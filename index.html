@@ -2074,7 +2074,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V501<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V502<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2234,7 +2234,7 @@
             <h1 class="rb-roomtitle">RANK<span class="code">INGS</span></h1>
             <p class="rb-rank-me" id="rb-rank-me"></p>
             <ol class="rb-rank-list" id="rb-rank-list"></ol>
-            <p class="rb-rank-note">Everyone starts at 1000. Your rating moves a lot in your first games and settles as you play more, like chess. FIND A PLAYER games always count; games with a friend's code count up to 3 a day. Both players need the SAME difficulty. You show on the board after 5 ranked games.</p>
+            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. You show on the board after 5 ranked games.</p>
             <button id="rb-ranks-back" class="rb-join-btn" type="button">&#9664; BACK</button>
         </div>
         <!-- ======================= WATCH LIVE (V500) ======================= -->
@@ -2260,7 +2260,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V501</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V502</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -21649,7 +21649,7 @@
         // final — no phone writes its own. It publishes embedcode/elo: top (the board), r/{uid} (each player), g/{room_game}
         // (each game's change). This page reads them, and shows an estimate on the stats screen until the official change.
         function eloPub() { return window._rb2p_eloPath || 'embedcode/elo'; }   // (tests: their own copy)
-        var eloMine = null, eloRoomInfo = { room: null, lobby: false }, eloFin = null;
+        var eloMine = null, eloFin = null;
         // the player: this browser's anonymous REST sign-in (kept in localStorage) — the same id every past game's bind
         // carries (V392's device uid), so the ratings rebuilt from past games (tools/elo-backfill.js, V501) are this player's.
         // Read off the token itself (the visit tracker's _rb2p_uid is not on every page); empty until the first REST call.
@@ -21675,24 +21675,15 @@
             var el = document.getElementById('rb-my-rating'); if (el) el.textContent = String(eloRating(eloMine));
             eloRoomTag();
         }
-        // the room: RANKED or not, as far as this page can tell (the Mac decides — the partner's daily count matters too)
+        // the room: RANKED or not (V502, the owner: "Right now don't have any anti cheating rules yet" — no daily limit; a
+        // game counts when it is played to the end on two devices with the SAME difficulty)
         function eloRoomTag() {
             var el = document.getElementById('rb-rank-tag'); if (!el) return;
             if (!myRoom) { el.hidden = true; return; }
-            var used = (eloMine && eloMine.fdd === eloDay()) ? (Number(eloMine.fd) || 0) : 0, lobbyGame = eloRoomInfo.room === myRoom && eloRoomInfo.lobby;
-            var off = window._rb2p_diffMode !== 'same' ? 'NOT RANKED — BOTH PLAYERS NEED THE SAME DIFFICULTY (PICK SAME)'
-                    : (!lobbyGame && used >= 3 ? 'NOT RANKED — YOU PLAYED YOUR 3 RANKED GAMES WITH A CODE TODAY (FIND A PLAYER GAMES ALWAYS COUNT)' : '');
+            var off = window._rb2p_diffMode !== 'same' ? 'NOT RANKED — BOTH PLAYERS NEED THE SAME DIFFICULTY (PICK SAME)' : '';
             el.hidden = false;
             el.className = 'rb-rank-tag' + (off ? ' off' : '');
-            el.textContent = off || ('★ RANKED GAME' + (lobbyGame ? ' · FIND A PLAYER' : ' · ' + (3 - used) + ' OF 3 CODE GAMES LEFT TODAY'));
-        }
-        function eloRoomCheck(code) {   // a FIND A PLAYER room's first game is a lobby game (a rematch counts as a code game)
-            eloRoomInfo = { room: code, lobby: false };
-            Promise.all([eloGetX('rooms/' + code + '/lfg', 5000), eloGetX('rooms/' + code + '/games', 5000)]).then(function (r) {
-                var at = Number(r[0] && r[0].at) || 0;
-                var later = Object.keys(r[1] || {}).some(function (k) { return Number(k) > at; });
-                if (eloRoomInfo.room === code) { eloRoomInfo.lobby = !!at && !later; eloRoomTag(); }
-            });
+            el.textContent = off || '★ RANKED GAME — PLAY IT TO THE END AND IT CHANGES BOTH RATINGS';
         }
         // this game's record key: role a's start (the record's key); role b learns it from the record (tagGameDif)
         window._rb2p_rememberGameKey = function (room, key) {
@@ -21726,8 +21717,6 @@
                 if (!ou || !mu || ou === mu) { F.est = { off: '' }; eloFinPaint(); return; }
                 return Promise.all([eloGetX(eloPub() + '/r/' + mu), eloGetX(eloPub() + '/r/' + ou)]).then(function (rr) {
                     var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]);
-                    var used = A.fdd === eloDay() ? (Number(A.fd) || 0) : 0, lobbyGame = eloRoomInfo.room === F.room && eloRoomInfo.lobby;
-                    if (!lobbyGame && used >= 3) { F.est = { off: 'NOT RANKED — YOUR 3 RANKED GAMES WITH A CODE TODAY ARE DONE' }; eloFinPaint(); return; }
                     var S = F.su > F.so ? 1 : F.su < F.so ? 0 : 0.5, E = 1 / (1 + Math.pow(10, (rb - ra) / 400));
                     F.est = { r0: ra, d: Math.round(eloK(A.n) * (S - E)) };
                     eloFinPaint();
@@ -21823,7 +21812,7 @@
             if (name === 'ranks') ranksOpen();
             if (name === 'watch') { watchListLoad(); watchTimer = setInterval(watchListLoad, 15000); }
             if (name === 'entry') { eloLoadMine(); watchCountLoad(); }
-            if (name === 'room' && myRoom) { eloRoomCheck(myRoom); eloLoadMine(); eloRoomTag(); roomTagTimer = setInterval(eloRoomTag, 1500); }
+            if (name === 'room' && myRoom) { eloLoadMine(); eloRoomTag(); roomTagTimer = setInterval(eloRoomTag, 1500); }
         };
         (function () {
             var on = function (id, f) { var el = document.getElementById(id); if (el) el.addEventListener('click', f); };

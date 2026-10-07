@@ -5,10 +5,12 @@
 // slurs"). Run every 2 minutes by the LaunchAgent com.rb2p.elo (tools/install-elo.sh).
 //   · the phones, at each final (index.html _rb2p_eloGameOver): rooms/{code}/games/{start}/fin/{role} = { su, so, t, uid }
 //     and the note rooms/~elo/q/{code}_{start}; the game record (written at the start) carries mode, difs, uids, qmins
-//   · a game is RANKED when both phones recorded the same final, the players are two different ids, both had the SAME
-//     difficulty, and — unless it was a FIND A PLAYER game (the room's first game after its lfg match) — neither player
-//     already had 3 ranked code games that day (Central time). Otherwise it is kept unranked, with the reason. A game whose
-//     second final never came is unranked after 10 minutes. A phone cannot write its own rating: only this job does.
+//   · a game is RANKED when both phones recorded the same final, the players are two different devices, and both had the
+//     SAME difficulty. Otherwise it is kept unranked, with the reason. A game whose second final never came is unranked
+//     after 10 minutes. A phone cannot write its own rating: only this job does.
+//   · V502 (the owner: "Right now don't have any anti cheating rules yet"): the V500 limit of 3 ranked code games a day per
+//     player is OFF; --friendly-limit N turns it back on (a FIND A PLAYER game — the room's first game after its lfg match
+//     — never counts toward it). The per-day counts are still kept.
 //   · Elo: everyone starts at 1000; E = 1 / (1 + 10^((Rb - Ra) / 400)); a player's K = 16 + 48·e^(-n/10), n = their ranked
 //     games so far (64 at the first, ~34 at 10, ~22 at 20, ~16 from 40 on): big swings at first, flat later; a tie is 0.5
 //   · the truth is .rb2p/elo/state.json; it publishes embedcode/elo: top (the board: 5+ games, the top 50, names censored
@@ -26,8 +28,9 @@ const STATE = opt('--state', path.join(RB2P, 'elo', 'state.json'));
 const QUEUE = opt('--queue', 'rooms/~elo/q');
 const PUB = opt('--pub', 'embedcode/elo');
 const INCLUDE_TEST = has('--include-test'), REPORT = has('--report');
+const FRIENDLY_LIMIT = Number(opt('--friendly-limit', 0)) || 0;   // V502: 0 = off
 const NOW = () => Number(opt('--now', Date.now()));
-const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, FRIENDLY_PER_DAY = 3, BOARD_MIN = 5, BOARD_N = 50, KEEP_G_MS = 2 * 86400e3;
+const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, BOARD_MIN = 5, BOARD_N = 50, KEEP_G_MS = 2 * 86400e3;
 const log = m => console.log(new Date().toISOString().slice(0, 19).replace('T', ' ') + ' ' + m);
 let CEN = null; try { CEN = require('./highlights/censor.js'); } catch (e) {}
 const cleanName = n => { const s = String(n || '').trim().slice(0, 16); return CEN && CEN.censorName ? CEN.censorName(s) : s; };
@@ -40,7 +43,8 @@ const player = (st, uid) => st.players[uid] || (st.players[uid] = { r: 1000, n: 
 const codeGamesOn = (st, uid, day) => (st.players[uid] && st.players[uid].fd && st.players[uid].fd[day]) || 0;
 
 // decide one finished game: { ranked, why, ... } and, when ranked, apply it to the state
-function rate(st, g) {   // g = { gid, code, start, rec, names, lobby, now }
+function rate(st, g, opts) {   // g = { gid, code, start, rec, names, lobby, now }; opts.friendlyLimit (0 = no daily limit)
+    const limit = opts && opts.friendlyLimit != null ? Number(opts.friendlyLimit) || 0 : FRIENDLY_LIMIT;
     const rec = g.rec || {}, fin = rec.fin || {}, uids = rec.uids || {};
     const out = { gid: g.gid, code: g.code, start: g.start, at: g.now, ranked: false, why: '', lobby: !!g.lobby };
     const ua = String(uids.a || (fin.a && fin.a.uid) || ''), ub = String(uids.b || (fin.b && fin.b.uid) || '');
@@ -53,8 +57,8 @@ function rate(st, g) {   // g = { gid, code, start, rec, names, lobby, now }
     if (ua === ub) { out.why = 'the same device played both sides'; return out; }
     if (rec.mode !== 'same') { out.why = 'the players had different difficulties'; return out; }
     const day = dayOf(g.start);
-    if (!g.lobby && (codeGamesOn(st, ua, day) >= FRIENDLY_PER_DAY || codeGamesOn(st, ub, day) >= FRIENDLY_PER_DAY)) {
-        out.why = 'a player already had ' + FRIENDLY_PER_DAY + ' ranked code games today'; return out;
+    if (limit > 0 && !g.lobby && (codeGamesOn(st, ua, day) >= limit || codeGamesOn(st, ub, day) >= limit)) {
+        out.why = 'a player already had ' + limit + ' ranked code games today'; return out;
     }
     const A = player(st, ua), B = player(st, ub);
     const S = out.sa > out.sb ? 1 : out.sa < out.sb ? 0 : 0.5;
@@ -84,7 +88,7 @@ function pubPlayer(st, uid, now) {
 }
 
 // one pass over the queue. io = { get(path, query), put, patch, del } (tests pass a fake)
-async function run(st, io, now) {
+async function run(st, io, now, opts) {
     const q = (await io.get(QUEUE)) || {};
     const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0 }))
         .sort((a, b) => a.start - b.start);
@@ -104,7 +108,7 @@ async function run(st, io, now) {
             const keys = Object.keys((await io.get('rooms/' + it.code + '/games', 'shallow=true')) || {}).map(Number).filter(k => k > Number(lf.at)).sort((a, b) => a - b);
             lobby = keys.length > 0 && keys[0] === it.start;
         }
-        const res = rate(st, { gid, code: it.code, start: it.start, rec, names, lobby, now });
+        const res = rate(st, { gid, code: it.code, start: it.start, rec, names, lobby, now }, opts);
         st.games[gid] = res;
         if (res.ranked) { changed.add(res.ua); changed.add(res.ub); }
         done.push(res);
@@ -173,4 +177,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { log('FATAL ' + (e && e.message || e)); process.exit(2); });
-else module.exports = { K, expected, dayOf, rate, run, publish, board, pubPlayer, FRIENDLY_PER_DAY };
+else module.exports = { K, expected, dayOf, rate, run, publish, board, pubPlayer };

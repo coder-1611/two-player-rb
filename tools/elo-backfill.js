@@ -6,9 +6,9 @@
 //   · a game = the archive's game split (tools/alltime-stats.js: a 'game' record or a match-start, 3+ snaps)
 //   · its players = the device id (the anonymous uid) of each role's latest bind before the game's end; ids exist from
 //     2026-09-17 — games before that, or with a role unknown, cannot be rated
-//   · ranked when both phones' 'final' entries agree, two different devices, SAME difficulty (the game record's mode since
-//     V470; older games did not record it and count as SAME), and — unless a FIND A PLAYER game (the room's first game
-//     after its lfg match, V486+) — neither player already had 3 ranked code games that day (Central)
+//   · ranked when both phones' 'final' entries agree, two different devices, and SAME difficulty (the game record's mode
+//     since V470; older games did not record it and count as SAME). V502 (the owner: "account for the 3 friend a day rule
+//     games, for rn as they weren't trying to hack the system"): no daily limit, as tools/elo.js today
 //   · names: the bind's name, else the room's names (Firebase); the board shows each device's latest name
 //   node tools/elo-backfill.js            dry run: the board and the counts, nothing written
 //   node tools/elo-backfill.js --write    write the state, publish embedcode/elo (r, top), drop the queue notes it covered
@@ -62,7 +62,7 @@ async function ownerToken() {   // the firebase CLI's login on this Mac (admin),
     return (await r.json()).access_token;
 }
 
-(async () => {
+if (require.main === module) (async () => {   // (loading this file runs nothing)
     const all = games();
     const tok = await ownerToken();
     const get = async p => { const r = await fetch(DB + p + '.json?access_token=' + encodeURIComponent(tok), { cache: 'no-store' }); return r.ok ? r.json() : null; };
@@ -80,7 +80,7 @@ async function ownerToken() {   // the firebase CLI's login on this Mac (admin),
         let lobby = false;
         if (lfgAt[g.code]) { const first = all.filter(x => x.code === g.code && x.start > lfgAt[g.code]).sort((x, y) => x.start - y.start)[0]; lobby = !!first && first.start === g.start; }
         const rec = { mode: g.mode || 'same', uids: g.uids, fin: g.fin };   // no recorded mode (before V470): SAME
-        const res = E.rate(st, { gid, code: g.code, start: g.start, rec, names, lobby, now: g.start + 600000 });
+        const res = E.rate(st, { gid, code: g.code, start: g.start, rec, names, lobby, now: g.start + 600000 }, { friendlyLimit: 0 });
         res.backfill = true;
         st.games[gid] = res;
         const k = res.ranked ? 'ranked' : res.why; why[k] = (why[k] || 0) + 1;
