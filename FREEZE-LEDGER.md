@@ -1978,3 +1978,15 @@ each day into a viewable section".
   Online — Retro Bowl Multiplayer", "How to Play Retro Bowl Multiplayer — Controls, Rooms and Rules"; every page links the
   new two. sitemap.xml lists 6 pages with lastmod; the 6 URLs pinged through IndexNow with the existing key (da9af5e) — Bing,
   DuckDuckGo, Yandex.
+
+## V505 (2026-10-07): the two-player wording back in every title (with multiplayer and online kept)
+- The owner: "You didn't remove any of the two player ones right? If you did bring them back". V504 had: the home title lost
+  "Retro Bowl 2P" and "Two-Player Retro Bowl" (only "(2 Player)" left), the og/twitter titles and the VideoGame name lost
+  them, play-with-friends lost "Two-Player Retro Bowl", how-to-play lost "Retro Bowl 2P", unblocked's "Retro Bowl 2 Player
+  Unblocked" was reordered.
+- Now: home "Retro Bowl 2P — Two-Player Retro Bowl Multiplayer & Online" (the description opens "Play Retro Bowl two-player
+  in your browser" again); VideoGame name "Retro Bowl 2P" again (alternate names Two-Player Retro Bowl, Retro Bowl 2 Player,
+  Retro Bowl Multiplayer, Retro Bowl Online; the same on the WebSite); the headline's line "TWO-PLAYER · ONLINE MULTIPLAYER";
+  "Retro Bowl 2 Player Unblocked — Multiplayer, Play Free Online in Your Browser"; "Play Retro Bowl With Friends Online —
+  Two-Player Retro Bowl Multiplayer"; "How to Play Retro Bowl 2P Multiplayer — Two-Player Controls, Rooms and Rules";
+  "Retro Bowl Multiplayer — Play Two-Player Retro Bowl Online Against Real People". Pinged IndexNow again.
