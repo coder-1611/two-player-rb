@@ -127,7 +127,7 @@ async function throwAtDefender(page) {
             await OFF.page.evaluate(() => { window._rb2p_computeDefenseAggression = () => 10; try { RB.engineState().engineDefenseAggression = 10; } catch (e) {} });
             // and the lobby's EASY defense (a player's own choice; MAX, the default, adds the defender speed bump and the
             // engine's hardest AI tier — the dive from the half-yard line was stuffed 3 in 4 times)
-            for (const P of [OFF, DEF]) await P.page.evaluate(() => { try { window.__hornPrevDiff = localStorage.getItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', 'easy'); if (window._rb2p_applyOpDifficulty) window._rb2p_applyOpDifficulty(); } catch (e) {} });
+            for (const P of [OFF, DEF]) await P.page.evaluate(() => { try { window.__hornPrevDiff = localStorage.getItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', 'easy'); sessionStorage.setItem('rb2p_difficulty', 'easy'); if (window._rb2p_applyOpDifficulty) window._rb2p_applyOpDifficulty(); } catch (e) {} });
             restoreDiff = true;
             const su0 = ((await L.st(OFF.page)) || {}).su;
             // a new quarter's ball gate (V358) holds the first staging at the quarter's anchor (Q2: the offense's own 11-25)
@@ -259,7 +259,7 @@ async function throwAtDefender(page) {
         console.log('  wrote ' + out);
     } finally {
         // the harness reuses its browser profiles: put the stored difficulty back for the next test
-        if (restoreDiff) for (const P of [g.a, g.b]) await P.page.evaluate(() => { try { const v = window.__hornPrevDiff; if (v == null) localStorage.removeItem('rb2p_difficulty'); else localStorage.setItem('rb2p_difficulty', v); } catch (e) {} }).catch(() => {});
+        if (restoreDiff) for (const P of [g.a, g.b]) await P.page.evaluate(() => { try { const v = window.__hornPrevDiff; if (v == null) localStorage.removeItem('rb2p_difficulty'); else localStorage.setItem('rb2p_difficulty', v); sessionStorage.removeItem('rb2p_difficulty'); } catch (e) {} }).catch(() => {});
         await g.cleanup();
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed' + (verdict === 'setup' ? ' (SETUP INCONCLUSIVE)' : '') + ' ===');
         process.exit(verdict === 'setup' ? 3 : (fail ? 1 : 0));

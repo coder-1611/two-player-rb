@@ -1856,3 +1856,30 @@ each day into a viewable section".
 - Tests: opp-view 8/8 — W3 direct 50.5 frames a second, W6 Firebase 4+ a second (was 3), W8 relay-only (no direct path at
   all): the screen over Cloudflare's relay, 15+ a second. To read on devices tomorrow at school: the share of games whose
   diag says `direct link open (…relay…)`, and VIEW stats `p2p` vs `fb`.
+
+## V498 (2026-10-06): a quarter-change frame no longer pins the waiting phone's clock at 0:01; a game's difficulty is per tab
+- The owner (room CGEW, soham vs bettter_than_u, V496, SAME / HARD, 2-minute quarters): "soham's difficulty went up from
+  hard to max in the middle of game while other guys remained the same ... Also game ended early. This was a disaster".
+- **The clock (CGEW Q3 -> Q4, and OZWC Q1 -> Q2 this morning):** a touchdown at the horn (b: Q3 0:05 less 8 s owed -> 0:00)
+  rolled b's engine into Q4 2:00 while it waited. a applied "Q3 0:00" (the horn path) and its engine bumped to Q4 a frame
+  BEFORE resetting the clock; a's live push "Q4 0:00" reached b, the mirror wrote it, V293 floored it to 0:01, and the
+  clock law then refused every true value (2:00, 1:58 … 1:09) for the whole quarter — 116 refusals. After a's Q4 TD at
+  1:12, a waited 4 s for its hold, mirrored b's pinned 0:01, and the V354 re-stamp shipped 0:01 instead of 1:09: b took
+  the kickoff at Q4 0:01 and the game ended 20-16 with 1:09 left. 14 audited games this month had a clock pinned at
+  0:00-0:03 against 30 s+ on the other phone (long pins: BHOU, SEGF, ISZK, EMNP, OZWC 219 refusals, CGEW 116).
+  - (1) the live mirror keeps its clock on a push of 0:00/0:01 against its own 30 s+ higher in the same quarter (the
+    quarter-change frame) — diag `LIVE-CLOCK kept 2:00 — the driver pushed Q4 0:00 (a quarter-change frame)`
+  - (2) a waiting clock 12 s+ below the DRIVER's (iHaveBall) in the same quarter for 4 s follows it under the clock law's
+    licence — `CLOCKGATE licence (the waiting phone follows the driver: kept 0:01, the driver shows 1:58)`; a kick's
+    run-off (3-10 s) and a stale push (v382 T4) never reach it
+  - (3) the V354 re-stamp keeps the drive's clock when the engine shows 20 s+ less in the same quarter (a copied clock,
+    not time that ran) — `SEND-RESTAMP kept Q4 1:09 — the engine shows 0:01`
+- **The difficulty:** the setting (`rb2p_difficulty`) lived only in localStorage, shared by every tab, and the engine reads
+  it on every play (defense aggression, the MAX tier, the recorder's `dif`). soham's Chromebook also had PFYS and CEIF open
+  (SAME / MAX rooms); one of them wrote MAX at 4:11-4:12 pm and CGEW's next play read it (the plays: hard until 16:12:28,
+  max after; CGEW's config and game record stayed hard; b had no such tab). Now `_rb2p_difficultyPref()` reads this tab's
+  sessionStorage first; a pick writes both; the game start pins it (the gmDif record). Tests that switch to EASY mid-game
+  (drive-dir, horn-last-down) set sessionStorage too.
+- Tests: v498-clock-pin 5/5 (K1 re-stamp keeps 1:09 over a copied 0:01, takes a real 6 s run-off; K2 a pinned waiting
+  clock follows the driver; K3 a "Q 0:00" frame does not pin; K4 another tab picking EASY leaves the game on MAX),
+  v382-clockgate 7/7, v354-holdstamp 4/4, game-dif 2/2.

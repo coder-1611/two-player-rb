@@ -103,7 +103,7 @@ async function downAndMeasure(P, label) {
         const o = await L.offense(g, 40000); if (!o.ok) { setup = 'nobody has the ball'; return; }
         const OFF = o.off, DEF = OFF === g.a ? g.b : g.a;
         // EASY defense (as the horn suites do) so a straight run makes ground both ways
-        for (const P of [OFF, DEF]) await P.page.evaluate(() => { try { window.__ddDiff = localStorage.getItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', 'easy'); if (window._rb2p_applyOpDifficulty) window._rb2p_applyOpDifficulty(); } catch (e) {} });
+        for (const P of [OFF, DEF]) await P.page.evaluate(() => { try { window.__ddDiff = localStorage.getItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', 'easy'); sessionStorage.setItem('rb2p_difficulty', 'easy'); if (window._rb2p_applyOpDifficulty) window._rb2p_applyOpDifficulty(); } catch (e) {} });
         // D1
         const d1 = { [OFF.role]: await dirState(OFF.page), [DEF.role]: await dirState(DEF.page) };
         console.log('  D1: ' + JSON.stringify(d1));
@@ -160,7 +160,7 @@ async function downAndMeasure(P, label) {
     } catch (e) {
         fail++; console.log('  FAIL  ' + (e && e.message || e));
     } finally {
-        for (const P of [g.a, g.b]) await P.page.evaluate(() => { try { const v = window.__ddDiff; if (v == null) localStorage.removeItem('rb2p_difficulty'); else localStorage.setItem('rb2p_difficulty', v); localStorage.removeItem('rb2p_driveDir'); sessionStorage.removeItem('rb2p_driveDir'); } catch (e) {} }).catch(() => {});
+        for (const P of [g.a, g.b]) await P.page.evaluate(() => { try { const v = window.__ddDiff; if (v == null) localStorage.removeItem('rb2p_difficulty'); else localStorage.setItem('rb2p_difficulty', v); sessionStorage.removeItem('rb2p_difficulty'); localStorage.removeItem('rb2p_driveDir'); sessionStorage.removeItem('rb2p_driveDir'); } catch (e) {} }).catch(() => {});
         await g.cleanup();
         if (setup) console.log('  SETUP ' + setup + ' — inconclusive');
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed' + (setup ? ' (SETUP INCONCLUSIVE)' : '') + ' ===');
