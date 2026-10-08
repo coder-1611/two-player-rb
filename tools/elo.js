@@ -23,6 +23,11 @@
 //     leaver's points to the player who stayed, at the job's next run (no 10-minute wait; the staying phone notes it 20 s
 //     after the leaver's page closed, or after a minute of silence). If they come back and both phones record the final,
 //     the leave is undone before the game is rated. The result is published at g/{code_start_left} for the staying phone.
+//   · V519 (the owner: "as soon as a player leaves I should get points ... needs to be immediate"; "make it as if someone
+//     won a game, not the amount the other guy lost"; "I never LOSE leave points but I can get from others leaving"): the
+//     stayer gets a WIN (their K x (1 - E), counted in games and wins) whatever the leaver pays; the leaver's rules stand
+//     (soham names still pay nothing — and then nothing happens). --watch: a resident loop (LaunchAgent com.rb2p.elo,
+//     KeepAlive) that checks the queue every 3 s — the staying phone notes a closed tab at once, a silent one after 30 s.
 //   · the owner's set ratings (st.manual: [{ uid, r, at }]) stand; tools/elo-backfill.js replays them in order
 //   · V502 (the owner: "Right now don't have any anti cheating rules yet"): the V500 limit of 3 ranked code games a day per
 //     player is OFF; --friendly-limit N turns it back on (a FIND A PLAYER game — the room's first game after its lfg match
@@ -37,6 +42,7 @@
 //   node tools/elo.js --report   the board, nothing changed
 //   node tools/elo.js --set-rating UID-OR-PREFIX=1112   the owner sets a rating (kept in st.manual; published at once)
 //   node tools/elo.js --board    publish the board now (it is otherwise republished on a change or every 30 minutes)
+//   node tools/elo.js --watch    V519: stay running and check the queue every 3 s (what the LaunchAgent runs)
 //   --queue P --pub P --state F --include-test --now MS --token-file F   (tests)
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -115,22 +121,23 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     const q = Number(L.q) || 1, clk = Math.max(0, Number(L.clk) || 0), qmins = Number(L.qmins) || 2;
     const leftSec = q >= 5 ? clk : clk + Math.max(0, 4 - q) * qmins * 60;
     out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
-    let P, O;
-    if (leftSec < LATE_SEC) {   // V509: the late leave — a forfeit, 3 x a loss
-        if (fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
-        P = player(st, uid); O = ouid ? player(st, ouid) : null;
-        const lost = K(P.n) * expected(P.r, O ? O.r : 1000);
+    if (leftSec < LATE_SEC && fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
+    const P = player(st, uid), O = ouid ? player(st, ouid) : null, pr = P.r, orr = O ? O.r : 1000;   // the ratings before
+    // the player who left: V509 under a minute left, 3 x a loss; V506 otherwise, 0.25 x the whole minutes x the gap
+    if (leftSec < LATE_SEC) {
+        const lost = K(P.n) * expected(pr, orr);
         out.rule = 'late'; out.secs = leftSec; out.lost = Math.round(lost * 100) / 100; out.penalty = Math.round(LATE_X * lost * 100) / 100;
-    } else {                    // V506: 0.25 x the whole minutes left x |the point difference|
-        out.rule = 'min'; out.penalty = Math.round(0.25 * out.minutes * out.diff * 100) / 100;
-        if (!(out.penalty > 0)) { out.why = 'the score was tied'; return out; }
-        P = player(st, uid); O = ouid ? player(st, ouid) : null;
-    }
+    } else { out.rule = 'min'; out.penalty = Math.round(0.25 * out.minutes * out.diff * 100) / 100; }
     out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); P.left = (P.left || 0) + 1;
     out[role] = { r0: out.r0, r1: out.r1, d: out.r1 - out.r0 };
     if (name && !P.nm) P.nm = name.slice(0, 16);
-    if (O) {   // V509 (late) / V510 (every leave): the player who stayed gets exactly what the leaver lost
-        out.ouid = ouid; out.gain = out.penalty; out.or0 = Math.round(O.r); O.r += out.gain; out.or1 = Math.round(O.r); O.peak = Math.max(O.peak || 1000, O.r);
+    // V519 (the owner: "make it as if someone won a game, not the amount the other guy lost"): the player who stayed
+    // wins the game — a win's points against that player (their own K x (1 - E), the ratings before the leave), counted
+    // as a game and a win — whatever the leaver pays (a tied game's leave pays the stayer too)
+    if (O) {
+        const win = K(O.n) * (1 - expected(orr, pr));
+        out.ouid = ouid; out.won = true; out.gain = Math.round(win * 100) / 100; out.or0 = Math.round(O.r);
+        O.r += win; O.n++; O.w++; O.last = g.start; O.peak = Math.max(O.peak || 1000, O.r); out.or1 = Math.round(O.r);
         out[other] = { r0: out.or0, r1: out.or1, d: out.or1 - out.or0 };
         const oname = String((g.names || {})[other] || ''); if (oname && !O.nm) O.nm = oname.slice(0, 16);
     }
@@ -143,7 +150,8 @@ function undoLeave(st, gidL, now) {
     const L = st.games[gidL];
     if (!L || !L.leave || !L.applied || L.reversed) return null;
     const P = st.players[L.uid]; if (P) { P.r += Number(L.penalty) || 0; P.left = Math.max(0, (P.left || 0) - 1); }
-    const O = L.ouid ? st.players[L.ouid] : null; if (O) O.r -= Number(L.gain) || 0;
+    const O = L.ouid ? st.players[L.ouid] : null;
+    if (O) { O.r -= Number(L.gain) || 0; if (L.won) { O.n = Math.max(0, (O.n || 0) - 1); O.w = Math.max(0, (O.w || 0) - 1); } }   // V519: the win too
     L.reversed = true; L.reversedAt = now;
     return L;
 }
@@ -177,8 +185,9 @@ async function run(st, io, now, opts) {
             done.push(resL);   // V510: its result is published (the player who stayed sees the points it gave them)
             await io.del(QUEUE + '/' + it.key);
             log((resL.applied ? 'LEFT ' : 'leave, no penalty ') + gidL + ' ' + resL.role + (!resL.applied ? ' — ' + resL.why
-                : resL.rule === 'late' ? ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.secs + ' s left, 3 x a loss of ' + resL.lost + ')' + (resL.ouid ? ', the stayer ' + resL.or0 + '->' + resL.or1 : '')
-                : ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.minutes + ' min x ' + resL.diff + ' pts x 0.25)'));
+                : (resL.rule === 'late' ? ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.secs + ' s left, 3 x a loss of ' + resL.lost + ')'
+                : ' ' + resL.r0 + '->' + resL.r1 + ' (-' + resL.penalty + ': ' + resL.minutes + ' min x ' + resL.diff + ' pts x 0.25)') +
+                  (resL.ouid ? ', the stayer wins: ' + resL.or0 + '->' + resL.or1 + ' (+' + resL.gain + ')' : '')));
             continue;
         }
         const gid = it.code + '_' + it.start;
@@ -276,6 +285,20 @@ async function main() {
         await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
         log('SET ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + ') ' + was + ' -> ' + r);
         return;
+    }
+    if (has('--watch')) {   // V519: resident — the queue every 3 s (launchd keeps it alive); the owner token renewed every 45 min
+        let tokAt = Date.now(), io2 = io;
+        log('watching ' + QUEUE + ' every 3 s');
+        for (;;) {
+            try {
+                if (Date.now() - tokAt > 45 * 60000) { io2 = restIO(await ownerToken()); tokAt = Date.now(); }
+                const st2 = load(), now2 = Date.now();   // the file each pass: a --set-rating / --board in between stands
+                const r = await run(st2, io2, now2);
+                if (r.done.length || r.changed.size) save(st2);
+                if (r.done.length || r.changed.size || !st2.boardAt || now2 - st2.boardAt > 30 * 60000) { await publish(st2, io2, r.changed, r.done, now2); st2.boardAt = now2; save(st2); }
+            } catch (e) { log('watch: ' + (e && e.message || e)); }
+            await new Promise(res => setTimeout(res, 3000));
+        }
     }
     const { changed, done } = await run(st, io, now);
     save(st);

@@ -79,11 +79,11 @@ if (require.main === module) (async () => {   // (loading this file runs nothing
     const adj = manual.map(m => ({ at: Number(m.at), uid: m.uid, set: Number(m.r) }))
         .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && !x.reversed && x.uid).map(x => ({ at: Number(x.at), uid: x.uid, minus: Number(x.penalty) || 0 })))
         .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && !x.reversed && x.ouid)   // V509/V510: the stayer's gain; V510: undone leaves skipped
-            .map(x => ({ at: Number(x.at), uid: x.ouid, minus: -(Number(x.gain != null ? x.gain : x.penalty) || 0) })))
+            .map(x => ({ at: Number(x.at), uid: x.ouid, minus: -(Number(x.gain != null ? x.gain : x.penalty) || 0), win: !!x.won })))   // V519: a leave won counts as a win
         .sort((x, y) => x.at - y.at);
     const st = { players: {}, games: {}, manual }, why = {};
     const applyAdj = until => { while (adj.length && adj[0].at <= until) { const a = adj.shift(), P = st.players[a.uid] || (st.players[a.uid] = { r: 1000, n: 0, w: 0, l: 0, d: 0, nm: '', fd: {}, last: 0, peak: 1000 });
-        if (a.set != null) { P.r = a.set; P.peak = Math.max(P.peak || 1000, a.set); } else P.r -= a.minus; } };
+        if (a.set != null) { P.r = a.set; P.peak = Math.max(P.peak || 1000, a.set); } else { P.r -= a.minus; if (a.win) { P.n++; P.w++; } } } };
     for (const g of all) {
         applyAdj(g.start);
         const gid = g.code + '_' + g.start;

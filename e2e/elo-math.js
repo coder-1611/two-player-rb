@@ -125,10 +125,10 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const r5 = go(base(), { rec: rec({ mode: 'different' }) });                           // not ranked
         const r6 = go(base(), { left: L({ q: 5, clk: 125, su: 3, so: 10 }) });                // overtime: 2 whole minutes x 7 = 3.5
         const ok = r1.applied && r1.minutes === 5 && r1.diff === 14 && r1.penalty === 17.5 && Math.abs(s1.players.lv.r - 982.5) < 1e-9 &&
-                   !r2.applied && /soham/.test(r2.why) && !r3.applied && /tied/.test(r3.why) && !r4.applied && /finished/.test(r4.why) &&
+                   !r2.applied && /soham/.test(r2.why) && r3.applied && r3.penalty === 0 && r3.gain === 32 && !r4.applied && /finished/.test(r4.why) &&
                    !r5.applied && /not a ranked/.test(r5.why) && r6.applied && r6.minutes === 2 && r6.penalty === 3.5;
-        check('E7 the leaving penalty: 0.25 x 5 min x 14 = 17.5 off; soham names exempt; none when tied, finished, unranked; overtime uses its clock', ok,
-              JSON.stringify({ r1: [r1.minutes, r1.diff, r1.penalty, s1.players.lv.r], r2: r2.why, r3: r3.why, r4: r4.why, r5: r5.why, r6: [r6.minutes, r6.penalty] }));
+        check('E7 the leaving penalty: 0.25 x 5 min x 14 = 17.5 off; soham names exempt; a tied game costs the leaver nothing but still wins the stayer\'s game (V519); none when finished, unranked; overtime uses its clock', ok,
+              JSON.stringify({ r1: [r1.minutes, r1.diff, r1.penalty, s1.players.lv.r], r2: r2.why, r3: [r3.penalty, r3.gain], r4: r4.why, r5: r5.why, r6: [r6.minutes, r6.penalty] }));
         // E8 (V510, the owner: "give point to opponent immediately after one leaves"): the run applies a leave at once —
         // the leaver's points go to the player who stayed, the note goes, and the result is published for the staying phone
         const st = base(), note = { c: 'LEAV', s: T0, t: T0 + 600000, left: L() };
@@ -136,10 +136,10 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const out = await E.run(st, io, T0 + 600000 + 1000);
         await E.publish(st, io, out.changed, out.done, T0 + 600000 + 1000);
         const g = ((io.db.embedcode || {}).elo || {}).g || {}, pubL = g['LEAV_' + T0 + '_left'];
-        const landed = Math.abs(st.players.lv.r - 982.5) < 1e-9 && Math.abs(st.players.sty.r - 1017.5) < 1e-9 && out.changed.has('lv') && out.changed.has('sty') &&
+        const landed = Math.abs(st.players.lv.r - 982.5) < 1e-9 && Math.abs(st.players.sty.r - 1032) < 1e-9 && st.players.sty.w === 1 && st.players.sty.n === 1 && out.changed.has('lv') && out.changed.has('sty') &&
                        Object.keys(io.db.rooms['~elo'].q || {}).length === 0 && st.games['LEAV_' + T0 + '_left'].applied;
-        const shown = !!(pubL && pubL.leave && pubL.applied && pubL.b && pubL.b.d === 18 && pubL.a && pubL.a.d === -17);
-        check('E8 a leave lands at the first run: -17.5 from the leaver, +17.5 to the player who stayed, the note gone, the result published (b +18)', landed && shown,
+        const shown = !!(pubL && pubL.leave && pubL.applied && pubL.b && pubL.b.d === 32 && pubL.a && pubL.a.d === -17);
+        check('E8 a leave lands at the first run: -17.5 from the leaver; the player who stayed WINS the game (V519: +32, a first win at even ratings, 1 game 1 win); the note gone, the result published', landed && shown,
               JSON.stringify({ lv: st.players.lv.r, sty: st.players.sty && st.players.sty.r, pubL, left: Object.keys(io.db.rooms['~elo'].q || {}) }));
     }
     // E9 (V509): the late leave — under a minute left, a forfeit: 3 x what a loss to that player costs, to the player who stayed
@@ -155,12 +155,12 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const r4 = go(base(), { names: { a: 'SOHAM 2', b: 'Lee' } });                          // exempt
         const r5 = go(base(), { rec: rec({ fin: { a: { su: 7, so: 29 } } }) });               // the leaver's phone recorded the final
         const r6 = go(base(), { left: L({ q: 5, clk: 30, su: 3, so: 3 }) });                   // overtime, 0:30, tied: a forfeit too
-        const want = Math.round(3 * loss * 100) / 100;
-        const ok = r1.applied && r1.rule === 'late' && r1.penalty === want && Math.abs(s1.players.lv.r - (1000 - want)) < 1e-9 && Math.abs(s1.players.sty.r - (1100 + want)) < 1e-9 &&
-                   r1.ouid === 'sty' && r1.or1 === Math.round(1100 + want) && s1.players.lv.n === 10 && s1.players.sty.w === 20 &&
-                   r2.applied && r2.penalty === want && r3.applied && r3.rule !== 'late' && r3.penalty === 5.5 && Math.abs(s3.players.sty.r - 1105.5) < 1e-9 &&
+        const want = Math.round(3 * loss * 100) / 100, win = E.K(40) * (1 - E.expected(1100, 1000));   // V519: the stayer's win, ~6.1
+        const ok = r1.applied && r1.rule === 'late' && r1.penalty === want && Math.abs(s1.players.lv.r - (1000 - want)) < 1e-9 && Math.abs(s1.players.sty.r - (1100 + win)) < 1e-9 &&
+                   r1.ouid === 'sty' && r1.or1 === Math.round(1100 + win) && s1.players.lv.n === 10 && s1.players.sty.w === 21 && s1.players.sty.n === 41 &&
+                   r2.applied && r2.penalty === want && r3.applied && r3.rule !== 'late' && r3.penalty === 5.5 && Math.abs(s3.players.sty.r - (1100 + win)) < 1e-9 &&
                    !r4.applied && /soham/.test(r4.why) && !r5.applied && /recorded the final/.test(r5.why) && r6.applied && r6.rule === 'late';
-        check('E9 under a minute left: the leaver loses 3 x a loss (' + want + ') and the stayer gains it, whatever the score; 1:00 left is the minute formula (to the stayer too); exempt / own final: nothing',
+        check('E9 under a minute left: the leaver loses 3 x a loss (' + want + '), whatever the score; the stayer wins the game (V519: +' + win.toFixed(2) + ', a win, not the leaver\'s loss); 1:00 left is the minute formula; exempt / own final: nothing',
               ok, JSON.stringify({ want, r1: [r1.rule, r1.penalty, s1.players.lv.r, s1.players.sty.r], r2: r2.penalty, r3: [r3.rule, r3.penalty], r4: r4.why, r5: r5.why, r6: r6.rule }));
         // the run: the stayer's new rating is published too
         const st = base(), note = { c: 'LATE', s: T0, t: T0, left: L() };

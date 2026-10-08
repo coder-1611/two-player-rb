@@ -2133,3 +2133,15 @@ each day into a viewable section".
   (ass, dick, cock, tits, boobs, wtf, stfu, kys, sex/sexy). Only the cuss is starred — "****jews"; a name of only a cuss
   shows as "a player". Real names stand: Dickerson, Hancock, Cassidy, Yamashita/Matsushita (shita), Fukuda (fuku), Essex.
   Chat messages are not touched (they never go through this filter). e2e/censor 4/4 (C3, C4 new).
+
+## V519 (2026-10-08): a leave pays the player who stayed at once — a WIN's points
+- The owner: "as soon as a player leaves I should get points ... make sure the points happen IMMEDIATELY ... I never LOSE
+  leave points but I can get from others leaving"; "it gives the points, but needs to be immediate"; "make it as if someone
+  won a game, not the amount the other guy lost". HWRJ (12:41-12:43, the owner stayed): the tab closed 12:41:52, noted
+  12:42:20 (the 20 s grace), applied by the once-a-minute job, shown 12:43:23 — about 90 s.
+- Now: the staying page checks every second and notes a closed tab at once (silence: 30 s, was 60); tools/elo.js --watch
+  runs resident (LaunchAgent com.rb2p.elo, KeepAlive) and checks the queue every 3 s; the page asks for the result every
+  2 s. The stayer's points are a win against the leaver (their K x (1 - E), counted as a game and a win) whatever the
+  leaver pays — a tied game's leave pays the stayer too. The leaver's rules and the soham exemption stand. Undo on a
+  finished game also takes back the win. e2e/v519-leave-instant: closed -> noted 2.1 s -> +32 on the stayer's screen 6.1 s.
+  e2e/elo-math 11/11 (E7-E9 updated). The owner's account soham +25 (his request, by --set-rating).
