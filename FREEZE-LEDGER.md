@@ -2145,3 +2145,15 @@ each day into a viewable section".
   leaver pays — a tied game's leave pays the stayer too. The leaver's rules and the soham exemption stand. Undo on a
   finished game also takes back the win. e2e/v519-leave-instant: closed -> noted 2.1 s -> +32 on the stayer's screen 6.1 s.
   e2e/elo-math 11/11 (E7-E9 updated). The owner's account soham +25 (his request, by --set-rating).
+
+## V520 (2026-10-08): the numbers behind 2rbstats.vercel.app (every 10 minutes)
+- The owner: "create a website called 2rbstats.vercel.app that gives all the stats of people on it, but the ui needs to be
+  100% like vercel analytics ... This should add google sites, web.app and the vercel. with visitors, views, and distinct
+  devices ... It should update every 10 minutes".
+- tools/rbstats.js (LaunchAgent com.rb2p.rbstats, tools/install-rbstats.sh, every 10 min): the game's visit log
+  (visits/{day}: one record per page load) -> embedcode/rbstats/v1 (public read, ~31 KB): meta (snapshot time, the doors,
+  devices online = loaded in the last 10 min) and {door}/{range} (all|vercel|webapp|sites|pages x 24h|7d|30d|90d): series
+  [t, visitors, views, devices], totals, the previous period (when the log covers it), panels (hostnames, referrers,
+  countries from the time zone, devices, browsers, OS). A visitor = a device on a day (Vercel's daily unique), a distinct
+  device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
+  The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
