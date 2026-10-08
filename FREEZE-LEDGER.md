@@ -2123,3 +2123,13 @@ each day into a viewable section".
   last play with its time, on every build since V318) and shows the latest of the three; an hour or more reads "9 HR 53
   MIN AGO". YVQG's last play was at 10:38 am; player b closed the tab at 11:44 and a's hidden tab kept it on the list.
   (rooms/{code}/snap is no use: it is rewritten every 0.5 s between plays.) e2e/v516-live-lastplay 2/2.
+
+## V518 (2026-10-08): cusses are starred in player names (the RANKINGS, WATCH LIVE, the play of the day)
+- The owner: "you need to censor cusses in the ranks" — the board's #52 ran the f-word into a word, #55 was a short form of
+  it; then: "not jews, the f word isn't censored". The shared filter (index.html SLUR-FILTER, run in Node by
+  tools/highlights/censor.js for the board and the front page) now stars cusses the way it stars slurs: the plain ones
+  anywhere in a word (f-word incl. fuk/fck/fvck/phuck, s-word, b-word, c-word, whore, slut, bastard, asshole, dumbass,
+  jackass, dickhead, cocksucker, pussy, porn, penis, vagina), the short ones that are parts of real names only as a word
+  (ass, dick, cock, tits, boobs, wtf, stfu, kys, sex/sexy). Only the cuss is starred — "****jews"; a name of only a cuss
+  shows as "a player". Real names stand: Dickerson, Hancock, Cassidy, Yamashita/Matsushita (shita), Fukuda (fuku), Essex.
+  Chat messages are not touched (they never go through this filter). e2e/censor 4/4 (C3, C4 new).

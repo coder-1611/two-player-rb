@@ -2120,7 +2120,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V517<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V518<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2306,7 +2306,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V517</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V518</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -20110,12 +20110,18 @@
         // worst slurs match anywhere in a word, the short ones (raccoon, spice) only as a word, after the usual stand-ins
         // (0 1 3 4 5 7 @ $ ! |), with dots, dashes and spelled-out letters ignored; each letter of a match becomes *.
         // tools/highlights/censor.js runs this same text in Node, so the published names and lines are censored too.
+        // V518 (the owner: "you need to censor cusses in the ranks ... the f word isn't censored" — the RANKINGS showed a name
+        // that ran the f-word into a word): cusses too, the same way — the plain ones anywhere in a word (f-word, s-word,
+        // b-word, ...; not the "shita" of Yamashita or the "fuku" of Fukuda), the short ones that are parts of real names
+        // (ass, dick, cock, tits) only as a word, so Cassidy, Dickerson and Hancock stand. Only the cuss itself is starred.
         // (No lookbehind: an older iPad cannot parse it.)
         /* SLUR-FILTER-START */
         var SLUR_LEET = { '0': 'o', '1': 'i', '!': 'i', '|': 'i', '3': 'e', '4': 'a', '@': 'a', '5': 's', '$': 's', '7': 't' };
         var SLUR_IN = /n+i+(?:[gq]{2,}|[g69]{2,}(?=e+r|a|u+h))(?:e+r+|a+h*|u+h+)?[sz]?|f+a+g+g?o+t+s?|r+e+t+a+r+d+(?:e+d+|s+)?|t+r+a+n+n+(?:y+|i+e+)s?|w+e+t+b+a+c+k+s?|c+h+i+n+k+s?|b+e+a+n+e+r+s?|j+i+g+a+b+o+o+s?|r+a+g+h+e+a+d+s?|t+o+w+e+l+h+e+a+d+s?|c+h+i+n+g+c+h+o+n+g+s?|s+h+e+m+a+l+e+s?/g;
         var SLUR_WORD = /(^|[^a-z0-9])(f+a+g+s?|f+a+g+g+s?|k+i+k+e+s?|s+p+i+c+k*s?|c+o+o+n+s?|g+o+o+k+s?|d+y+k+e+s?|p+a+k+i+s?|l+e+s+b+o+s?|n+i+g+s?|n+i+g+a+[hsz]?)(?=[^a-z0-9]|$)/g;
-        function slurSpans(t) {   // [first, last] character of each slur in t
+        var CUSS_IN = /f+u+c+k+|f+u+k+(?!u)|f+c+k+|f+v+c+k+|p+h+u+c+k+|s+h+i+t+(?!a)|s+h+y+t+|b+i+t+c+h+|b+i+a+t+c+h+|c+u+n+t+|w+h+o+r+e+|s+l+u+t+|b+a+s+t+a+r+d+|a+s+s+h+o+l+e+|d+u+m+b+a+s+s+|j+a+c+k+a+s+s+|d+i+c+k+h+e+a+d+|c+o+c+k+s+u+c+k+|p+u+s+s+y+|p+u+s+s+i+e+s+|p+o+r+n+|p+e+n+i+s+|v+a+g+i+n+a+/g;
+        var CUSS_WORD = /(^|[^a-z0-9])(a+s+s+(?:e+s+)?|d+i+c+k+s?|c+o+c+k+s?|t+i+t+s+|b+o+o+b+s+|w+t+f+|s+t+f+u+|k+y+s+|s+e+x+y?)(?=[^a-z0-9]|$)/g;
+        function slurSpans(t) {   // [first, last] character of each slur (V518: and cuss) in t
             var src = String(t == null ? '' : t), ch = [], out = [], spans = [], i, c, m, s0;
             for (i = 0; i < src.length; i++) {
                 c = src.charAt(i).toLowerCase(); c = SLUR_LEET[c] || c;
@@ -20131,6 +20137,10 @@
             while ((m = SLUR_IN.exec(flat))) if (flat.substr(m.index, 5) !== 'niggl') spans.push([out[m.index].i, out[m.index + m[0].length - 1].i]);   // niggle, niggling
             SLUR_WORD.lastIndex = 0;
             while ((m = SLUR_WORD.exec(flat))) { s0 = m.index + m[1].length; spans.push([out[s0].i, out[s0 + m[2].length - 1].i]); }
+            CUSS_IN.lastIndex = 0;
+            while ((m = CUSS_IN.exec(flat))) spans.push([out[m.index].i, out[m.index + m[0].length - 1].i]);
+            CUSS_WORD.lastIndex = 0;
+            while ((m = CUSS_WORD.exec(flat))) { s0 = m.index + m[1].length; spans.push([out[s0].i, out[s0 + m[2].length - 1].i]); }
             return spans;
         }
         function hasSlur(t) { return slurSpans(t).length > 0; }
