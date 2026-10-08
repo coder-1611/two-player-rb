@@ -2158,6 +2158,22 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V523 (2026-10-08): Purdy a 5-star QB with every rating maxed; all 32 rosters updated for the 2026 season
+- The owner: "make purdy a 5 star qb with max everything and update all the rosters for performance and roster shifts".
+- Purdy (49ers QB) 10/10/10/10 — the only 10s in the game. The engine's player rating (__B: the four ratings over a
+  per-position divisor, QB 37, x10, clamped 1-10; stars = rating / 2) is now 10 of 10 = 5 stars (was 6 = 3 stars).
+  Condition and morale were already maxed for every roster player (writeRosterPlayer).
+- Rosters brought to 2026 weeks 1-4 from ESPN's public feeds (roster + injuries, depth charts, 2026 game logs) plus news:
+  61 players replaced (traded/released, out for the season, lost the job), 120 ratings nudged for 2026 play (81 up, 39
+  down), each with its stat line; new players' faces picked from their headshots (skill rules: no forbidden faces, no
+  duplicates within a team); ages that were set refreshed to today's. Seven teams kept all 12 (BUF DEN BAL IND LAR SEA MIN).
+  Source files: ~/Projects/rosters/<team>.md regenerated; the June set is in rosters/archive/2026-06-preseason/; the update
+  tools (ESPN helpers, checker/installer, face review sheet) are in rosters/tools/season-update/.
+- Trap found on the way: ESPN's athlete overview falls back to the LAST season with games for a player with none in 2026
+  (Pearsall's 36-528 was 2025) — use the season=2026 game log (true26.py).
+- e2e/v523-rosters.js 3/3: all 32 teams install their 12 players through VIEW ROSTER (by name — the roster screen sorts the
+  engine's list by position), Purdy 10/10/10/10 with engine rating 10 (5 stars), nobody else has a 10.
+
 ## V522 (2026-10-08): the red minus only for Ziyad and players who have left more than 12 games
 - The owner: "only show minus for ziyad not anyone else unless above 12 left games".
 - tools/elo.js showLp(): board() and pubPlayer() carry lp/lc only for Ziyad (lITtwndi, always) or anyone with 13+ counted
