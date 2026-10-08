@@ -2120,7 +2120,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V516<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V517<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2306,7 +2306,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V516</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V517</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -22004,6 +22004,15 @@
             eloGetX('rooms/~live', 6000).then(function (all) {
                 if (lobby.dataset.active !== 'watch') return;
                 var list = liveGames(all);
+                // V516: the last play of games whose host runs an older build (no lp) — each side's play-by-play feed
+                // (rooms/{code}/feed/{a|b}: the last play, with its time; written on every build since V318)
+                return Promise.all(list.map(function (g) {
+                    return eloGetX('rooms/' + g.code + '/feed', 4000).then(function (f) {
+                        g.lpFeed = Math.max(Number(f && f.a && f.a.ts) || 0, Number(f && f.b && f.b.ts) || 0);
+                    }, function () {});
+                })).then(function () { return list; });
+            }).then(function (list) {
+                if (!list || lobby.dataset.active !== 'watch') return;
                 $l.textContent = '';
                 if (!list.length) { var z = document.createElement('li'); z.className = 'none'; z.textContent = 'NO GAMES BEING PLAYED RIGHT NOW — CHECK BACK SOON (MOST ARE ON WEEKDAYS AROUND MIDDAY, CENTRAL TIME)'; $l.appendChild(z); }
                 list.forEach(function (g) {
@@ -22013,9 +22022,10 @@
                     var sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = (Number(g.sa) || 0) + ' – ' + (Number(g.sb) || 0); line.appendChild(sc);
                     line.appendChild(document.createTextNode(' ' + lfgName(g.bn) + ' (' + (specTeam(g.bt) || 'TEAM B') + ')'));
                     var sm = document.createElement('small');
-                    var lpMin = Number(g.lp) ? Math.floor(Math.max(0, Date.now() - Number(g.lp)) / 60000) : -1;   // V516: since the last play
+                    var lpAt = Math.max(Number(g.lp) || 0, Number(g.lpFeed) || 0), lpMin = lpAt ? Math.floor(Math.max(0, Date.now() - lpAt) / 60000) : -1;   // V516: since the last play
                     sm.textContent = (Number(g.q) >= 5 ? 'OVERTIME' : 'Q' + (Number(g.q) || 1)) + ' ' + clockTxt(g.clk) + ' · ' + String(g.dif || '').toUpperCase() + (g.mode === 'same' ? '' : ' (DIFFERENT)') +
-                        (lpMin < 0 ? '' : lpMin < 1 ? ' · LAST PLAY JUST NOW' : ' · LAST PLAY ' + lpMin + ' MIN AGO') + (Number(g.w) > 0 ? ' · ' + g.w + ' WATCHING' : '');
+                        (lpMin < 0 ? '' : lpMin < 1 ? ' · LAST PLAY JUST NOW' : ' · LAST PLAY ' + (lpMin < 60 ? lpMin + ' MIN' : Math.floor(lpMin / 60) + ' HR ' + (lpMin % 60) + ' MIN') + ' AGO') +
+                        (Number(g.w) > 0 ? ' · ' + g.w + ' WATCHING' : '');
                     d.appendChild(line); d.appendChild(sm); li.appendChild(d);
                     var b = document.createElement('button'); b.type = 'button'; b.textContent = 'WATCH';
                     b.addEventListener('click', function () { specStart(g); });

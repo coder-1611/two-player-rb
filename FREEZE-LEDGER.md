@@ -2116,3 +2116,10 @@ each day into a viewable section".
   NOW). Before, an abandoned open game looked as live as any. e2e/v516-live-lastplay 2/2.
 - The owner: "add a 10 point max boost": play-of-the-day MAX difficulty 45 -> 55 (features.js DIF_PTS; the judge's brief
   reads it).
+
+## V517 (2026-10-07): WATCH LIVE's last play also for games hosted on older builds
+- The owner, looking at the list on V516: "where does it show". Both listed games were hosted by older builds (CSVQ V515,
+  YVQG V506/V502), which write no lp. The list now also reads each game's play-by-play feed (rooms/{code}/feed/{a|b}: the
+  last play with its time, on every build since V318) and shows the latest of the three; an hour or more reads "9 HR 53
+  MIN AGO". YVQG's last play was at 10:38 am; player b closed the tab at 11:44 and a's hidden tab kept it on the list.
+  (rooms/{code}/snap is no use: it is rewritten every 0.5 s between plays.) e2e/v516-live-lastplay 2/2.
