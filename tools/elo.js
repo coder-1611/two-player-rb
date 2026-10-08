@@ -43,6 +43,7 @@
 //   node tools/elo.js --set-rating UID-OR-PREFIX=1112   the owner sets a rating (kept in st.manual; published at once)
 //   node tools/elo.js --board    publish the board now (it is otherwise republished on a change or every 30 minutes)
 //   node tools/elo.js --watch    V519: stay running and check the queue every 3 s (what the LaunchAgent runs)
+//   node tools/elo.js --penalize UID-OR-PREFIX=254   V521: the owner's leaving penalty (st.manual { d, why: 'leaving' }; on the board)
 //   --queue P --pub P --state F --include-test --now MS --token-file F   (tests)
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -117,18 +118,19 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     if (uid === ouid) { out.why = 'the same device played both sides'; return out; }
     if (rec.mode !== 'same') { out.why = 'not a ranked game (the players had different difficulties)'; return out; }
     const name = String((g.names || {})[role] || ''), known = st.players[uid] && st.players[uid].nm;
-    if (EXEMPT.test(name) || EXEMPT.test(String(known || ''))) { out.why = 'exempt: the name has soham in it'; return out; }
+    const exempt = EXEMPT.test(name) || EXEMPT.test(String(known || ''));   // V521: pays nothing — but the player who stayed still wins
     const q = Number(L.q) || 1, clk = Math.max(0, Number(L.clk) || 0), qmins = Number(L.qmins) || 2;
     const leftSec = q >= 5 ? clk : clk + Math.max(0, 4 - q) * qmins * 60;
     out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
     if (leftSec < LATE_SEC && fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
     const P = player(st, uid), O = ouid ? player(st, ouid) : null, pr = P.r, orr = O ? O.r : 1000;   // the ratings before
     // the player who left: V509 under a minute left, 3 x a loss; V506 otherwise, 0.25 x the whole minutes x the gap
-    if (leftSec < LATE_SEC) {
+    if (exempt) { out.rule = 'exempt'; out.exempt = true; out.penalty = 0; out.why = 'exempt: the name has soham in it (pays nothing; the stayer still wins)'; }
+    else if (leftSec < LATE_SEC) {
         const lost = K(P.n) * expected(pr, orr);
         out.rule = 'late'; out.secs = leftSec; out.lost = Math.round(lost * 100) / 100; out.penalty = Math.round(LATE_X * lost * 100) / 100;
     } else { out.rule = 'min'; out.penalty = Math.round(0.25 * out.minutes * out.diff * 100) / 100; }
-    out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); P.left = (P.left || 0) + 1;
+    out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); if (!exempt) P.left = (P.left || 0) + 1;
     out[role] = { r0: out.r0, r1: out.r1, d: out.r1 - out.r0 };
     if (name && !P.nm) P.nm = name.slice(0, 16);
     // V519 (the owner: "make it as if someone won a game, not the amount the other guy lost"): the player who stayed
@@ -149,21 +151,36 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
 function undoLeave(st, gidL, now) {
     const L = st.games[gidL];
     if (!L || !L.leave || !L.applied || L.reversed) return null;
-    const P = st.players[L.uid]; if (P) { P.r += Number(L.penalty) || 0; P.left = Math.max(0, (P.left || 0) - 1); }
+    const P = st.players[L.uid]; if (P) { P.r += Number(L.penalty) || 0; if (!L.exempt) P.left = Math.max(0, (P.left || 0) - 1); }
     const O = L.ouid ? st.players[L.ouid] : null;
     if (O) { O.r -= Number(L.gain) || 0; if (L.won) { O.n = Math.max(0, (O.n || 0) - 1); O.w = Math.max(0, (O.w || 0) - 1); } }   // V519: the win too
     L.reversed = true; L.reversedAt = now;
     return L;
 }
 
+// V521 (the owner: "from now on, show how many points they lost from leaving"): per player, the rating points taken by
+// leaves (applied, not undone) and by the owner's leaving penalties (--penalize), and how many games they left
+function leaveTotals(st) {
+    const m = {};
+    for (const g of Object.values(st.games || {})) {
+        if (!g || !g.leave || !g.applied || g.reversed || !g.uid || g.exempt) continue;
+        const x = m[g.uid] || (m[g.uid] = { pts: 0, n: 0 }); x.pts += Number(g.penalty) || 0; x.n++;
+    }
+    for (const a of st.manual || []) if (a && a.why === 'leaving' && Number(a.d) < 0) { const x = m[a.uid] || (m[a.uid] = { pts: 0, n: 0 }); x.pts += -Number(a.d); }
+    return m;
+}
 function board(st) {
+    const LT = leaveTotals(st);
     return Object.keys(st.players).map(u => Object.assign({ u }, st.players[u])).filter(p => p.n >= BOARD_MIN)
         .sort((x, y) => y.r - x.r || y.n - x.n).slice(0, BOARD_N)
-        .map(p => ({ nm: cleanName(p.nm) || 'a player', r: Math.round(p.r), w: p.w, l: p.l, d: p.d, n: p.n, u: p.u.slice(0, 8) }));
+        .map(p => { const lt = LT[p.u]; return Object.assign({ nm: cleanName(p.nm) || 'a player', r: Math.round(p.r), w: p.w, l: p.l, d: p.d, n: p.n, u: p.u.slice(0, 8) },
+                                                          lt && lt.pts >= 0.5 ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
 }
 function pubPlayer(st, uid, now) {
     const p = st.players[uid], today = dayOf(now);
-    return { r: Math.round(p.r), n: p.n, w: p.w, l: p.l, d: p.d, nm: cleanName(p.nm), fd: (p.fd && p.fd[today]) || 0, fdd: today, peak: Math.round(p.peak || p.r) };
+    const lt = leaveTotals(st)[uid];
+    return Object.assign({ r: Math.round(p.r), n: p.n, w: p.w, l: p.l, d: p.d, nm: cleanName(p.nm), fd: (p.fd && p.fd[today]) || 0, fdd: today, peak: Math.round(p.peak || p.r) },
+                         lt && lt.pts >= 0.5 ? { lp: Math.round(lt.pts), lc: lt.n } : {});
 }
 
 // one pass over the queue. io = { get(path, query), put, patch, del } (tests pass a fake)
@@ -174,9 +191,20 @@ async function run(st, io, now, opts) {
     const changed = new Set(), done = [];
     for (const it of items) {
         if (it.left) {   // V506: a leave the other player noted
-            const gidL = it.code + '_' + it.start + '_left';
+            // V521 (the owner: "that didn't happen when someone left my game" — OMJG: his hidden tab was reported first, the
+            // real leave 2 min later was dropped as the game's second note): one note per LEAVER (…_left_a / _left_b), and
+            // a leaver who then reports the other was still there — that earlier leave is undone first
+            const lr = it.left.role === 'a' || it.left.role === 'b' ? it.left.role : '', by = it.left.by === 'a' || it.left.by === 'b' ? it.left.by : '';
+            const gidL = it.code + '_' + it.start + '_left' + (lr ? '_' + lr : '');
             if (st.games[gidL] || (!INCLUDE_TEST && /^Z\d/.test(it.code))) { await io.del(QUEUE + '/' + it.key); continue; }
             if (now - it.t < LEAVE_WAIT_MS) continue;   // they may come back and finish the game
+            for (const k0 of [it.code + '_' + it.start + '_left_' + by, it.code + '_' + it.start + '_left']) {
+                const old = by && st.games[k0];
+                if (old && old.leave && old.role === by && old.applied && !old.reversed && Number(old.at) <= Number(it.t)) {
+                    const u = undoLeave(st, k0, now);
+                    if (u) { changed.add(u.uid); if (u.ouid) changed.add(u.ouid); done.push(u); log('leave undone ' + k0 + ' — ' + by + ' was still there (it reported the other player leaving)'); }
+                }
+            }
             const recL = (await io.get('rooms/' + it.code + '/games/' + it.start)) || {};
             const namesL = (await io.get('rooms/' + it.code + '/names')) || {};
             const resL = leavePenalty(st, { gid: gidL, code: it.code, start: it.start, rec: recL, names: namesL, left: it.left, now });
@@ -205,8 +233,10 @@ async function run(st, io, now, opts) {
             lobby = keys.length > 0 && keys[0] === it.start;
         }
         if (rec.fin && rec.fin.a && rec.fin.b) {   // V510: finished after a leave was applied — the leave is undone
-            const u = undoLeave(st, gid + '_left', now);
-            if (u) { changed.add(u.uid); if (u.ouid) changed.add(u.ouid); done.push(u); log('leave undone ' + gid + '_left — they came back and the game was finished'); }
+            for (const sfx of ['_left', '_left_a', '_left_b']) {
+                const u = undoLeave(st, gid + sfx, now);
+                if (u) { changed.add(u.uid); if (u.ouid) changed.add(u.ouid); done.push(u); log('leave undone ' + gid + sfx + ' — they came back and the game was finished'); }
+            }
         }
         const res = rate(st, { gid, code: it.code, start: it.start, rec, names, lobby, now }, opts);
         st.games[gid] = res;
@@ -272,6 +302,19 @@ async function main() {
         log('BOARD published: ' + board(st).length + ' players');
         return;
     }
+    const pen = opt('--penalize', '');
+    if (pen) {   // V521 (the owner: "penalize him 254 points and show this on leaderboard"): a leaving penalty by the owner
+        const [who, val] = pen.split('='), d = Number(val);
+        const ids = Object.keys(st.players).filter(u => u === who || u.indexOf(who) === 0);
+        if (ids.length !== 1 || !(d > 0)) throw new Error('--penalize: ' + ids.length + ' players match ' + who + ' (need exactly 1) or bad points ' + val);
+        const P = st.players[ids[0]], was = Math.round(P.r);
+        P.r -= d; (st.manual = st.manual || []).push({ uid: ids[0], d: -d, at: now, was, why: 'leaving' });
+        save(st);
+        await io.patch(PUB + '/r', { [ids[0]]: pubPlayer(st, ids[0], now) });
+        await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        log('PENALIZED ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + ') ' + was + ' -> ' + Math.round(P.r) + ' (-' + d + ', leaving)');
+        return;
+    }
     const setR = opt('--set-rating', '');
     if (setR) {   // V506 (the owner: "Make soham rating 1112")
         const [who, val] = setR.split('='), r = Number(val);
@@ -312,4 +355,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { log('FATAL ' + (e && e.message || e)); process.exit(2); });
-else module.exports = { K, expected, dayOf, rate, leavePenalty, undoLeave, run, publish, board, pubPlayer };
+else module.exports = { K, expected, dayOf, rate, leavePenalty, undoLeave, leaveTotals, run, publish, board, pubPlayer };

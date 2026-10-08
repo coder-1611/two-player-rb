@@ -76,7 +76,7 @@ if (require.main === module) (async () => {   // (loading this file runs nothing
     // V506: the owner's set ratings and the live leave penalties stand — replayed at their own time
     let prev = null; try { prev = JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch (e) {}
     const manual = (prev && prev.manual) || [];
-    const adj = manual.map(m => ({ at: Number(m.at), uid: m.uid, set: Number(m.r) }))
+    const adj = manual.map(m => (m.d != null ? { at: Number(m.at), uid: m.uid, minus: -Number(m.d) } : { at: Number(m.at), uid: m.uid, set: Number(m.r) }))   // V521: a penalty (d) or a set rating (r)
         .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && !x.reversed && x.uid).map(x => ({ at: Number(x.at), uid: x.uid, minus: Number(x.penalty) || 0 })))
         .concat(Object.values((prev && prev.games) || {}).filter(x => x && x.leave && x.applied && !x.reversed && x.ouid)   // V509/V510: the stayer's gain; V510: undone leaves skipped
             .map(x => ({ at: Number(x.at), uid: x.ouid, minus: -(Number(x.gain != null ? x.gain : x.penalty) || 0), win: !!x.won })))   // V519: a leave won counts as a win

@@ -3,6 +3,8 @@
 // mode (here on a test queue) — the player who stayed sees "+N RATING TO YOU" within seconds, N = a win's points.
 //   I1  the stayer's page notes the leave within 3 s of the tab closing (was 20 s, before that 2 min)
 //   I2  the stayer is shown the points within 10 s of the tab closing, and they are a win's points (games +1, wins +1)
+//   I3  V521 (the owner: "make the opponent left message impossible to show up without the point change"): the waiting
+//       screen never says OPPONENT LEFT without "+N RATING TO YOU" (sampled every 250 ms)
 const H = require('./harness');
 const TP = require('./two-player');
 const { spawn } = require('child_process');
@@ -27,12 +29,15 @@ const RUN = 'i' + Date.now().toString(36), TROOT = 'rooms/~elotest/' + RUN, STAT
         await sleep(8000);
         const t0 = Date.now();
         await B.page.close();   // the other player leaves
-        let noted = 0, shown = 0, gain = 0;
-        for (let i = 0; i < 60 && !shown; i++) {
-            const s = await A.page.evaluate(() => ({ gain: Number(window._rb2p_leaveGain) || 0, diag: (window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : []).filter(l => /ELO the other player left/.test(l)).length }));
+        let noted = 0, shown = 0, gain = 0, bare = [], seen = new Set();
+        for (let i = 0; i < 120 && !shown; i++) {
+            const s = await A.page.evaluate(() => { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); const st = document.getElementById('rb-wait-status');
+                return { gain: Number(window._rb2p_leaveGain) || 0, status: st ? st.textContent : '', diag: (window._rb2p_readDiagLog ? window._rb2p_readDiagLog() : []).filter(l => /ELO the other player left/.test(l)).length }; });
+            seen.add(s.status);
+            if (/OPPONENT LEFT/.test(s.status) && !/\+\d+ RATING TO YOU|NOT RANKED/.test(s.status)) bare.push(s.status);
             if (s.diag && !noted) noted = Date.now() - t0;
             if (s.gain > 0) { shown = Date.now() - t0; gain = s.gain; }
-            await sleep(500);
+            await sleep(250);
         }
         const st = JSON.parse(fs.readFileSync(STATE, 'utf8')), res = Object.values(st.games || {}).find(x => x && x.leave) || {};
         const stayer = res.ouid && st.players[res.ouid];
@@ -40,6 +45,7 @@ const RUN = 'i' + Date.now().toString(36), TROOT = 'rooms/~elotest/' + RUN, STAT
         check('I1 the stayer\'s page notes the leave within 3 s of the tab closing', noted > 0 && noted <= 3000, JSON.stringify({ notedMs: noted }));
         check('I2 the stayer is shown the points within 10 s, and they are a win\'s points (a game and a win)', shown > 0 && shown <= 10000 && res.won && gain === res.or1 - res.or0 && stayer && stayer.w === 1 && stayer.n === 1,
               JSON.stringify({ shownMs: shown, gain, res: { rule: res.rule, penalty: res.penalty, gain: res.gain, won: res.won }, stayer: stayer && { r: stayer.r, n: stayer.n, w: stayer.w }, job: jobLog.trim().split('\n').slice(-2) }));
+        check('I3 the waiting screen never says OPPONENT LEFT without the points', !bare.length && [...seen].some(t => /OPPONENT LEFT THE GAME \u2014 \+\d+ RATING TO YOU/.test(t)), JSON.stringify({ bare: bare.slice(0, 2), seen: [...seen] }));
     } finally {
         try { job.kill(); } catch (e) {}
         try { if (g) await g.cleanup(); } catch (e) {} try { await real.close(); } catch (e) {}

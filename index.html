@@ -1017,7 +1017,8 @@
         #rb-lobby .rb-rank-me { margin: 0; font-size: 11px; line-height: 1.8; color: #ffd23f; }
         #rb-lobby .rb-rank-list, #rb-lobby .rb-watch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
         #rb-lobby .rb-rank-list { width: min(640px, 100%); }
-        #rb-lobby .rb-rank-list li { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) 4.6em 6.4em; gap: 10px; align-items: center; padding: 8px 10px;
+        #rb-lobby .rb-rank-list li .lp { color: #ff6b6b; text-align: right; font-size: 9px; }   /* V521: rating points lost by leaving */
+        #rb-lobby .rb-rank-list li { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) 4.2em 4.6em 6.4em; gap: 10px; align-items: center; padding: 8px 10px;
             background: rgba(8,20,52,.45); border: 2px solid rgba(255,255,255,.35); font-size: 10px; line-height: 1.4; text-align: left; font-variant-numeric: tabular-nums; }
         #rb-lobby .rb-rank-list li .rk { color: #9fbcf0; }
         #rb-lobby .rb-rank-list li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
@@ -2120,7 +2121,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V520<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V521<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2280,7 +2281,7 @@
             <h1 class="rb-roomtitle">RANK<span class="code">INGS</span></h1>
             <p class="rb-rank-me" id="rb-rank-me"></p>
             <ol class="rb-rank-list" id="rb-rank-list"></ol>
-            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. Leave a ranked game before it ends and you lose 0.25 &times; the whole minutes left &times; the point difference; with under a minute left, 3 &times; what a loss to that player costs, whatever the score. The player who stayed gets a win right away (the points of beating you) &mdash; and if you come back and finish the game, it is undone. You show on the board after 5 ranked games.</p>
+            <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. Leave a ranked game before it ends and you lose 0.25 &times; the whole minutes left &times; the point difference; with under a minute left, 3 &times; what a loss to that player costs, whatever the score. The player who stayed gets a win right away (the points of beating you) &mdash; and if you come back and finish the game, it is undone. The red number next to a rating is how many points that player has lost by leaving games. You show on the board after 5 ranked games.</p>
             <button id="rb-ranks-back" class="rb-join-btn" type="button">&#9664; BACK</button>
         </div>
         <!-- ======================= WATCH LIVE (V500) ======================= -->
@@ -2306,7 +2307,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V520</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V521</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -13028,10 +13029,15 @@
                     var left = (typeof window._rb2p_oppLeft === 'function') && window._rb2p_oppLeft();
                     var silentMs = (typeof window._rb2p_oppSilentMs === 'function') ? window._rb2p_oppSilentMs() : 0;
                     var silent = !left && !hidLast && silentMs > 12000;   // two missed heartbeats (was 20s)
-                    var want = left ? 'OPPONENT LEFT THE GAME \u2014 WAITING FOR THEM TO COME BACK' : (silent ? "OPPONENT'S PHONE STOPPED RESPONDING" : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT'));
-                    // V510: a ranked game's leave gives this player the leaver's points — say how many, once the job has
-                    var gain = Number(window._rb2p_leaveGain) || 0;
-                    if ((left || silent) && gain > 0) want = 'OPPONENT LEFT THE GAME \u2014 +' + gain + ' RATING TO YOU';
+                    var want = silent || left ? "OPPONENT'S PHONE STOPPED RESPONDING" : (hid ? "OPPONENT'S SCREEN IS OFF" : 'WAITING FOR OPPONENT');
+                    // V510/V521: OPPONENT LEFT is said only together with its points — the job's exact number, or this phone's own
+                    // estimate until it lands (a second or two); an unranked game says so
+                    var gain = Number(window._rb2p_leaveGain) || 0, est = window._rb2p_leaveEst;
+                    if (left || silent) {
+                        if (gain > 0) want = 'OPPONENT LEFT THE GAME \u2014 +' + gain + ' RATING TO YOU';
+                        else if (est && est.ranked && est.d > 0) want = 'OPPONENT LEFT THE GAME \u2014 +' + est.d + ' RATING TO YOU';
+                        else if (est && !est.ranked) want = 'OPPONENT LEFT THE GAME \u2014 NOT RANKED, NO POINTS';
+                    }
                     if (st.textContent !== want) st.textContent = want;
                 } catch (e) {}
             };
@@ -21929,12 +21935,28 @@
         // game is finished after all. This page then shows the points it got on the waiting screen.
         var leaveW = { key: null, since: 0, snap: null, sent: false };
         window._rb2p_leaveGain = 0;
+        // V521 (the owner: "make the opponent left message impossible to show up without the point change"): the points this
+        // player gets for the leave, worked out here the moment it is seen (a win against the leaver: K x (1 - E), as the
+        // Mac's job does) — the waiting screen says OPPONENT LEFT only together with them; the job's exact number replaces it
+        window._rb2p_leaveEst = null;
+        function leaveEstimate(gk, oppRole) {
+            var key = leaveW.key;
+            eloGetX('rooms/' + myRoom + '/games/' + gk, 5000).then(function (rec) {
+                rec = rec || {};
+                var ou = rec.uids && rec.uids[oppRole], mu = (rec.uids && rec.uids[myRole]) || eloUid();
+                if (rec.mode !== 'same' || !ou || !mu || ou === mu) { if (leaveW.key === key) window._rb2p_leaveEst = { ranked: false }; return; }
+                return Promise.all([eloGetX(eloPub() + '/r/' + mu, 5000), eloGetX(eloPub() + '/r/' + ou, 5000)]).then(function (rr) {
+                    var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]), E = 1 / (1 + Math.pow(10, (rb - ra) / 400));
+                    if (leaveW.key === key) window._rb2p_leaveEst = { ranked: true, d: Math.max(1, Math.round(eloK(A.n) * (1 - E))) };
+                });
+            }).then(function () { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); }, function () {});
+        }
         function leaveResultPoll(gid, role) {   // the job's result for this leave (embedcode/elo/g/{gid}): the points I got
             var tries = 0;
             (function poll() {
-                if (++tries > 90 || leaveW.key + '_left' !== gid) return;   // V519: every 2 s for 3 minutes (was 8 s)
+                if (++tries > 90 || gid.indexOf(leaveW.key + '_left') !== 0) return;   // V519: every 2 s for 3 minutes (was 8 s)
                 eloGetX(eloPub() + '/g/' + gid, 6000).then(function (v) {
-                    if (leaveW.key + '_left' !== gid) return;
+                    if (gid.indexOf(leaveW.key + '_left') !== 0) return;
                     if (v && v.leave) {
                         var mine = v[role], d = mine ? Number(mine.d) || 0 : 0;
                         if (v.applied && !v.reversed && d > 0) { window._rb2p_leaveGain = d; if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the leave gave me +' + d + ' (' + (v.rule || '') + ')'); }
@@ -21949,7 +21971,7 @@
             try {
                 if (!myRoom || !myRole || window._rb2p_gameOverReported === true || !(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) { leaveW.since = 0; leaveW.snap = null; return; }
                 var gk = eloGameKey(); if (!gk) return;
-                if (leaveW.key !== myRoom + '_' + gk) { leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false }; window._rb2p_leaveGain = 0; }
+                if (leaveW.key !== myRoom + '_' + gk) { leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false }; window._rb2p_leaveGain = 0; window._rb2p_leaveEst = null; }
                 if (leaveW.sent) return;
                 var closed = !!(window._rb2p_oppLeft && window._rb2p_oppLeft());
                 var gone = closed || (window._rb2p_oppSilentMs && window._rb2p_oppSilentMs() > 30000);   // V519: 30 s of silence (was 60)
@@ -21957,6 +21979,7 @@
                 if (!leaveW.since) {   // the moment they went: the score and the clock then
                     var em = RB.engineState(); if (!em) return;
                     leaveW.since = Date.now();
+                    if (!window._rb2p_leaveEst) leaveEstimate(gk, myRole === 'a' ? 'b' : 'a');   // V521: the points, at once
                     leaveW.snap = { q: Number(em.engineQuarter) || 1, clk: (Number(em.engineMinutesLeft) || 0) * 60 + (Number(em.engineSecondsLeft) || 0),
                                     su: Number(em.userScore) || 0, so: Number(em.opponentScore) || 0 };
                     return;
@@ -21966,11 +21989,11 @@
                 leaveW.sent = true;
                 var note = { c: myRoom, s: Number(gk), t: Date.now(),
                              left: Object.assign({ role: myRole === 'a' ? 'b' : 'a', by: myRole, at: leaveW.since, qmins: Number(window._rb2p_quarterMins) || 2 }, leaveW.snap) };
-                var lp = (window._rb2p_eloQueue || 'rooms/~elo/q') + '/' + myRoom + '_' + gk + '_left';
+                var lp = (window._rb2p_eloQueue || 'rooms/~elo/q') + '/' + myRoom + '_' + gk + '_left_' + note.left.role;   // V521: one note per leaver
                 FB.set(FB.ref(db, lp), note).catch(function () {});
                 if (window._rb2p_fbRestPut) window._rb2p_fbRestPut(lp, note);
                 if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the other player left ' + Math.round((Date.now() - leaveW.since) / 1000) + ' s ago — noted (Q' + leaveW.snap.q + ' ' + leaveW.snap.clk + ' s, ' + leaveW.snap.su + '-' + leaveW.snap.so + ')');
-                leaveResultPoll(myRoom + '_' + gk + '_left', myRole);   // V510
+                leaveResultPoll(myRoom + '_' + gk + '_left_' + note.left.role, myRole);   // V510; V521: the leaver's own key
             } catch (e) {}
         }, 1000);   // V519: every second (was 5)
         // RANKINGS: the board (V512: everyone with 5+ ranked games — it was the top 50; names censored for slurs on the Mac and again here)
@@ -21985,8 +22008,10 @@
                         if (!p) return;
                         var li = document.createElement('li');
                         if (p.u && u && u.indexOf(String(p.u)) === 0) { li.className = 'me'; meRank = i + 1; }
-                        [['rk', '#' + (i + 1)], ['nm', lfgName(p.nm)], ['r', String(Math.round(Number(p.r) || 0))], ['wl', (p.w || 0) + '-' + (p.l || 0) + (p.d ? '-' + p.d : '')]].forEach(function (c) {
-                            var sp = document.createElement('span'); sp.className = c[0]; sp.textContent = c[1]; li.appendChild(sp);
+                        [['rk', '#' + (i + 1)], ['nm', lfgName(p.nm)], ['lp', Number(p.lp) > 0 ? '\u2212' + Math.round(Number(p.lp)) : ''], ['r', String(Math.round(Number(p.r) || 0))], ['wl', (p.w || 0) + '-' + (p.l || 0) + (p.d ? '-' + p.d : '')]].forEach(function (c) {
+                            var sp = document.createElement('span'); sp.className = c[0]; sp.textContent = c[1];
+                            if (c[0] === 'lp' && Number(p.lp) > 0) sp.title = 'Lost ' + Math.round(Number(p.lp)) + ' rating points by leaving ' + (Number(p.lc) || 0) + ' game' + (Number(p.lc) === 1 ? '' : 's');   // V521
+                            li.appendChild(sp);
                         });
                         $list.appendChild(li);
                     });
@@ -21994,7 +22019,8 @@
                 }
                 if ($me) {
                     var n = Number(eloMine && eloMine.n) || 0;
-                    $me.textContent = 'YOUR RATING ' + eloRating(eloMine) + ' · ' + n + ' RANKED GAME' + (n === 1 ? '' : 'S') + (meRank ? ' · #' + meRank : (n < 5 ? ' · ON THE BOARD AFTER 5' : ''));
+                    $me.textContent = 'YOUR RATING ' + eloRating(eloMine) + ' · ' + n + ' RANKED GAME' + (n === 1 ? '' : 'S') + (meRank ? ' · #' + meRank : (n < 5 ? ' · ON THE BOARD AFTER 5' : '')) +
+                        (eloMine && Number(eloMine.lp) > 0 ? ' · \u2212' + Math.round(Number(eloMine.lp)) + ' FROM LEAVING' : '');   // V521
                 }
             });
         }

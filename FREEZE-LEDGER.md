@@ -2157,3 +2157,20 @@ each day into a viewable section".
   countries from the time zone, devices, browsers, OS). A visitor = a device on a day (Vercel's daily unique), a distinct
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
+
+## V521 (2026-10-08): every leave pays at once — one note per leaver; points lost to leaving on the board
+- The owner: "penalize him 254 points and show this on leaderboard, from now on, show how many points they lost from
+  leaving, and make it that as SOON as someone leaves they get hit with penalty and other person gets points, that didn't
+  happen when someone left my game, make the opponent left message impossible to show up without the point change".
+- Why his games paid nothing: the job kept ONE leave note per game (…_left). OMJG: his hidden tab went quiet > 30 s, Bigbm's
+  page reported HIM (exempt: nothing); Bigbm's real leave 2 min later was dropped as the game's second note. GRXZ: the
+  first leave (12:47, tied) was judged under the old tied rule; the second (13:01) dropped.
+- Now: notes per leaver (rooms/~elo/q/{room}_{game}_left_{role}); a player who reports the other leaving was still there,
+  so their own earlier leave is undone first; a finished game undoes both. An exempt (soham) leaver pays nothing but the
+  stayer still wins. The waiting screen says OPPONENT LEFT only with its points — this phone's own estimate (a win:
+  K x (1 - E)) the moment the leave is seen, then the job's exact number; an unranked game says NOT RANKED, NO POINTS.
+- The board and each player's record carry lp/lc (points lost to leaving, games left: applied, not undone, not exempt,
+  plus the owner's --penalize). RANKINGS shows them in red (with a legend); your own line says "-N FROM LEAVING".
+- Applied: Ziyad (lITtwndi) -254 by the owner (974 -> 720; lp 508 over 25 leaves); GRXZ judged again (the owner +3.3), OMJG
+  judged right (Bigbm -26.3, the owner +3.9). e2e/elo-math 13/13 (E12 OMJG, E13 lp); e2e/v519-leave-instant 3/3 (I3: never
+  OPPONENT LEFT without the points; tab closed -> noted 1.8 s -> exact points on screen 6.1 s).
