@@ -459,7 +459,7 @@ async function guardState() {
         if (FORMULA === 'points') {
             const head = ['# THIS RUN\'S SCORING — the owner\'s points formula (it replaces the weighting below)', '',
                 'Every play\'s BASE points are already computed from the game\'s own numbers (`base_points` and `points_breakdown` in plays.tsv; the breakdown under each candidate in candidates.md):', '',
-                '- Difficulty (the defense beaten): MAX 45, HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
+                '- Difficulty (the defense beaten): MAX ' + F.DIF_PTS.max + ', HARD 8, MED 2, EASY 0 (not recorded: 2); a DEFENSIVE play (a pick, a fumble return) gets a flat 10 instead',
                 '- Touchdown +20; first down +5 (a converted 4th down gets it too); a converted 4th down: half of (10 + the yards needed) (4th & 10 converted: +10, plus the +5)',
                 '- Yardage: +1/3 point per yard',
                 '- Situation (the owner wants it to weigh less than spectacle): a game-winner (a go-ahead score) in the last 20 s of the 4th quarter, or any go-ahead score in overtime, +10; a game-tyer in the last 20 s +6; a go-ahead or tying score earlier in the 4th +3; a score as the clock hits 0:00 +3; a blowout (a 21+ point margin before the play) -5',

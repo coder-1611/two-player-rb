@@ -2108,3 +2108,11 @@ each day into a viewable section".
 - 7 Oct's short list recomputed with the same judge scores: the top 5 became YYAB (Henry OT run, 14/16, stays #1), FGKP
   (85-yd TD, 14/16, was #4), IFMG (66-yd TD run, 12/16, was #13), SZUF (30-yd TD catch, 9/16, was #8), FMBK (19-yd TD run,
   13/16, was #12); the three goal-line overtime / 4th-down scores (2-5 of 16) dropped out.
+
+## V516 (2026-10-07): WATCH LIVE shows how long since a game's last play; play of the day: MAX +10
+- The owner: "in the live watching section, show minutes since last actual play happened, as some games are just left
+  open". Player a's page (the registry writer, every 15 s) stamps rooms/~live/{code}.lp when the clock, the quarter or the
+  score last moved (a reload keeps the stored stamp if nothing moved since); the list adds "LAST PLAY N MIN AGO" (or JUST
+  NOW). Before, an abandoned open game looked as live as any. e2e/v516-live-lastplay 2/2.
+- The owner: "add a 10 point max boost": play-of-the-day MAX difficulty 45 -> 55 (features.js DIF_PTS; the judge's brief
+  reads it).

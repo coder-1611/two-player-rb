@@ -344,7 +344,7 @@ function keyMoments(f, n) {
 // spectacularness counts 3x (0-16 raw: up to 48). On 7 Oct's short list the top 5 went from three goal-line overtime /
 // 4th-down scores (spectacular 2-5 of 16) to breakaways (9-14 of 16); #1 stayed.
 const SPEC_X = 3, OT_X = 1.1;
-const DIF_PTS = { max: 45, ultramax: 45, hard: 8, medium: 2, easy: 0 };   // V482: 40; V484 (the owner: "from tomorrow make offense max +55"): 55; V499 ("make max worth 45 points"): 45
+const DIF_PTS = { max: 55, ultramax: 55, hard: 8, medium: 2, easy: 0 };   // V482: 40; V484 (the owner: "from tomorrow make offense max +55"): 55; V499 ("make max worth 45 points"): 45; V516 ("add a 10 point max boost"): 55
 function points(f) {
     const offense = f.heroSide !== 'D', kick = !!f.kick || /kick|punt|fg/i.test(String(f.via || ''));
     // V483 (the owner: "in defensive plays no difficulty boost, maybe just +10"): a pick or a fumble return gets a flat 10
@@ -372,4 +372,4 @@ function points(f) {
 }
 const pointsTotal = (p, raw) => Math.round((p.base + SPEC_X * Math.max(0, Math.min(16, Number(raw) || 0))) * (p.ot ? OT_X : 1) * 10) / 10;   // V515: 3x spectacular, x1.1 overtime
 
-module.exports = { decodeTrack, features, scoreOf, story, title, keyMoments, inflate, PX, MID, points, pointsTotal, SPEC_X, OT_X };
+module.exports = { decodeTrack, features, scoreOf, story, title, keyMoments, inflate, PX, MID, points, pointsTotal, SPEC_X, OT_X, DIF_PTS };
