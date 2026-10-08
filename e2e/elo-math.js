@@ -204,12 +204,15 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         for (let i = 0; i < 6; i++) st.players['u' + i] = { r: 1000 + i, n: 6, w: 3, l: 3, d: 0, nm: 'P' + i, fd: {}, peak: 1000 };
         st.games.X1_1_left_a = { leave: true, applied: true, uid: 'u1', penalty: 17.5 };
         st.games.X2_1_left_b = { leave: true, applied: true, uid: 'u1', penalty: 3 };
+        for (let k = 0; k < 11; k++) st.games['Y' + k + '_1_left_a'] = { leave: true, applied: true, uid: 'u1', penalty: 0 };   // V521b: 13 leaves, so shown
+        for (let k = 0; k < 12; k++) st.games['W' + k + '_1_left_a'] = { leave: true, applied: true, uid: 'u3', penalty: 1 };   // 12 leaves: not shown
         st.games.X3_1_left_a = { leave: true, applied: true, reversed: true, uid: 'u1', penalty: 40 };   // undone: not counted
         st.games.X4_1_left_a = { leave: true, applied: true, exempt: true, uid: 'u2', penalty: 0 };      // exempt: not counted
         st.manual.push({ uid: 'u1', d: -254, at: 1, why: 'leaving' });
         const b = E.board(st), row = b.find(p => p.u === 'u1'), clean = b.find(p => p.u === 'u2'), mine = E.pubPlayer(st, 'u1', Date.now());
-        check('E13 points lost to leaving: 17.5 + 3 + the owner\'s 254 = 275 over 2 leaves, on the board and in the player\'s record; undone and exempt leaves not counted',
-              row && row.lp === 275 && row.lc === 2 && clean && clean.lp == null && mine.lp === 275, JSON.stringify({ row, clean, mine: { lp: mine.lp, lc: mine.lc } }));
+        const twelve = b.find(p => p.u === 'u3');
+        check('E13 points lost to leaving: 17.5 + 3 + the owner\'s 254 = 275 over 13 leaves, shown (more than 12 left); 12 leaves not shown; undone and exempt not counted',
+              row && row.lp === 275 && row.lc === 13 && clean && clean.lp == null && twelve && twelve.lp == null && mine.lp === 275, JSON.stringify({ row, twelve, clean, mine: { lp: mine.lp, lc: mine.lc } }));
     }
     console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
     process.exit(fail ? 1 : 0);

@@ -2158,6 +2158,14 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V522 (2026-10-08): the red minus only for Ziyad and players who have left more than 12 games
+- The owner: "only show minus for ziyad not anyone else unless above 12 left games".
+- tools/elo.js showLp(): board() and pubPlayer() carry lp/lc only for Ziyad (lITtwndi, always) or anyone with 13+ counted
+  leaves (the same count as lc); everyone else's points lost stay in the state, unpublished. Today that is Ziyad alone
+  (25 leaves, -508); the next most is under 13. --board now also republishes the record of everyone with points lost,
+  so a player's own "-N FROM LEAVING" line follows the same rule. RANKINGS legend: "(shown for players who have left
+  more than 12)". e2e/elo-math 13/13 (E13: 13 leaves shown, 12 not).
+
 ## V521 (2026-10-08): every leave pays at once — one note per leaver; points lost to leaving on the board
 - The owner: "penalize him 254 points and show this on leaderboard, from now on, show how many points they lost from
   leaving, and make it that as SOON as someone leaves they get hit with penalty and other person gets points, that didn't

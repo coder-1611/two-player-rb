@@ -169,18 +169,22 @@ function leaveTotals(st) {
     for (const a of st.manual || []) if (a && a.why === 'leaving' && Number(a.d) < 0) { const x = m[a.uid] || (m[a.uid] = { pts: 0, n: 0 }); x.pts += -Number(a.d); }
     return m;
 }
+// V521b (the owner: "only show minus for ziyad not anyone else unless above 12 left games"): the red number is shown for
+// Ziyad, and for anyone else only when they have left more than 12 games
+const LP_ALWAYS = new Set(['lITtwndiu0QACt4A3prDlqwetUv2']), LP_MIN_GAMES = 12;
+const showLp = (uid, lt) => !!(lt && lt.pts >= 0.5 && (lt.n > LP_MIN_GAMES || LP_ALWAYS.has(uid)));
 function board(st) {
     const LT = leaveTotals(st);
     return Object.keys(st.players).map(u => Object.assign({ u }, st.players[u])).filter(p => p.n >= BOARD_MIN)
         .sort((x, y) => y.r - x.r || y.n - x.n).slice(0, BOARD_N)
         .map(p => { const lt = LT[p.u]; return Object.assign({ nm: cleanName(p.nm) || 'a player', r: Math.round(p.r), w: p.w, l: p.l, d: p.d, n: p.n, u: p.u.slice(0, 8) },
-                                                          lt && lt.pts >= 0.5 ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
+                                                          showLp(p.u, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
 }
 function pubPlayer(st, uid, now) {
     const p = st.players[uid], today = dayOf(now);
     const lt = leaveTotals(st)[uid];
     return Object.assign({ r: Math.round(p.r), n: p.n, w: p.w, l: p.l, d: p.d, nm: cleanName(p.nm), fd: (p.fd && p.fd[today]) || 0, fdd: today, peak: Math.round(p.peak || p.r) },
-                         lt && lt.pts >= 0.5 ? { lp: Math.round(lt.pts), lc: lt.n } : {});
+                         showLp(uid, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {});
 }
 
 // one pass over the queue. io = { get(path, query), put, patch, del } (tests pass a fake)
@@ -299,6 +303,9 @@ async function main() {
     const io = restIO(await ownerToken());
     if (has('--board')) {   // V512: the board now
         await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        // V521b: and the record of everyone who has lost points to leaving, so a player's own line follows the same rule
+        const r = {}; for (const u of Object.keys(leaveTotals(st))) if (st.players[u]) r[u] = pubPlayer(st, u, now);
+        if (Object.keys(r).length) await io.patch(PUB + '/r', r);
         log('BOARD published: ' + board(st).length + ' players');
         return;
     }
