@@ -1144,6 +1144,18 @@
         #rb-match .rb-match-next { margin: 0 0 16px; font: 9px 'Press Start 2P', monospace; line-height: 1.9; color: #cdddff; }
         #rb-match #rb-match-ok { font: bold 13px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 14px 22px; color: #0a1838; background: #36e07a;
             border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
+        /* V526 (the owner: "from now on always add a back button to the pop ups"): every popup's ◀ BACK — top left, and
+           sticky, so it stays in sight when a tall popup scrolls */
+        #rb-news .box .rb-back, #rb-inbox .box .rb-back, #rb-potd-congrats .box .rb-back, #rb-a2hs .box .rb-back, #rb-complain-panel .rb-back,
+        #rb-match .rb-match-card .rb-back, .rb-pop .rb-pop-card .rb-back {
+            position: sticky; top: 0; z-index: 3; display: block; width: max-content; align-self: flex-start; margin: 0 auto 12px 0; padding: 7px 10px;
+            font: 10px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1; text-align: left; color: #fff; background: #0a1838;
+            border: 2px solid #fff; border-radius: 0; box-shadow: 2px 2px 0 rgba(0,0,0,.45); cursor: pointer; transform: none; }
+        #rb-news .box .rb-back:hover, #rb-inbox .box .rb-back:hover, #rb-potd-congrats .box .rb-back:hover, #rb-a2hs .box .rb-back:hover, #rb-complain-panel .rb-back:hover,
+        #rb-match .rb-match-card .rb-back:hover, .rb-pop .rb-pop-card .rb-back:hover,
+        #rb-news .box .rb-back:focus-visible, #rb-inbox .box .rb-back:focus-visible, #rb-potd-congrats .box .rb-back:focus-visible, #rb-a2hs .box .rb-back:focus-visible,
+        #rb-complain-panel .rb-back:focus-visible, #rb-match .rb-match-card .rb-back:focus-visible, .rb-pop .rb-pop-card .rb-back:focus-visible { background: #ffd23f; color: #0a1838; outline: none; }
+        .rb-back[hidden] { display: none !important; }
         /* ---- V524: LAST ONLINE on RANKINGS, the player card, CHALLENGES, MESSAGES ---- */
         #rb-lobby .rb-rank-tip { margin: 0; font-size: 9px; letter-spacing: 1px; color: #36e07a; }
         #rb-lobby .rb-rank-list li .nm b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; }
@@ -1170,7 +1182,6 @@
         .rb-pop .rb-pop-btns button.go { background: #36e07a; }
         .rb-pop .rb-pop-btns button.quiet { color: #fff; background: rgba(8,20,52,.6); border-color: #fff; }
         .rb-pop .rb-pop-btns button[hidden] { display: none; }
-        .rb-pop .rb-pop-x { position: absolute; top: 6px; right: 8px; padding: 6px 8px; font: 12px 'Press Start 2P', monospace; color: #9fbcf0; background: none; border: 0; cursor: pointer; }
         #rb-dm-toast { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 59; max-width: min(520px, calc(100vw - 24px));
             padding: 10px 14px; font: 10px 'Press Start 2P', monospace; line-height: 1.6; letter-spacing: 1px; color: #0a1838; background: #ffd23f; border: 3px solid #0a1838;
             box-shadow: 4px 4px 0 #0a1838; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1395,30 +1406,6 @@
         #rb-news .chip { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 2px solid #ffd23c; border-radius: 6px; color: #ffd23c; font-weight: bold; vertical-align: middle; }
         #rb-news button { display: block; margin: 16px auto 0; font: bold 12px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 12px 24px;
             background: #ffd23f; color: #0a1838; border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
-        /* V507: the RANKINGS announcement (the news popup's look; the leaving warning in red) */
-        #rb-rankintro { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.84); }
-        #rb-rankintro[hidden] { display: none; }
-        #rb-rankintro .box { width: min(560px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #0d2a6b; border: 5px solid #fff; box-shadow: 8px 8px 0 #0a1838;
-            padding: 22px 24px; color: #fff; text-align: left; box-sizing: border-box; font-family: 'Press Start 2P', monospace; -webkit-font-smoothing: none; }
-        #rb-rankintro h2 { margin: 0 0 14px; font: bold 13px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; text-align: center; line-height: 1.6; text-wrap: balance; }
-        #rb-rankintro p { margin: 0 0 12px; font-size: 10px; line-height: 1.9; }
-        #rb-rankintro b { color: #ffd23f; font-weight: normal; }
-        #rb-rankintro .warn { margin: 14px 0 2px; padding: 12px 14px; border: 3px solid #ff5b5b; background: rgba(255,59,59,.16); font-size: 10px; line-height: 1.9; color: #ffe3e3; }
-        #rb-rankintro .warn b { display: block; margin-bottom: 6px; color: #ff6b6b; font-size: 12px; letter-spacing: 1px; }
-        #rb-rankintro .warn b.late { margin: 8px 0 0; color: #ffd23f; font-size: inherit; letter-spacing: 0; }   /* V509: the last-minute rule */
-        #rb-rankintro .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
-        #rb-rankintro button { font: bold 11px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 12px 18px; background: #ffd23f; color: #0a1838; border: 4px solid #0a1838;
-            box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
-        #rb-rankintro button.later { background: #2e4a7d; color: #fff; }
-        @media (max-height: 520px) {   /* a sideways phone: everything on one screen, the buttons too */
-            #rb-rankintro .box { padding: 12px 18px; max-height: calc(100vh - 16px); }
-            #rb-rankintro h2 { margin-bottom: 8px; font-size: 11px; }
-            #rb-rankintro p { margin-bottom: 6px; font-size: 8px; line-height: 1.75; }
-            #rb-rankintro .warn { margin-top: 8px; padding: 7px 10px; font-size: 8px; line-height: 1.75; }
-            #rb-rankintro .warn b { margin-bottom: 3px; font-size: 10px; }
-            #rb-rankintro .row { margin-top: 10px; }
-            #rb-rankintro button { padding: 8px 14px; font-size: 9px; border-width: 3px; box-shadow: 3px 3px 0 #0a1838; }
-        }
         /* V457: iPhone — add the game to the Home Screen (first visit; above the turn-sideways screen, either way up) */
         #rb-a2hs { position: fixed; inset: 0; z-index: 2147483605; display: flex; align-items: center; justify-content: center;
             background: rgba(4,10,28,.84); padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-sizing: border-box; }
@@ -2112,6 +2099,7 @@
     <!-- V387: bug reports (bottom-left chip) + first-run announcement -->
     <button id="rb-complain" type="button" title="Report a bug or complaint" aria-label="Report a bug">!</button>
     <div id="rb-complain-panel" hidden>
+        <button class="rb-back" type="button" data-back="rb-complain-close">&#9664; BACK</button>
         <h3>REPORT A BUG</h3>
         <p class="note" style="margin:0 0 6px">Tick everything that happened:</p>
         <div id="rb-complain-choices">
@@ -2136,6 +2124,7 @@
     </div>
     <div id="rb-news" hidden>
         <div class="box">
+            <button class="rb-back" type="button" data-back="rb-news-later">&#9664; BACK</button>
             <h2>&#9733; PLAY OF THE DAY &#9733;</h2>
             <p id="rb-news-head"></p>
             <p id="rb-news-who"></p>
@@ -2147,6 +2136,7 @@
     <!-- V471: the owner's inbox — a message to ONE device (embedcode/inbox/{the device's id}) -->
     <div id="rb-inbox" hidden>
         <div class="box" role="dialog" aria-labelledby="rb-inbox-title">
+            <button class="rb-back" type="button" data-back="rb-inbox-close">&#9664; BACK</button>
             <p class="ib-from">&#9993; FROM <span id="rb-inbox-from">SOHAM</span></p>
             <h2 id="rb-inbox-title"></h2>
             <p class="ib-note" id="rb-inbox-note"></p>
@@ -2160,6 +2150,7 @@
     </div>
     <div id="rb-potd-congrats" hidden>
         <div class="box">
+            <button class="rb-back" type="button" data-back="rb-potd-congrats-close">&#9664; BACK</button>
             <h2>&#127942; CONGRATS!</h2>
             <p id="rb-potd-congrats-what">Your play is the <b>PLAY OF THE DAY</b>:</p>
             <p id="rb-potd-congrats-head" style="color:#ffd23f"></p>
@@ -2169,19 +2160,9 @@
             <p id="rb-potd-congrats-msg" style="min-height:1em;margin-top:10px;font-size:12px;color:#c9d4e6"></p>
         </div>
     </div>
-    <!-- V507: the RANKINGS announcement — once per device, in the lobby -->
-    <div id="rb-rankintro" hidden>
-        <div class="box" role="dialog" aria-modal="true" aria-labelledby="rb-rankintro-h">
-            <h2 id="rb-rankintro-h">&#9733; NEW: RANKINGS &#9733;</h2>
-            <p>Every ranked game now moves your <b>rating</b>. Win to climb the leaderboard &mdash; beat better players and you climb faster.</p>
-            <p id="rb-rankintro-me">Everyone starts at 1000.</p>
-            <p>A game is ranked when you play it <b>to the end</b>, on <b>two devices</b>, with the <b>SAME</b> difficulty.</p>
-            <div class="warn"><b>&#9888; DON'T LEAVE EARLY</b>Leaving a ranked game before it ends costs you rating points &mdash; the more time left and the bigger the score gap, the more you lose &mdash; and the player who stayed gets a win right away. <b class="late">Leave in the last minute and you lose 3&times; what a loss costs.</b></div>
-            <div class="row"><button id="rb-rankintro-see" type="button">SEE RANKINGS</button><button id="rb-rankintro-ok" class="later" type="button">GOT IT</button></div>
-        </div>
-    </div>
     <div id="rb-a2hs" hidden>
         <div class="box" role="dialog" aria-modal="true" aria-labelledby="rb-a2hs-h">
+            <button class="rb-back" type="button" data-back="rb-a2hs-ok">&#9664; BACK</button>
             <h2 id="rb-a2hs-h">PLAY IT LIKE AN APP</h2>
             <p>Add <b>Retro Bowl 2P</b> to your iPhone&rsquo;s Home Screen. It opens full screen, with no Safari bars in the way, and starts with one tap.</p>
             <ol>
@@ -2216,7 +2197,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V525<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V526<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2426,6 +2407,7 @@
         <!-- V488: a found player — the alert -->
         <div id="rb-match" hidden role="alertdialog" aria-modal="true" aria-labelledby="rb-match-title">
             <div class="rb-match-card">
+                <button class="rb-back" type="button" data-back="rb-match-ok">&#9664; BACK</button>
                 <p class="rb-match-eye">&#9733; MATCHED &#9733;</p>
                 <h2 id="rb-match-title">PLAYER FOUND!</h2>
                 <p class="rb-match-who">You're playing <b id="rb-match-name"></b></p>
@@ -2436,7 +2418,7 @@
         <!-- V524: a player on the RANKINGS -->
         <div id="rb-pcard" class="rb-pop" hidden role="dialog" aria-modal="true" aria-labelledby="rb-pcard-name">
             <div class="rb-pop-card">
-                <button class="rb-pop-x" id="rb-pcard-x" type="button" aria-label="Close">&#10005;</button>
+                <button class="rb-back" id="rb-pcard-x" type="button">&#9664; BACK</button>
                 <p class="rb-pop-eye" id="rb-pcard-rank"></p>
                 <h2 id="rb-pcard-name"></h2>
                 <p class="rb-pop-line" id="rb-pcard-rec"></p>
@@ -2451,6 +2433,7 @@
         <!-- V524: a challenge — the one I sent (waiting for the answer) or one sent to me -->
         <div id="rb-chal" class="rb-pop" hidden role="alertdialog" aria-modal="true" aria-labelledby="rb-chal-title">
             <div class="rb-pop-card">
+                <button class="rb-back" id="rb-chal-back" type="button">&#9664; BACK</button>
                 <p class="rb-pop-eye">&#9733; CHALLENGE &#9733;</p>
                 <h2 id="rb-chal-title"></h2>
                 <p class="rb-pop-line" id="rb-chal-line"></p>
@@ -2468,7 +2451,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V525</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V526</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -22064,31 +22047,6 @@
             el.textContent = txt; el.style.display = txt ? '' : 'none';
         }
         window._rb2p_eloFinalPaint = eloFinPaint;
-        // V507 (the owner: "add a thingy that pops up on the screen now explaining the rankings, no need to get into
-        // mechanisms, and highlighting the leaving penalty"): once per device, on the lobby's first screen, never in a game
-        // and never over another popup (it waits for them). SEE RANKINGS opens the board.
-        (function rankIntro() {
-            // V509: the last-minute leave rule — a device that saw the first version sees it once more, as the new rule
-            var KEY = 'rb2p_rankintro_v2', $ri = document.getElementById('rb-rankintro');
-            if (!$ri) return;
-            try { if (localStorage.getItem(KEY)) return; if (localStorage.getItem('rb2p_rankintro_v1')) { var h = document.getElementById('rb-rankintro-h'); if (h) h.innerHTML = '&#9733; NEW: LEAVING RULE &#9733;'; } } catch (e) { return; }
-            if (window._rb2p_isTestRun && window._rb2p_isTestRun() && !window._rb2p_rankIntroForce) return;
-            var tries = 0, done = function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} $ri.hidden = true; };
-            var tryShow = function () {
-                if (!$ri.hidden || ++tries > 60) return;
-                var busy = document.documentElement.classList.contains('rb-in-match') || lobby.style.display === 'none' || lobby.dataset.active !== 'entry' ||
-                    ['rb-news', 'rb-inbox', 'rb-potd-congrats', 'rb-a2hs', 'rb-match'].some(function (id) { var e = document.getElementById(id); return e && !e.hidden; });
-                if (busy) { setTimeout(tryShow, 3000); return; }
-                eloLoadMine().then(function () {
-                    var me = document.getElementById('rb-rankintro-me');
-                    if (me) me.textContent = eloMine && Number(eloMine.n) > 0 ? 'Your past games already count \u2014 your rating is ' + eloRating(eloMine) + '.' : 'Everyone starts at 1000.';
-                    if (lobby.dataset.active === 'entry' && !document.documentElement.classList.contains('rb-in-match')) $ri.hidden = false; else setTimeout(tryShow, 3000);
-                });
-            };
-            document.getElementById('rb-rankintro-ok').addEventListener('click', done);
-            document.getElementById('rb-rankintro-see').addEventListener('click', function () { done(); showView('ranks'); });
-            setTimeout(tryShow, 3500);
-        })();
         // V506: THE LEAVING PENALTY (the owner: "add a leaving penalty for pepole who leave first in a ranked game"; the
         // formula, 6 Oct: "elo - 0.25(minutes left in int)|point differential|"; "make any username with soham in it exempt").
         // When the other player has been gone for 2 minutes in a game still running — their page closed (its pagehide
@@ -22392,6 +22350,7 @@
             socTxt('rb-chal-title', title); socTxt('rb-chal-line', line || '');
             var l2 = document.getElementById('rb-chal-line2'); if (l2) { l2.textContent = line2 || ''; l2.classList.toggle('on', !!on); }
             ['yes', 'no', 'cancel', 'ok'].forEach(function (k) { var b = document.getElementById('rb-chal-' + k); if (b) b.hidden = (btns || []).indexOf(k) < 0; });
+            var bk = document.getElementById('rb-chal-back'); if (bk) bk.hidden = !(btns && btns.length);   // V526
             if ($chal) $chal.hidden = false;
         }
         function socChHide() { if ($chal) $chal.hidden = true; }
@@ -22666,8 +22625,23 @@
             });
             document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && $pc && !$pc.hidden) socCardClose(); });
         })();
+        // V526: a popup's ◀ BACK presses that popup's own way out (data-back: LATER / CLOSE / GOT IT / LET'S GO); if nothing
+        // closed it, BACK hides it itself — a BACK always gets you out
+        document.addEventListener('click', function (ev) {
+            var bk = ev.target && ev.target.closest ? ev.target.closest('.rb-back[data-back]') : null;
+            if (!bk) return;
+            var t = document.getElementById(bk.getAttribute('data-back')); if (t) t.click();
+            var box = bk.closest('#rb-news, #rb-inbox, #rb-potd-congrats, #rb-a2hs, #rb-complain-panel, #rb-match');
+            if (box && !box.hidden) box.hidden = true;
+        });
+        function socChBack() {   // the challenge card's BACK: a challenge to me = NO THANKS (it can't be opened again); mine, waiting = CANCEL; an answer = OK
+            if (socIn && !socAccepting) { socChDecline(); return; }
+            if (socOut && socOut.st === 'open') { socChEnd(); return; }
+            if (!socOut) { socChHide(); if (socIn) socChInShow(); }
+        }
+        (function () { var b = document.getElementById('rb-chal-back'); if (b) b.addEventListener('click', socChBack); })();
         window._rb2p_social = {   // test seams
-            me: socMe, card: socCard, challenge: socChSend, accept: socChAccept, decline: socChDecline, open: socDmOpen, send: socDmSend, block: socBlockToggle,
+            me: socMe, card: socCard, challenge: socChSend, accept: socChAccept, decline: socChDecline, open: socDmOpen, send: socDmSend, block: socBlockToggle, show: socChShow,
             state: function () { return { me: socMe(), unread: socUnread, inbox: Object.keys(socInbox), blocked: Object.keys(socBlocked), peer: socPeer && socPeer.p,
                 out: socOut ? { to: socOut.to, st: socOut.st } : null, inc: socIn ? { from: socIn.from, n: socIn.n } : null, started: socStarted }; }
         };

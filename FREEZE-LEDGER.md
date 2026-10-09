@@ -2158,6 +2158,20 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V526 (2026-10-08): no more announcement popup; a ◀ BACK on every popup
+- The owner: "remove the pop up, and from now on always add a back button to the pop ups" — the popup = "the
+  announcements we sometimes do, like the rankings, leaving penalty".
+- Removed: the V507/V509 announcement (#rb-rankintro: NEW: RANKINGS, then NEW: LEAVING RULE) — markup, look and script.
+  The rules stay explained on the RANKINGS page's note.
+- A ◀ BACK at the top left of every popup, sticky (in sight when a tall popup scrolls): the play of the day, the owner's
+  inbox, the play-of-the-day congrats, the iPhone home-screen tip, the bug report, PLAYER FOUND / GAME ON!, the player
+  card (it replaces the ✕) and the challenge card. BACK presses the popup's own way out (data-back: LATER / CLOSE /
+  GOT IT / LET'S GO) and hides the popup itself if that did nothing. Challenge card: a challenge to me = NO THANKS (it
+  can't be reopened), mine while waiting = CANCEL, an answer = OK; no BACK while a room is being made.
+- Standing rule (memory): every new popup gets a ◀ BACK.
+- e2e/v526-popups-back.js 4/4 (the announcement gone; 8 popups: BACK first, on screen, one tap closes; none while a room
+  is made; a sideways phone's tallest popup has BACK on screen); e2e/v524-social.js 6/6.
+
 ## V525 (2026-10-08): the Google Sites links, featured
 - The owner: "prominently feature the google sites links" (sites.google.com/view/mypersonalretrobowl/home and the Round
   Rock ISD site sites.google.com/student.roundrockisd.org/testtest/ — before, only the 4th and 5th lines of /unblocked/).
