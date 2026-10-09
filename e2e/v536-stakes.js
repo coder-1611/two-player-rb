@@ -1,5 +1,5 @@
 // e2e/v536-stakes.js — V536 (the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise
-// stakes"). A real two-device ranked game; the RANKINGS are a test copy (window._rb2p_eloPath) in which the two players are
+// stakes"; V537: "triple if adjacent ranks"). A real two-device ranked game; the RANKINGS are a test copy (window._rb2p_eloPath) in which the two players are
 // #4 and #5 — neighbours.
 //   S1  at kickoff both pages know the stakes are double (#4 vs #5, from the board) and show DOUBLE STAKES across the top
 //   S2  the banner never takes a tap and goes away by itself
@@ -36,8 +36,8 @@ const RUN = 's' + Date.now().toString(36), TROOT = 'rooms/~elotest/' + RUN;
             }
             await sleep(400);
         }
-        check('S1 at kickoff both pages know the stakes are double (#4 vs #5) and say DOUBLE STAKES across the top',
-              seen.a && seen.b && seen.a.st && seen.a.st.x2 && seen.b.st.x2 && /DOUBLE STAKES/.test(seen.a.text) && /#4 VS #5/.test(seen.a.text) && /#5 VS #4/.test(seen.b.text),
+        check('S1 at kickoff both pages know the stakes are raised (#4 vs #5) and say TRIPLE STAKES across the top',
+              seen.a && seen.b && seen.a.st && seen.a.st.nb && seen.b.st.nb && /TRIPLE STAKES/.test(seen.a.text) && /#4 VS #5/.test(seen.a.text) && /#5 VS #4/.test(seen.b.text),
               JSON.stringify(seen));
         await sleep(11000);
         const gone = await Promise.all([A, B].map(P => P.page.evaluate(() => { const el = document.getElementById('rb-stakes'); return !el || getComputedStyle(el).display === 'none'; })));

@@ -2158,6 +2158,14 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V537 (2026-10-09): TRIPLE STAKES — neighbours on the RANKINGS play for three times the points
+- The owner: "triple if adjacent ranks" (V536 doubled).
+- tools/elo.js STAKES_X = 3 (index.html ELO_STAKES_X = 3): the game's win/loss/draw and a leave's points (the leaver's
+  penalty — the last-minute rule becomes 9 x a loss — and the stayer's win) x3 between neighbours; records carry sx (the
+  multiplier; the few games rated x2 today keep saying DOUBLE STAKES — publish falls back to x2 -> 2). Kickoff strip:
+  "TRIPLE STAKES — YOU #4 VS #5 ON THE RANKINGS — EVERY RATING POINT COUNTS THREE TIMES"; estimates and labels x3.
+- Tests: elo-math X1-X6 31/31 (x3, the leave 24 not 8); v536-stakes 2/2.
+
 ## V536 (2026-10-09): DOUBLE STAKES — neighbours on the RANKINGS play for double
 - The owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes".
 - tools/elo.js: a game between players next to each other on the board (#7 vs #8; the board = everyone with 5+ ranked

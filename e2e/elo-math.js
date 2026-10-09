@@ -307,7 +307,7 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
               th.m1 && th.m1.f === a8 && th.m1.x === 'hi from the device' && th.m2 && th.m2.f === q8 && io5.db.dm.i[a8] && io5.db.dm.i[a8][q8] && io5.db.dm.i[q8][a8] && !io5.db.dm.i[q8][f8] &&
               io5.db.dm.b[a8] && io5.db.dm.b[a8].zzzzzzzz && io5.db.dm.b[q8][a8] === true, JSON.stringify({ th, i: io5.db.dm.i, b: io5.db.dm.b }));
     }
-    // X1-X6 (V536, the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes")
+    // X1-X6 (V536, the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes"; V537: "triple if adjacent ranks")
     {
         const U = { one: 'p1aaaaaaaaaaaaaaaaaaaaaaaaaa', two: 'p2bbbbbbbbbbbbbbbbbbbbbbbbbb', three: 'p3cccccccccccccccccccccccccc', nu: 'p4dddddddddddddddddddddddddd' };
         const mk = () => ({ players: {
@@ -315,32 +315,32 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
             [U.three]: { r: 1100, n: 20, w: 10, l: 10, d: 0, nm: 'Three', fd: {}, peak: 1100 }, [U.nu]: { r: 1000, n: 2, w: 1, l: 1, d: 0, nm: 'New', fd: {}, peak: 1000 } }, games: {}, manual: [] });
         const one = (st, ua, ub, start) => E.rate(st, { gid: 'STK_' + start, code: 'STK', start, rec: game('STK', start, { ua, ub, sa: 21, sb: 14 }), names: { a: 'A', b: 'B' }, lobby: false, now: start + 700000 });
         const normal = (ra, rb, n) => E.K(n) * (1 - E.expected(ra, rb));   // a win's points, the ratings before
-        // X1: #2 vs #3 (neighbours) — double
+        // X1: #2 vs #3 (neighbours) — triple
         const s1 = mk(); const r1 = one(s1, U.two, U.three, T0);
-        check('X1 #2 vs #3, neighbours on the board: the win counts double (and the loss) — the record says so, with the ranks',
-              r1.ranked && r1.x2 === true && r1.ranks && r1.ranks.a === 2 && r1.ranks.b === 3 && Math.abs((s1.players[U.two].r - 1150) - 2 * normal(1150, 1100, 20)) < 1e-9 &&
-              Math.abs((1100 - s1.players[U.three].r) - 2 * normal(1150, 1100, 20)) < 1e-9, JSON.stringify({ x2: r1.x2, ranks: r1.ranks, a: r1.a, b: r1.b }));
+        check('X1 #2 vs #3, neighbours on the board: the win counts triple (and the loss) — the record says so, with the ranks',
+              r1.ranked && r1.sx === 3 && r1.ranks && r1.ranks.a === 2 && r1.ranks.b === 3 && Math.abs((s1.players[U.two].r - 1150) - 3 * normal(1150, 1100, 20)) < 1e-9 &&
+              Math.abs((1100 - s1.players[U.three].r) - 3 * normal(1150, 1100, 20)) < 1e-9, JSON.stringify({ sx: r1.sx, ranks: r1.ranks, a: r1.a, b: r1.b }));
         // X2: #1 vs #3 — not neighbours
         const s2 = mk(); const r2 = one(s2, U.one, U.three, T0);
-        check('X2 #1 vs #3 (not neighbours): normal points', r2.ranked && !r2.x2 && Math.abs((s2.players[U.one].r - 1200) - normal(1200, 1100, 20)) < 1e-9, JSON.stringify({ x2: r2.x2, a: r2.a }));
+        check('X2 #1 vs #3 (not neighbours): normal points', r2.ranked && !r2.sx && Math.abs((s2.players[U.one].r - 1200) - normal(1200, 1100, 20)) < 1e-9, JSON.stringify({ sx: r2.sx, a: r2.a }));
         // X3: the board as it stood when the game began
         const s3 = mk(); E.noteBoard(s3, [{ u: 'p1aaaaaa' }, { u: 'p2bbbbbb' }, { u: 'p3cccccc' }], T0); E.noteBoard(s3, [{ u: 'p2bbbbbb' }, { u: 'p3cccccc' }, { u: 'p1aaaaaa' }], T0 + 60000);
         const early = E.stakes(s3, U.one, U.two, T0 + 30000), late = E.stakes(s3, U.one, U.two, T0 + 90000);
-        check('X3 judged by the board when the game began: neighbours at its start (#1 vs #2) play for double though the board changed during it; a game begun after the change does not (#3 vs #1)',
-              early.x2 && early.ra === 1 && early.rb === 2 && !late.x2 && late.ra === 3 && late.rb === 1, JSON.stringify({ early, late }));
-        // X4: a leave between neighbours costs and pays double; undone exactly
+        check('X3 judged by the board when the game began: neighbours at its start (#1 vs #2) play for triple though the board changed during it; a game begun after the change does not (#3 vs #1)',
+              early.nb && early.ra === 1 && early.rb === 2 && !late.nb && late.ra === 3 && late.rb === 1, JSON.stringify({ early, late }));
+        // X4: a leave between neighbours costs and pays triple; undone exactly
         const s4 = mk();
         const L4 = E.leavePenalty(s4, { gid: 'STK_' + T0 + '_left_a', code: 'STK', start: T0, rec: { mode: 'same', uids: { a: U.two, b: U.three }, fin: {} }, names: { a: 'Two', b: 'Three' },
                                         left: { role: 'a', by: 'b', q: 3, clk: 100, qmins: 3, su: 6, so: 14, at: T0 + 5000 }, now: T0 + 6000 });
         s4.games[L4.gid] = L4;
         const mid4 = [s4.players[U.two].r, s4.players[U.three].r];
         E.undoLeave(s4, L4.gid, T0 + 9000);
-        check('X4 a leave between neighbours: the leaver pays double (16, not 8) and the stayer gets double a win\'s points; a refresh\'s undo restores both exactly',
-              L4.applied && L4.x2 && L4.penalty === 16 && Math.abs((mid4[1] - 1100) - 2 * E.K(20) * (1 - E.expected(1100, 1150))) < 1e-9 && mid4[0] === 1150 - 16 &&
-              s4.players[U.two].r === 1150 && Math.abs(s4.players[U.three].r - 1100) < 1e-9, JSON.stringify({ L4: [L4.penalty, L4.gain, L4.x2], mid4, end: [s4.players[U.two].r, s4.players[U.three].r] }));
+        check('X4 a leave between neighbours: the leaver pays triple (24, not 8) and the stayer gets triple a win\'s points; a refresh\'s undo restores both exactly',
+              L4.applied && L4.sx === 3 && L4.penalty === 24 && Math.abs((mid4[1] - 1100) - 3 * E.K(20) * (1 - E.expected(1100, 1150))) < 1e-9 && mid4[0] === 1150 - 24 &&
+              s4.players[U.two].r === 1150 && Math.abs(s4.players[U.three].r - 1100) < 1e-9, JSON.stringify({ L4: [L4.penalty, L4.gain, L4.sx], mid4, end: [s4.players[U.two].r, s4.players[U.three].r] }));
         // X5: not on the board (fewer than 5 games) — never double
         const s5 = mk(); const r5 = one(s5, U.nu, U.three, T0);
-        check('X5 a player not on the board (2 games) vs #3: normal points', r5.ranked && !r5.x2, JSON.stringify({ x2: r5.x2 }));
+        check('X5 a player not on the board (2 games) vs #3: normal points', r5.ranked && !r5.sx, JSON.stringify({ sx: r5.sx }));
         // X6: the remembered boards: one per change, the old ones dropped (the last one before the window kept)
         const s6 = mk(); E.noteBoard(s6, [{ u: 'a' }, { u: 'b' }], T0); E.noteBoard(s6, [{ u: 'a' }, { u: 'b' }], T0 + 1000); E.noteBoard(s6, [{ u: 'b' }, { u: 'a' }], T0 + 2000);
         E.noteBoard(s6, [{ u: 'a' }, { u: 'b' }], T0 + 13 * 3600e3); E.noteBoard(s6, [{ u: 'b' }, { u: 'a' }], T0 + 26 * 3600e3);

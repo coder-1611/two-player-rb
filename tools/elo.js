@@ -95,8 +95,8 @@ function rate(st, g, opts) {   // g = { gid, code, start, rec, names, lobby, now
     if (limit > 0 && !g.lobby && (codeGamesOn(st, ua, day) >= limit || codeGamesOn(st, ub, day) >= limit)) {
         out.why = 'a player already had ' + limit + ' ranked code games today'; return out;
     }
-    const stk = stakes(st, ua, ub, g.start), mult = stk.x2 ? 2 : 1;   // V536: neighbours on the board play for double
-    if (stk.x2) { out.x2 = true; out.ranks = { a: stk.ra, b: stk.rb }; }
+    const stk = stakes(st, ua, ub, g.start), mult = stk.nb ? STAKES_X : 1;   // V536/V537: neighbours on the board play for triple
+    if (stk.nb) { out.sx = mult; out.ranks = { a: stk.ra, b: stk.rb }; }
     const A = player(st, ua), B = player(st, ub);
     const S = out.sa > out.sb ? 1 : out.sa < out.sb ? 0 : 0.5;
     const ea = expected(A.r, B.r), eb = 1 - ea;
@@ -132,8 +132,8 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
     out.lat = Number(L.at) || 0;   // V529: when the other phone saw them go (its clock) — a "came back" note names this leave by it
     if (leftSec < LATE_SEC && fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
-    const stk = stakes(st, uid, ouid, g.start), mult = stk.x2 ? 2 : 1;   // V536: a leave between neighbours costs (and pays) double
-    if (stk.x2) { out.x2 = true; out.ranks = { [role]: stk.ra, [other]: stk.rb }; }
+    const stk = stakes(st, uid, ouid, g.start), mult = stk.nb ? STAKES_X : 1;   // V536/V537: a leave between neighbours costs (and pays) triple
+    if (stk.nb) { out.sx = mult; out.ranks = { [role]: stk.ra, [other]: stk.rb }; }
     const P = player(st, uid), O = ouid ? player(st, ouid) : null, pr = P.r, orr = O ? O.r : 1000;   // the ratings before
     // the player who left: V509 under a minute left, 3 x a loss; V506 otherwise, 0.25 x the whole minutes x the gap
     if (exempt) { out.rule = 'exempt'; out.exempt = true; out.penalty = 0; out.why = 'exempt: the name has soham in it (pays nothing; the stayer still wins)'; }
@@ -192,12 +192,14 @@ function board(st) {
         .map(p => { const lt = LT[p.u]; return Object.assign({ nm: cleanName(p.nm) || 'a player', r: Math.round(p.r), w: p.w, l: p.l, d: p.d, n: p.n, u: p.u.slice(0, 8) },
                                                           showLp(st, p.u, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
 }
-// V536 (the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes"): a game
-// between NEIGHBOURS on the RANKINGS (#7 vs #8) counts double — the win, the loss or the draw, and a leave's points (the
+// V536 (the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes"; V537:
+// "triple if adjacent ranks"): a game between NEIGHBOURS on the RANKINGS (#7 vs #8) counts STAKES_X times — the win, the
+// loss or the draw, and a leave's points (the
 // leaver's penalty and the stayer's win). Judged by the board as it stood when the game BEGAN (the one its players saw):
 // the board's order is remembered each time it changes (st.rankSnaps, 12 hours), so a game that finished while this one was
 // being played cannot change its stakes; with no remembered board that old, the board as it stands.
 const RANK_SNAP_MS = 12 * 3600e3;
+const STAKES_X = 3;   // V537 (the owner: "triple if adjacent ranks"; V536 doubled)
 function noteBoard(st, list, now) {
     const ids = list.map(p => p.u).join(','), S = st.rankSnaps = st.rankSnaps || [];
     if (!S.length || S[S.length - 1].ids !== ids) S.push({ at: now, ids });
@@ -212,7 +214,7 @@ function ranksAt(st, t) {
 }
 function stakes(st, ua, ub, t) {
     const m = ranksAt(st, Number(t) || 0), ra = m[String(ua || '').slice(0, 8)] || 0, rb = m[String(ub || '').slice(0, 8)] || 0;
-    return { ra, rb, x2: !!(ra && rb && Math.abs(ra - rb) === 1) };
+    return { ra, rb, nb: !!(ra && rb && Math.abs(ra - rb) === 1) };
 }
 function pubPlayer(st, uid, now) {
     const p = st.players[uid], today = dayOf(now);
@@ -399,8 +401,8 @@ async function publish(st, io, changed, done, now) {
         const g = {};
         for (const d of done) g[d.gid] = d.leave
             ? { leave: true, applied: !!d.applied, reversed: !!d.reversed, rule: d.rule || '', penalty: d.penalty || 0, role: d.role || '', why: d.why || '', at: d.at, lat: d.lat || 0, a: d.a || null, b: d.b || null,   // V529: lat = which leave (a game can have a refresh, then a real one)
-                x2: !!d.x2, ranks: d.ranks || null }   // V536: double stakes (neighbours on the board)
-            : { ranked: d.ranked, why: d.why || '', at: d.at, lobby: d.lobby, a: d.a || null, b: d.b || null, x2: !!d.x2, ranks: d.ranks || null };
+                sx: d.sx || (d.x2 ? 2 : 0), ranks: d.ranks || null }   // V536/V537: the stakes multiplier (neighbours on the board; the first V536 games were x2)
+            : { ranked: d.ranked, why: d.why || '', at: d.at, lobby: d.lobby, a: d.a || null, b: d.b || null, sx: d.sx || (d.x2 ? 2 : 0), ranks: d.ranks || null };
         await io.patch(PUB + '/g', g);
     }
     // old game notes go (the state keeps them); the board every run (cheap) so a censor change shows
