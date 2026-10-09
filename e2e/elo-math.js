@@ -253,7 +253,61 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         check('E20 a "back" that arrives before its leave waits for it, then undoes it', held && st5.games[K_L] && st5.games[K_L].reversed && st5.players.pa.r === 1000 && st5.players.pb.r === 1000 &&
               Object.keys(io5.db.rooms['~elo'].q || {}).length === 0, JSON.stringify({ held, L: st5.games[K_L] && st5.games[K_L].reversed, r: [st5.players.pa.r, st5.players.pb.r], q: Object.keys(io5.db.rooms['~elo'].q || {}) }));
     }
-    // E13 (V521): points lost to leaving — the board and each player's record carry them (leaves + the owner's penalties)
+    // M1-M5 (V530, ACCOUNTS — the owner: "so they can unify their devices"): a device that logs in to an account; its own
+    // record joins the account's once both sides asked
+    {
+        const DEV = 'devDEVICE0000000000000000001', ACC = 'accACCOUNT000000000000000001', PEER = 'peerPEER0000000000000000001';
+        const f8 = DEV.slice(0, 8), a8 = ACC.slice(0, 8), q8 = PEER.slice(0, 8);
+        const mkSt = () => ({ players: { [DEV]: { r: 1100, n: 10, w: 7, l: 3, d: 0, nm: 'Dev', fd: { '2026-10-08': 2 }, peak: 1120, last: T0 - 5000 },
+                                         [ACC]: { r: 1000, n: 30, w: 15, l: 15, d: 0, nm: 'Acc', fd: { '2026-10-08': 1 }, peak: 1050, last: T0 - 9000 } }, games: {}, manual: [] });
+        const note = { c: '~acct', s: T0, t: T0, merge: { from: DEV, into: ACC } };
+        // M1
+        const st = mkSt(), io = fakeDb({ acct: { [DEV]: { into: ACC }, [ACC]: { from: { [DEV]: T0 } } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } } });
+        const o1 = await E.run(st, io, T0 + 1000);
+        await E.publish(st, io, o1.changed, o1.done, T0 + 1000);
+        const A1 = st.players[ACC], want = (1000 * 30 + 1100 * 10) / 40;
+        const pub = io.db.embedcode && io.db.embedcode.elo && io.db.embedcode.elo.r;
+        check('M1 both asked: merged — 40 games, 22-18, the rating the games-weighted average (' + want + '), the higher peak, days added up; the device\'s record gone, the account\'s published',
+              A1 && !st.players[DEV] && A1.n === 40 && A1.w === 22 && A1.l === 18 && Math.abs(A1.r - want) < 1e-9 && A1.peak === 1120 && A1.fd['2026-10-08'] === 3 && A1.nm === 'Acc' &&
+              st.alias[DEV] === ACC && pub && pub[ACC] && pub[ACC].n === 40 && !(DEV in pub) && Object.keys(io.db.rooms['~elo'].q || {}).length === 0,
+              JSON.stringify({ A1, alias: st.alias, pub: pub && Object.keys(pub) }));
+        // M2
+        const stB = mkSt(), ioB = fakeDb({ acct: { [DEV]: { into: ACC } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } } });
+        await E.run(stB, ioB, T0 + 1000);
+        const stC = mkSt(), ioC = fakeDb({ acct: { [ACC]: { from: { [DEV]: T0 } } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } } });
+        await E.run(stC, ioC, T0 + 1000);
+        const stD = mkSt(), ioD = fakeDb({ acct: { [DEV]: { into: PEER }, [ACC]: { from: { [DEV]: T0 } } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } } });
+        await E.run(stD, ioD, T0 + 1000);
+        check('M2 only one side asked (or the device asked for a different account): refused — nothing changes',
+              stB.players[DEV] && stB.players[ACC].n === 30 && stC.players[DEV] && stC.players[ACC].n === 30 && stD.players[DEV] && stD.players[ACC].n === 30 && !stB.alias && !stC.alias && !stD.alias,
+              JSON.stringify([stB.players[ACC].n, stC.players[ACC].n, stD.players[ACC].n]));
+        // M3: a game the device finished before it logged in, rated after the merge: the account's
+        const g3 = game('MRG3', T0 + 2000, { ua: DEV, ub: PEER });
+        const io3 = fakeDb({ rooms: { MRG3: room([g3], { a: 'Dev', b: 'Peer' }), '~elo': { q: queue([['MRG3', T0 + 2000, T0 + 600000]]) } } });
+        await E.run(st, io3, T0 + 2000 + 700000);
+        check('M3 a game the device finished before logging in, rated after the merge, counts for the account (no ghost record)',
+              !st.players[DEV] && st.players[ACC].n === 41 && st.players[PEER] && st.players[PEER].n === 1, JSON.stringify({ acc: st.players[ACC].n, dev: !!st.players[DEV] }));
+        // M4: a throwaway device's leaves can't be washed out
+        const st4 = { players: { [DEV]: { r: 980, n: 0, w: 0, l: 0, d: 0, nm: 'Dev', fd: {}, peak: 1000, left: 1 }, [ACC]: { r: 1050, n: 10, w: 6, l: 4, d: 0, nm: 'Acc', fd: {}, peak: 1060 } },
+                      games: { LV_1_left_a: { gid: 'LV_1_left_a', leave: true, applied: true, reversed: false, uid: DEV, ouid: PEER, penalty: 20, at: T0 } }, manual: [] };
+        const io4 = fakeDb({ acct: { [DEV]: { into: ACC }, [ACC]: { from: { [DEV]: T0 } } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } } });
+        await E.run(st4, io4, T0 + 1000);
+        const lt4 = E.leaveTotals(st4)[ACC];
+        check('M4 a device with only a leave (980, no games) merged into 1050: 1030 — the leave still costs its 20 points, and it is now the account\'s',
+              Math.abs(st4.players[ACC].r - 1030) < 1e-9 && st4.players[ACC].left === 1 && lt4 && lt4.pts === 20 && st4.games.LV_1_left_a.uid === ACC, JSON.stringify({ r: st4.players[ACC].r, lt4 }));
+        // M5: the messages and blocks
+        const tid = (x, y) => (x < y ? [x, y] : [y, x]);
+        const [t1, t2] = tid(f8, q8), dmT = {}; dmT[t1] = { [t2]: { m1: { f: f8, x: 'hi from the device', at: T0 }, m2: { f: q8, x: 'hi back', at: T0 + 1 } } };
+        const io5 = fakeDb({ acct: { [DEV]: { into: ACC }, [ACC]: { from: { [DEV]: T0 } } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } },
+                             dm: { t: dmT, i: { [f8]: { [q8]: { n: 'Peer', x: 'hi back', at: T0 + 1, f: q8 } }, [q8]: { [f8]: { n: 'Dev', x: 'hi back', at: T0 + 1, f: q8 } } },
+                                   b: { [f8]: { zzzzzzzz: true }, [q8]: { [f8]: true } } } });
+        await E.run(mkSt(), io5, T0 + 1000);
+        const [n1, n2] = tid(a8, q8), th = ((io5.db.dm.t[n1] || {})[n2]) || {};
+        check('M5 messages: the conversation is now the account\'s (each message as it was, the sender id moved); both inbox lines point at the account; blocks follow',
+              th.m1 && th.m1.f === a8 && th.m1.x === 'hi from the device' && th.m2 && th.m2.f === q8 && io5.db.dm.i[a8] && io5.db.dm.i[a8][q8] && io5.db.dm.i[q8][a8] && !io5.db.dm.i[q8][f8] &&
+              io5.db.dm.b[a8] && io5.db.dm.b[a8].zzzzzzzz && io5.db.dm.b[q8][a8] === true, JSON.stringify({ th, i: io5.db.dm.i, b: io5.db.dm.b }));
+    }
+    // E13 (V521): points lost to leaving    // E13 (V521): points lost to leaving — the board and each player's record carry them (leaves + the owner's penalties)
     {
         const st = { players: {}, games: {}, manual: [] };
         for (let i = 0; i < 6; i++) st.players['u' + i] = { r: 1000 + i, n: 6, w: 3, l: 3, d: 0, nm: 'P' + i, fd: {}, peak: 1000 };

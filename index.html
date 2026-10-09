@@ -166,6 +166,52 @@
         window._rb2p_fbRestPatch = fbRestPatch;
         window._rb2p_fbRestGet = fbRestGet;
 
+        // ===== V530: ACCOUNTS =====
+        // (the owner: "create an account system, where users have a username and password so they can open their account from
+        // anywhere"). An account is this same Firebase sign-in given a username (<username>@ACCT_DOMAIN, the project's own
+        // domain — no real email, none is ever sent) and a password. MAKING one links this device's anonymous sign-in: the
+        // same id, so every rated game and message stays. LOGGING IN on another device switches this page to the account's id
+        // (that device's own record is merged in by the Mac's job — tools/elo.js, once both sides asked).
+        var ACCT_DOMAIN = '@realretrobowl2p.firebaseapp.com';
+        function _fbClaims() {
+            try {
+                if (!_fbTok) _fbLoadTok();
+                var t = _fbTok && _fbTok.t; if (!t) return null;
+                return JSON.parse(atob(String(t.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+            } catch (e) { return null; }
+        }
+        window._rb2p_restUid = function () { var c = _fbClaims(); return c ? String(c.user_id || c.sub || '') : ''; };
+        window._rb2p_acctUser = function () {   // the username this page is logged in as, or '' (an anonymous device)
+            var c = _fbClaims();
+            return c && c.firebase && c.firebase.sign_in_provider === 'password' && c.email ? String(c.email).split('@')[0] : '';
+        };
+        async function acctCall(ep, body) {
+            try {
+                var r = await fetchT('https://identitytoolkit.googleapis.com/v1/' + ep + '?key=' + FB_API_KEY,
+                                     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 12000);
+                var j = await r.json();
+                if (!r.ok) return { err: String((j && j.error && j.error.message) || ('HTTP ' + r.status)) };
+                return { ok: true, j: j };
+            } catch (e) { return { err: 'NETWORK' }; }
+        }
+        function acctTake(j) { _fbTok = { t: j.idToken, r: j.refreshToken, e: Date.now() + (parseInt(j.expiresIn, 10) || 3600) * 1000 }; _fbSaveTok(); }
+        window._rb2p_acctCreate = async function (user, pw) {   // links this device's sign-in: { ok, uid } or { err }
+            var t = await fbEnsureTok(); if (!t) return { err: 'NETWORK' };
+            var res = await acctCall('accounts:signUp', { idToken: t, email: String(user).toLowerCase() + ACCT_DOMAIN, password: String(pw), returnSecureToken: true });
+            if (!res.ok) return res;
+            acctTake(res.j);
+            return { ok: true, uid: String(res.j.localId || '') };
+        };
+        // { ok, uid, old, take() } or { err } — old: the anonymous id this device had (the caller writes its half of the merge
+        // as that id, then take() switches the page to the account)
+        window._rb2p_acctLogin = async function (user, pw) {
+            var res = await acctCall('accounts:signInWithPassword', { email: String(user).toLowerCase() + ACCT_DOMAIN, password: String(pw), returnSecureToken: true });
+            if (!res.ok) return res;
+            var c = _fbClaims(), old = c && c.firebase && c.firebase.sign_in_provider === 'anonymous' ? String(c.user_id || c.sub || '') : '';
+            return { ok: true, uid: String(res.j.localId || ''), old: old, take: function () { acctTake(res.j); } };
+        };
+        window._rb2p_acctLogout = function () { _fbTok = null; try { localStorage.removeItem('fbAnonTok:realretrobowl2p'); } catch (e) {} };
+
         // ===== V388: WHERE do players come from? A first-party visit beacon =====
         // Strangers have played ~100 games and nothing recorded which door they
         // came through: the Vercel site, GitHub Pages, or the Google Sites embed
@@ -1235,6 +1281,40 @@
             gap: 18px; width: 100%; max-height: 100vh; overflow-y: auto; padding: 56px 24px 56px; text-align: center;
         }
         #rb-lobby #rb-name-input { width: min(300px, 80vw); letter-spacing: 3px; text-transform: none; font-size: 15px; }
+        /* ---- V530: YOUR ACCOUNT — the lobby's first screen until there is one (WHO'S PLAYING's look) ---- */
+        #rb-lobby[data-active="acct"] .rb-screen[data-view="acct"] {
+            position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
+            gap: 14px; width: 100%; max-height: 100vh; overflow-y: auto; padding: 36px 20px; text-align: center; box-sizing: border-box;
+        }
+        #rb-lobby .rb-screen[data-view="acct"] .rb-wordmark { font-size: clamp(24px, min(5.2vw, 8vh), 54px); text-wrap: balance; }
+        #rb-lobby .rb-acct-why { max-width: 580px; margin: 0; font: 10px/1.9 'Press Start 2P', monospace; letter-spacing: 1px; color: #e3ecff; text-wrap: pretty; }
+        #rb-lobby .rb-acct-why b { color: #ffd23f; font-weight: normal; }
+        #rb-lobby .rb-acct-tabs { display: flex; border: 3px solid #fff; box-shadow: 4px 4px 0 #0a1838; }
+        #rb-lobby .rb-acct-tabs button { font: 10px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 10px 14px; color: #fff; background: rgba(8,20,52,.6); border: 0; cursor: pointer; }
+        #rb-lobby .rb-acct-tabs button[aria-selected="true"] { color: #0a1838; background: #36e07a; }
+        #rb-lobby .rb-acct-tabs button:focus-visible, #rb-lobby #rb-acct-show:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
+        #rb-lobby .rb-acct-form { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px 12px; width: min(440px, 92vw); }
+        #rb-lobby .rb-acct-form label { font: 10px 'Press Start 2P', monospace; letter-spacing: 1px; color: #9fbcf0; text-align: right; }
+        #rb-lobby .rb-acct-form input { width: 100%; box-sizing: border-box; font-size: 13px; letter-spacing: 1px; text-transform: none; text-align: left; padding: 11px 10px; }
+        #rb-lobby .rb-acct-pwrow { display: flex; min-width: 0; }
+        #rb-lobby .rb-acct-pwrow input { flex: 1; min-width: 0; border-right: 0; }
+        #rb-lobby #rb-acct-show { flex: none; font: 9px 'Press Start 2P', monospace; padding: 0 10px; color: #0a1838; background: #fff; border: 4px solid #fff; cursor: pointer; }
+        #rb-lobby #rb-acct-go { grid-column: 1 / -1; justify-self: center; margin-top: 6px; font-size: clamp(13px, 2vw, 18px); padding: 16px 28px; }
+        #rb-lobby #rb-acct-go:disabled { opacity: .6; cursor: wait; }
+        #rb-lobby #rb-acct-msg { min-height: 1.3em; margin: 0; max-width: 560px; font: 10px/1.8 'Press Start 2P', monospace; letter-spacing: 1px; color: #ff8a8a; }
+        #rb-lobby #rb-acct-msg.ok { color: #36e07a; }
+        #rb-lobby #rb-acct-msg.wait { color: #cdddff; }
+        #rb-lobby .rb-acct-note { margin: 0; font: 9px/1.8 'Press Start 2P', monospace; letter-spacing: 1px; color: #9fbcf0; }
+        #rb-lobby .rb-playing-as .rb-acct-line { display: block; margin-top: 7px; font-size: 9px; letter-spacing: 1px; color: #36e07a; }
+        @media (max-height: 520px) {   /* a sideways phone: the whole form on one screen */
+            #rb-lobby[data-active="acct"] .rb-screen[data-view="acct"] { gap: 7px; padding: 10px 16px; }
+            #rb-lobby .rb-acct-why { font-size: 8px; line-height: 1.7; }
+            #rb-lobby .rb-acct-tabs button { padding: 7px 12px; font-size: 9px; }
+            #rb-lobby .rb-acct-form { gap: 6px 10px; }
+            #rb-lobby .rb-acct-form input { padding: 7px 10px; min-height: 36px; }
+            #rb-lobby #rb-acct-go { padding: 9px 20px; margin-top: 2px; }
+            #rb-lobby #rb-acct-msg, #rb-lobby .rb-acct-note { font-size: 8px; }
+        }
         #rb-lobby .rb-playing-as { font-family: 'Press Start 2P', monospace; font-size: 10px; letter-spacing: 2px; color: #ffd23f; margin: 0; }
         #rb-lobby .rb-playing-as a { color: #fff; cursor: pointer; text-decoration: underline; margin-left: 10px; }
         /* ---- V387: the bug-report chip, bottom-left, out of the way ---- */
@@ -2239,7 +2319,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V529<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V530<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2315,6 +2395,25 @@
             <input id="rb-name-input" maxlength="16" placeholder="YOUR NAME" autocomplete="off" autocapitalize="words">
             <button id="rb-name-go" class="rb-cta">CONTINUE</button>
             <p id="rb-name-msg" class="msg"></p>
+        </div>
+
+        <!-- ======================= YOUR ACCOUNT (V530) ======================= -->
+        <div data-view="acct" class="rb-screen">
+            <h1 class="rb-wordmark" id="rb-acct-title">SAVE YOUR <span class="accent">ACCOUNT</span></h1>
+            <p class="rb-acct-why" id="rb-acct-why"></p>
+            <div class="rb-acct-tabs" role="tablist" aria-label="Account">
+                <button type="button" role="tab" id="rb-acct-tab-make" aria-selected="true">NEW ACCOUNT</button>
+                <button type="button" role="tab" id="rb-acct-tab-in" aria-selected="false">I HAVE ONE</button>
+            </div>
+            <form class="rb-acct-form" id="rb-acct-form" novalidate>
+                <label for="rb-acct-user">USERNAME</label>
+                <input id="rb-acct-user" name="username" maxlength="16" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="letters, numbers, _">
+                <label for="rb-acct-pw">PASSWORD</label>
+                <span class="rb-acct-pwrow"><input id="rb-acct-pw" name="password" type="password" maxlength="64" autocomplete="new-password" placeholder="6+ characters"><button type="button" id="rb-acct-show" aria-label="Show the password" aria-pressed="false">SHOW</button></span>
+                <button type="submit" id="rb-acct-go" class="rb-cta">SAVE MY ACCOUNT</button>
+            </form>
+            <p class="msg" id="rb-acct-msg" role="status" aria-live="polite"></p>
+            <p class="rb-acct-note" id="rb-acct-note">NO EMAIL NEEDED &middot; TAKES 10 SECONDS</p>
         </div>
 
         <!-- ======================= ROOM ======================= -->
@@ -2493,7 +2592,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V529</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V530</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16980,7 +17079,22 @@
         // before any DB traffic; if the Anonymous provider isn't enabled
         // yet this throws and we proceed unauthenticated (still allowed
         // until the rules flip).
-        try { await FBA.signInAnonymously(FBA.getAuth(app)); } catch (eAuth) {}
+        // V530: ACCOUNTS — the connection keeps an account it signed in with (signInAnonymously would replace it with a new
+        // anonymous one); an account that isn't this page's (a log-out, another player on this browser) is signed out first.
+        // When the connection is anonymous while the page is an account, the V524 sid link stands in for it.
+        try {
+            var au0 = FBA.getAuth(app);
+            if (au0.authStateReady) await au0.authStateReady();
+            var cu0 = au0.currentUser, restU0 = window._rb2p_restUid ? window._rb2p_restUid() : '';
+            if (cu0 && !cu0.isAnonymous && cu0.uid !== restU0) { try { await FBA.signOut(au0); } catch (eOut) {} cu0 = null; }
+            if (!cu0) await FBA.signInAnonymously(au0);
+        } catch (eAuth) {}
+        window._rb2p_sdkAcct = function (user, pw) {   // the connection signs in as the account too (the page has its password only now)
+            return FBA.signInWithEmailAndPassword(FBA.getAuth(app), String(user).toLowerCase() + '@realretrobowl2p.firebaseapp.com', String(pw))
+                .then(function (c) { return (c && c.user && c.user.uid) || null; }, function () { return null; });
+        };
+        window._rb2p_sdkOut = function () { return FBA.signOut(FBA.getAuth(app)).catch(function () {}); };
+        window._rb2p_sdkUid = function () { try { var u = FBA.getAuth(app).currentUser; return u ? { uid: u.uid, anon: !!u.isAnonymous } : null; } catch (e) { return null; } };
         var db = FB.getDatabase(app);
         window._rb2p_db = db;   // V364: test seam — goOffline/goOnline stand in for a dead socket
 
@@ -20313,10 +20427,13 @@
         window._rb2p_playerName = rb2pName;
         function renderPlayingAs() {
             if (!$playingAs) return;
-            var n = rb2pName();
-            $playingAs.innerHTML = n ? 'PLAYING AS ' + esc(n) + '<a id="rb-name-change">CHANGE</a>' : '';
+            var n = rb2pName(), au = acctUser();
+            $playingAs.innerHTML = n ? 'PLAYING AS ' + esc(n) + '<a id="rb-name-change">CHANGE</a>' +
+                (au ? '<span class="rb-acct-line">@' + esc(au.toUpperCase()) + '<a id="rb-acct-out" role="button">LOG OUT</a></span>' : '') : '';   // V530: the account, its own line
             var ch = document.getElementById('rb-name-change');
             if (ch) ch.addEventListener('click', function () { showNameGate(); });
+            var lo = document.getElementById('rb-acct-out');
+            if (lo) lo.addEventListener('click', acctLogoutTap);
         }
         function showNameGate() {
             if (!$lobbyEl) return;
@@ -20327,6 +20444,7 @@
             var n = String(($nameIn && $nameIn.value) || '').trim().replace(/\s+/g, ' ').slice(0, 16);
             if (n.length < 2) { if ($nameMsg) $nameMsg.textContent = 'At least 2 characters, please.'; return false; }
             try { localStorage.setItem('rb2p_name', n); } catch (e) {}
+            if (acctUser() && window._rb2p_restUid && window._rb2p_fbRestPatch) window._rb2p_fbRestPatch('acct/' + window._rb2p_restUid(), { nm: n }).catch(function () {});   // V530: the account's name
             if ($nameMsg) $nameMsg.textContent = '';
             if ($lobbyEl) $lobbyEl.dataset.active = 'entry';
             renderPlayingAs();
@@ -20336,6 +20454,150 @@
         if ($nameIn) $nameIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitName(); });
         renderPlayingAs();
         if (!rb2pName() && $lobbyEl && $lobbyEl.dataset.active === 'entry') showNameGate();
+        // ===== V530: YOUR ACCOUNT — a username and a password before anything else =====
+        // (the owner: "next time they open their device they are FORCED to create an account with username and password so
+        // they can unify their devices. Figure out the best way to force this while not looking too disruptive and it looking
+        // like it is for THEIR good"). Like WHO'S PLAYING (V387): the lobby's first screen, and no way past it but making one
+        // or logging in — but never in a game or a room of this session (a refresh's resume, a rematch: the lobby comes
+        // first), never on a test run. It opens with what the player keeps (their rating and wins — this device's only, until
+        // then) and asks for two things, the username filled in from their name. NEW ACCOUNT keeps everything (the same id);
+        // I HAVE ONE switches the page to the account, and this device's own games join it (the Mac's job merges them once
+        // both sides asked). The name stays theirs (CHANGE), kept with the account (acct/<id>/nm) for their other devices.
+        var $acctTitle = document.getElementById('rb-acct-title'), $acctWhy = document.getElementById('rb-acct-why'),
+            $acctForm = document.getElementById('rb-acct-form'), $acctUser = document.getElementById('rb-acct-user'), $acctPw = document.getElementById('rb-acct-pw'),
+            $acctGo = document.getElementById('rb-acct-go'), $acctMsg = document.getElementById('rb-acct-msg'), $acctNote = document.getElementById('rb-acct-note'),
+            $acctShow = document.getElementById('rb-acct-show'), $acctTabMake = document.getElementById('rb-acct-tab-make'), $acctTabIn = document.getElementById('rb-acct-tab-in');
+        var acctMode = 'make', acctBusy = false, acctHist = null, acctHistFor = '', acctOutArm = 0;
+        function acctUser() { return window._rb2p_acctUser ? window._rb2p_acctUser() : ''; }
+        function acctNeeded() {
+            if (acctUser()) return false;
+            if (window._rb2p_isTestRun && window._rb2p_isTestRun() && !window._rb2p_acctForce) return false;
+            return true;
+        }
+        window._rb2p_acctNeeded = acctNeeded;
+        function acctSay(t, cls) { if ($acctMsg) { $acctMsg.textContent = t || ''; $acctMsg.className = 'msg' + (cls ? ' ' + cls : ''); } }
+        function acctPaint() {
+            var mk = acctMode === 'make', h = acctHist, had = !!(h && h.n > 0);
+            if ($acctTabMake) $acctTabMake.setAttribute('aria-selected', mk ? 'true' : 'false');
+            if ($acctTabIn) $acctTabIn.setAttribute('aria-selected', mk ? 'false' : 'true');
+            if ($acctTitle) $acctTitle.innerHTML = mk ? (had ? 'SAVE YOUR <span class="accent">ACCOUNT</span>' : 'MAKE YOUR <span class="accent">ACCOUNT</span>') : 'LOG <span class="accent">IN</span>';
+            if ($acctWhy) $acctWhy.innerHTML = mk
+                ? (had ? 'Right now your rating <b>' + Math.round(h.r) + '</b> and your <b>' + h.w + ' win' + (h.w === 1 ? '' : 's') + '</b> live on this device only &mdash; clear the browser or switch devices and you start over at 1000. Make an account to keep them, and play as you on any device: your Chromebook, your phone, at home.'
+                       : 'Pick a username and a password. Your rating, wins and messages stay yours &mdash; on any device: your Chromebook, your phone, at home.')
+                : 'Play as you on this device.' + (had ? ' This device&rsquo;s <b>' + h.n + ' game' + (h.n === 1 ? '' : 's') + '</b> join your account.' : '');
+            if ($acctGo) $acctGo.textContent = mk ? 'SAVE MY ACCOUNT' : 'LOG IN';
+            if ($acctPw) $acctPw.setAttribute('autocomplete', mk ? 'new-password' : 'current-password');
+            if ($acctNote) $acctNote.innerHTML = mk ? 'NO EMAIL NEEDED &middot; TAKES 10 SECONDS' : 'FORGOT YOUR PASSWORD? ASK SOHAM TO RESET IT.';
+        }
+        function acctLoadHist() {   // this device's record (what an account keeps): the rating and the wins
+            var u = window._rb2p_restUid ? window._rb2p_restUid() : '';
+            if (!u) { if (window._rb2p_fbAuthUrl) window._rb2p_fbAuthUrl('').then(function () { if (window._rb2p_restUid && window._rb2p_restUid()) acctLoadHist(); }, function () {}); return; }
+            if (acctHistFor === u || !window._rb2p_fbRestGetX) return;
+            acctHistFor = u;
+            window._rb2p_fbRestGetX((window._rb2p_eloPath || 'embedcode/elo') + '/r/' + u, 6000).then(function (r) {
+                if (r && r.ok && r.val && typeof r.val === 'object') { acctHist = { r: Number(r.val.r) || 1000, n: Number(r.val.n) || 0, w: Number(r.val.w) || 0 }; acctPaint(); }
+            }, function () {});
+        }
+        function showAcctGate() {
+            if (!$lobbyEl || $lobbyEl.dataset.active === 'acct') return;
+            $lobbyEl.dataset.active = 'acct';
+            acctMode = 'make'; acctSay('');
+            if ($acctUser && !$acctUser.value) $acctUser.value = rb2pName().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').slice(0, 16);
+            acctPaint(); acctLoadHist();
+            if (window._rb2p_diagLog) window._rb2p_diagLog('ACCT the account screen (no account on this device)');
+        }
+        function acctGateTick() {
+            try {
+                if (!$lobbyEl || !acctNeeded()) return;
+                if (document.documentElement.classList.contains('rb-in-match') || $lobbyEl.style.display === 'none') return;
+                var inRoom = ''; try { inRoom = sessionStorage.getItem('rb_room') || ''; } catch (e) {}
+                if (inRoom) return;   // in a room or a game of this session (a refresh's resume, a rematch): that comes first
+                var a = $lobbyEl.dataset.active;
+                if (a === 'entry' || a === 'name') showAcctGate();
+            } catch (e) {}
+        }
+        function acctTab(m) {
+            if (acctBusy) return;
+            acctMode = m; acctSay(''); acctPaint();
+            try { (m === 'make' || !$acctUser.value ? $acctUser : $acctPw).focus(); } catch (e) {}
+        }
+        function acctErr(code) {
+            var c = String(code || '');
+            if (c === 'EMAIL_EXISTS') return 'THAT USERNAME IS TAKEN. PICK ANOTHER \u2014 OR TAP I HAVE ONE IF IT\u2019S YOURS.';
+            if (/INVALID_LOGIN_CREDENTIALS|INVALID_PASSWORD|EMAIL_NOT_FOUND|USER_DISABLED/.test(c)) return 'WRONG USERNAME OR PASSWORD.';
+            if (/^WEAK_PASSWORD/.test(c)) return 'THE PASSWORD NEEDS AT LEAST 6 CHARACTERS.';
+            if (/TOO_MANY_ATTEMPTS/.test(c)) return 'TOO MANY TRIES \u2014 WAIT A MINUTE, THEN TRY AGAIN.';
+            if (c === 'NETWORK') return 'NO CONNECTION \u2014 TRY AGAIN.';
+            if (/INVALID_EMAIL/.test(c)) return 'USERNAME: 3-16 LETTERS, NUMBERS OR _';
+            return 'THAT DIDN\u2019T WORK (' + c.slice(0, 40) + ') \u2014 TRY AGAIN.';
+        }
+        async function acctHasHistory(old) {   // anything for the account to bring along: a rating record, or messages
+            try { var r = await window._rb2p_fbRestGetX((window._rb2p_eloPath || 'embedcode/elo') + '/r/' + old, 5000); if (r && r.ok && r.val) return true; } catch (e) {}
+            try { var d = await window._rb2p_fbRestGetX('dm/i/' + old.slice(0, 8), 5000); if (d && d.ok && d.val && typeof d.val === 'object' && Object.keys(d.val).length) return true; } catch (e) {}
+            return false;
+        }
+        async function acctSubmit(ev) {
+            if (ev && ev.preventDefault) ev.preventDefault();
+            if (acctBusy) return;
+            var u = String(($acctUser && $acctUser.value) || '').trim(), pw = String(($acctPw && $acctPw.value) || '');
+            if (!/^[A-Za-z0-9_]{3,16}$/.test(u)) { acctSay('USERNAME: 3-16 LETTERS, NUMBERS OR _'); try { $acctUser.focus(); } catch (e) {} return; }
+            if (pw.length < 6) { acctSay('THE PASSWORD NEEDS AT LEAST 6 CHARACTERS.'); try { $acctPw.focus(); } catch (e) {} return; }
+            var mk = acctMode === 'make', name = u.toLowerCase(), nm = rb2pName(), uid = '';
+            acctBusy = true; if ($acctGo) $acctGo.disabled = true;
+            acctSay(mk ? 'SAVING\u2026' : 'LOGGING IN\u2026', 'wait');
+            try {
+                if (mk) {
+                    var r = await window._rb2p_acctCreate(name, pw);
+                    if (!r.ok) { acctSay(acctErr(r.err)); return; }
+                    uid = r.uid; if (!nm) nm = u;
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('ACCT made @' + name + ' (this device ' + uid.slice(0, 8) + ', everything kept)');
+                } else {
+                    var L = await window._rb2p_acctLogin(name, pw);
+                    if (!L.ok) { acctSay(acctErr(L.err)); return; }
+                    uid = L.uid;
+                    var bring = !!(L.old && L.old !== L.uid) && await acctHasHistory(L.old);
+                    if (bring) bring = await window._rb2p_fbRestPut('acct/' + L.old + '/into', L.uid).catch(function () { return false; });   // as this device, before the switch
+                    L.take();
+                    if (bring) {   // as the account: its half, and the note for the Mac's job
+                        await window._rb2p_fbRestPut('acct/' + L.uid + '/from/' + L.old, { '.sv': 'timestamp' }).catch(function () {});
+                        await window._rb2p_fbRestPut((window._rb2p_eloQueue || 'rooms/~elo/q') + '/merge_' + L.old, { c: '~acct', s: Date.now(), t: Date.now(), merge: { from: L.old, into: L.uid } }).catch(function () {});
+                    }
+                    var prof = null; try { var pr = await window._rb2p_fbRestGetX('acct/' + L.uid, 6000); prof = pr && pr.ok ? pr.val : null; } catch (e) {}
+                    if (prof && prof.nm) nm = String(prof.nm).slice(0, 16); else if (!nm) nm = u;
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('ACCT logged in as @' + name + (L.old ? ' (this device was ' + L.old.slice(0, 8) + (bring ? ' — its record joins the account' : '') + ')' : ''));
+                }
+                try { localStorage.setItem('rb2p_name', nm); } catch (e) {}
+                if (window._rb2p_fbRestPatch) window._rb2p_fbRestPatch('acct/' + uid, { u: name, nm: nm, at: { '.sv': 'timestamp' } }).catch(function () {});
+                if (window._rb2p_sdkAcct) window._rb2p_sdkAcct(name, pw);   // the database connection signs in as the account too
+                if ($acctPw) $acctPw.value = '';
+                renderPlayingAs();
+                try { if (window._rb2p_eloRefresh) window._rb2p_eloRefresh(); } catch (e) {}
+                acctSay(mk ? '\u2713 SAVED \u2014 YOU\u2019RE @' + name.toUpperCase() + '. LOG IN WITH IT ON ANY DEVICE.' : '\u2713 WELCOME BACK, @' + name.toUpperCase() + '.', 'ok');
+                setTimeout(function () { if ($lobbyEl && $lobbyEl.dataset.active === 'acct' && !acctNeeded()) { $lobbyEl.dataset.active = 'entry'; acctSay(''); } }, 1800);
+            } finally { acctBusy = false; if ($acctGo) $acctGo.disabled = false; }
+        }
+        function acctLogoutTap(ev) {   // two taps (a sandboxed embed has no confirm()); then this browser is no one's again
+            var a = ev && ev.currentTarget;
+            if (Date.now() - acctOutArm > 4000) {
+                acctOutArm = Date.now(); if (a) a.textContent = 'TAP AGAIN TO LOG OUT';
+                setTimeout(function () { if (acctOutArm && Date.now() - acctOutArm >= 3900) { acctOutArm = 0; renderPlayingAs(); } }, 4000);
+                return;
+            }
+            acctOutArm = 0;
+            if (window._rb2p_diagLog) window._rb2p_diagLog('ACCT logged out');
+            window._rb2p_acctLogout();
+            try { localStorage.removeItem('rb2p_name'); } catch (e) {}
+            Promise.resolve(window._rb2p_sdkOut ? window._rb2p_sdkOut() : null).then(function () { location.reload(); }, function () { location.reload(); });
+        }
+        if ($acctForm) $acctForm.addEventListener('submit', acctSubmit);
+        if ($acctTabMake) $acctTabMake.addEventListener('click', function () { acctTab('make'); });
+        if ($acctTabIn) $acctTabIn.addEventListener('click', function () { acctTab('in'); });
+        if ($acctShow) $acctShow.addEventListener('click', function () {
+            var sh = $acctPw.type === 'password'; $acctPw.type = sh ? 'text' : 'password';
+            $acctShow.textContent = sh ? 'HIDE' : 'SHOW'; $acctShow.setAttribute('aria-pressed', sh ? 'true' : 'false');
+        });
+        setInterval(acctGateTick, 1000); acctGateTick();
+        window._rb2p_acct = { tick: acctGateTick, state: function () { return { user: acctUser(), needed: acctNeeded(), view: $lobbyEl && $lobbyEl.dataset.active, mode: acctMode, hist: acctHist }; } };   // test seam
         // V412: the backup-doors line always names the doors you are NOT on
         try {
             var bd = document.getElementById('rb-backup-doors');
@@ -20363,6 +20625,7 @@
                 var joinTries = 0;
                 var joinIv = setInterval(function () {
                     try {
+                        if ($lobbyEl && $lobbyEl.dataset.active === 'acct') return;   // V530: an invite waits for the account (no time limit)
                         if (++joinTries > 60) { clearInterval(joinIv); return; }
                         if (!rb2pName() || !$lobbyEl || $lobbyEl.dataset.active !== 'entry' || typeof db === 'undefined' || !db) return;
                         clearInterval(joinIv);
@@ -22081,6 +22344,7 @@
             } catch (e) { return ''; }
         }
         window._rb2p_eloUid = eloUid;
+        window._rb2p_eloRefresh = function () { return eloLoadMine(); };   // V530: after a log-in (a new id)
         function eloDay(ms) { try { return new Date(ms || Date.now()).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
         function eloGetX(p, ms) {
             return window._rb2p_fbRestGetX ? window._rb2p_fbRestGetX(p, ms || 6000).then(function (r) { return r && r.ok ? r.val : null; }, function () { return null; }) : Promise.resolve(null);
@@ -22500,7 +22764,10 @@
         }
         var socStartT = setInterval(function () {
             if (socStarted) { clearInterval(socStartT); return; }
-            try { if (!socMe() && window._rb2p_fbAuthUrl) window._rb2p_fbAuthUrl('').catch(function () {}); else socStart(); } catch (e) {}   // the REST sign-in first (it names me)
+            try {
+                if (window._rb2p_acctNeeded && window._rb2p_acctNeeded()) return;   // V530: once there is an account (the messages are its)
+                if (!socMe() && window._rb2p_fbAuthUrl) window._rb2p_fbAuthUrl('').catch(function () {}); else socStart();   // the REST sign-in first (it names me)
+            } catch (e) {}
         }, 3000);
         function socSeenLoad(ps, fresh) {
             var now = Date.now(), want = [];

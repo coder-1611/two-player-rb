@@ -2158,6 +2158,35 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V530 (2026-10-09): ACCOUNTS — a username and a password, one player on every device
+- The owner: "create an account system, where users have a username and password so they can open their account from
+  anywhere, so next time they open their device they are FORCED to create an account with username and password so they
+  can unify their devices. Figure out the best way to force this while not looking too disruptive and it looking like it
+  is for THEIR good."
+- An account is the page's own Firebase sign-in given a username (<username>@realretrobowl2p.firebaseapp.com — the project's
+  domain, no real email, none ever sent) and a password (Email/Password turned on in Firebase Auth). NEW ACCOUNT links the
+  device's anonymous sign-in: the SAME id — every rated game, message and rating stays. I HAVE ONE switches the page to the
+  account's id in place (no reload — the Google Sites embed keeps no storage) and the database connection signs in as the
+  account too (its boot no longer replaces a signed-in account with a new anonymous one).
+- Unifying: the device's own record joins the account — the Mac's job merges once BOTH sides asked: acct/<device>/into
+  (written by the device as itself, before the switch) and acct/<account>/from/<device> (written by the account), plus a
+  queue note. Games, wins, losses, draws and leaves add up; the rating = the two game ratings (leave penalties added back)
+  averaged by games, then every leave penalty taken off again (a throwaway's leaves can't be washed out); games and the
+  owner's penalties re-keyed; st.alias makes a late game from the old id count for the account; its conversations, inbox
+  lines (both sides) and blocks move to the account's 8 characters (messages copied as they were — stored forever).
+- The forcing: the lobby's first screen (like WHO'S PLAYING, V387) until there is an account — never in a game or a room
+  of this session (a refresh's resume, a rematch: it waits for the lobby; an invite link waits for it without a time
+  limit). It opens with what the player keeps: "Right now your rating 1043 and your 12 wins live on this device only —
+  clear the browser or switch devices and you start over at 1000. Make an account to keep them, and play as you on any
+  device"; username filled in from their name; two fields; NEW ACCOUNT / I HAVE ONE; plain-word errors (taken, wrong
+  password, too short, too many tries). The lobby shows @USERNAME + LOG OUT (two taps). The social module (V524) starts
+  once there is an account.
+- Rules: acct/<id> read/write by that id only (u 3-16, nm, into = an id, from/<old> = a time). Copies .rb2p/rules-live-
+  before-v530.json / rules-live-v530.json. Owner tool: tools/acct.js list | find <user> | reset <user> <password>.
+- Tests: e2e/elo-math.js M1-M5 (25/25); e2e/v530-acct-rules.js 2/2 (live); e2e/v530-accounts.js 8/8 (two devices, real
+  sign-ins: screen, taken/short refused, SAVED = same id, reload keeps it, second device's 1100/7 wins shown, wrong password
+  refused, login switches id + name + connection, the job merges 10 games at 1100, LOG OUT, never in a room, phone layout).
+
 ## V529 (2026-10-09): a refresh is not a leave; the LAGGING? REFRESH announcement
 - The owner: "we have realized that refreshing fixes lag right? Make this a pop up for an announcement"; "add the leave
   warning to the pop up but that it will be removed".

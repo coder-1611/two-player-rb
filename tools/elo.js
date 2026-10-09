@@ -72,6 +72,9 @@ const K = n => 16 + 48 * Math.exp(-(Number(n) || 0) / 10);
 const expected = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
 const dayOf = ms => new Date(Number(ms)).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 const player = (st, uid) => st.players[uid] || (st.players[uid] = { r: 1000, n: 0, w: 0, l: 0, d: 0, nm: '', fd: {}, last: 0, peak: 1000 });
+// V530: a device id merged into an account (it logged in) is that account from then on — a game it finished before is
+// rated to the account
+const alias = (st, uid) => { let u = String(uid || ''), k = 0; while (u && st.alias && st.alias[u] && k++ < 8) u = st.alias[u]; return u; };
 const codeGamesOn = (st, uid, day) => (st.players[uid] && st.players[uid].fd && st.players[uid].fd[day]) || 0;
 
 // decide one finished game: { ranked, why, ... } and, when ranked, apply it to the state
@@ -79,7 +82,7 @@ function rate(st, g, opts) {   // g = { gid, code, start, rec, names, lobby, now
     const limit = opts && opts.friendlyLimit != null ? Number(opts.friendlyLimit) || 0 : FRIENDLY_LIMIT;
     const rec = g.rec || {}, fin = rec.fin || {}, uids = rec.uids || {};
     const out = { gid: g.gid, code: g.code, start: g.start, at: g.now, ranked: false, why: '', lobby: !!g.lobby };
-    const ua = String(uids.a || (fin.a && fin.a.uid) || ''), ub = String(uids.b || (fin.b && fin.b.uid) || '');
+    const ua = alias(st, uids.a || (fin.a && fin.a.uid) || ''), ub = alias(st, uids.b || (fin.b && fin.b.uid) || '');   // V530: merged devices
     out.ua = ua; out.ub = ub;
     if (String(rec.ver || '') === 'V500') { out.why = 'played on V500, before the ratings used the device id'; return out; }   // V501: V500 wrote the SDK's uid
     if (!fin.a || !fin.b) { out.why = 'only one phone recorded the final'; return out; }
@@ -115,7 +118,7 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     const role = L.role === 'a' || L.role === 'b' ? L.role : '', other = role === 'a' ? 'b' : 'a';
     const out = { gid: g.gid, code: g.code, start: g.start, at: g.now, leave: true, applied: false, why: '', role };
     if (fin.a && fin.b) { out.why = 'the game was finished after all'; return out; }
-    const uid = role ? String(uids[role] || (fin[role] && fin[role].uid) || '') : '', ouid = role ? String(uids[other] || (fin[other] && fin[other].uid) || '') : '';
+    const uid = role ? alias(st, uids[role] || (fin[role] && fin[role].uid) || '') : '', ouid = role ? alias(st, uids[other] || (fin[other] && fin[other].uid) || '') : '';   // V530: merged devices
     out.uid = uid;
     if (!uid) { out.why = 'the player who left could not be identified'; return out; }
     if (uid === ouid) { out.why = 'the same device played both sides'; return out; }
@@ -177,19 +180,80 @@ function leaveTotals(st) {
 // V521b (the owner: "only show minus for ziyad not anyone else unless above 12 left games"): the red number is shown for
 // Ziyad, and for anyone else only when they have left more than 12 games
 const LP_ALWAYS = new Set(['lITtwndiu0QACt4A3prDlqwetUv2']), LP_MIN_GAMES = 12;
-const showLp = (uid, lt) => !!(lt && lt.pts >= 0.5 && (lt.n > LP_MIN_GAMES || LP_ALWAYS.has(uid)));
+const showLp = (st, uid, lt) => !!(lt && lt.pts >= 0.5 && (lt.n > LP_MIN_GAMES || LP_ALWAYS.has(uid) || !!(st.players[uid] && st.players[uid].lpa)));   // V530: lpa = merged from one
 function board(st) {
     const LT = leaveTotals(st);
     return Object.keys(st.players).map(u => Object.assign({ u }, st.players[u])).filter(p => p.n >= BOARD_MIN)
         .sort((x, y) => y.r - x.r || y.n - x.n).slice(0, BOARD_N)
         .map(p => { const lt = LT[p.u]; return Object.assign({ nm: cleanName(p.nm) || 'a player', r: Math.round(p.r), w: p.w, l: p.l, d: p.d, n: p.n, u: p.u.slice(0, 8) },
-                                                          showLp(p.u, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
+                                                          showLp(st, p.u, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
 }
 function pubPlayer(st, uid, now) {
     const p = st.players[uid], today = dayOf(now);
     const lt = leaveTotals(st)[uid];
     return Object.assign({ r: Math.round(p.r), n: p.n, w: p.w, l: p.l, d: p.d, nm: cleanName(p.nm), fd: (p.fd && p.fd[today]) || 0, fdd: today, peak: Math.round(p.peak || p.r) },
-                         showLp(uid, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {});
+                         showLp(st, uid, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {});
+}
+
+// V530: ACCOUNTS (the owner: "create an account system, where users have a username and password so they can open their
+// account from anywhere ... so they can unify their devices"). Making an account keeps the device's own id (nothing to
+// do here). LOGGING IN on another device switches that page to the account's id — and that device's own record (its
+// anonymous id: games, wins, messages) is merged into the account, once both sides asked: acct/<from>/into = <into>,
+// written by the device as itself before it switched, and acct/<into>/from/<from>, written by the account. Nobody can
+// push a record into someone else's account, or take one.
+//   the record: games, wins, losses, draws and leaves added up; the rating = the two GAME ratings (the rating with its
+//   leaving penalties added back) averaged by games, then every leaving penalty of both taken off again (a throwaway
+//   device's leaves can't be washed out by a merge); the peak the higher one; the games and the owner's penalties are
+//   re-keyed to the account (their points lost to leaving follow); from then on the device id IS the account (alias)
+//   the messages (the 8-character ids): the device's conversations are copied into the account's (each message as it was,
+//   "stored forever"; the sender id rewritten), each other player's inbox line moves to the account, blocks move too
+function mergeRecord(st, from, into, now) {
+    const F = st.players[from], A = player(st, into);
+    const lt = leaveTotals(st), pf = (lt[from] && lt[from].pts) || 0, pa = (lt[into] && lt[into].pts) || 0;
+    const out = { from, into, had: !!F, r0: Math.round(A.r), n0: A.n || 0, fr: F ? Math.round(F.r) : null, fn: F ? F.n || 0 : 0 };
+    if (F) {
+        const nA = A.n || 0, nF = F.n || 0, gA = A.r + pa, gF = F.r + pf;
+        const g = nA + nF > 0 ? (gA * nA + gF * nF) / (nA + nF) : 1000;
+        A.r = g - pa - pf;
+        A.n = nA + nF; A.w = (A.w || 0) + (F.w || 0); A.l = (A.l || 0) + (F.l || 0); A.d = (A.d || 0) + (F.d || 0);
+        A.left = (A.left || 0) + (F.left || 0); A.peak = Math.max(A.peak || 1000, F.peak || 1000, A.r); A.last = Math.max(A.last || 0, F.last || 0);
+        A.fd = A.fd || {}; for (const d of Object.keys(F.fd || {})) A.fd[d] = (A.fd[d] || 0) + F.fd[d];
+        if (!A.nm && F.nm) A.nm = F.nm;
+        if (LP_ALWAYS.has(from) || F.lpa) A.lpa = true;
+        delete st.players[from];
+    }
+    for (const g of Object.values(st.games)) { if (!g) continue; if (g.uid === from) g.uid = into; if (g.ouid === from) g.ouid = into; if (g.ua === from) g.ua = into; if (g.ub === from) g.ub = into; }
+    for (const a of st.manual || []) if (a && a.uid === from) a.uid = into;
+    st.alias = st.alias || {}; st.alias[from] = into;
+    (st.merges = st.merges || []).push({ from, into, at: now });
+    out.r1 = Math.round(A.r); out.n1 = A.n;
+    return out;
+}
+async function mergeMessages(io, from, into) {
+    const f8 = from.slice(0, 8), a8 = into.slice(0, 8), tid = (x, y) => (x < y ? x + '/' + y : y + '/' + x);
+    if (f8 === a8) return 0;
+    const fix = o => (o && typeof o === 'object' ? Object.assign({}, o, o.f === f8 ? { f: a8 } : {}) : o);
+    const inbox = (await io.get('dm/i/' + f8)) || {};
+    let moved = 0;
+    for (const q of Object.keys(inbox)) {
+        if (q === a8) continue;   // the account messaging its own old device: nothing to keep
+        const msgs = (await io.get('dm/t/' + tid(f8, q))) || {}, put = {};
+        for (const k of Object.keys(msgs)) put[k] = fix(msgs[k]);
+        if (Object.keys(put).length) { await io.patch('dm/t/' + tid(a8, q), put); moved += Object.keys(put).length; }
+        const mine = (await io.get('dm/i/' + a8 + '/' + q)) || null, line = fix(inbox[q]);
+        if (!mine || Number(mine.at || 0) < Number(line.at || 0)) await io.put('dm/i/' + a8 + '/' + q, line);
+        const theirs = await io.get('dm/i/' + q + '/' + f8);
+        if (theirs) {
+            const cur = await io.get('dm/i/' + q + '/' + a8);
+            if (!cur || Number(cur.at || 0) < Number(theirs.at || 0)) await io.put('dm/i/' + q + '/' + a8, fix(theirs));
+            await io.del('dm/i/' + q + '/' + f8);
+        }
+    }
+    const blocks = (await io.get('dm/b/' + f8)) || {};
+    if (Object.keys(blocks).length) await io.patch('dm/b/' + a8, blocks);
+    const all = (await io.get('dm/b')) || {};
+    for (const p of Object.keys(all)) if (p !== f8 && all[p] && all[p][f8]) await io.put('dm/b/' + p + '/' + a8, all[p][f8]);
+    return moved;
 }
 
 // one pass over the queue. io = { get(path, query), put, patch, del } (tests pass a fake)
@@ -197,10 +261,24 @@ async function run(st, io, now, opts) {
     const q = (await io.get(QUEUE)) || {};
     // V529: a game's leaves first, then its result, then the "came back" notes (whatever order they arrived in)
     const kind = x => (x.left ? 0 : x.back ? 2 : 1);
-    const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0, left: q[k].left || null, back: q[k].back || null }))
+    const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0, left: q[k].left || null, back: q[k].back || null, merge: q[k].merge || null }))
         .sort((a, b) => a.start - b.start || kind(a) - kind(b));
     const changed = new Set(), done = [];
     for (const it of items) {
+        if (it.merge) {   // V530: a device logged in to an account — its own record joins the account's
+            const from = String(it.merge.from || ''), into = String(it.merge.into || '');
+            if (from.length >= 20 && into.length >= 20 && from !== into && !(st.alias && st.alias[from])) {
+                const okF = (await io.get('acct/' + from + '/into')) === into, okI = !!(await io.get('acct/' + into + '/from/' + from));
+                if (okF && okI) {
+                    const m = mergeRecord(st, from, into, now);
+                    let moved = 0; try { moved = await mergeMessages(io, from, into); } catch (e) { log('merge messages ' + from + ': ' + (e && e.message)); }
+                    changed.add(into); (st._unpub = st._unpub || []).push(from);
+                    log('MERGED ' + from + ' into the account ' + into + (m.had ? ': ' + m.fn + ' games at ' + m.fr + ' + ' + m.n0 + ' at ' + m.r0 + ' -> ' + m.n1 + ' at ' + m.r1 : ' (no games)') + ', ' + moved + ' messages');
+                } else log('merge ' + from + ' -> ' + into + ' refused: ' + (!okF ? 'the device did not ask' : 'the account did not ask'));
+            }
+            await io.del(QUEUE + '/' + it.key);
+            continue;
+        }
         if (it.back) {   // V529 (the owner: "refreshing fixes lag" — the announcement): the player the other phone noted as gone
             // came back within 2 minutes — a refresh, not a leave: undone (their points back, the stayer's win taken back). The
             // note names its leave by the moment it was seen (both times are the stayer's clock), so a late copy of an old
@@ -285,7 +363,12 @@ async function run(st, io, now, opts) {
 }
 
 async function publish(st, io, changed, done, now) {
-    if (changed.size) { const r = {}; for (const u of changed) r[u] = pubPlayer(st, u, now); await io.patch(PUB + '/r', r); }
+    if (changed.size || (st._unpub && st._unpub.length)) {
+        const r = {}; for (const u of changed) if (st.players[u]) r[u] = pubPlayer(st, u, now);
+        for (const u of st._unpub || []) r[u] = null;   // V530: merged into an account
+        delete st._unpub;
+        await io.patch(PUB + '/r', r);
+    }
     if (done.length) {
         const g = {};
         for (const d of done) g[d.gid] = d.leave
@@ -394,4 +477,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { log('FATAL ' + (e && e.message || e)); process.exit(2); });
-else module.exports = { K, expected, dayOf, rate, leavePenalty, undoLeave, leaveTotals, run, publish, board, pubPlayer };
+else module.exports = { K, expected, dayOf, rate, leavePenalty, undoLeave, leaveTotals, run, publish, board, pubPlayer, mergeRecord, mergeMessages, alias };
