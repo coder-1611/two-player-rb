@@ -2158,6 +2158,26 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V531 (2026-10-09): the Q1 -> Q3 bug — a horn that had already sounded sounded again
+- The owner: "fix the first quarter to third quarter bug".
+- Cause (reproduced: e2e/horn-last-down.js fg Q1, room Z6KE; the long-known M5 "intermittent"): a drive that ends AT the
+  horn (Qn 0:00) — a missed or made field goal, a turnover, a score and its try. The sender's engine rolls its own quarter
+  at the horn, and its live picture (the p2p channel, ~4 s faster than the hand-off) moves the waiting phone into Qn+1
+  with its fresh clock. Then the hand-off lands, stamped Qn 0:00: the apply wrote the stamp back (Qn 0:00), the horn rule
+  (V434) ended the quarter AGAIN — the governor dragged it forward to Qn+1 (QTR-BACK), the engine's time-up rolled Qn+2.
+  Q2 never played (Q1 -> Q3), or Q4 never played (Q3 -> Q5: the final a quarter early), or the third quarter lasted
+  seconds (halftime); the sender follows the receiver up. Real games, last 10 days: 26 with the second horn on record
+  (12 x Q1->Q3, 10 x Q3->Q5 — e.g. APHT: a TD at Q3 0:03, FINAL-SOON 32-37 with the 4th quarter unplayed — 4 x halftime).
+- Fix (the receiver; the horn law itself is unchanged — the engine's time-up stays the only quarter end):
+  - Q1/Q3 hand-off stamped 0:00 on a phone already in Q2/Q4: the quarter and its fresh clock stay (a waiting phone's 0:01
+    floor gets the full quarter), no second horn — the receiver's ball at the spot, as the horn would have given it.
+  - Q2 hand-off stamped 0:00 on a phone already in the second half: moot at once (V422's epoch rule, before the halftime
+    law's 200 ms tick declared the half) — score merged, never staged; the law gives the ball.
+  - a PICK6 stamped at a horn on a phone already past it (AHXI): the quarter stays; the try runs no clock.
+  - diag "HORN Qn already sounded here …", audit guard horn-rolled.
+- Tests: horn-last-down fg Q1 3/3 on the fix (the race fired in all three — it is the norm, not the exception; 0/1 before);
+  v434-horn-outcomes 10 passed 0 failed (2 inconclusive: the bot's goal-line run did not score) — M5, red since V449, green.
+
 ## V530 (2026-10-09): ACCOUNTS — a username and a password, one player on every device
 - The owner: "create an account system, where users have a username and password so they can open their account from
   anywhere, so next time they open their device they are FORCED to create an account with username and password so they

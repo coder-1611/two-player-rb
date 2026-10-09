@@ -2319,7 +2319,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V530<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V531<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2592,7 +2592,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V530</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V531</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -12656,9 +12656,22 @@
                             window._rb2p_otWalkoffDefensiveTd(true);
                             return true;
                         }
+                        // V531 (room AHXI): a pick-six stamped at a horn (Qn 0:00) reaching a phone the partner's picture has
+                        // already moved into Qn+1 — rewinding to the stamp made the try's horn the quarter's second (Q2 -> Q3
+                        // -> Q4 in 8 s). The quarter and its clock stay; the try is played (it runs no clock) and the rules of
+                        // the new period follow it (at halftime the law waits for this conversion — V424).
+                        var p6Q = Number(outcome.quarter), p6Clk = Number(outcome.minutesLeft) * 60 + Number(outcome.secondsLeft);
+                        var p6Rolled = p6Q >= 1 && p6Q <= 3 && p6Clk <= 0 && Number(engineMatch.engineQuarter) === p6Q + 1 &&
+                                       Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft) > 0;
+                        if (p6Rolled) {
+                            window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, p6Q + 1);
+                            if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q' + p6Q + ' already sounded here — the pick-six\'s try is played in Q' + (p6Q + 1) + ', no second horn');
+                            if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'horn-rolled', q: p6Q, type: 'PICK6' });
+                        } else {
                         if (typeof outcome.quarter      === 'number') { engineMatch.engineQuarter     = outcome.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(outcome.quarter) || 0); }
                         if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
                         if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
+                        }
                         engineMatch.engineTickAllowance = 0;
                         // V56: this device is the DEFENDER/scorer — its PAT
                         // modal (popped below) is legitimate. Make sure
@@ -12953,6 +12966,24 @@
                             'dropped duplicate generic ' + outcome.type + ' during a conversion');
                         return true;   // consumed, nothing applied
                     }
+                    // V531 (rooms FKFZ, JATT — the halftime form of the Q1 -> Q3 bug): a hand-off stamped at the HALFTIME
+                    // horn (Q2 0:00) reaching a phone the partner's live picture has already moved into the second half,
+                    // before this phone's halftime law (a 200ms tick) declared the new half. The V422 epoch rule makes it
+                    // moot once the law has run; until then it was staged: rewound to Q2 0:00, the governor dragged it
+                    // to Q3, the time-up rolled Q4 — the third quarter lasted no time. The half is over here already:
+                    // the same rule now, at once — its score is merged, it is never staged, and the law gives the ball.
+                    var htClk = Number(outcome.minutesLeft) * 60 + Number(outcome.secondsLeft);
+                    if (Number(outcome.quarter) === 2 && htClk <= 0 && !window._rb2p_inOvertime && Number(engineMatch.engineQuarter) >= 3) {
+                        try {
+                            var soHt = Number(outcome.scoreUser), suHt = Number(outcome.scoreOpp), movedHt = false;
+                            if (isFinite(soHt) && soHt > Number(engineMatch.opponentScore)) { engineMatch.setOpponentScore(soHt); movedHt = true; }
+                            if (isFinite(suHt) && suHt > Number(engineMatch.userScore)) { engineMatch.setUserScore(suHt); movedHt = true; }
+                            if (movedHt && window._rb2p_notePick6BaselineSync) window._rb2p_notePick6BaselineSync();
+                        } catch (eHt) {}
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q2 already sounded here (the partner\'s picture brought Q' + Number(engineMatch.engineQuarter) + ' first) — the ' + outcome.type + ' hand-off is moot: score merged, the halftime law gives the ball');
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'horn-rolled', q: 2, type: outcome.type, moot: true });
+                        return 'moot';
+                    }
                     // Bug 2/5: clear wait + send sentinels BEFORE any engineMatch
                     // mutation. If something below throws, we still leave the
                     // flags in a sane state and the next outcome can be drained.
@@ -13019,14 +13050,45 @@
                     // value) and zero tickAllowance (no pending ticks) — the
                     // engine resumes from this exact clock state when B
                     // plays.
+                    // V531 (the owner: "fix the first quarter to third quarter bug"; e2e M5, room Z6KE — a missed field goal
+                    // at the Q1 horn): a hand-off stamped at the END of a quarter (0:00) whose quarter this phone has already
+                    // LEFT. The sender's engine rolls its own quarter at the horn, and its live picture (the p2p channel,
+                    // seconds faster than the hand-off) moved this waiting phone into the next quarter first — Q2 with its
+                    // fresh clock. Writing the stamp back (Q1 0:00) made the horn end the quarter a SECOND time: the governor
+                    // dragged the quarter forward to Q2 (QTR-BACK) and the engine's time-up then rolled Q3 — Q2 never played,
+                    // on both phones (the sender follows the wire). Here that horn has already sounded: the quarter and its
+                    // clock stay, and the drive is staged under that quarter's own rule — at the boundaries where the ball
+                    // carries over (Q1 -> Q2, Q3 -> Q4), the receiver's ball at the spot, exactly what the horn would have
+                    // given it. (Halftime is the epoch rule's: a first-half result after the halftime law is merged, never
+                    // staged — V422; the end of regulation is the final's / overtime's.)
+                    var hornQ = Number(outcome.quarter), hornClk = Number(outcome.minutesLeft) * 60 + Number(outcome.secondsLeft);
+                    var hornRolledHere = (hornQ === 1 || hornQ === 3) && hornClk <= 0 && !window._rb2p_inOvertime &&
+                                         Number(engineMatch.engineQuarter) === hornQ + 1 &&
+                                         Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft) > 0;
+                    if (hornRolledHere) {
+                        window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, hornQ + 1);
+                        // the new quarter's clock is the partner's fresh one (the picture carries it); a waiting phone's 0:01
+                        // floor (V293) that it has not replaced yet is not time left — the quarter starts full
+                        if (Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft) <= 2 && window._rb2p_agreedQuarterSec) {
+                            var hq2 = window._rb2p_agreedQuarterSec();
+                            if (window._rb2p_clockLicence) window._rb2p_clockLicence('horn already sounded Q' + (hornQ + 1));
+                            engineMatch.engineMinutesLeft = Math.floor(hq2 / 60); engineMatch.engineSecondsLeft = hq2 % 60;
+                            if (!window._rb2p_qToppedEver) window._rb2p_qToppedEver = {};
+                            window._rb2p_qToppedEver[hornQ + 1] = true;
+                        }
+                        if (window._rb2p_diagLog) window._rb2p_diagLog('HORN Q' + hornQ + ' already sounded here (the partner\'s picture brought Q' + (hornQ + 1) + ' first) — its hand-off starts Q' + (hornQ + 1) + ', no second horn');
+                        if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'horn-rolled', q: hornQ, type: outcome.type,
+                            clk: Number(engineMatch.engineMinutesLeft) * 60 + Number(engineMatch.engineSecondsLeft) });
+                    } else {
                     if (typeof outcome.quarter      === 'number') { engineMatch.engineQuarter     = outcome.quarter; window._rb2p_wireQuarter = Math.max(Number(window._rb2p_wireQuarter) || 0, Number(outcome.quarter) || 0); }
                     if (typeof outcome.minutesLeft  === 'number') engineMatch.engineMinutesLeft = outcome.minutesLeft;
                     if (typeof outcome.secondsLeft  === 'number') engineMatch.engineSecondsLeft = outcome.secondsLeft;
+                    }
                     engineMatch.engineTickAllowance = 0;
                     window._rb2p_lastSyncedEngineClock = {
-                        Wy: outcome.quarter,
-                        r11: outcome.minutesLeft,
-                        s11: outcome.secondsLeft
+                        Wy: Number(engineMatch.engineQuarter),
+                        r11: Number(engineMatch.engineMinutesLeft),
+                        s11: Number(engineMatch.engineSecondsLeft)
                     };
 
                     // V109: OT — the opponent just finished a possession (they're
@@ -13965,7 +14027,9 @@
                                 return;
                             }
                             if (window._rb2p_audit) window._rb2p_audit('apply', { type: o && o.type, ts: o && o.ts, lagMs: Date.now() - (Number(o && o._rxMs) || Date.now()) });   // V380
-                            if (applyOpponentOutcome(o)) hideWait();
+                            var applied = applyOpponentOutcome(o);
+                            if (applied === 'moot') { /* V531: the halftime law gives the ball — the cover stays as it leaves it */ }
+                            else if (applied) hideWait();
                             else showWait('apply failed — see console');
                         } else {
                             // Clear the engine's frozen wrong-perspective
