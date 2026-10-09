@@ -483,6 +483,20 @@ async function main() {
         log('PENALIZED ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + ') ' + was + ' -> ' + Math.round(P.r) + ' (-' + d + ', leaving)');
         return;
     }
+    const addW = opt('--add-wins', '');
+    if (addW) {   // V541 (the owner: "add those wins to soham account bringing win loss to 40-10"): wins — and their points — onto a record
+        const [who, val] = addW.split('='), [cnt, pts] = String(val || '').split(':').map(Number);
+        const ids = Object.keys(st.players).filter(u => u === who || u.indexOf(who) === 0);
+        if (ids.length !== 1 || !(cnt > 0) || !isFinite(pts)) throw new Error('--add-wins: ' + ids.length + ' players match ' + who + ' (need exactly 1), or bad count:points ' + val);
+        const P = st.players[ids[0]], was = Math.round(P.r), w0 = P.w || 0;
+        P.w = w0 + cnt; P.n = (P.n || 0) + cnt; P.r += pts; P.peak = Math.max(P.peak || 1000, P.r);
+        (st.manual = st.manual || []).push({ uid: ids[0], d: pts, w: cnt, at: now, was, why: opt('--why', 'wins added by the owner') });
+        save(st);
+        await io.patch(PUB + '/r', { [ids[0]]: pubPlayer(st, ids[0], now) });
+        { const bl = board(st); noteBoard(st, bl, now); await io.put(PUB + '/top', { at: now, list: bl }); } st.boardAt = now; save(st);
+        log('ADDED ' + cnt + ' wins (+' + pts + ') to ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + '): ' + w0 + '-' + (P.l || 0) + ' -> ' + P.w + '-' + (P.l || 0) + ', rating ' + was + ' -> ' + Math.round(P.r));
+        return;
+    }
     const setR = opt('--set-rating', '');
     if (setR) {   // V506 (the owner: "Make soham rating 1112")
         const [who, val] = setR.split('='), r = Number(val);

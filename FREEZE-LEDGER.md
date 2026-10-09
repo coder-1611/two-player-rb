@@ -2158,6 +2158,13 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V541 (2026-10-09): owner adjustments — wins onto a record (--add-wins)
+- The owner: "add those wins to soham account bringing win loss to 40-10" (SohamDesktop's three wins: WWE ROSTERS 35-8 +28,
+  Tyrone left +20.21, Desten_elite10 left +32.59 = +80.8). Earlier the same evening: Desten +15 twice (1060 -> 1090) and
+  Desten_elite10's 8-point leave penalty for TWDN (vs SohamDesktop) given back (1236 -> 1244), both by --set-rating.
+- tools/elo.js --add-wins <uid>=<count>:<points> [--why ...]: wins (and games) and the points onto a record, a manual
+  entry, the record and the board published. soham: 37-10 -> 40-10, 1290 -> 1370 (#1 of 270). SohamDesktop unchanged.
+
 ## V540 (2026-10-09): onside kicks REMOVED — back to V299's (no onside)
 - The owner: "remove all onside kick features and bring it back to how it was, I got stuck in infinite loop with blank field".
 - V528 reverse-applied to retrobowl.js and index.html (nothing after it touched that code; the two version-label hunks
