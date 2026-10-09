@@ -2158,6 +2158,30 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V524 (2026-10-08): CHALLENGE a ranked player, LAST ONLINE on the RANKINGS, MESSAGES (kept for good)
+- The owner: "add a challenge system, where you can directly challenge someone, but they have to be on the rankings page.
+  On it should show when last online. There should also be a dm feature where you can message someone, and it is stored
+  forever, like insta".
+- RANKINGS: under each name "ONLINE NOW" (green) / "LAST ON 12 MIN AGO"; tap a player (not yourself) → a card (rank,
+  rating, record, last online) with CHALLENGE and MESSAGE. Last online = on/<8 chars>: a page writes the server time every
+  minute while shown, on hide, and (onDisconnect) when its connection drops; tools/seen-backfill.js seeded all 619 rated
+  players from the visit log.
+- CHALLENGE (only players on the board): ch/<to>/<from> {n, r, at, st}; the challenged page shows "<NAME> CHALLENGES YOU!"
+  ACCEPT / NO THANKS (+ chime, background notification); ACCEPT makes a room exactly like FIND A PLAYER (SAME mode, the
+  challenged page is seat A) and the challenger's page joins it — both get the GAME ON! card. In a game the answer is
+  "busy"; NO THANKS / no answer in 5 min / CANCEL tell the challenger; the entry goes on answer, cancel, timeout or close.
+- MESSAGES (lobby button with an unread count; a toast for a new one, not over a game): an inbox (dm/i/<me>) and
+  conversations (dm/t/<a>/<b>, last 100 + EARLIER MESSAGES), BLOCK / UNBLOCK (blocks messages and challenges).
+- Database rules (deployed on top of the live rules; the repo's old rules file untouched; the before/after copies are in
+  .rb2p/rules-live-*.json): only the two people in a conversation read it; messages are append-only (no edit, no delete —
+  stored forever); only you set your presence and blocks; only the two players see a challenge. Identity = the first 8
+  characters of the device's REST account (what the board and every game record use). The page's database connection
+  signs in as a DIFFERENT anonymous account, so the REST account writes sid/<8 chars> = the connection's uid (only it can)
+  and the rules accept either.
+- e2e/v524-social-rules.js 7/7 (live database, three anonymous players + a linked connection); e2e/v524-social.js 6/6
+  (two browsers: last online + card, a message both ways with count/toast/read, still there after a reload, a challenge
+  declined, a challenge accepted into one room, block/unblock).
+
 ## V523 (2026-10-08): Purdy a 5-star QB with every rating maxed; all 32 rosters updated for the 2026 season
 - The owner: "make purdy a 5 star qb with max everything and update all the rosters for performance and roster shifts".
 - Purdy (49ers QB) 10/10/10/10 — the only 10s in the game. The engine's player rating (__B: the four ratings over a

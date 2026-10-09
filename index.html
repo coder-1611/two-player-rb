@@ -1122,6 +1122,79 @@
         #rb-match .rb-match-next { margin: 0 0 16px; font: 9px 'Press Start 2P', monospace; line-height: 1.9; color: #cdddff; }
         #rb-match #rb-match-ok { font: bold 13px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 14px 22px; color: #0a1838; background: #36e07a;
             border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
+        /* ---- V524: LAST ONLINE on RANKINGS, the player card, CHALLENGES, MESSAGES ---- */
+        #rb-lobby .rb-rank-tip { margin: 0; font-size: 9px; letter-spacing: 1px; color: #36e07a; }
+        #rb-lobby .rb-rank-list li .nm b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; }
+        #rb-lobby .rb-rank-list li .nm .seen { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; color: #8fa1b3; }
+        #rb-lobby .rb-rank-list li .nm .seen:empty { display: none; }
+        #rb-lobby .rb-rank-list li .nm .seen.on { color: #36e07a; }
+        #rb-lobby .rb-rank-list li .nm .seen.on::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #36e07a; box-shadow: 0 0 5px #36e07a; vertical-align: 1px; }
+        #rb-lobby .rb-rank-list li[role="button"] { cursor: pointer; transition: border-color .1s, background .1s; }
+        #rb-lobby .rb-rank-list li[role="button"]:hover, #rb-lobby .rb-rank-list li[role="button"]:focus-visible { border-color: #ffd23f; background: rgba(20,44,104,.6); outline: none; }
+        .rb-pop { position: fixed; inset: 0; z-index: 61; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(4,10,30,.6); }
+        .rb-pop[hidden] { display: none; }
+        .rb-pop .rb-pop-card { position: relative; width: min(440px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; padding: 22px 20px; text-align: center;
+            background: #0f2a66; border: 4px solid #36e07a; box-shadow: 6px 6px 0 #0a1838; font-family: 'Press Start 2P', monospace; animation: rb-match-in .3s ease-out; }
+        @media (prefers-reduced-motion: reduce) { .rb-pop .rb-pop-card { animation: none; } }
+        .rb-pop .rb-pop-eye { margin: 0; font-size: 10px; letter-spacing: 3px; color: #36e07a; }
+        .rb-pop h2 { margin: 10px 0 10px; font: 18px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1.4; color: #ffd23f; overflow-wrap: anywhere; }
+        .rb-pop .rb-pop-line { margin: 0 0 8px; font-size: 9px; line-height: 1.9; color: #cdddff; }
+        .rb-pop .rb-pop-line.on { color: #36e07a; }
+        .rb-pop .rb-pop-note { margin: 4px 0 0; min-height: 0; font-size: 9px; line-height: 1.8; color: #ffd23f; }
+        .rb-pop .rb-pop-note:empty { display: none; }
+        .rb-pop .rb-pop-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 14px; }
+        .rb-pop .rb-pop-btns button { font: bold 11px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 12px 14px; color: #0a1838; background: #ffd23f;
+            border: 3px solid #0a1838; box-shadow: 3px 3px 0 #0a1838; cursor: pointer; }
+        .rb-pop .rb-pop-btns button.go { background: #36e07a; }
+        .rb-pop .rb-pop-btns button.quiet { color: #fff; background: rgba(8,20,52,.6); border-color: #fff; }
+        .rb-pop .rb-pop-btns button[hidden] { display: none; }
+        .rb-pop .rb-pop-x { position: absolute; top: 6px; right: 8px; padding: 6px 8px; font: 12px 'Press Start 2P', monospace; color: #9fbcf0; background: none; border: 0; cursor: pointer; }
+        #rb-dm-toast { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 59; max-width: min(520px, calc(100vw - 24px));
+            padding: 10px 14px; font: 10px 'Press Start 2P', monospace; line-height: 1.6; letter-spacing: 1px; color: #0a1838; background: #ffd23f; border: 3px solid #0a1838;
+            box-shadow: 4px 4px 0 #0a1838; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #rb-dm-toast[hidden] { display: none; }
+        #rb-lobby[data-active="msgs"] .rb-screen[data-view="msgs"], #rb-lobby[data-active="dm"] .rb-screen[data-view="dm"] {
+            position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
+            gap: 12px; width: 100%; max-height: 100vh; overflow-y: auto; padding: 40px 24px 56px; text-align: center; box-sizing: border-box;
+        }
+        html.rb-mobile #rb-lobby[data-active="msgs"] .rb-screen[data-view="msgs"], html.rb-mobile #rb-lobby[data-active="dm"] .rb-screen[data-view="dm"] {
+            gap: 8px; justify-content: flex-start; max-height: 100%;
+            padding: max(14px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+        }
+        #rb-lobby .rb-dm-list { list-style: none; margin: 0; padding: 0; width: min(640px, 100%); display: flex; flex-direction: column; gap: 6px; }
+        #rb-lobby .rb-dm-list li { padding: 10px 12px; text-align: left; background: rgba(8,20,52,.45); border: 2px solid rgba(255,255,255,.35); cursor: pointer; }
+        #rb-lobby .rb-dm-list li:hover, #rb-lobby .rb-dm-list li:focus-visible { border-color: #ffd23f; outline: none; }
+        #rb-lobby .rb-dm-list li.new { border-color: #36e07a; }
+        #rb-lobby .rb-dm-list li .top { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; line-height: 1.5; }
+        #rb-lobby .rb-dm-list li .top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: normal; color: #fff; }
+        #rb-lobby .rb-dm-list li.new .top b::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #36e07a; vertical-align: 1px; }
+        #rb-lobby .rb-dm-list li .top small { flex-shrink: 0; font-size: 8px; color: #8fa1b3; }
+        #rb-lobby .rb-dm-list li p { margin: 6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; line-height: 1.6; color: #9fbcf0; text-transform: none; }
+        #rb-lobby .rb-dm-list li.new p { color: #e8f0ff; }
+        #rb-lobby .rb-dm-list li.none { display: block; padding: 12px; text-align: center; color: #8fa1b3; font-size: 10px; line-height: 1.8; cursor: default; }
+        #rb-lobby .rb-dm-title { font-size: clamp(18px, 4vw, 34px); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #rb-lobby .rb-dm-seen { margin: 0; font-size: 9px; color: #8fa1b3; }
+        #rb-lobby .rb-dm-seen.on { color: #36e07a; }
+        #rb-lobby .rb-dm-wrap { display: flex; flex-direction: column; gap: 8px; width: min(640px, 100%); }
+        #rb-lobby .rb-dm-log { height: min(46vh, 340px); gap: 6px; }
+        #rb-lobby .rb-screen[data-view="dm"] > *, #rb-lobby .rb-dm-wrap > * { flex-shrink: 0; }   /* the name never squashes; only the log gives */
+        html.rb-mobile #rb-lobby[data-active="dm"] .rb-screen[data-view="dm"] { height: 100%; }
+        html.rb-mobile #rb-lobby .rb-screen[data-view="dm"] > .rb-dm-wrap { flex: 1 1 auto; min-height: 0; }
+        html.rb-mobile #rb-lobby .rb-dm-wrap > .rb-dm-log { flex: 1 1 auto; height: auto; min-height: 70px; }
+        html.rb-mobile #rb-lobby .rb-screen[data-view="dm"] .rb-join-btn { font-size: 11px; padding: 10px 16px; }
+        #rb-lobby .rb-dm-log li { align-self: flex-start; max-width: 82%; padding: 6px 9px; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.18); text-transform: none; }
+        #rb-lobby .rb-dm-log li.me { align-self: flex-end; background: rgba(54,224,122,.14); border-color: rgba(54,224,122,.45); }
+        #rb-lobby .rb-dm-log li small { display: block; margin-top: 3px; font-size: 7px; color: #8fa1b3; }
+        #rb-lobby .rb-dm-log li.me small { text-align: right; }
+        #rb-lobby .rb-dm-log li.none, #rb-lobby .rb-dm-log li.more { align-self: center; max-width: none; background: none; border: 0; color: #8fa1b3; }
+        #rb-lobby .rb-dm-log li.more button { font: 9px 'Press Start 2P', monospace; color: #ffd23f; background: none; border: 2px solid #ffd23f; padding: 6px 10px; cursor: pointer; }
+        #rb-lobby #rb-dm-input { flex: 1; min-width: 0; width: auto; font-size: 11px; letter-spacing: 1px; text-transform: none; text-align: left; padding: 10px; border-width: 3px; }
+        #rb-lobby .rb-dm-state { margin: 0; font-size: 9px; line-height: 1.8; color: #ffd23f; }
+        #rb-lobby .rb-dm-state:empty { display: none; }
+        #rb-lobby .rb-dm-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        #rb-lobby .rb-dm-acts button { font: 9px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 8px 10px; color: #fff; background: rgba(8,20,52,.6); border: 2px solid #fff; cursor: pointer; }
+        #rb-lobby .rb-dm-acts button.go { color: #0a1838; background: #36e07a; border-color: #0a1838; }
+        #rb-lobby .rb-dm-acts button[hidden] { display: none; }
 
         /* ---- V387: the name gate ---- */
         #rb-lobby[data-active="name"] .rb-screen[data-view="name"] {
@@ -2121,7 +2194,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V523<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V524<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2146,6 +2219,7 @@
                 <div class="rb-more-row">
                     <button id="rb-ranks-btn" type="button">RANKINGS<span class="n" id="rb-my-rating"></span></button>
                     <button id="rb-watch-btn" type="button"><i class="rb-live-dot" aria-hidden="true"></i>WATCH LIVE<span class="n" id="rb-watch-n"></span></button>
+                    <button id="rb-msgs-btn" type="button">MESSAGES<span class="n" id="rb-msgs-n"></span></button>
                 </div>
                 <p id="rb-entry-msg" class="msg"></p>
             </div>
@@ -2280,6 +2354,7 @@
         <div data-view="ranks" class="rb-screen">
             <h1 class="rb-roomtitle">RANK<span class="code">INGS</span></h1>
             <p class="rb-rank-me" id="rb-rank-me"></p>
+            <p class="rb-rank-tip">TAP A PLAYER TO CHALLENGE OR MESSAGE THEM</p>
             <ol class="rb-rank-list" id="rb-rank-list"></ol>
             <p class="rb-rank-note">Everyone starts at 1000. A win takes points from the loser: beat someone rated higher and you gain more, beat someone rated lower and you gain less. Your first games move your rating a lot, and it settles as you play more, like chess. A game counts when it is played to the end on two devices with the SAME difficulty. Leave a ranked game before it ends and you lose 0.25 &times; the whole minutes left &times; the point difference; with under a minute left, 3 &times; what a loss to that player costs, whatever the score. The player who stayed gets a win right away (the points of beating you) &mdash; and if you come back and finish the game, it is undone. A red number next to a rating is how many points that player has lost by leaving games (shown for players who have left more than 12). You show on the board after 5 ranked games.</p>
             <button id="rb-ranks-back" class="rb-join-btn" type="button">&#9664; BACK</button>
@@ -2290,6 +2365,28 @@
             <ul class="rb-watch-list" id="rb-watch-list"></ul>
             <p class="rb-watch-note">Watch a game that is being played right now and chat with the other watchers. The players don't see the watchers' chat.</p>
             <button id="rb-watch-back" class="rb-join-btn" type="button">&#9664; BACK</button>
+        </div>
+        <!-- ======================= MESSAGES (V524) ======================= -->
+        <div data-view="msgs" class="rb-screen">
+            <h1 class="rb-roomtitle">MESS<span class="code">AGES</span></h1>
+            <ul class="rb-dm-list" id="rb-dm-list"></ul>
+            <p class="rb-rank-note">Message any player on the RANKINGS: tap them, then MESSAGE. Your conversations are kept for good.</p>
+            <button id="rb-msgs-back" class="rb-join-btn" type="button">&#9664; BACK</button>
+        </div>
+        <div data-view="dm" class="rb-screen">
+            <h1 class="rb-roomtitle rb-dm-title" id="rb-dm-name"></h1>
+            <p class="rb-dm-seen" id="rb-dm-seen"></p>
+            <div class="rb-dm-wrap">
+                <ul class="rb-chat-log rb-dm-log" id="rb-dm-log" aria-live="polite"></ul>
+                <form class="rb-chat-form" id="rb-dm-form"><input id="rb-dm-input" maxlength="500" placeholder="Message" autocomplete="off"><button type="submit">SEND</button></form>
+                <p class="rb-chat-tip">Keep personal info (your school, address, phone) to yourself.</p>
+                <p class="rb-dm-state" id="rb-dm-state"></p>
+            </div>
+            <div class="rb-dm-acts">
+                <button id="rb-dm-ch" class="go" type="button" hidden>CHALLENGE</button>
+                <button id="rb-dm-block" type="button">BLOCK</button>
+            </div>
+            <button id="rb-dm-back" class="rb-join-btn" type="button">&#9664; MESSAGES</button>
         </div>
         <!-- V493: someone is looking for a game right now — every lobby sees it, one tap plays them -->
         <button id="rb-lfg-banner" type="button" hidden>&#9889; <span class="lg">A PLAYER WANTS A GAME RIGHT NOW &mdash; <b>PLAY THEM</b></span><span class="sm">SOMEONE WANTS A GAME &mdash; <b>PLAY</b></span></button>
@@ -2303,11 +2400,42 @@
                 <button id="rb-match-ok" type="button">LET'S GO</button>
             </div>
         </div>
+        <!-- V524: a player on the RANKINGS -->
+        <div id="rb-pcard" class="rb-pop" hidden role="dialog" aria-modal="true" aria-labelledby="rb-pcard-name">
+            <div class="rb-pop-card">
+                <button class="rb-pop-x" id="rb-pcard-x" type="button" aria-label="Close">&#10005;</button>
+                <p class="rb-pop-eye" id="rb-pcard-rank"></p>
+                <h2 id="rb-pcard-name"></h2>
+                <p class="rb-pop-line" id="rb-pcard-rec"></p>
+                <p class="rb-pop-line" id="rb-pcard-seen"></p>
+                <div class="rb-pop-btns">
+                    <button id="rb-pcard-ch" class="go" type="button">CHALLENGE</button>
+                    <button id="rb-pcard-dm" type="button">MESSAGE</button>
+                </div>
+                <p class="rb-pop-note" id="rb-pcard-note"></p>
+            </div>
+        </div>
+        <!-- V524: a challenge — the one I sent (waiting for the answer) or one sent to me -->
+        <div id="rb-chal" class="rb-pop" hidden role="alertdialog" aria-modal="true" aria-labelledby="rb-chal-title">
+            <div class="rb-pop-card">
+                <p class="rb-pop-eye">&#9733; CHALLENGE &#9733;</p>
+                <h2 id="rb-chal-title"></h2>
+                <p class="rb-pop-line" id="rb-chal-line"></p>
+                <p class="rb-pop-line" id="rb-chal-line2"></p>
+                <div class="rb-pop-btns">
+                    <button id="rb-chal-yes" class="go" type="button">ACCEPT</button>
+                    <button id="rb-chal-no" type="button">NO THANKS</button>
+                    <button id="rb-chal-cancel" class="quiet" type="button">CANCEL</button>
+                    <button id="rb-chal-ok" type="button">OK</button>
+                </div>
+            </div>
+        </div>
+        <button id="rb-dm-toast" type="button" hidden></button>
 
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V523</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V524</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -21586,9 +21714,14 @@
                 });
             } catch (e) {}
         }
-        function lfgMatched(name) {
+        function lfgMatched(name, how) {
             var nm = lfgName(name), $m = document.getElementById('rb-match'), $n = document.getElementById('rb-match-name');
             if ($n) $n.textContent = nm;
+            try {   // V524: a challenge that was accepted says so
+                var $eye = document.querySelector('#rb-match .rb-match-eye'), $tt = document.getElementById('rb-match-title');
+                if ($eye) $eye.textContent = how === 'ch' ? '\u2605 CHALLENGE \u2605' : '\u2605 MATCHED \u2605';
+                if ($tt) $tt.textContent = how === 'ch' ? 'GAME ON!' : 'PLAYER FOUND!';
+            } catch (eHow) {}
             if ($m) { $m.hidden = false; setTimeout(function () { try { document.getElementById('rb-match-ok').focus(); } catch (e) {} }, 60); }
             lfgChime();
             if (document.hidden) {
@@ -22002,20 +22135,32 @@
             if ($list && !$list.children.length) { var z0 = document.createElement('li'); z0.className = 'none'; z0.textContent = 'LOADING…'; $list.appendChild(z0); }
             Promise.all([eloGetX(eloPub() + '/top', 8000), eloLoadMine()]).then(function (res) {
                 var top = res[0] || {}, list = Array.isArray(top.list) ? top.list : [], u = eloUid(), meRank = 0;
+                if (Array.isArray(window._rb2p_rankExtra)) list = list.concat(window._rb2p_rankExtra);   // V524 test seam (e2e): extra rows
+                socBoard = list; socBoardAt = Date.now();   // V524: who can be challenged
                 if ($list) {
                     $list.textContent = '';
                     list.forEach(function (p, i) {
                         if (!p) return;
-                        var li = document.createElement('li');
-                        if (p.u && u && u.indexOf(String(p.u)) === 0) { li.className = 'me'; meRank = i + 1; }
+                        var li = document.createElement('li'), mine = !!(p.u && u && u.indexOf(String(p.u)) === 0);
+                        if (mine) { li.className = 'me'; meRank = i + 1; }
+                        else if (p.u) {   // V524: tap a player — the card with CHALLENGE and MESSAGE
+                            li.tabIndex = 0; li.setAttribute('role', 'button'); li.title = 'Challenge or message ' + lfgName(p.nm);
+                            li.addEventListener('click', function () { socCard(p, i + 1); });
+                            li.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); socCard(p, i + 1); } });
+                        }
                         [['rk', '#' + (i + 1)], ['nm', lfgName(p.nm)], ['lp', Number(p.lp) > 0 ? '\u2212' + Math.round(Number(p.lp)) : ''], ['r', String(Math.round(Number(p.r) || 0))], ['wl', (p.w || 0) + '-' + (p.l || 0) + (p.d ? '-' + p.d : '')]].forEach(function (c) {
-                            var sp = document.createElement('span'); sp.className = c[0]; sp.textContent = c[1];
+                            var sp = document.createElement('span'); sp.className = c[0];
+                            if (c[0] === 'nm') {   // V524: the name, and under it when they were last online
+                                var nb = document.createElement('b'); nb.textContent = c[1]; sp.appendChild(nb);
+                                var sn = document.createElement('small'); sn.className = 'seen'; if (p.u) sn.dataset.p = String(p.u); sp.appendChild(sn);
+                            } else sp.textContent = c[1];
                             if (c[0] === 'lp' && Number(p.lp) > 0) sp.title = 'Lost ' + Math.round(Number(p.lp)) + ' rating points by leaving ' + (Number(p.lc) || 0) + ' game' + (Number(p.lc) === 1 ? '' : 's');   // V521
                             li.appendChild(sp);
                         });
                         $list.appendChild(li);
                     });
                     if (!$list.children.length) { var z = document.createElement('li'); z.className = 'none'; z.textContent = 'NO ONE ON THE BOARD YET — PLAY 5 RANKED GAMES TO BE THE FIRST'; $list.appendChild(z); }
+                    socRanksSeen(false);   // V524
                 }
                 if ($me) {
                     var n = Number(eloMine && eloMine.n) || 0;
@@ -22079,6 +22224,7 @@
             if (name === 'watch') { watchListLoad(); watchTimer = setInterval(watchListLoad, 15000); }
             if (name === 'entry') { eloLoadMine(); watchCountLoad(); }
             if (name === 'room' && myRoom) { eloLoadMine(); eloRoomTag(); roomTagTimer = setInterval(eloRoomTag, 1500); }
+            try { socView(name); } catch (eSoc) {}   // V524: last online, messages
         };
         (function () {
             var on = function (id, f) { var el = document.getElementById(id); if (el) el.addEventListener('click', f); };
@@ -22086,8 +22232,409 @@
             on('rb-watch-btn', function () { showView('watch'); });
             on('rb-ranks-back', function () { showView('entry'); });
             on('rb-watch-back', function () { showView('entry'); });
+            on('rb-msgs-btn', function () { showView('msgs'); });   // V524
+            on('rb-msgs-back', function () { showView('entry'); });
+            on('rb-dm-back', function () { showView('msgs'); });
             setTimeout(function () { if (lobby.dataset.active === 'entry') { eloLoadMine(); watchCountLoad(); } }, 4000);   // after sign-in
         })();
+
+        // ===== V524 (the owner: "add a challenge system, where you can directly challenge someone, but they have to be on
+        // the rankings page. On it should show when last online. There should also be a dm feature where you can message
+        // someone, and it is stored forever, like insta"): LAST ONLINE on the RANKINGS, CHALLENGE a player on the board,
+        // MESSAGES. Everyone is addressed by the first 8 characters of their device id — what the board publishes (p.u).
+        // The database rules (V524: on, ch, dm; e2e/v524-social-rules.js) check auth.uid.beginsWith(those 8): only you set
+        // your last-online time and your blocks, only the two players see a challenge, only the two people in a conversation
+        // read it, and no message can ever be changed or deleted (stored forever).
+        //   on/{me}            = server time, while a page is open (every minute, on hide, and when its connection drops)
+        //   ch/{to}/{from}     = { n, r, at, st: 'open' | 'yes' (+ code) | 'no' | 'busy' } — the sender's page removes it on
+        //                        CANCEL, after 5 minutes, after the answer, or when it closes (onDisconnect)
+        //   dm/t/{a}/{b}/{key} = { f, x, at } (a < b) · dm/i/{me}/{peer} = { n, x, at, f, s: when I last read it }
+        //   dm/b/{me}/{peer}   = true — I blocked them: they can't message or challenge me
+        //   sid/{me}           = this page's database-connection uid. The connection signs in as its own anonymous account,
+        //                        while the RANKINGS (and every game record) know the device by its REST account; the REST
+        //                        account writes this link (only it can), and the rules then let the connection act as me.
+        // A challenge makes a room exactly like FIND A PLAYER: SAME mode, the challenged player's page makes it and the
+        // challenger joins; the pair picks the difficulty there. It is a normal game (ranked by the usual rules).
+        var SOC_WAIT_MS = 5 * 60000;
+        var socBoard = null, socBoardAt = 0, socSeen = {}, socSeenAt = {}, socSeenTimer = 0, socStarted = false;
+        var socInbox = {}, socInboxSeen = false, socBlocked = {}, socBlockedBy = false, socUnread = 0;
+        var socPeer = null, socPeerOff = null, socPeerN = 0, socLimit = 100, socReadT = 0, socSending = false;
+        var socOut = null, socIn = null, socInDone = {}, socAccepting = false, socCardP = null, socToastQ = null, socToastT = 0;
+        var $pc = document.getElementById('rb-pcard'), $chal = document.getElementById('rb-chal'), $toast = document.getElementById('rb-dm-toast');
+        function socMe() { var u = eloUid(); return u.length >= 8 ? u.slice(0, 8) : ''; }   // the device id the RANKINGS know (the REST sign-in)
+        function socTid(p, q) { return p < q ? p + '/' + q : q + '/' + p; }
+        function socTxt(id, t) { var el = document.getElementById(id); if (el) el.textContent = t; }
+        function socAgoMin(ts) { return Math.floor(Math.max(0, lfgNow() - (Number(ts) || 0)) / 60000); }
+        function socSeenTxt(ts, long) {
+            if (!(Number(ts) > 0)) return '';
+            var m = socAgoMin(ts), w = long ? 'LAST ONLINE ' : 'LAST ON ';
+            if (m < 2) return 'ONLINE NOW';
+            if (m < 60) return w + m + ' MIN AGO';
+            var h = Math.floor(m / 60); if (h < 24) return w + h + ' HR AGO';
+            var d = Math.floor(h / 24); return w + d + ' DAY' + (d === 1 ? '' : 'S') + ' AGO';
+        }
+        function socWhen(ts) {   // a message's time
+            if (!(Number(ts) > 0)) return '';
+            var m = socAgoMin(ts); if (m < 1) return 'JUST NOW'; if (m < 60) return m + ' MIN AGO'; if (m < 1440) return Math.floor(m / 60) + ' HR AGO';
+            try { return new Date(Number(ts)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase(); } catch (e) { return ''; }
+        }
+        function socAlert(title, body) {   // a page in the background: a system notification (if allowed) and a flashing title
+            if (!document.hidden) return;
+            try { if ('Notification' in window && Notification.permission === 'granted') { var n = new Notification(title, { body: body, tag: 'rb2p-social' }); n.onclick = function () { try { window.focus(); } catch (e) {} n.close(); }; } } catch (eN) {}
+            var base = document.title, on = false, t = setInterval(function () {
+                if (!document.hidden) { clearInterval(t); document.title = base; return; }
+                on = !on; document.title = on ? title.toUpperCase() + ' — RETRO BOWL 2P' : base;
+            }, 900);
+        }
+
+        // ---- last online ----
+        function socBeat() { var me = socMe(); if (me) FB.set(FB.ref(db, 'on/' + me), FB.serverTimestamp()).catch(function () {}); }
+        var socLinking = false;
+        async function socStart() {   // once signed in (both accounts): the link, then my presence, challenges to me, my inbox and my blocks
+            var me = socMe(), au = null; try { au = FBA.getAuth(app).currentUser; } catch (e) {}
+            if (socStarted || socLinking || !me || !au || !au.uid) return;
+            socLinking = true;
+            var ok = false; try { ok = await window._rb2p_fbRestPut('sid/' + me, au.uid); } catch (e) {}
+            socLinking = false;
+            if (!ok || socStarted) return;   // tried again by the timer below
+            socStarted = true;
+            var onRef = FB.ref(db, 'on/' + me);
+            FB.onValue(FB.ref(db, '.info/connected'), function (sn) {   // every (re)connection: the time it drops, and now
+                if (sn.val() !== true) return;
+                try { FB.onDisconnect(onRef).set(FB.serverTimestamp()); } catch (e) {}
+                socBeat();
+            });
+            setInterval(function () { if (!document.hidden) socBeat(); }, 60000);
+            document.addEventListener('visibilitychange', socBeat);
+            FB.onValue(FB.ref(db, 'dm/b/' + me), function (sn) { socBlocked = sn.val() || {}; socCount(); if (lobby.dataset.active === 'msgs') socListPaint(); socDmActs(); }, function () {});
+            FB.onValue(FB.ref(db, 'dm/i/' + me), function (sn) { socInboxIn(sn.val() || {}); }, function () {});
+            FB.onValue(FB.ref(db, 'ch/' + me), function (sn) { socChIn(sn.val() || {}); }, function () {});
+        }
+        var socStartT = setInterval(function () {
+            if (socStarted) { clearInterval(socStartT); return; }
+            try { if (!socMe() && window._rb2p_fbAuthUrl) window._rb2p_fbAuthUrl('').catch(function () {}); else socStart(); } catch (e) {}   // the REST sign-in first (it names me)
+        }, 3000);
+        function socSeenLoad(ps, fresh) {
+            var now = Date.now(), want = [];
+            (ps || []).forEach(function (p) { if (p && want.indexOf(p) < 0 && (fresh || !(now - (socSeenAt[p] || 0) < 30000))) want.push(p); });
+            return Promise.all(want.map(function (p) {
+                return FB.get(FB.ref(db, 'on/' + p)).then(function (sn) { socSeen[p] = Number(sn.val()) || 0; socSeenAt[p] = Date.now(); }, function () {});
+            }));
+        }
+        function socSeenPaint(el, p, long) { if (!el) return; var t = socSeenTxt(socSeen[p], long); el.textContent = t; el.classList.toggle('on', t === 'ONLINE NOW'); }
+        function socRanksSeen(fresh) {
+            var els = Array.prototype.slice.call(document.querySelectorAll('#rb-rank-list .seen[data-p]'));
+            socSeenLoad(els.map(function (el) { return el.dataset.p; }), fresh).then(function () { els.forEach(function (el) { socSeenPaint(el, el.dataset.p, false); }); });
+        }
+        function socBoardLoad() {   // the RANKINGS list (who can be challenged), at most a minute old
+            if (socBoard && Date.now() - socBoardAt < 60000) return Promise.resolve(socBoard);
+            return eloGetX(eloPub() + '/top', 8000).then(function (top) {
+                var list = top && Array.isArray(top.list) ? top.list : [];
+                if (Array.isArray(window._rb2p_rankExtra)) list = list.concat(window._rb2p_rankExtra);
+                socBoard = list; socBoardAt = Date.now(); return list;
+            });
+        }
+        function socOnBoard(p) { var L = socBoard || []; for (var i = 0; i < L.length; i++) if (L[i] && L[i].u === p) return { p: L[i], rank: i + 1 }; return null; }
+
+        // ---- the player card (a tap on the RANKINGS) ----
+        function socCard(p, rank) {
+            if (!$pc || !p || !p.u) return;
+            socCardP = p;
+            socTxt('rb-pcard-rank', '#' + rank + ' · RATING ' + Math.round(Number(p.r) || 0));
+            socTxt('rb-pcard-name', lfgName(p.nm));
+            socTxt('rb-pcard-rec', (p.w || 0) + '-' + (p.l || 0) + (p.d ? '-' + p.d : '') + ' · ' + (Number(p.n) || 0) + ' RANKED GAME' + (Number(p.n) === 1 ? '' : 'S'));
+            socTxt('rb-pcard-note', '');
+            var $s = document.getElementById('rb-pcard-seen'); socSeenPaint($s, p.u, true);
+            $pc.hidden = false;
+            socSeenLoad([p.u], true).then(function () { if (socCardP === p) socSeenPaint($s, p.u, true); });
+            setTimeout(function () { try { document.getElementById('rb-pcard-ch').focus(); } catch (e) {} }, 60);
+        }
+        function socCardClose() { if ($pc) $pc.hidden = true; socCardP = null; }
+
+        // ---- challenges ----
+        function socChShow(title, line, line2, btns, on) {
+            socTxt('rb-chal-title', title); socTxt('rb-chal-line', line || '');
+            var l2 = document.getElementById('rb-chal-line2'); if (l2) { l2.textContent = line2 || ''; l2.classList.toggle('on', !!on); }
+            ['yes', 'no', 'cancel', 'ok'].forEach(function (k) { var b = document.getElementById('rb-chal-' + k); if (b) b.hidden = (btns || []).indexOf(k) < 0; });
+            if ($chal) $chal.hidden = false;
+        }
+        function socChHide() { if ($chal) $chal.hidden = true; }
+        async function socChSend(p) {   // I challenge p (a player on the board)
+            var me = socMe(); if (!me || !p || !p.u || p.u === me || lfgInMatch()) return;
+            if (!rb2pName()) { socCardClose(); showNameGate(); return; }
+            if (socOut) socChEnd();
+            var ref = FB.ref(db, 'ch/' + p.u + '/' + me);
+            try { await FB.set(ref, { n: String(rb2pName()).slice(0, 16), r: eloRating(eloMine), at: FB.serverTimestamp(), st: 'open' }); }
+            catch (e) { socTxt('rb-pcard-note', /ermission/.test(String(e && e.message)) ? 'You can\'t challenge this player.' : 'Not sent — check your connection.'); return false; }
+            try { FB.onDisconnect(ref).remove(); } catch (e) {}
+            try { if (lfgWaiting) lfgStop(); } catch (e) {}   // out of FIND A PLAYER's line while waiting for the answer
+            socCardClose();
+            if (lobby.dataset.active === 'dm') socTxt('rb-dm-state', '');
+            var o = socOut = { to: p.u, n: p.nm, ref: ref, since: Date.now(), st: 'open', off: null, t: 0 };
+            socSeenLoad([p.u], true);
+            socChPaintOut();
+            o.off = FB.onValue(ref, function (sn) { if (socOut === o) socChOutChange(sn.val()); }, function () {});
+            o.t = setInterval(function () { if (socOut === o) socChPaintOut(); }, 1000);
+            return true;
+        }
+        function socChPaintOut() {
+            var o = socOut; if (!o || o.st !== 'open' || socIn) return;   // a challenge TO me has the card meanwhile
+            var s = Math.max(0, Math.round((Date.now() - o.since) / 1000));
+            if (s * 1000 >= SOC_WAIT_MS) { socChEnd(); socChShow('NO ANSWER', lfgName(o.n) + ' didn\'t answer your challenge.', '', ['ok']); return; }
+            var seen = socSeenTxt(socSeen[o.to], true);
+            socChShow('CHALLENGE SENT', 'Waiting for ' + lfgName(o.n) + ' to answer… ' + Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2), seen, ['cancel'], seen === 'ONLINE NOW');
+        }
+        function socChOutChange(v) {
+            var o = socOut; if (!o || o.st !== 'open') return;
+            if (!v) { socChEnd(); socChShow('NO ANSWER', lfgName(o.n) + ' didn\'t answer your challenge.', '', ['ok']); return; }
+            if (v.st === 'yes' && v.code) { socChJoin(String(v.code)); return; }
+            if (v.st === 'no') { socChEnd(); socChShow('NOT THIS TIME', lfgName(o.n) + ' said no thanks.', '', ['ok']); return; }
+            if (v.st === 'busy') { socChEnd(); socChShow('IN A GAME', lfgName(o.n) + ' is playing a game right now — try again when it ends.', '', ['ok']); }
+        }
+        function socChEnd() {   // my challenge is over: its listener, clock and entry go
+            var o = socOut; if (!o) return; socOut = null;
+            if (o.off) { try { o.off(); } catch (e) {} }
+            if (o.t) clearInterval(o.t);
+            try { FB.onDisconnect(o.ref).cancel(); } catch (e) {}
+            FB.remove(o.ref).catch(function () {});
+            if (!socIn) socChHide();
+        }
+        async function socChJoin(code) {   // they accepted: into the room they made
+            var o = socOut; if (!o || o.st !== 'open') return; o.st = 'joining';
+            if (o.t) { clearInterval(o.t); o.t = 0; }
+            socChShow('GAME ON!', lfgName(o.n) + ' accepted — joining their room…', '', []);
+            try {
+                if (lfgInMatch()) { socChEnd(); return; }
+                if (lfgWaiting) lfgStop();
+                if (SPEC) specStop('entry');
+                if (myRoom && myRoom !== code) await leaveRoom();
+                var role = await claimSlot(code);
+                if (!role || role === 'notfound') { socChEnd(); socChShow('THAT FELL THROUGH', 'Could not get into ' + lfgName(o.n) + '\'s room — try again.', '', ['ok']); return; }
+                socChEnd();
+                enterRoom(code, role, false);
+                lfgMatched(o.n, 'ch');
+            } catch (e) { socChEnd(); socChShow('THAT FELL THROUGH', 'Connection error — try again.', '', ['ok']); }
+        }
+        function socChIn(all) {   // challenges to me
+            var me = socMe(), now = lfgNow(), best = null;
+            Object.keys(all || {}).forEach(function (from) {
+                var c = all[from]; if (!c || typeof c !== 'object') return;
+                if (now - (Number(c.at) || 0) > SOC_WAIT_MS + 60000) { FB.remove(FB.ref(db, 'ch/' + me + '/' + from)).catch(function () {}); return; }   // old: tidied away
+                if (c.st !== 'open' || socBlocked[from] || socInDone[from + ':' + c.at]) return;
+                if (!best || Number(c.at) > Number(best.at)) best = Object.assign({ from: from }, c);
+            });
+            if (socIn && !socAccepting) {   // the one on screen was withdrawn (cancelled, timed out, or answered on another tab)
+                var cur = all && all[socIn.from];
+                if (!(cur && cur.st === 'open' && Number(cur.at) === Number(socIn.at))) { socIn = null; socChHide(); if (socOut) socChPaintOut(); }
+            }
+            if (!best || (socIn && socIn.from === best.from) || socAccepting) return;
+            if (lfgInMatch()) { socInDone[best.from + ':' + best.at] = 1; FB.update(FB.ref(db, 'ch/' + me + '/' + best.from), { st: 'busy' }).catch(function () {}); return; }
+            socIn = best;
+            socChInShow();
+            lfgChime();
+            socAlert('Challenge from ' + lfgName(best.n), lfgName(best.n) + ' wants to play you in Retro Bowl 2P.');
+            socBoardLoad().then(function () { if (socIn === best) socChInShow(); });
+        }
+        function socChInShow() {
+            var c = socIn; if (!c) return;
+            var b = socOnBoard(c.from);
+            socChShow(lfgName(c.n) + ' CHALLENGES YOU!', (b ? '#' + b.rank + ' ON THE RANKINGS · ' : '') + 'RATING ' + Math.round(Number(c.r) || 1000),
+                      'ACCEPT makes a room for the two of you.', ['yes', 'no']);
+        }
+        async function socChAccept() {
+            var c = socIn, me = socMe(); if (!c || !me || socAccepting) return;
+            if (!rb2pName()) { showNameGate(); return; }
+            socAccepting = true; socInDone[c.from + ':' + c.at] = 1;
+            var ref = FB.ref(db, 'ch/' + me + '/' + c.from);
+            if (socOut) socChEnd();
+            socChShow('GAME ON!', 'Making a room for you and ' + lfgName(c.n) + '…', '', []);
+            try {
+                var cur = (await FB.get(ref)).val();
+                if (!cur || cur.st !== 'open' || Number(cur.at) !== Number(c.at)) { socIn = null; socChShow('TOO LATE', lfgName(c.n) + ' withdrew the challenge.', '', ['ok']); return; }
+                if (lfgWaiting) lfgStop();
+                if (SPEC) specStop('entry');
+                if (myRoom) await leaveRoom();
+                applyDiffModeLocal('same');   // as FIND A PLAYER: SAME — the pair picks the difficulty in the room
+                var code = await claimNewRoom();
+                if (!code) { socIn = null; socChShow('THAT FELL THROUGH', 'Could not make a room — try again.', '', ['ok']); return; }
+                enterRoom(code, 'a', false);
+                await FB.update(ref, { st: 'yes', code: code });
+                socIn = null; socChHide();
+                lfgMatched(c.n, 'ch');
+            } catch (e) { socIn = null; socChShow('THAT FELL THROUGH', 'Connection error — try again.', '', ['ok']); }
+            finally { socAccepting = false; }
+        }
+        function socChDecline() {
+            var c = socIn, me = socMe(); if (!c || !me) return;
+            socInDone[c.from + ':' + c.at] = 1; socIn = null;
+            FB.update(FB.ref(db, 'ch/' + me + '/' + c.from), { st: 'no' }).catch(function () {});
+            socChHide(); if (socOut) socChPaintOut();
+        }
+
+        // ---- messages ----
+        function socInboxIn(v) {
+            var prev = socInbox, me = socMe(), first = !socInboxSeen;
+            socInbox = v || {}; socInboxSeen = true;
+            Object.keys(socInbox).forEach(function (q) {   // a new message (not the first load, not the conversation I'm reading): the toast
+                var e = socInbox[q], pe = prev[q];
+                if (first || !e || !e.at || e.f === me || socBlocked[q]) return;
+                if (pe && Number(e.at) <= Number(pe.at || 0)) return;
+                if (socPeer && socPeer.p === q && lobby.dataset.active === 'dm') return;
+                socToast(q, e);
+            });
+            socCount();
+            if (lobby.dataset.active === 'msgs') socListPaint();
+        }
+        function socIsNew(q) { var e = socInbox[q], me = socMe(); return !!(e && e.at && e.f && e.f !== me && Number(e.at) > (Number(e.s) || 0) && !socBlocked[q]); }
+        function socCount() {
+            socUnread = Object.keys(socInbox).filter(socIsNew).length;
+            var el = document.getElementById('rb-msgs-n'); if (el) el.textContent = socUnread ? String(socUnread) : '';
+        }
+        function socToast(q, e) {
+            if (!$toast || lfgInMatch()) return;
+            socToastQ = { p: q, n: e.n };
+            $toast.textContent = '✉ ' + lfgName(e.n) + ': ' + String(e.x || '').slice(0, 80);
+            $toast.hidden = false;
+            clearTimeout(socToastT); socToastT = setTimeout(function () { $toast.hidden = true; }, 7000);
+            socAlert('Message from ' + lfgName(e.n), String(e.x || '').slice(0, 120));
+        }
+        function socListPaint() {
+            var $l = document.getElementById('rb-dm-list'); if (!$l) return;
+            var me = socMe(), keys = Object.keys(socInbox).filter(function (q) { return socInbox[q] && socInbox[q].at; })
+                .sort(function (x, y) { return Number(socInbox[y].at) - Number(socInbox[x].at); });
+            $l.textContent = '';
+            if (!keys.length) { var z = document.createElement('li'); z.className = 'none'; z.textContent = 'NO MESSAGES YET — OPEN RANKINGS, TAP A PLAYER AND PRESS MESSAGE'; $l.appendChild(z); return; }
+            keys.forEach(function (q) {
+                var e = socInbox[q], li = document.createElement('li');
+                if (socIsNew(q)) li.className = 'new';
+                li.tabIndex = 0; li.setAttribute('role', 'button'); li.dataset.p = q;
+                var top = document.createElement('div'); top.className = 'top';
+                var b = document.createElement('b'); b.textContent = lfgName(e.n) + (socBlocked[q] ? ' (BLOCKED)' : '');
+                var t = document.createElement('small'); t.textContent = socWhen(e.at);
+                top.appendChild(b); top.appendChild(t);
+                var x = document.createElement('p'); x.textContent = (e.f === me ? 'You: ' : '') + String(e.x || '');
+                li.appendChild(top); li.appendChild(x);
+                li.addEventListener('click', function () { socDmOpen(q, e.n); });
+                li.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') socDmOpen(q, e.n); });
+                $l.appendChild(li);
+            });
+        }
+        function socDmOpen(q, name) {
+            var me = socMe(); if (!me || !q || q === me) return;
+            socCardClose();
+            socPeer = { p: q, n: name || (socInbox[q] && socInbox[q].n) || '' };
+            showView('dm');
+        }
+        function socDmShow() {   // the conversation screen
+            var me = socMe(), P = socPeer; if (!P || !me) { showView('msgs'); return; }
+            socTxt('rb-dm-name', lfgName(P.n));
+            var $s = document.getElementById('rb-dm-seen'); socSeenPaint($s, P.p, true);
+            socSeenLoad([P.p], true).then(function () { if (socPeer === P) socSeenPaint($s, P.p, true); });
+            socTxt('rb-dm-state', '');
+            socBlockedBy = false; socDmActs();
+            FB.get(FB.ref(db, 'dm/b/' + P.p + '/' + me)).then(function (sn) { if (socPeer === P) { socBlockedBy = sn.val() === true; socDmActs(); } }, function () {});
+            socBoardLoad().then(function () { if (socPeer === P) socDmActs(); });
+            socLimit = 100; socDmSub();
+            if (!(window.matchMedia && matchMedia('(pointer: coarse)').matches)) setTimeout(function () { try { document.getElementById('rb-dm-input').focus({ preventScroll: true }); } catch (e) {} }, 80);
+        }
+        function socDmSub() {   // the conversation's last socLimit messages, live
+            if (socPeerOff) { try { socPeerOff(); } catch (e) {} socPeerOff = null; }
+            var me = socMe(), P = socPeer, $log = document.getElementById('rb-dm-log'); if (!P || !me || !$log) return;
+            $log.textContent = ''; socPeerN = 0;
+            var z = document.createElement('li'); z.className = 'none'; z.textContent = 'SAY HI TO ' + lfgName(P.n) + ' — YOUR CONVERSATION IS KEPT FOR GOOD'; $log.appendChild(z);
+            socPeerOff = FB.onChildAdded(FB.query(FB.ref(db, 'dm/t/' + socTid(me, P.p)), FB.limitToLast(socLimit)), function (sn) { if (socPeer === P) socDmAdd(sn.val()); },
+                                         function () { socTxt('rb-dm-state', 'Could not load the messages — check your connection.'); });
+            socDmRead();
+        }
+        function socDmAdd(m) {
+            var $log = document.getElementById('rb-dm-log'); if (!$log || !m) return;
+            var me = socMe(), stick = $log.scrollHeight - $log.scrollTop - $log.clientHeight < 60;
+            var z = $log.querySelector('li.none'); if (z) z.remove();
+            socPeerN++;
+            var li = document.createElement('li'); if (m.f === me) li.className = 'me';
+            var t = document.createElement('span'); t.textContent = String(m.x || '');
+            var sm = document.createElement('small'); sm.textContent = socWhen(m.at);
+            li.appendChild(t); li.appendChild(sm); $log.appendChild(li);
+            if (socPeerN >= socLimit && !$log.querySelector('li.more')) {   // older messages are kept too: load them on request
+                var mo = document.createElement('li'); mo.className = 'more';
+                var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = 'EARLIER MESSAGES';
+                bt.addEventListener('click', function () { socLimit += 100; socDmSub(); });
+                mo.appendChild(bt); $log.insertBefore(mo, $log.firstChild);
+            }
+            if (stick || m.f === me) $log.scrollTop = $log.scrollHeight;
+            if (m.f !== me) socDmRead();
+        }
+        function socDmRead() {   // what I've read (the unread count), at most every 0.4 s
+            if (socReadT) return;
+            socReadT = setTimeout(function () {
+                socReadT = 0; var me = socMe(), P = socPeer;
+                if (me && P && lobby.dataset.active === 'dm') FB.set(FB.ref(db, 'dm/i/' + me + '/' + P.p + '/s'), FB.serverTimestamp()).catch(function () {});
+            }, 400);
+        }
+        async function socDmSend(text) {
+            var me = socMe(), P = socPeer; text = String(text || '').trim().slice(0, 500);
+            if (!me || !P || !text || socSending) return false;
+            if (!rb2pName()) { showNameGate(); return false; }
+            if (socBlocked[P.p]) { socDmActs(); return false; }
+            var tid = socTid(me, P.p), key = FB.push(FB.ref(db, 'dm/t/' + tid)).key, TS = FB.serverTimestamp(), up = {};
+            var mine = 'dm/i/' + me + '/' + P.p + '/', theirs = 'dm/i/' + P.p + '/' + me + '/', pre = text.slice(0, 120);
+            up['dm/t/' + tid + '/' + key] = { f: me, x: text, at: TS };
+            up[mine + 'n'] = String(P.n || '').slice(0, 16); up[mine + 'x'] = pre; up[mine + 'at'] = TS; up[mine + 'f'] = me; up[mine + 's'] = TS;
+            up[theirs + 'n'] = String(rb2pName()).slice(0, 16); up[theirs + 'x'] = pre; up[theirs + 'at'] = TS; up[theirs + 'f'] = me;
+            socSending = true;
+            try { await FB.update(FB.ref(db), up); socTxt('rb-dm-state', ''); return true; }
+            catch (e) { socTxt('rb-dm-state', /ermission/.test(String(e && e.message)) ? 'You can\'t message ' + lfgName(P.n) + '.' : 'Not sent — check your connection.'); return false; }
+            finally { socSending = false; }
+        }
+        function socDmActs() {   // BLOCK / UNBLOCK, CHALLENGE (only for a player on the board), and why the box is shut
+            var P = socPeer; if (!P) return;
+            var $b = document.getElementById('rb-dm-block'), $c = document.getElementById('rb-dm-ch'), $in = document.getElementById('rb-dm-input');
+            if ($b) $b.textContent = socBlocked[P.p] ? 'UNBLOCK' : 'BLOCK';
+            if ($c) $c.hidden = !socOnBoard(P.p) || !!socBlocked[P.p] || socBlockedBy;
+            var why = socBlocked[P.p] ? 'You blocked ' + lfgName(P.n) + ' — UNBLOCK to message them.' : socBlockedBy ? 'You can\'t message ' + lfgName(P.n) + '.' : '';
+            var $st = document.getElementById('rb-dm-state');
+            if (why || ($st && /blocked|can't message/.test($st.textContent))) socTxt('rb-dm-state', why);
+            if ($in) $in.disabled = !!why;
+        }
+        function socBlockToggle() {
+            var me = socMe(), P = socPeer; if (!me || !P) return;
+            var r = FB.ref(db, 'dm/b/' + me + '/' + P.p);
+            (socBlocked[P.p] ? FB.remove(r) : FB.set(r, true)).catch(function () { socTxt('rb-dm-state', 'Could not change that — check your connection.'); });
+        }
+        function socView(name) {   // from _rb2p_viewChanged
+            if (socSeenTimer) { clearInterval(socSeenTimer); socSeenTimer = 0; }
+            if (name === 'ranks') socSeenTimer = setInterval(function () { socRanksSeen(true); }, 60000);
+            if (name === 'msgs') { socListPaint(); socBoardLoad(); }
+            if (name === 'dm') socDmShow();
+            else if (socPeerOff) { try { socPeerOff(); } catch (e) {} socPeerOff = null; }
+            if (name !== 'ranks') socCardClose();
+        }
+        (function () {
+            var on = function (id, f) { var el = document.getElementById(id); if (el) el.addEventListener('click', f); };
+            on('rb-pcard-x', socCardClose);
+            if ($pc) $pc.addEventListener('click', function (ev) { if (ev.target === $pc) socCardClose(); });
+            on('rb-pcard-ch', function () { lfgUnlock(); socChSend(socCardP); });
+            on('rb-pcard-dm', function () { var p = socCardP; if (p) socDmOpen(p.u, p.nm); });
+            on('rb-chal-yes', function () { lfgUnlock(); socChAccept(); });
+            on('rb-chal-no', socChDecline);
+            on('rb-chal-cancel', function () { socChEnd(); });
+            on('rb-chal-ok', function () { socChHide(); if (socIn) socChInShow(); else if (socOut) socChPaintOut(); });
+            on('rb-dm-block', socBlockToggle);
+            on('rb-dm-ch', function () { var b = socPeer && socOnBoard(socPeer.p); if (b) { lfgUnlock(); socChSend(b.p); } });
+            if ($toast) $toast.addEventListener('click', function () { $toast.hidden = true; if (socToastQ) socDmOpen(socToastQ.p, socToastQ.n); });
+            var $f = document.getElementById('rb-dm-form'), $i = document.getElementById('rb-dm-input');
+            if ($f) $f.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                var t = $i ? $i.value : ''; if (!String(t).trim()) return;
+                socDmSend(t).then(function (ok) { if (ok && $i) $i.value = ''; });
+            });
+            document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && $pc && !$pc.hidden) socCardClose(); });
+        })();
+        window._rb2p_social = {   // test seams
+            me: socMe, card: socCard, challenge: socChSend, accept: socChAccept, decline: socChDecline, open: socDmOpen, send: socDmSend, block: socBlockToggle,
+            state: function () { return { me: socMe(), unread: socUnread, inbox: Object.keys(socInbox), blocked: Object.keys(socBlocked), peer: socPeer && socPeer.p,
+                out: socOut ? { to: socOut.to, st: socOut.st } : null, inc: socIn ? { from: socIn.from, n: socIn.n } : null, started: socStarted }; }
+        };
 
         // the watcher's screen. Each player's page passes the frames it gets (while it waits) on to its watchers — the
         // picture is the screen of the player with the ball, exactly as the waiting player sees it.
