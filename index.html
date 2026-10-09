@@ -31,11 +31,104 @@
         // while the Anonymous provider is still disabled.
         var FB_API_KEY = 'AIzaSyDvaE6pbLsIerleUr2sLpiOs-jmP39ihk0';
         var _fbTok = null;
+        // ===== V532: TABS ARE DISCONNECTED =====
+        // (the owner: "make it that tabs are disconnected from each other, I have seen a lot of overflow from one tab to another
+        // that causes glitches"). What one tab did reached every other tab of the browser through the storage they share:
+        //   - the settings a game plays by (the ULTRAMAX value and the defender-speed knobs are read EVERY FRAME, the
+        //     difficulty until a tab chose its own, the quarter length, the mode, the drive direction, the name): another
+        //     tab's lobby choice changed this tab's game mid-play;
+        //   - a pending interception (a reload's turnover backup) carried no room: another tab's reload took it for its own;
+        //   - a DUPLICATED tab (the browser copies the tab's session data) resumed the same seat in the same room as the
+        //     original — two tabs playing one player;
+        //   - the database connection's sign-in (Firebase's shared store): a log-in or log-out in one tab signed every
+        //     other tab's connection in or out — a LOG OUT cut the live game in another tab.
+        // Now each tab keeps its own: settings are read from the tab (a new tab starts from the last choice made anywhere,
+        // copied in at its first read; a choice is remembered for the next new tab, never pushed into an open one); the
+        // turnover backup is the tab's; a copied tab is found (the original still holds its tab lock) and starts clean
+        // in the lobby; the connection's sign-in lives in the tab. The player is still one player per browser (the
+        // page's sign-in is shared — and a token refresh in one tab never undoes another tab's log-out or log-in).
+        // (a setting nobody has chosen yet is pinned as "none" in the tab too — so another tab choosing one later cannot reach
+        // this tab's game; the name is the exception: a tab without one takes the one set later)
+        var TAB_NONE = '\u0001none';
+        window._rb2p_tabGet = function (key, noPin) {
+            var v = null;
+            try { v = sessionStorage.getItem(key); } catch (e) {}
+            if (v === TAB_NONE) return null;
+            if (v != null) return v;
+            try { v = localStorage.getItem(key); } catch (e) { return null; }
+            try { if (v != null) sessionStorage.setItem(key, v); else if (!noPin) sessionStorage.setItem(key, TAB_NONE); } catch (e) {}
+            return v;
+        };
+        window._rb2p_tabSet = function (key, v) {
+            try { sessionStorage.setItem(key, v == null ? TAB_NONE : String(v)); } catch (e) {}
+            try { if (v == null) localStorage.removeItem(key); else localStorage.setItem(key, String(v)); } catch (e) {}
+        };
+        // the tab: its own id, held by a lock while the tab lives. A reload lets go of its lock and takes it back; a copy
+        // of a live tab finds it held — the copy starts clean (its settings kept) and loads again, as a new tab.
+        (function rb2pTab() {
+            var KEY = 'rb2p_tab', KEEP = ['rb2p_difficulty', 'rb2p_driveDir', 'rb2p_quarter_mins', 'rb2p_diff_mode', 'rb2p_ultramax_value',
+                                          'rb2p_def_speed_bump', 'rb2p_db_speed_mult', 'rb2p_name', '__rb_cb'];
+            var id = null; try { id = sessionStorage.getItem(KEY); } catch (e) {}
+            var fresh = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); };
+            if (!id) { id = fresh(); try { sessionStorage.setItem(KEY, id); } catch (e) {} }
+            window._rb2p_tabId = function () { return id; };
+            var settle;
+            window._rb2p_tabReady = new Promise(function (res) { settle = res; });
+            var done = false, finish = function (copy) { if (done) return; done = true; settle({ id: id, copy: !!copy }); };
+            var copied = function () {
+                window._rb2p_tabWasCopy = true;
+                var keep = {}, again = 0;
+                try { again = Number(sessionStorage.getItem('rb2p_tabCopyAt')) || 0; } catch (e) {}
+                if (Date.now() - again < 60000) { finish(false); return; }   // never a loop: once a minute at most
+                KEEP.forEach(function (k) { try { var v = sessionStorage.getItem(k); if (v != null) keep[k] = v; } catch (e) {} });
+                try { sessionStorage.clear(); } catch (e) {}
+                Object.keys(keep).forEach(function (k) { try { sessionStorage.setItem(k, keep[k]); } catch (e) {} });
+                try { sessionStorage.setItem(KEY, fresh()); sessionStorage.setItem('rb2p_tabCopyAt', String(Date.now())); } catch (e) {}
+                try { console.warn('[2P TAB] this tab is a copy of an open tab — starting clean (its own tab, the lobby)'); } catch (e) {}
+                finish(true);
+                try { location.reload(); } catch (e) {}
+            };
+            try {
+                if (navigator.locks && typeof navigator.locks.request === 'function') {
+                    // a reload's own lock is released as the old page goes — allow it a moment before calling this a copy
+                    var ac = typeof AbortController !== 'undefined' ? new AbortController() : null, waited = setTimeout(function () { if (ac) ac.abort(); }, 1500);
+                    navigator.locks.request('rb2p-tab-' + id, ac ? { signal: ac.signal } : { ifAvailable: true }, function (lock) {
+                        clearTimeout(waited);
+                        if (!lock) { copied(); return; }
+                        finish(false);
+                        return new Promise(function () {});   // held for the life of this tab
+                    }).catch(function (e) { if (e && e.name === 'AbortError') copied(); else finish(false); });
+                } else if (typeof BroadcastChannel === 'function') {
+                    var bc = new BroadcastChannel('rb2p-tabs');
+                    bc.onmessage = function (ev) {
+                        var m = ev && ev.data; if (!m) return;
+                        if (m.q === id && done) bc.postMessage({ a: id });   // someone opened a copy of me
+                        if (m.a === id && !done) copied();
+                    };
+                    bc.postMessage({ q: id });
+                    setTimeout(function () { finish(false); }, 400);
+                } else finish(false);
+            } catch (e) { finish(false); }
+        })();
+        // the page's sign-in, shared by the browser's tabs: never written over another tab's newer one (its log-out, a
+        // log-in as someone else) — a token refresh here keeps this tab going in memory instead
+        var _fbTokShared = false;
+        function _fbTokUid(t) {
+            try { var j = JSON.parse(atob(String((t && t.t) || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); return String(j.user_id || j.sub || ''); } catch (e) { return ''; }
+        }
         function _fbLoadTok() {
             try { _fbTok = JSON.parse(localStorage.getItem('fbAnonTok:realretrobowl2p')) || null; } catch (e) { _fbTok = null; }
+            if (_fbTok) _fbTokShared = true;
         }
-        function _fbSaveTok() {
-            try { localStorage.setItem('fbAnonTok:realretrobowl2p', JSON.stringify(_fbTok)); } catch (e) {}
+        function _fbSaveTok(force) {
+            try {
+                if (!force && _fbTokShared) {
+                    var cur = JSON.parse(localStorage.getItem('fbAnonTok:realretrobowl2p') || 'null');
+                    if (!cur || _fbTokUid(cur) !== _fbTokUid(_fbTok)) return;   // another tab logged out or in: not mine to undo
+                }
+                localStorage.setItem('fbAnonTok:realretrobowl2p', JSON.stringify(_fbTok));
+                _fbTokShared = true;
+            } catch (e) {}
         }
         // V419 (F18): ONE sign-in at a time. At boot the visit beacon, the heartbeat, the audit
         // flush and the room code all asked for a token at once, and on a new device each call
@@ -194,7 +287,7 @@
                 return { ok: true, j: j };
             } catch (e) { return { err: 'NETWORK' }; }
         }
-        function acctTake(j) { _fbTok = { t: j.idToken, r: j.refreshToken, e: Date.now() + (parseInt(j.expiresIn, 10) || 3600) * 1000 }; _fbSaveTok(); }
+        function acctTake(j) { _fbTok = { t: j.idToken, r: j.refreshToken, e: Date.now() + (parseInt(j.expiresIn, 10) || 3600) * 1000 }; _fbSaveTok(true); }   // V532: this tab's own switch
         window._rb2p_acctCreate = async function (user, pw) {   // links this device's sign-in: { ok, uid } or { err }
             var t = await fbEnsureTok(); if (!t) return { err: 'NETWORK' };
             var res = await acctCall('accounts:signUp', { idToken: t, email: String(user).toLowerCase() + ACCT_DOMAIN, password: String(pw), returnSecureToken: true });
@@ -210,7 +303,26 @@
             var c = _fbClaims(), old = c && c.firebase && c.firebase.sign_in_provider === 'anonymous' ? String(c.user_id || c.sub || '') : '';
             return { ok: true, uid: String(res.j.localId || ''), old: old, take: function () { acctTake(res.j); } };
         };
-        window._rb2p_acctLogout = function () { _fbTok = null; try { localStorage.removeItem('fbAnonTok:realretrobowl2p'); } catch (e) {} };
+        window._rb2p_acctLogout = function () { _fbTok = null; _fbTokShared = false; try { localStorage.removeItem('fbAnonTok:realretrobowl2p'); } catch (e) {} };
+        // V532: the database connection's sign-in lives in the tab (sessionStorage) — and it is this page's own sign-in, handed
+        // over at boot (the record Firebase keeps for a signed-in user: the id and its tokens), so a tab never makes a second
+        // anonymous account. A reload keeps the tab's own record (its tokens may be fresher).
+        window._rb2p_seedSdkUser = function () {
+            try {
+                var c = _fbClaims(); if (!c || !_fbTok || !_fbTok.r || !_fbTok.t) return false;
+                var uid = String(c.user_id || c.sub || ''); if (!uid) return false;
+                var key = 'firebase:authUser:' + FB_API_KEY + ':[DEFAULT]', cur = null;
+                try { cur = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (e) {}
+                if (cur && cur.uid === uid && cur.stsTokenManager && cur.stsTokenManager.refreshToken) return true;
+                var prov = c.firebase && c.firebase.sign_in_provider, u = {
+                    uid: uid, emailVerified: false, isAnonymous: prov === 'anonymous', providerData: [],
+                    stsTokenManager: { refreshToken: String(_fbTok.r), accessToken: String(_fbTok.t), expirationTime: Number(_fbTok.e) || Date.now() },
+                    apiKey: FB_API_KEY, appName: '[DEFAULT]' };
+                if (c.email) { u.email = String(c.email); u.providerData = [{ providerId: 'password', uid: String(c.email), email: String(c.email), displayName: null, phoneNumber: null, photoURL: null }]; }
+                sessionStorage.setItem(key, JSON.stringify(u));
+                return true;
+            } catch (e) { return false; }
+        };
 
         // ===== V388: WHERE do players come from? A first-party visit beacon =====
         // Strangers have played ~100 games and nothing recorded which door they
@@ -2319,7 +2431,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V531<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V532<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2592,7 +2704,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V531</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V532</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3063,10 +3175,10 @@
             var v = null;
             try { v = sessionStorage.getItem('rb2p_difficulty'); } catch (eS) {}
             if (window._rb2p_DIFFICULTY_TIERS.indexOf(v) >= 0) return v;
-            try { v = localStorage.getItem('rb2p_difficulty'); } catch (e) { return 'max'; }
+            v = window._rb2p_tabGet('rb2p_difficulty');   // V532: a new tab's starting point, then the tab's own
             if (window._rb2p_DIFFICULTY_TIERS.indexOf(v) >= 0) return v;
             if (v != null) {
-                try { localStorage.setItem('rb2p_difficulty', 'max'); } catch (e2) {}
+                window._rb2p_tabSet('rb2p_difficulty', 'max');   // V532: healed in the tab too
                 console.warn('[2P DIFFICULTY] stored value ' + JSON.stringify(v) +
                              ' is not a tier — healed to max');
                 try { if (window._rb2p_diagLog) window._rb2p_diagLog('DIFF healed ' + v + ' -> max'); } catch (e3) {}
@@ -3083,8 +3195,7 @@
         // The pick is kept per tab (sessionStorage — two tabs on one computer can drive opposite ways) and remembered
         // for the next visit (localStorage).
         window._rb2p_driveDirPref = function () {
-            try { var t = Number(sessionStorage.getItem('rb2p_driveDir')); if (t === 1 || t === -1) return t; } catch (e0) {}
-            try { var v = Number(localStorage.getItem('rb2p_driveDir')); if (v === 1 || v === -1) return v; } catch (e) {}
+            try { var v = Number(window._rb2p_tabGet('rb2p_driveDir')); if (v === 1 || v === -1) return v; } catch (e) {}   // V532: the tab's
             try { if (document.documentElement.classList.contains('rb-mobile')) return -1; } catch (e2) {}
             return 1;
         };
@@ -6519,7 +6630,7 @@
                     var estYard = -(Number(em.engineYardLineSigned) || 0);
                     if (estYard < -50) estYard = -50;
                     if (estYard >  50) estYard =  50;
-                    try { localStorage.setItem('rb2p_pendingInt',
+                    try { sessionStorage.setItem('rb2p_pendingInt',   // V532: the tab's (it carried no room — another tab's reload took it)
                           JSON.stringify({ yardLine: estYard, ts: Date.now() })); } catch (eLS) {}
                     if (typeof window._rb2p_saveTurnover === 'function')
                         window._rb2p_saveTurnover({ yardLine: estYard, isPick6: false });
@@ -6604,16 +6715,16 @@
                     var pref = window._rb2p_difficultyPref();
                     var isMax = (pref === 'max');
                     if (!isMax && pref === 'ultramax') {
-                        var uv = parseFloat(localStorage.getItem('rb2p_ultramax_value'));
+                        var uv = parseFloat(window._rb2p_tabGet('rb2p_ultramax_value'));   // V532: the tab's (read every frame)
                         if (!isFinite(uv)) uv = -5;
                         isMax = (Math.max(uv, -5) <= -5);   // ULTRA at the -5 floor == MAX
                     }
                     if (!isMax) return;
-                    var inc = parseFloat(localStorage.getItem('rb2p_def_speed_bump'));
+                    var inc = parseFloat(window._rb2p_tabGet('rb2p_def_speed_bump'));   // V532: the tab's (read every frame)
                     if (!isFinite(inc)) inc = 0.03;          // default DL/LB increment
                     if (inc < 0) inc = 0;
                     if (inc > 0.25) inc = 0.25;
-                    var dbMult = parseFloat(localStorage.getItem('rb2p_db_speed_mult'));
+                    var dbMult = parseFloat(window._rb2p_tabGet('rb2p_db_speed_mult'));
                     if (!isFinite(dbMult)) dbMult = 1.5;      // default DB multiplier
                     if (dbMult < 1) dbMult = 1;
                     if (dbMult > 3) dbMult = 3;
@@ -6679,7 +6790,7 @@
             }
             window._rb2p_bumpDefenderSpeed = rb2pBumpDefenderSpeed;
             window._rb2p_getDefSpeedBump = function () {
-                var n = parseFloat(localStorage.getItem('rb2p_def_speed_bump'));
+                var n = parseFloat(window._rb2p_tabGet('rb2p_def_speed_bump'));
                 return isFinite(n) ? n : 0.03;
             };
             window._rb2p_setDefSpeedBump = function (n) {
@@ -6687,11 +6798,11 @@
                 if (!isFinite(n)) return;
                 if (n < 0) n = 0;
                 if (n > 0.25) n = 0.25;
-                try { localStorage.setItem('rb2p_def_speed_bump', String(n)); } catch (e) {}
+                window._rb2p_tabSet('rb2p_def_speed_bump', n);
                 return n;
             };
             window._rb2p_getDbSpeedMult = function () {
-                var n = parseFloat(localStorage.getItem('rb2p_db_speed_mult'));
+                var n = parseFloat(window._rb2p_tabGet('rb2p_db_speed_mult'));
                 return isFinite(n) ? n : 1.5;
             };
             window._rb2p_setDbSpeedMult = function (n) {
@@ -6699,7 +6810,7 @@
                 if (!isFinite(n)) return;
                 if (n < 1) n = 1;
                 if (n > 3) n = 3;
-                try { localStorage.setItem('rb2p_db_speed_mult', String(n)); } catch (e) {}
+                window._rb2p_tabSet('rb2p_db_speed_mult', n);
                 return n;
             };
             function rb2pRafLoop() { rb2pPaintJerseysOnce(); rb2pBumpDefenderSpeed(); requestAnimationFrame(rb2pRafLoop); }
@@ -17146,12 +17257,20 @@
         // V530: ACCOUNTS — the connection keeps an account it signed in with (signInAnonymously would replace it with a new
         // anonymous one); an account that isn't this page's (a log-out, another player on this browser) is signed out first.
         // When the connection is anonymous while the page is an account, the V524 sid link stands in for it.
+        // V532: TABS ARE DISCONNECTED — the connection's sign-in lives in THIS tab (sessionStorage), not in the browser's shared
+        // store: a log-in or a log-out in one tab no longer signs every other tab's connection in or out. It is the page's own
+        // sign-in, handed over before the connection starts (the same id: no second account per tab, and the rules see the
+        // RANKINGS id directly); a tab that cannot be handed one signs in anonymously as before.
         try {
-            var au0 = FBA.getAuth(app);
+            if (window._rb2p_fbAuthUrl) { try { await window._rb2p_fbAuthUrl(''); } catch (eT) {} }   // the page's sign-in first (a new device makes its one account here)
+            var seeded0 = !!(window._rb2p_seedSdkUser && window._rb2p_seedSdkUser());
+            var au0 = null;
+            try { au0 = FBA.initializeAuth(app, { persistence: FBA.browserSessionPersistence }); } catch (eIA) { au0 = FBA.getAuth(app); }
             if (au0.authStateReady) await au0.authStateReady();
             var cu0 = au0.currentUser, restU0 = window._rb2p_restUid ? window._rb2p_restUid() : '';
             if (cu0 && !cu0.isAnonymous && cu0.uid !== restU0) { try { await FBA.signOut(au0); } catch (eOut) {} cu0 = null; }
             if (!cu0) await FBA.signInAnonymously(au0);
+            window._rb2p_sdkSeeded = seeded0 && !!(au0.currentUser && au0.currentUser.uid === restU0);
         } catch (eAuth) {}
         window._rb2p_sdkAcct = function (user, pw) {   // the connection signs in as the account too (the page has its password only now)
             return FBA.signInWithEmailAndPassword(FBA.getAuth(app), String(user).toLowerCase() + '@realretrobowl2p.firebaseapp.com', String(pw))
@@ -17688,12 +17807,12 @@
         // clamped to a -5 floor in computeDefenseAggression. Stored separately so
         // switching to a preset and back keeps the last custom value.
         function getUltramaxValue() {
-            try { var n = parseFloat(localStorage.getItem('rb2p_ultramax_value'));
+            try { var n = parseFloat(window._rb2p_tabGet('rb2p_ultramax_value'));
                   return isFinite(n) ? n : -5; }
             catch (e) { return -5; }
         }
         function setUltramaxValue(n) {
-            try { localStorage.setItem('rb2p_ultramax_value', String(n)); } catch (e) {}
+            window._rb2p_tabSet('rb2p_ultramax_value', n);
         }
         // V88/V137: make DEFENSE LEVEL matter. For easy/medium/hard the toggle
         // sets a BASELINE that is then nudged by the OPPONENT's aggregate
@@ -17840,7 +17959,7 @@
         var currentDiffMode = 'different';
         (function () {
             try {
-                var m = localStorage.getItem('rb2p_diff_mode');
+                var m = window._rb2p_tabGet('rb2p_diff_mode');   // V532: the tab's
                 if (m === 'same' || m === 'different') currentDiffMode = m;
             } catch (e) {}
         })();
@@ -17857,7 +17976,7 @@
             if (mode !== 'same' && mode !== 'different') mode = 'different';
             currentDiffMode = mode;
             window._rb2p_diffMode = mode;
-            try { localStorage.setItem('rb2p_diff_mode', mode); } catch (e) {}
+            window._rb2p_tabSet('rb2p_diff_mode', mode);
             renderModeButtons();
         }
         $modeBtns.forEach(function (b) {
@@ -17887,7 +18006,7 @@
         var currentQuarterMins = 2;
         (function () {
             try {
-                var saved = parseInt(localStorage.getItem('rb2p_quarter_mins'), 10);
+                var saved = parseInt(window._rb2p_tabGet('rb2p_quarter_mins'), 10);   // V532: the tab's
                 if (saved === 1 || saved === 2 || saved === 3) currentQuarterMins = saved;
             } catch (e) {}
         })();
@@ -17904,7 +18023,7 @@
             if (!(mins === 1 || mins === 2 || mins === 3)) mins = 2;
             currentQuarterMins = mins;
             window._rb2p_quarterMins = mins;
-            try { localStorage.setItem('rb2p_quarter_mins', String(mins)); } catch (e) {}
+            window._rb2p_tabSet('rb2p_quarter_mins', mins);
             renderLengthButtons();
         }
         $lenBtns.forEach(function (b) {
@@ -19984,6 +20103,9 @@
         var rb2pPendingIntSeen = null;    // the local interception backup, remembered across retries
         (async function tryRestore(attempt) {
             attempt = attempt || 0;
+            // V532: a COPY of an open tab (the browser copied its session: the same room, role and seat id) must not resume
+            // the original's seat — the tab check finds it (the original holds its lock) and it starts clean
+            try { var tabR = await window._rb2p_tabReady; if (tabR && tabR.copy) return; } catch (eTab) {}
             var savedRoom = sessionStorage.getItem('rb_room');
             if (!savedRoom) return;
             var savedRole = sessionStorage.getItem('rb_role_' + savedRoom);
@@ -20102,7 +20224,7 @@
                 var localInt = null;
                 try {
                     // V422 (the code review #9): read once per page life — a retried resume must still see it
-                    var liRaw = rb2pPendingIntSeen || localStorage.getItem('rb2p_pendingInt');
+                    var liRaw = rb2pPendingIntSeen || sessionStorage.getItem('rb2p_pendingInt');
                     if (liRaw) {
                         rb2pPendingIntSeen = liRaw;
                         var li = JSON.parse(liRaw);
@@ -20115,7 +20237,7 @@
                     turnover = { thrower: savedRole, yardLine: Number(localInt.yardLine) || 0,
                                  isPick6: false, resolved: false, ts: Number(localInt.ts) || Date.now() };
                 }
-                try { localStorage.removeItem('rb2p_pendingInt'); } catch (eLR) {}   // consume once
+                try { sessionStorage.removeItem('rb2p_pendingInt'); localStorage.removeItem('rb2p_pendingInt'); } catch (eLR) {}   // consume once (V532: and any old shared copy)
                 var turnoverActive = turnover && turnover.resolved !== true &&
                                      (Date.now() - (Number(turnover.ts) || 0) < 25000);
                 // V248: receiver-side INT recovery. resolved=true only means
@@ -20487,7 +20609,7 @@
         var $lobbyEl = document.getElementById('rb-lobby');
         var $nameIn = document.getElementById('rb-name-input'), $nameGo = document.getElementById('rb-name-go'),
             $nameMsg = document.getElementById('rb-name-msg'), $playingAs = document.getElementById('rb-playing-as');
-        function rb2pName() { try { return String(localStorage.getItem('rb2p_name') || '').trim(); } catch (e) { return ''; } }
+        function rb2pName() { try { return String(window._rb2p_tabGet('rb2p_name', true) || '').trim(); } catch (e) { return ''; } }   // V532: the tab's
         window._rb2p_playerName = rb2pName;
         function renderPlayingAs() {
             if (!$playingAs) return;
@@ -20507,7 +20629,7 @@
         function commitName() {
             var n = String(($nameIn && $nameIn.value) || '').trim().replace(/\s+/g, ' ').slice(0, 16);
             if (n.length < 2) { if ($nameMsg) $nameMsg.textContent = 'At least 2 characters, please.'; return false; }
-            try { localStorage.setItem('rb2p_name', n); } catch (e) {}
+            window._rb2p_tabSet('rb2p_name', n);
             if (acctUser() && window._rb2p_restUid && window._rb2p_fbRestPatch) window._rb2p_fbRestPatch('acct/' + window._rb2p_restUid(), { nm: n }).catch(function () {});   // V530: the account's name
             if ($nameMsg) $nameMsg.textContent = '';
             if ($lobbyEl) $lobbyEl.dataset.active = 'entry';
@@ -20630,7 +20752,7 @@
                     if (prof && prof.nm) nm = String(prof.nm).slice(0, 16); else if (!nm) nm = u;
                     if (window._rb2p_diagLog) window._rb2p_diagLog('ACCT logged in as @' + name + (L.old ? ' (this device was ' + L.old.slice(0, 8) + (bring ? ' — its record joins the account' : '') + ')' : ''));
                 }
-                try { localStorage.setItem('rb2p_name', nm); } catch (e) {}
+                window._rb2p_tabSet('rb2p_name', nm);
                 if (window._rb2p_fbRestPatch) window._rb2p_fbRestPatch('acct/' + uid, { u: name, nm: nm, at: { '.sv': 'timestamp' } }).catch(function () {});
                 if (window._rb2p_sdkAcct) window._rb2p_sdkAcct(name, pw);   // the database connection signs in as the account too
                 if ($acctPw) $acctPw.value = '';
@@ -20650,7 +20772,7 @@
             acctOutArm = 0;
             if (window._rb2p_diagLog) window._rb2p_diagLog('ACCT logged out');
             window._rb2p_acctLogout();
-            try { localStorage.removeItem('rb2p_name'); } catch (e) {}
+            window._rb2p_tabSet('rb2p_name', null);
             Promise.resolve(window._rb2p_sdkOut ? window._rb2p_sdkOut() : null).then(function () { location.reload(); }, function () { location.reload(); });
         }
         if ($acctForm) $acctForm.addEventListener('submit', acctSubmit);
@@ -23736,7 +23858,7 @@
                     FB.update(FB.ref(db, 'rooms/' + myRoom + '/turnover'),
                               { resolved: true, isPick6: !!isPick6 }).catch(function () {});
                 } catch (e) {}
-                try { localStorage.removeItem('rb2p_pendingInt'); } catch (e2) {}
+                try { sessionStorage.removeItem('rb2p_pendingInt'); localStorage.removeItem('rb2p_pendingInt'); } catch (e2) {}
             };
             // V248: receiver-side ACK. resolved=true only proves the thrower
             // SENT the live INT outcome — not that it landed. If the receiver
@@ -23787,7 +23909,7 @@
             // work for debugging.
             if (window._rb2p_auditBind) window._rb2p_auditBind(myRoom, myRole);   // V365
             if (window._rb2p_audit) window._rb2p_audit('bind', Object.assign({ ver: (window.rb2pVersionLabel ? window.rb2pVersionLabel() : '?'), room: myRoom, role: myRole }, (function () { try { var w = window._rb2p_whereAmI(); return { src: w.src, host: w.host, framed: w.framed, app: w.app ? true : undefined, ref: w.ref.slice(0, 80), visit: window._rb2p_visitId || '', uid: (window._rb2p_uid ? window._rb2p_uid() : ''),
-                name: (function () { try { return String(localStorage.getItem('rb2p_name') || '').trim().slice(0, 40); } catch (eN) { return ''; } })() }; } catch (e) { return {}; } })()));   // V388: which door; V392: which device; V444: under which username (the device profiles)
+                name: (function () { try { return String((window._rb2p_tabGet ? window._rb2p_tabGet('rb2p_name', true) : localStorage.getItem('rb2p_name')) || '').trim().slice(0, 40); } catch (eN) { return ''; } })() }; } catch (e) { return {}; } })()));   // V388: which door; V392: which device; V444: under which username (the device profiles)
             try {   // V452: the READY guard's read that reloaded this tab (age/vis of the partner's heartbeat, its final's age)
                 var rgN = JSON.parse(sessionStorage.getItem('rb2p_readyGuardNote') || 'null');
                 sessionStorage.removeItem('rb2p_readyGuardNote');
@@ -26175,7 +26297,7 @@
             // V187: clear any leftover instant-INT record from a prior game so a
             // rematch in this reused room can't resume into a stale turnover.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/turnover')).catch(function () {});
-            try { localStorage.removeItem('rb2p_pendingInt'); } catch (e) {}   // V188: + local backup
+            try { sessionStorage.removeItem('rb2p_pendingInt'); localStorage.removeItem('rb2p_pendingInt'); } catch (e) {}   // V188: + local backup (V532: the tab's)
             // V217: same for a leftover pick-6 PAT duty — a rematch must not
             // resume into a stale "you owe a PAT" record from the prior game.
             FB.remove(FB.ref(db, 'rooms/' + myRoom + '/patDuty')).catch(function () {});

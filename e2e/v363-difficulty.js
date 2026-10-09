@@ -19,6 +19,7 @@
 // T4  the setter refuses a non-tier instead of storing it
 // T5  only [data-dif] controls are wired — VIEW ROSTER / team select are not
 // T6  with a poisoned value, the MAX defender speed bump still recognises MAX
+// (V532: a tab keeps its own setting — each stored value is read the way a NEW tab reads it)
 const H = require('./harness');
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
@@ -33,7 +34,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
 
         // ---- T1: the exact corruption B is carrying ----
         const t1 = await page.evaluate(() => {
-            localStorage.setItem('rb2p_difficulty', String(undefined));   // "undefined"
+            sessionStorage.removeItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', String(undefined));   // V532: what a NEW tab reads   // "undefined"
             const raw = localStorage.getItem('rb2p_difficulty');
             const read = window._rb2p_difficultyPref();
             return { raw: raw, read: read, healed: localStorage.getItem('rb2p_difficulty') };
@@ -47,7 +48,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         const t2 = await page.evaluate(() => {
             const out = {};
             ['null', '', 'MAX', 'insane', '5'].forEach(v => {
-                localStorage.setItem('rb2p_difficulty', v);
+                sessionStorage.removeItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', v);   // V532: a new tab's read
                 out[v || '(empty)'] = window._rb2p_difficultyPref();
             });
             return out;
@@ -60,7 +61,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
         const t3 = await page.evaluate(() => {
             const out = {};
             ['easy', 'medium', 'hard', 'max', 'ultramax'].forEach(v => {
-                localStorage.setItem('rb2p_difficulty', v);
+                sessionStorage.removeItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', v);   // V532: a new tab's read
                 out[v] = window._rb2p_difficultyPref();
             });
             return out;
@@ -107,7 +108,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n))
 
         // ---- T6: the gameplay consequence, not just the label ----
         const t6 = await page.evaluate(() => {
-            localStorage.setItem('rb2p_difficulty', String(undefined));
+            sessionStorage.removeItem('rb2p_difficulty'); localStorage.setItem('rb2p_difficulty', String(undefined));   // V532: what a NEW tab reads
             // What rb2pBumpDefenderSpeed asks. Poisoned, this used to be false,
             // so the MAX-only defender speed bump silently never applied.
             const isMax = (window._rb2p_difficultyPref() === 'max');

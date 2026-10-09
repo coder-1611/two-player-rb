@@ -36,7 +36,7 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         const g2 = await TP.startTwoPlayerGame({ browser: two,
             beforeReady: async (page, role) => {
                 if (role === 'a') { await page.evaluate(() => { const m = document.querySelector('.mode-btn[data-mode="different"]'); if (m) m.click(); }); await sleep(1500); }
-                await page.evaluate((d) => { try { localStorage.setItem('rb2p_difficulty', d); } catch (e) {} }, pick[role]);
+                await page.evaluate((d) => { try { localStorage.setItem('rb2p_difficulty', d); sessionStorage.setItem('rb2p_difficulty', d); } catch (e) {} }, pick[role]);   // V532: the tab's own choice, as the lobby button makes it
             } });
         try {
             await sleep(15000);

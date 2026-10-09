@@ -2158,6 +2158,33 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V532 (2026-10-09): tabs are disconnected
+- The owner: "make it that tabs are disconnected from each other, I have seen a lot of overflow from one tab to another
+  that causes glitches".
+- Measured (e2e/probe-tab-storage.js, two tabs of one browser, real downs): a running match read the defender-speed knobs
+  from the browser's shared storage ~110 times a second per tab; the engine's own files were not touched mid-match.
+  What crossed tabs:
+  - the settings a game plays by (shared storage, read live): the ULTRAMAX value and the speed knobs every frame, the
+    difficulty until a tab chose its own, quarter length, mode, drive direction, the name — another tab's lobby choice
+    changed this tab's game mid-play;
+  - the reload backup of an interception (rb2p_pendingInt) carried no room — another tab's reload within 25 s took it as
+    its own (a phantom pick);
+  - a DUPLICATED tab: the browser copies the session (room, role, seat id) — the copy resumed the original's seat;
+  - the database connection's sign-in (Firebase's shared store): a log-in/LOG OUT in one tab signed every tab's
+    connection in/out (V530) — a log-out cut another tab's live game.
+- Now: settings are the tab's (_rb2p_tabGet/_rb2p_tabSet: sessionStorage first; a new tab copies the last choice made
+  anywhere at its first read; a setting nobody chose is pinned "none" in the tab; a choice is saved for the next new tab,
+  never pushed into an open one; the name is copied but not pinned). The interception backup is the tab's. Each tab holds
+  a Web Lock on its own id (BroadcastChannel where there are no locks): a copy finds it held (1.5 s window — a reload's
+  own lock is let go as the old page goes), clears its copied session (settings kept), takes a new id and loads again,
+  in the lobby; the resume waits for the check. The connection's sign-in lives in the tab (browserSessionPersistence)
+  and is SEEDED from the page's own sign-in (Firebase's saved-user record: id + tokens) — the same id (the rules see
+  the RANKINGS id directly), no second account per tab. A token refresh never writes over another tab's newer sign-in
+  (its log-out / log-in as someone else); a switch made in this tab (log-in, a new account) is written.
+- Tests: e2e/v532-tabs.js 6/6 (settings stay per tab, unset ones pinned, a copied tab starts clean while the original
+  keeps its seat, a reload is not a copy, each tab's connection = the page's id and one tab's sign-out leaves the other
+  signed in); v363-difficulty and game-dif now set a tab's difficulty as the lobby button does.
+
 ## V531 (2026-10-09): the Q1 -> Q3 bug — a horn that had already sounded sounded again
 - The owner: "fix the first quarter to third quarter bug".
 - Cause (reproduced: e2e/horn-last-down.js fg Q1, room Z6KE; the long-known M5 "intermittent"): a drive that ends AT the
