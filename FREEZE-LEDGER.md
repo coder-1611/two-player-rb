@@ -2158,6 +2158,20 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V538 (2026-10-09): KUEV — a real drive at the 3 handed away as a try's leftover
+- The owner: "game KUEV is a disaster, the ball got turned over with a bit left in the half for no reason and then next play
+  for me the receivers had no arrows ... I had another tab open".
+- KUEV (a = ihavealife54/Baltimore, b = soham/San Francisco, V536): b's pick-six try (Q1 0:23, +2), its result sent,
+  Baltimore's drive, its kickoff back to b (b's tab hidden at times: the other tab — every hand-off was held and applied
+  when it came back, as designed). At Q2 0:25 b's own drive, 2nd & 6 at the opponent's 3 (y 46.7), met V406's POST-CONV
+  hand-off: a conversion popup within 90 s (85 s), the quarter changed since, the ball within 1.5 yd of "the 2" — "the try
+  crossed the horn and left me a drive at the 2" — the empty-field act re-staged b at 47 and handed off a TD kickoff that
+  never happened (8-0 stayed 8-0). Its V436 test "nothing changed hands since the try" only guarded a snapped try.
+- Fix: any hand-off sent or applied after the conversion popup = the try is long over; POST-CONV stands down for it.
+- The no-arrows play: b's next possession (Baltimore's interception, applied after the tab came back) adopted the
+  formation the false hand-off had left on b's field (no "fresh spawn") — gone with its cause.
+- Tests: e2e/v538-postconv.js 2/2 (KUEV: no hand-off, b keeps the ball; V406's case still hands off).
+
 ## V537 (2026-10-09): TRIPLE STAKES — neighbours on the RANKINGS play for three times the points
 - The owner: "triple if adjacent ranks" (V536 doubled).
 - tools/elo.js STAKES_X = 3 (index.html ELO_STAKES_X = 3): the game's win/loss/draw and a leave's points (the leaver's

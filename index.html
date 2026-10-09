@@ -2448,7 +2448,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V537<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V538<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2721,7 +2721,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V537</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V538</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -4313,6 +4313,16 @@
                     // the second-half kickoff to B (the halftime rule) — handing the ball
                     // to the other team as well made two offenses. Q2/Q4 keep the hand-off.
                     try { var qNow = Number(RB.engineState().engineQuarter); if (qNow === 3 || qNow >= 5) { window._rb2p_postConvHandoffFor = offer; if (window._rb2p_diagLog) window._rb2p_diagLog('POST-CONV the try crossed into Q' + qNow + ' — the ' + (qNow === 3 ? 'halftime' : 'end-of-regulation') + ' rule decides possession, no hand-off'); return; } } catch (eQ3) {}
+                    // V538 (KUEV, the owner: "the ball got turned over with a bit left in the half for no reason"): once the ball
+                    // has changed hands since the conversion — its result or kickoff sent, the other team's hand-off applied — the
+                    // try is long over and any ball at the 2 is a real drive. KUEV: a pick-six try (Q1 0:23), the result sent,
+                    // Baltimore's whole drive, its kickoff back; San Francisco's own drive reached the 3 (1.3 yards from "the 2")
+                    // at Q2 0:25 — 85 s after the try's popup, inside the 90 s window, after the Q1->Q2 change — and was handed
+                    // away as the try's touchdown kickoff (8-0 stayed 8-0). V436 asked this only of a snapped try; now always.
+                    if ((Number(window._rb2p_lastSentOutcomeMs) || 0) > offer || (Number(window._rb2p_lastOpponentOutcomeApplyMs) || 0) > offer) {
+                        window._rb2p_postConvHandoffFor = offer;
+                        return;
+                    }
                     // V410 (TXKB): the try itself was snapped (down 6) before the horn, so it is
                     // over — do not wait the 3s the duty takes to retire; the kid snapped the
                     // gift drive inside that window.
