@@ -2158,6 +2158,15 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V533 (2026-10-09): the dashboard's week updates again
+- The owner (a screenshot of the transcripts page: "This week vs last week" stuck at 914 games, 2026-10-05..07, doors V517):
+  "this doesn't update".
+- tools/alltime-stats.js (run every 10 min by the audit watcher) found each game's first moment with Math.min(...timeline):
+  a spread passes every entry as an argument, and one game's record (NPRA, 178,413 entries) overflowed the stack — every
+  refresh since 8 Oct 11:56 UTC failed (159 times, "stats refresh failed" in .rb2p/audit-watch.log) and stats/alltime
+  froze. Now a loop (and the two other spreads over growing lists, here and in tools/device-profiles.js). Published at
+  once: doors V532, this week 1,701 games vs 416 (2026-10-05..08), the 14 days through today.
+
 ## V532 (2026-10-09): tabs are disconnected
 - The owner: "make it that tabs are disconnected from each other, I have seen a lot of overflow from one tab to another
   that causes glitches".

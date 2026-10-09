@@ -185,7 +185,10 @@ async function weekly() {
     for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.json'))) {
         let j; try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { continue; }
         const tl = j.timeline || []; if (tl.filter(e => e.k === 'snap').length < 3) continue;
-        const d = localDay(Math.min(...tl.map(e => e.t))); gamesDay[d] = (gamesDay[d] || 0) + 1;
+        // V533: a loop, not Math.min(...) — a spread passes every entry as an argument, and one game's record (NPRA, 178,413
+        // entries) overflowed the stack: every refresh since 8 Oct failed and the dashboard's week stopped updating
+        let t0 = Infinity; for (const e of tl) if (e.t < t0) t0 = e.t;
+        const d = localDay(t0); gamesDay[d] = (gamesDay[d] || 0) + 1;
     }
     // weekdays so far this week (Mon..yesterday, plus today if after 3 PM) vs the same weekdays a week earlier
     const today = new Date(); const dow = (today.getDay() + 6) % 7;   // Mon=0
@@ -236,7 +239,7 @@ async function lobbyStats(visitDays, wk) {
     const isToday = x => localDay(x.t) === today;
     return { at: now, lastHour: lastHour.size, today: { players: todaySet.size, games: t14 ? t14.games : 0 }, playingNow,
              lobby: { searchesToday: logs.filter(x => x.k === 'start' && isToday(x)).length, matchesToday: matches.filter(isToday).length,
-                      lastMatchAt: matches.length ? Math.max(...matches.map(x => x.t)) : 0 },
+                      lastMatchAt: matches.reduce((m, x) => Math.max(m, Number(x.t) || 0), 0) },   // V533: no spread
              waitByHour, busiest: 'weekdays 9-11 am' };
 }
 

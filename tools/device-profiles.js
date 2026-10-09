@@ -171,7 +171,7 @@ function build(visitDays, auditsDir, isTest, extra) {
         returning: list.filter(p => p.days >= 2).length,
         byKind: tally('kind'), byKindPlayed: tally('kind', played), byBrowser: tally(p => p.browser.replace(/ \d+$/, '')), byOs: tally(p => p.os.replace(/ [\d./]+$/, '') || 'unknown'),
         byDoor: tally(p => p.doors.join('+') || 'unknown'), byTz: tally('tz'), byScreen: tally('screenClass'), touch: list.filter(p => p.touch).length,
-        deviceGames: list.reduce((a, p) => a + p.games, 0), since: list.length ? Math.min(...list.map(p => p.first)) : null, reportsUnlinked: unlinked.length };
+        deviceGames: list.reduce((a, p) => a + p.games, 0), since: list.length ? list.reduce((m, p) => Math.min(m, p.first), Infinity) : null,   /* V533: no spread */ reportsUnlinked: unlinked.length };
     return { summary, list, profiles, unlinked };
 }
 
