@@ -2448,7 +2448,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V539<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V540<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2721,7 +2721,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V539</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V540</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -3998,35 +3998,6 @@
                 }
             }
             window._rb2p_forceUserOffenseDrive = forceUserOffenseDrive;
-            // V528: when the onside kick may be offered at all (on top of Retro Bowl's own rule): a plain kickoff only — never
-            // inside the pick-six chain (it has its own hand-off rules, and the scorer may not stage a drive there), never with
-            // a conversion owed, never after the final or while waiting (not my kickoff), never at 0:00 (the quarter ends)
-            window._rb2p_onsideAllowed = function () {
-                try {
-                    if (window._rb2p_pickSixPatCascadeActive === true || window._rb2p_p6ScorerOwes === true) return false;
-                    if (typeof window._rb2p_patOwed === 'function' && window._rb2p_patOwed()) return false;
-                    if (window._rb2p_gameOverReported === true || window._rb2p_userIsWaitingForOpponent === true) return false;
-                    var em = RB.engineState();
-                    if (em && Number(em.engineMinutesLeft) * 60 + Number(em.engineSecondsLeft) <= 0) return false;
-                    return true;
-                } catch (e) { return false; }
-            };
-            // V528: an onside kick the kicking team RECOVERED (retrobowl.js _rb2pOnsideKeep): it keeps the ball — no hand-off;
-            // its new drive is staged like every 2P drive, 1st & 10 at the recovery spot (its own 45-50). Next tick: the
-            // engine's commentary step that called this finishes first.
-            window._rb2p_onsideRecovered = function (spot) {
-                setTimeout(function () {
-                    try {
-                        var y = Number(spot); if (!isFinite(y)) y = -5;
-                        if (window._rb2p_diagLog) window._rb2p_diagLog('ONSIDE kept — a new drive at ' + Math.round(y));
-                        if (window._rb2p_audit) window._rb2p_audit('onside', { kept: true, y: Math.round(y * 10) / 10 });
-                        // a new drive, not a quarter carried over: the quarter-start ball anchor has nothing to hold here
-                        if (typeof window._rb2p_retireBallAnchor === 'function') window._rb2p_retireBallAnchor('an onside kick recovered — a new drive');
-                        var r = forceUserOffenseDrive(y, true);
-                        if (r === false && window._rb2p_diagLog) window._rb2p_diagLog('ONSIDE kept — the drive did not stage');
-                    } catch (e) {}
-                }, 0);
-            };
 
             // ===== V434 THE HORN (research: ~/rb2p/research/HORN-RESEARCH.md, Opus 5.5 max) =====
             // A hand-off stamped 0:00 in my own regulation quarter IS the end of that quarter: no drive is staged. The
@@ -7604,9 +7575,6 @@
                 // V434: prevVy 24 is the AI "go for it" stage — a stale _2c1 = 24 typed a real drive end as HALF_END (a
                 // random-spot kickoff). Nothing sends HALF_END since V204 (the Q3 law decides the second half by role).
                 if (prevVy === 1)                  return 'KICKOFF'; // kickoff cascade fired _1c1
-                // V528: the onside kick's own kickoffs — 26 is NO (the normal kickoff), 29 a failed onside (the receiving team
-                // recovered): both are kickoffs; the receiver starts at the engine's spot, as for any kickoff
-                if (prevVy === 26 || prevVy === 29) return 'KICKOFF';
                 return 'OTHER';
             }
             // V298: this described the field WRONGLY in all three branches, because
@@ -8891,34 +8859,12 @@
                     if (!emO || emO.engineUserTeamIdx == null) return;
                     var vyO = Number(emO.engineDriveFsmStage);
                     if (!onsideStages[vyO]) { onsideSeenStage = null; return; }
-                    // V528: the onside kick is back (retrobowl.js _rb2pOnside*): on that engine the stages are legitimate —
-                    // 25 is the offer on screen (the player is deciding), 27/28/29 one step each. The net stays for a device
-                    // on a STALE cached engine, and for the one broken park left: the offer stage with NO popup for 10 s.
-                    var limitO = 3000;
-                    if (window._rb2p_onsideOn === true) {
-                        var popsO = [];
-                        try { popsO = (typeof window._rb2p_enumeratePopupInstances === 'function') ? (window._rb2p_enumeratePopupInstances() || []) : []; } catch (ePo) {}
-                        if (vyO !== 25) { onsideSeenStage = null; return; }
-                        // V528: the popup left unanswered — the other player is waiting: after 30 s it is NO (the normal kickoff)
-                        var noBtn = null;
-                        for (var pO = 0; pO < popsO.length; pO++) if (popsO[pO] && !popsO[pO]._HL2 && popsO[pO]._0G === 100371) noBtn = popsO[pO];
-                        if (noBtn) {
-                            if (onsideSeenStage !== 'ask') { onsideSeenStage = 'ask'; onsideSeenSinceMs = Date.now(); return; }
-                            if (Date.now() - onsideSeenSinceMs < (Number(window._rb2p_onsideAskMs) || 30000)) return;
-                            onsideSeenStage = null;
-                            if (window._rb2p_diagLog) window._rb2p_diagLog('ONSIDE no answer in 30 s — NO (the normal kickoff)');
-                            try { _li(noBtn, noBtn, noBtn._0G); } catch (eNo) {}
-                            return;
-                        }
-                        if (popsO.length > 0) { onsideSeenStage = null; return; }
-                        limitO = 10000;
-                    }
                     if (vyO !== onsideSeenStage) {
                         onsideSeenStage = vyO;
                         onsideSeenSinceMs = Date.now();
                         return;
                     }
-                    if (Date.now() - onsideSeenSinceMs < limitO) return;   // let it settle
+                    if (Date.now() - onsideSeenSinceMs < 3000) return;   // let it settle
                     onsideSeenStage = null;
                     console.warn('[2P ONSIDE] stale-engine onside stage Vy=' + vyO +
                                  ' — recovering to a normal kickoff');
@@ -8937,27 +8883,6 @@
                     emO.engineDriveFsmStage = 1;   // COMM_STAGE kickoff
                 } catch (e) {}
             }, 500);
-
-            // V528: the onside kick moves on by itself. In 2P the kickoff after a score runs with no tap, but the engine's steps
-            // after the popup (27 the kick, 28/29 the result, 26 NO -> the normal kickoff) wait for a tap in the commentary
-            // state — a player would sit at "Pineiro attempts the onside kick!" for good. One step at a time, each after its
-            // line has been up a moment; a tap that already moved it on wins (the step runs only while the stage is unchanged).
-            var onsideStepVy = null, onsideStepAt = 0;
-            setInterval(function () {
-                try {
-                    if (window._rb2p_onsideOn !== true || !RB.isEngineInMatchRoom()) return;
-                    if (window._rb2p_userIsWaitingForOpponent === true) { onsideStepVy = null; return; }   // not my kickoff
-                    var emK = RB.engineState(); if (!emK || !emK.rawEngineMatch) return;
-                    var vyK = Number(emK.engineDriveFsmStage);
-                    if (vyK !== 26 && vyK !== 27 && vyK !== 28 && vyK !== 29) { onsideStepVy = null; return; }
-                    if (vyK !== onsideStepVy) { onsideStepVy = vyK; onsideStepAt = Date.now(); return; }
-                    if (Date.now() - onsideStepAt < (vyK === 28 || vyK === 29 ? 1600 : 700)) return;
-                    onsideStepVy = null;
-                    var stepK = RB.getEngineScript('gml_Script_s_update_commentary');
-                    if (typeof stepK === 'function') stepK(emK.rawEngineMatch, _Sc2);
-                    if (window._rb2p_diagLog) window._rb2p_diagLog('ONSIDE step from Vy=' + vyK + ' -> Vy=' + Number(RB.engineState().engineDriveFsmStage));
-                } catch (eK) {}
-            }, 200);
 
             var stuckEngineFsmStage = null, engineFsmStageStuckSinceMs = 0, lastUserScoreObserved = -1;
             var qkResumeHoldActive = false;   // guards the kp=2 hold-loop so it can't stack

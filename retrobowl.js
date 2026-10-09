@@ -55007,39 +55007,6 @@ function _Gb1(_, t) {
     _._Hb1 = _oi(_, _Ib1),
         _._Jb1 = _oi(_, _Kb1)
 }
-// [2P] V528: the onside kick — Retro Bowl's own, with the owner's odds: 10% + 0.25 x the kicker's total (skill + strength
-// + speed + stamina, each out of 10 — 40 in all), so 10% to 20%. window._rb2p_onsideForce ('in' / 'out') is a test seam.
-function _rb2pOnsideOdds(_, t) {
-    var r = _a51(_, t, 10, 1), tot = 0;
-    if (yyGetBool(r)) tot = _Ri(_Ai(r, "skill")) + _Ri(_Ai(r, "strength")) + _Ri(_Ai(r, "speed")) + _Ri(_Ai(r, "stamina"));
-    var s = 10 + 0.25 * (Number(tot) || 0);
-    try { window._rb2p_onsideLast = { odds: s, total: Number(tot) || 0, at: Date.now() }; } catch (e) {}
-    return s;
-}
-// the bridge's say (index.html _rb2p_onsideAllowed): no onside inside the pick-six chain, with a conversion owed, at 0:00
-function _rb2pOnsideAllowed() { try { return typeof window._rb2p_onsideAllowed !== 'function' || window._rb2p_onsideAllowed() !== false; } catch (e) { return true; } }
-function _rb2pOnsidePct(s) { return String(Math.round(Number(s) * 100) / 100); }
-function _rb2pOnsideRoll(s) {
-    var f = null; try { f = window._rb2p_onsideForce || null; } catch (e) {}
-    var ok = f === 'in' ? true : f === 'out' ? false : Math.random() * 100 < Number(s);
-    try { window._rb2p_onsideLast = Object.assign(window._rb2p_onsideLast || {}, { roll: ok ? 'in' : 'out', odds: s, rolledAt: Date.now() }); if (window._rb2p_diagLog) window._rb2p_diagLog('ONSIDE ' + (ok ? 'RECOVERED' : 'lost') + ' (' + _rb2pOnsidePct(s) + '%' + (f ? ', forced ' + f : '') + ')'); } catch (e) {}
-    return ok;
-}
-// the kicking team recovered: same team, 1st & 10 at the recovery spot, a new drive — what two _1c1 calls left behind
-// (possession and the field's sign flipped twice), without the flips
-function _rb2pOnsideKeep(_, t) {
-    var i = _si(71), spot = null;
-    for (var e in i)
-        if (i.hasOwnProperty(e)) {
-            var a = i[e];
-            a._831 = "", a._t11 = 1, a._l61 = 10, a._2c1 = a._Vy, a._Vy = 2, a._8c1 = 0, a._Nb1 = yyfplus(a._Nb1, 2);
-            spot = Number(a._6F);
-        }
-    // the drive itself is the bridge's (index.html _rb2p_onsideRecovered): in 2P every drive of mine is staged there —
-    // the engine's own possession setup sends a team it doesn't call mine into the (removed) AI drive
-    try { if (typeof window._rb2p_onsideRecovered === 'function') window._rb2p_onsideRecovered(spot); } catch (e2) {}
-}
-try { window._rb2p_onsideOn = true; } catch (e) {}
 function _Ib1(_, t) {
     _1j(_, t, yyfplus("s_update_commentary: ", _Ri(_Uy(_, t, _._Vy)))),
         yyGetBool(global._mu) && yyGetBool(global._fb1) && yyGetBool(!yyGetBool(_jj(_, t, 64)._fx)) && (_Lb1(_, t),
@@ -55069,10 +55036,10 @@ function _Ib1(_, t) {
                 , n = _Ub1(_, t)
                 , o = 100;
             if (yyfgreater(a, 8) && (o = 160),
-                /* [2P] V528 (the owner: "just add normal retro bowl one, but raise odds to 10% + .25(kicker total points out of 40)"): the onside offer is back, on Retro Bowl's own terms (my kickoff, Q4, tied or behind, at most 1:40 left — 2:40 when down 9+) */ yyGetBool(yyfequal(_._UD, _._0z)) && yyGetBool(yyfequal(_._Wy, 4)) && yyGetBool(yyflessequal(_._Sb1[_7v(_._0z, _._Sb1)], _._Sb1[_7v(yyGetBool(_._0z) ? 0 : 1, _._Sb1)])) && yyGetBool(_k61(_, t, o)) && _rb2pOnsideAllowed()) {
-                var s = _rb2pOnsideOdds(_, t);   // [2P] V528: 10% + 0.25 x the kicker's four ratings (out of 40)
-                
-                    _wm(_, t, "", _Em(_Xi(_, t, "msg_OnSideKick"), "$num", _rb2pOnsidePct(s)), _Xi(_, t, "ui_No"), _Xi(_, t, "ui_Yes"), _Xb1, _Yb1, 16777215, .7),
+                false && /* [2P] onside OFFER removed: success is forced to 0 below, so this modal could only ever fail — and the fail cascade (case 6 -> _1c1) flips possession with no field spawned, which the 2P bridge's possession clamp then undoes, leaving the kicker parked at _Vy=25 on an empty field and BOTH devices on offense after a refresh (device-confirmed, room KSKC: vy:25 ball:0 OF:0). Falls through to the normal kickoff (_Zb1/_l41). */ yyGetBool(yyfequal(_._UD, _._0z)) && yyGetBool(yyfequal(_._Wy, 4)) && yyGetBool(yyflessequal(_._Sb1[_7v(_._0z, _._Sb1)], _._Sb1[_7v(yyGetBool(_._0z) ? 0 : 1, _._Sb1)])) && yyGetBool(_k61(_, t, o))) {
+                var s = 5;
+                yyGetBool(r = _a51(_, t, 10, 1)) && (s = yyfplus(s, _Ai(r, "skill"))),
+                    _wm(_, t, "", _Em(_Xi(_, t, "msg_OnSideKick"), "$num", _9p(s)), _Xi(_, t, "ui_No"), _Xi(_, t, "ui_Yes"), _Xb1, _Yb1, 16777215, .7),
                     _._Vy = 25,
                     _._6F = -15
             } else
@@ -55084,17 +55051,18 @@ function _Ib1(_, t) {
         case 2:
             break;
         case 3:
-            _._2c1 = 1,   // [2P] V528: NO is a normal kickoff — its hand-off is typed KICKOFF (the prior stage), never a stale one
-                _Zb1(_, t),
+            _Zb1(_, t),
                 _l41(_, t);
             break;
         case 4:
             _l41(_, t);
-            var r = yyGetBool(yyfequal(_._UD, _._0z)) ? _a51(_, t, 10, 1) : -1;   // [2P] V528: the kicker (the original looked him up and dropped the result: always 5%, never named)
-            s = _rb2pOnsideOdds(_, t);
+            s = 5;
+            var r = -1;
+            yyfequal(_._UD, _._0z) && (_a51(_, t, 10, 1),
+                yyGetBool(r) && (s = yyfplus(s, _Ai(r, "skill")))),
                 _._Vy = 1,
                 yyGetBool(r) ? _.__b1 = _Em(_Xi(_, t, "match_OnsideKickingPlayer"), "$playername", _Ai(r, "lname")) : _.__b1 = _Em(_Xi(_, t, "match_OnsideKicking"), "$teamname", _._bL[_7v(_._UD, _._bL)]),
-                _rb2pOnsideRoll(s) /* [2P] V528: recovered with probability s% (it was forced to fail) */ ? _._Vy = 28 : _._Vy = 29;
+                yyfless(_dq(99), 0) /* [2P] onside success chance forced to 0 (was s = 5 + kicker skill): a successful onside desyncs 2P possession; random(0..99) < 0 is always false → always fails (clean handoff to receiver). */ ? _._Vy = 28 : _._Vy = 29;
             break;
         case 5:
             _U21(_, t),
@@ -55103,7 +55071,8 @@ function _Ib1(_, t) {
                 _._6F = yyfplus(_._6F, _hq(10, 15)),
                 _0c1(_, t, 3, 4, "COMM_STAGE_ONSIDEKICK_SUCCESS"),
                 _.__b1 = _Em(_Xi(_, t, "match_OnsideKickingSuccess"), "$teamname", _._bL[_7v(_._UD, _._bL)]),
-                _rb2pOnsideKeep(_, t),   // [2P] V528: was _1c1 twice (away and back) — every flip is a hand-off to the other phone; the net effect, applied directly
+                _1c1(_, t),
+                _1c1(_, t),
                 _._2c1 = 1;
             break;
         case 6:
@@ -55112,7 +55081,6 @@ function _Ib1(_, t) {
                 _._l61 = 10,
                 _._6F = yyfplus(_._6F, _hq(10, 15)),
                 _0c1(_, t, 3, 4, "COMM_STAGE_ONSIDEKICK_FAIL"),
-                _._2c1 = 1,   // [2P] V528: the receiving team recovered — a kickoff (the hand-off's type), at the recovery spot
                 _1c1(_, t),
                 _.__b1 = _Em(_Xi(_, t, "match_OnsideKickingFail"), "$teamname", _._bL[_7v(_._UD, _._bL)]),
                 _._2c1 = 1;

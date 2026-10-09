@@ -2158,6 +2158,14 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V540 (2026-10-09): onside kicks REMOVED — back to V299's (no onside)
+- The owner: "remove all onside kick features and bring it back to how it was, I got stuck in infinite loop with blank field".
+- V528 reverse-applied to retrobowl.js and index.html (nothing after it touched that code; the two version-label hunks
+  left out): retrobowl.js is byte-identical to V527's; the page's onside pieces (_rb2p_onsideAllowed/Recovered, the 25-29
+  step watcher and auto-NO, inferUserDriveEndType 26/29 -> KICKOFF, the V299 net's stand-down) are gone — the V299 net
+  guards every kickoff again. e2e/v299-onside.js restored (9/9: the offer behind its false guard, no onside stage on a
+  real Q4-behind kickoff, never both on offense, a forced Vy=25 park recovered); e2e/v528-onside.js removed.
+
 ## V539 (2026-10-09): a game left is a loss on the leaver's record
 - The owner: "you should give everybody the amount of losses for the games they have left. do that" — "of course this doesn't
   account for me".
