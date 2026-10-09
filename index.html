@@ -1005,6 +1005,28 @@
             background: rgba(8,20,52,.6); border: 3px solid #fff; padding: 9px 12px; cursor: pointer; box-shadow: 3px 3px 0 #0a1838; transition: transform .07s; }
         #rb-lobby .rb-more-row button:hover { transform: translate(-1px,-1px); }
         #rb-lobby .rb-more-row .n:not(:empty) { margin-left: 8px; padding: 2px 5px; background: #ffd23f; color: #0a1838; font-size: 9px; }
+        /* V525: the Google Sites doors — one green row under RANKINGS / WATCH LIVE / MESSAGES */
+        #rb-lobby .rb-gsites { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 10px; max-width: 100%; box-sizing: border-box;
+            padding: 7px 10px; border: 3px solid #36e07a; background: rgba(4,34,18,.6); box-shadow: 4px 4px 0 #0a1838; }
+        #rb-lobby .rb-gsites[hidden] { display: none; }
+        #rb-lobby .rb-gsites-eye { font-size: 9px; letter-spacing: 1px; color: #36e07a; }
+        #rb-lobby .rb-gsites a { font: 9px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1; color: #0a1838; background: #36e07a; border: 3px solid #0a1838;
+            padding: 8px 10px; white-space: nowrap; text-decoration: none; box-shadow: 3px 3px 0 #0a1838; transition: transform .07s; }
+        #rb-lobby .rb-gsites a:hover, #rb-lobby .rb-gsites a:focus-visible { background: #fff; transform: translate(-1px,-1px); outline: none; }
+        html.rb-mobile #rb-lobby .rb-gsites { gap: 6px 8px; padding: 6px 8px; }
+        #rb-lobby .rb-gsites-foot { display: none; }   /* the wide layout (lobby | plays of the day) has no room for another row in the
+                                                         left column: there the row sits in the footer, in place of the small BLOCKED? line */
+        html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-entry-main .rb-gsites { display: none; }
+        html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-entry-foot .rb-gsites-foot:not([hidden]) { display: flex; width: max-content; max-width: 100%; margin: 2px auto 6px; }
+        html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-entry-foot .rb-gsites-foot:not([hidden]) ~ #rb-backup-doors { display: none; }
+        @media (max-width: 1100px) { html.rb-wide #rb-lobby .rb-entry-foot .rb-gsites-foot .rb-gsites-eye { display: none; } }   /* one row in a narrow column */
+        @media (max-height: 720px) {   /* V525: a short wide screen (a 1366x768 Chromebook's window is ~657 px tall) — the left column overran the
+                                          footer (RANKINGS over NO ONE TO PLAY WITH?); a little less air between the rows */
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { gap: 6px; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main .rb-stack { gap: 8px; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-solo { margin-top: 2px; line-height: 1.45; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on .rb-entry-foot .rb-gsites-foot:not([hidden]) { margin: 0 auto 4px; }
+        }
         .rb-live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff3b3b; margin-right: 8px; box-shadow: 0 0 6px #ff3b3b; vertical-align: 1px; }
         #rb-lobby[data-active="ranks"] .rb-screen[data-view="ranks"], #rb-lobby[data-active="watch"] .rb-screen[data-view="watch"] {
             position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center;
@@ -2194,7 +2216,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V524<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V525<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2221,6 +2243,12 @@
                     <button id="rb-watch-btn" type="button"><i class="rb-live-dot" aria-hidden="true"></i>WATCH LIVE<span class="n" id="rb-watch-n"></span></button>
                     <button id="rb-msgs-btn" type="button">MESSAGES<span class="n" id="rb-msgs-n"></span></button>
                 </div>
+                <!-- V525 (the owner: "prominently feature the google sites links"): the Google Sites doors -->
+                <div class="rb-gsites" id="rb-gsites">
+                    <span class="rb-gsites-eye">AT SCHOOL?</span>
+                    <a href="https://sites.google.com/view/mypersonalretrobowl/home" target="_blank" rel="noopener" title="Blocked at school? The same game on Google Sites — same room codes">GOOGLE SITES &#9654;</a>
+                    <a href="https://sites.google.com/student.roundrockisd.org/testtest/" target="_blank" rel="noopener" title="Round Rock ISD students: the same game on your school's Google Sites — sign in with your school account">ROUND ROCK ISD &#9654;</a>
+                </div>
                 <p id="rb-entry-msg" class="msg"></p>
             </div>
             <section id="rb-potd" hidden aria-labelledby="rb-potd-eye">
@@ -2245,6 +2273,11 @@
             </section>
             <div class="rb-entry-foot">
                 <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
+                <div class="rb-gsites rb-gsites-foot" id="rb-gsites-foot">
+                    <span class="rb-gsites-eye">AT SCHOOL?</span>
+                    <a href="https://sites.google.com/view/mypersonalretrobowl/home" target="_blank" rel="noopener" title="Blocked at school? The same game on Google Sites — same room codes">GOOGLE SITES &#9654;</a>
+                    <a href="https://sites.google.com/student.roundrockisd.org/testtest/" target="_blank" rel="noopener" title="Round Rock ISD students: the same game on your school's Google Sites — sign in with your school account">ROUND ROCK ISD &#9654;</a>
+                </div>
                 <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
                 <p class="rb-solo rb-links"><a href="multiplayer/">RETRO BOWL MULTIPLAYER</a> &middot; <a href="online/">PLAY RETRO BOWL ONLINE</a> &middot; <a href="how-to-play/">HOW TO PLAY</a> &middot; <a href="play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="unblocked/">UNBLOCKED</a></p>
                 <p class="rb-solo rb-links">BUILT BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=lobby" rel="author">LOCAL WEB TECH</a></p>
@@ -2435,7 +2468,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V524</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V525</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -20210,7 +20243,10 @@
                 var doors = [['two-player-rb.vercel.app', 'https://two-player-rb.vercel.app/'], ['coder-1611.github.io/two-player-rb', 'https://coder-1611.github.io/two-player-rb/'], ['realretrobowl2p.web.app', 'https://realretrobowl2p.web.app/']];
                 var here = location.hostname || '';
                 var others = doors.filter(function (d) { return d[0].split('/')[0] !== here; }).slice(0, 2);
-                if (!here || window.self !== window.top) bd.style.display = 'none';   // inside the Google Sites embed: the lobby is theirs
+                if (!here || window.self !== window.top) {   // inside the Google Sites embed: the lobby is theirs
+                    bd.style.display = 'none';
+                    Array.prototype.forEach.call(document.querySelectorAll('.rb-gsites'), function (g) { g.hidden = true; });   // V525: and they are already on Google Sites
+                }
                 else bd.innerHTML = 'BLOCKED? PLAY AT ' + others.map(function (d) { return '<a href="' + d[1] + '">' + d[0] + '</a>'; }).join(' OR ') + ' &mdash; SAME ROOM CODES';
             }
         } catch (eBD) {}

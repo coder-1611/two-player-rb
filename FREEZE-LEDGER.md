@@ -2158,6 +2158,19 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V525 (2026-10-08): the Google Sites links, featured
+- The owner: "prominently feature the google sites links" (sites.google.com/view/mypersonalretrobowl/home and the Round
+  Rock ISD site sites.google.com/student.roundrockisd.org/testtest/ — before, only the 4th and 5th lines of /unblocked/).
+- Lobby: a green row "AT SCHOOL? [GOOGLE SITES ▶] [ROUND ROCK ISD ▶]" under RANKINGS / WATCH LIVE / MESSAGES (new tab);
+  in the wide layout (lobby | plays of the day) the left column has no room for another row, so there it sits in the
+  footer in place of the small BLOCKED? line (the other doors stay one tap away via UNBLOCKED). Hidden inside the
+  Google Sites embed (they are already there).
+- Short wide screens (≤720 px; a 1366x768 Chromebook's window is ~657): the left column already ran over the footer
+  (RANKINGS over NO ONE TO PLAY WITH?, 11 px at 1366x657) — less air between its rows: 1 px there now; 1024x768 touch
+  17 -> 5 px. Measured at 560-1080 px tall (≤600 px: the title was already cut at the top — unchanged).
+- Landing pages (multiplayer, online, how-to-play, play-with-friends, unblocked): a green "BLOCKED AT SCHOOL? PLAY ON
+  GOOGLE SITES" box right under the main button; on /unblocked/ the two Google Sites links also lead the link list.
+
 ## V524 (2026-10-08): CHALLENGE a ranked player, LAST ONLINE on the RANKINGS, MESSAGES (kept for good)
 - The owner: "add a challenge system, where you can directly challenge someone, but they have to be on the rankings page.
   On it should show when last online. There should also be a dm feature where you can message someone, and it is stored
