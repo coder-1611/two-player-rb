@@ -157,7 +157,7 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const r6 = go(base(), { left: L({ q: 5, clk: 30, su: 3, so: 3 }) });                   // overtime, 0:30, tied: a forfeit too
         const want = Math.round(3 * loss * 100) / 100, win = E.K(40) * (1 - E.expected(1100, 1000));   // V519: the stayer's win, ~6.1
         const ok = r1.applied && r1.rule === 'late' && r1.penalty === want && Math.abs(s1.players.lv.r - (1000 - want)) < 1e-9 && Math.abs(s1.players.sty.r - (1100 + win)) < 1e-9 &&
-                   r1.ouid === 'sty' && r1.or1 === Math.round(1100 + win) && s1.players.lv.n === 10 && s1.players.sty.w === 21 && s1.players.sty.n === 41 &&
+                   r1.ouid === 'sty' && r1.or1 === Math.round(1100 + win) && s1.players.lv.n === 11 && s1.players.lv.l === 6 &&   /* V539: the left game is a loss */ s1.players.sty.w === 21 && s1.players.sty.n === 41 &&
                    r2.applied && r2.penalty === want && r3.applied && r3.rule !== 'late' && r3.penalty === 5.5 && Math.abs(s3.players.sty.r - (1100 + win)) < 1e-9 &&
                    r4.applied && r4.penalty === 0 && r4.exempt && /soham/.test(r4.why) && !r5.applied && /recorded the final/.test(r5.why) && r6.applied && r6.rule === 'late';
         check('E9 under a minute left: the leaver loses 3 x a loss (' + want + '), whatever the score; the stayer wins the game (V519: +' + win.toFixed(2) + ', a win, not the leaver\'s loss); 1:00 left is the minute formula; exempt / own final: nothing',
@@ -293,8 +293,10 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         const io4 = fakeDb({ acct: { [DEV]: { into: ACC }, [ACC]: { from: { [DEV]: T0 } } }, rooms: { '~elo': { q: { ['merge_' + DEV]: note } } } });
         await E.run(st4, io4, T0 + 1000);
         const lt4 = E.leaveTotals(st4)[ACC];
-        check('M4 a device with only a leave (980, no games) merged into 1050: 1030 — the leave still costs its 20 points, and it is now the account\'s',
-              Math.abs(st4.players[ACC].r - 1030) < 1e-9 && st4.players[ACC].left === 1 && lt4 && lt4.pts === 20 && st4.games.LV_1_left_a.uid === ACC, JSON.stringify({ r: st4.players[ACC].r, lt4 }));
+        // (V539: its leave is a lost game now — the device brings 1 game at its game rating 1000: (1050 x 10 + 1000 x 1) / 11 - 20)
+        check('M4 a device with only a leave (980) merged into 1050: the leave still costs its 20 points, its loss joins the record (11 games, 5 losses), and it is now the account\'s',
+              Math.abs(st4.players[ACC].r - ((1050 * 10 + 1000) / 11 - 20)) < 1e-9 && st4.players[ACC].n === 11 && st4.players[ACC].l === 5 && st4.players[ACC].left === 1 && lt4 && lt4.pts === 20 && st4.games.LV_1_left_a.uid === ACC,
+              JSON.stringify({ r: st4.players[ACC].r, n: st4.players[ACC].n, l: st4.players[ACC].l, lt4 }));
         // M5: the messages and blocks
         const tid = (x, y) => (x < y ? [x, y] : [y, x]);
         const [t1, t2] = tid(f8, q8), dmT = {}; dmT[t1] = { [t2]: { m1: { f: f8, x: 'hi from the device', at: T0 }, m2: { f: q8, x: 'hi back', at: T0 + 1 } } };
@@ -346,6 +348,32 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         E.noteBoard(s6, [{ u: 'a' }, { u: 'b' }], T0 + 13 * 3600e3); E.noteBoard(s6, [{ u: 'b' }, { u: 'a' }], T0 + 26 * 3600e3);
         check('X6 the board is remembered once per change, and boards older than 12 hours go (the last one before the window stays)',
               s6.rankSnaps.length === 2 && s6.rankSnaps[0].at === T0 + 13 * 3600e3 && s6.rankSnaps[1].at === T0 + 26 * 3600e3, JSON.stringify(s6.rankSnaps.map(x => x.at - T0)));
+    }
+    // L1-L3 (V539, the owner: "you should give everybody the amount of losses for the games they have left" — "of course this
+    // doesn't account for me")
+    {
+        const mk = () => ({ players: { kai: { r: 1000, n: 10, w: 5, l: 5, d: 0, nm: 'Kai', fd: {}, peak: 1000 }, lee: { r: 1000, n: 10, w: 5, l: 5, d: 0, nm: 'Lee', fd: {}, peak: 1000 },
+                                       soh: { r: 1000, n: 10, w: 5, l: 5, d: 0, nm: 'soham', fd: {}, peak: 1000 } }, games: {}, manual: [], migLeaveLosses: 1, rankSnaps: [{ at: 0, ids: '' }] });
+        const leave = (st, who, other, names, at) => E.leavePenalty(st, { gid: 'LL_' + at + '_left_a', code: 'LL', start: at, rec: { mode: 'same', uids: { a: who, b: other }, fin: {} }, names,
+                                                                          left: { role: 'a', by: 'b', q: 2, clk: 30, qmins: 2, su: 0, so: 7, at }, now: at + 1000 });
+        // L1
+        const s1 = mk(); const r1 = leave(s1, 'kai', 'lee', { a: 'Kai', b: 'Lee' }, T0); s1.games[r1.gid] = r1;
+        const s1x = mk(); const r1x = leave(s1x, 'soh', 'lee', { a: 'soham', b: 'Lee' }, T0);
+        check('L1 a game left is a loss on the leaver\'s record (11 games, 6 losses) — the stayer\'s win as before; an exempt name (soham) gets no loss',
+              r1.applied && r1.lossAdded && s1.players.kai.n === 11 && s1.players.kai.l === 6 && s1.players.lee.w === 6 && s1.players.lee.n === 11 &&
+              r1x.applied && r1x.exempt && !r1x.lossAdded && s1x.players.soh.n === 10 && s1x.players.soh.l === 5, JSON.stringify({ kai: s1.players.kai, soh: s1x.players.soh }));
+        // L2
+        E.undoLeave(s1, r1.gid, T0 + 5000);
+        check('L2 a leave undone (a refresh, a finished game) takes its loss back', s1.players.kai.n === 10 && s1.players.kai.l === 5 && s1.players.lee.w === 5, JSON.stringify(s1.players.kai));
+        // L3: the leaves from before the rule, once
+        const s3 = mk(); delete s3.migLeaveLosses;
+        s3.games = { a1: { leave: true, applied: true, uid: 'kai' }, a2: { leave: true, applied: true, uid: 'kai' }, a3: { leave: true, applied: true, reversed: true, uid: 'kai' },
+                     a4: { leave: true, applied: true, exempt: true, uid: 'soh' }, a5: { leave: true, applied: false, uid: 'lee' } };
+        const io3 = fakeDb({ rooms: { '~elo': { q: {} } } });
+        const o3 = await E.run(s3, io3, T0); await E.run(s3, io3, T0 + 1000);
+        check('L3 the leaves from before the rule join the losses once: 2 applied leaves -> 2 losses (not the undone one, not the exempt one, not an unapplied one); a second pass adds nothing',
+              s3.players.kai.l === 7 && s3.players.kai.n === 12 && s3.players.soh.l === 5 && s3.players.lee.l === 5 && s3.migLeaveLosses && s3.games.a1.lossAdded && !s3.games.a3.lossAdded && o3.changed.has('kai'),
+              JSON.stringify({ kai: s3.players.kai, soh: s3.players.soh.l, lee: s3.players.lee.l }));
     }
     // E13 (V521): points lost to leaving — the board and each player's record carry them (leaves + the owner's penalties)
     {

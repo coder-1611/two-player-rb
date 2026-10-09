@@ -2158,6 +2158,18 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V539 (2026-10-09): a game left is a loss on the leaver's record
+- The owner: "you should give everybody the amount of losses for the games they have left. do that" — "of course this doesn't
+  account for me".
+- tools/elo.js leavePenalty: an applied leave adds a LOSS and a GAME to the leaver's record (l+1, n+1; the rating already
+  pays the leave penalty — no extra points); the exempt names (soham) get none; undoLeave takes it back (a refresh within
+  2 minutes, a game finished after all). Once (st.migLeaveLosses), every leave applied before the rule — not undone, not
+  exempt — joined its leaver's losses: 1,050 left games on 352 records (Ziyad 7 -> 72 losses, Desten 9 -> 31, ...); a
+  player whose games are all leaves now has them as games (e.g. 0-13) and so can reach the board (5+ games).
+- Tests: elo-math 34/34 — L1 (a loss + a game; exempt none), L2 (undone), L3 (the backfill once: applied only, not undone /
+  exempt / unapplied; a second pass adds nothing); E9 (the leaver 11 games, 6 losses) and M4 (a device whose only game was
+  a leave merges in as 1 game) updated to the rule.
+
 ## V538 (2026-10-09): KUEV — a real drive at the 3 handed away as a try's leftover
 - The owner: "game KUEV is a disaster, the ball got turned over with a bit left in the half for no reason and then next play
   for me the receivers had no arrows ... I had another tab open".

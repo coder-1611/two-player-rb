@@ -142,6 +142,9 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
         out.rule = 'late'; out.secs = leftSec; out.lost = Math.round(lost * 100) / 100; out.penalty = Math.round(mult * LATE_X * lost * 100) / 100;
     } else { out.rule = 'min'; out.penalty = Math.round(mult * 0.25 * out.minutes * out.diff * 100) / 100; }
     out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); if (!exempt) P.left = (P.left || 0) + 1;
+    // V539 (the owner: "you should give everybody the amount of losses for the games they have left" — "of course this doesn't
+    // account for me"): a game left is a LOSS on the leaver's record (and a game) — the exempt names (soham) excepted
+    if (!exempt) { P.l = (P.l || 0) + 1; P.n = (P.n || 0) + 1; out.lossAdded = true; }
     out[role] = { r0: out.r0, r1: out.r1, d: out.r1 - out.r0 };
     if (name && !P.nm) P.nm = name.slice(0, 16);
     // V519 (the owner: "make it as if someone won a game, not the amount the other guy lost"): the player who stayed
@@ -163,7 +166,8 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
 function undoLeave(st, gidL, now) {
     const L = st.games[gidL];
     if (!L || !L.leave || !L.applied || L.reversed) return null;
-    const P = st.players[L.uid]; if (P) { P.r += Number(L.penalty) || 0; if (!L.exempt) P.left = Math.max(0, (P.left || 0) - 1); }
+    const P = st.players[L.uid]; if (P) { P.r += Number(L.penalty) || 0; if (!L.exempt) P.left = Math.max(0, (P.left || 0) - 1);
+        if (L.lossAdded) { P.l = Math.max(0, (P.l || 0) - 1); P.n = Math.max(0, (P.n || 0) - 1); L.lossAdded = false; } }   // V539: the loss too
     const O = L.ouid ? st.players[L.ouid] : null;
     if (O) { O.r -= Number(L.gx != null ? L.gx : L.gain) || 0; if (L.won) { O.n = Math.max(0, (O.n || 0) - 1); O.w = Math.max(0, (O.w || 0) - 1); } }   // V519: the win too
     L.reversed = true; L.reversedAt = now;
@@ -292,6 +296,18 @@ async function run(st, io, now, opts) {
     const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0, left: q[k].left || null, back: q[k].back || null, merge: q[k].merge || null }))
         .sort((a, b) => a.start - b.start || kind(a) - kind(b));
     const changed = new Set(), done = [];
+    // V539: every leave applied before the rule, once — its loss (and game) onto the leaver's record (not undone ones, not
+    // the exempt names)
+    if (!st.migLeaveLosses) {
+        let k = 0;
+        for (const g of Object.values(st.games || {})) {
+            if (!g || !g.leave || !g.applied || g.reversed || g.exempt || !g.uid || g.lossAdded) continue;
+            const u = alias(st, g.uid), P = st.players[u]; if (!P) continue;
+            P.l = (P.l || 0) + 1; P.n = (P.n || 0) + 1; g.lossAdded = true; changed.add(u); k++;
+        }
+        st.migLeaveLosses = now;
+        log('LEAVE-LOSSES: ' + k + ' games left before the rule are now losses on ' + changed.size + ' records (once)');
+    }
     for (const it of items) {
         if (it.merge) {   // V530: a device logged in to an account — its own record joins the account's
             const from = String(it.merge.from || ''), into = String(it.merge.into || '');
