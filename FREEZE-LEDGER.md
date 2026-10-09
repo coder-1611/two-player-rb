@@ -2158,6 +2158,24 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V529 (2026-10-09): a refresh is not a leave; the LAGGING? REFRESH announcement
+- The owner: "we have realized that refreshing fixes lag right? Make this a pop up for an announcement"; "add the leave
+  warning to the pop up but that it will be removed".
+- A refresh closes the page for a few seconds, and the other phone notes that as a leave at once (V519): the leaving
+  penalty lands and the stayer gets a win's points. Now the stayer's page keeps watching: a newer heartbeat that doesn't
+  say "closed" within 2 minutes = a refresh — a "came back" note (rooms/~elo/q/{room}_{gk}_back_{role}, naming the leave by
+  the moment it was seen, both times on the stayer's clock) goes to the Mac's job, which undoes that leave (the leaver's
+  points back, the stayer's game and win taken back, exactly — the job now keeps the exact gain), and the stayer's
+  OPPONENT LEFT goes away. A real leave later in the same game is noted and counted again. Late copies of old notes do
+  nothing (a "back" names its leave; a re-leave must be newer than the "back"); a "back" that beats its leave to the queue
+  waits up to a minute for it. The stayer's result poll now waits for ITS leave's record (published with lat).
+- The announcement (once per device, lobby only, V507's look): LAGGING? REFRESH — Ctrl+R / the Chromebook refresh key, the
+  game picks back up where it was; the red DON'T LEAVE EARLY warning (the V506/V509 rules); the green A REFRESH ISN'T
+  LEAVING — "be back within 2 minutes and it's removed: your points come right back". ◀ BACK + GOT IT.
+- Tests: e2e/elo-math.js E14-E20 (20/20); e2e/v529-refresh-not-leave.js 4/4 (a real refresh: noted 1.6 s, paid, resumed
+  3.7 s, back noted 8.2 s, undone 9.2 s, both ratings exactly 1000 again; then a real leave counts); v526 4/4 (9 popups),
+  v519 3/3, v527 2/2.
+
 ## V528 (2026-10-09): the onside kick — Retro Bowl's own, odds 10% + 0.25 x the kicker's total
 - The owner: "just add normal retro bowl one, but raise odds to 10% + .25(kicker total points out of 40)"; "finish onside
   kicks and make sure it doesn't break anything".

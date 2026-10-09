@@ -57,6 +57,9 @@ const INCLUDE_TEST = has('--include-test'), REPORT = has('--report');
 const FRIENDLY_LIMIT = Number(opt('--friendly-limit', 0)) || 0;   // V502: 0 = off
 const NOW = () => Number(opt('--now', Date.now()));
 const SETTLE_MS = 20000, ONE_SIDE_MS = 10 * 60000, BOARD_MIN = 5, BOARD_N = Infinity, KEEP_G_MS = 2 * 86400e3;   // V512: everyone with 5+ (was the top 50)
+const BACK_MS = 120000;   // V529: a player back within 2 minutes of a leave refreshed the page — the leave is undone
+const BACK_HOLD_MS = 60000;   // V529: a "came back" note that got here before its leave note waits this long for it
+const backSeen = new Map();   // V529: such a note's key -> when this job first saw it
 const LEAVE_WAIT_MS = Number(opt('--leave-wait-ms', 0));   // V510: at once (V506 waited 10 minutes); a finished game undoes it
 const EXEMPT = /soham/i;                                              // V506: the owner's names never pay it
 const LATE_SEC = 60, LATE_X = 3;                                      // V509: under a minute left, 3 x a loss, to the stayer
@@ -122,6 +125,7 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     const q = Number(L.q) || 1, clk = Math.max(0, Number(L.clk) || 0), qmins = Number(L.qmins) || 2;
     const leftSec = q >= 5 ? clk : clk + Math.max(0, 4 - q) * qmins * 60;
     out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
+    out.lat = Number(L.at) || 0;   // V529: when the other phone saw them go (its clock) — a "came back" note names this leave by it
     if (leftSec < LATE_SEC && fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
     const P = player(st, uid), O = ouid ? player(st, ouid) : null, pr = P.r, orr = O ? O.r : 1000;   // the ratings before
     // the player who left: V509 under a minute left, 3 x a loss; V506 otherwise, 0.25 x the whole minutes x the gap
@@ -139,6 +143,7 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     if (O) {
         const win = K(O.n) * (1 - expected(orr, pr));
         out.ouid = ouid; out.won = true; out.gain = Math.round(win * 100) / 100; out.or0 = Math.round(O.r);
+        out.gx = win;   // V529: the exact gain, so an undo (a refresh) restores the rating exactly
         O.r += win; O.n++; O.w++; O.last = g.start; O.peak = Math.max(O.peak || 1000, O.r); out.or1 = Math.round(O.r);
         out[other] = { r0: out.or0, r1: out.or1, d: out.or1 - out.or0 };
         const oname = String((g.names || {})[other] || ''); if (oname && !O.nm) O.nm = oname.slice(0, 16);
@@ -153,7 +158,7 @@ function undoLeave(st, gidL, now) {
     if (!L || !L.leave || !L.applied || L.reversed) return null;
     const P = st.players[L.uid]; if (P) { P.r += Number(L.penalty) || 0; if (!L.exempt) P.left = Math.max(0, (P.left || 0) - 1); }
     const O = L.ouid ? st.players[L.ouid] : null;
-    if (O) { O.r -= Number(L.gain) || 0; if (L.won) { O.n = Math.max(0, (O.n || 0) - 1); O.w = Math.max(0, (O.w || 0) - 1); } }   // V519: the win too
+    if (O) { O.r -= Number(L.gx != null ? L.gx : L.gain) || 0; if (L.won) { O.n = Math.max(0, (O.n || 0) - 1); O.w = Math.max(0, (O.w || 0) - 1); } }   // V519: the win too
     L.reversed = true; L.reversedAt = now;
     return L;
 }
@@ -190,17 +195,44 @@ function pubPlayer(st, uid, now) {
 // one pass over the queue. io = { get(path, query), put, patch, del } (tests pass a fake)
 async function run(st, io, now, opts) {
     const q = (await io.get(QUEUE)) || {};
-    const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0, left: q[k].left || null }))
-        .sort((a, b) => a.start - b.start);
+    // V529: a game's leaves first, then its result, then the "came back" notes (whatever order they arrived in)
+    const kind = x => (x.left ? 0 : x.back ? 2 : 1);
+    const items = Object.keys(q).filter(k => q[k] && q[k].c && q[k].s).map(k => ({ key: k, code: String(q[k].c), start: Number(q[k].s), t: Number(q[k].t) || 0, left: q[k].left || null, back: q[k].back || null }))
+        .sort((a, b) => a.start - b.start || kind(a) - kind(b));
     const changed = new Set(), done = [];
     for (const it of items) {
+        if (it.back) {   // V529 (the owner: "refreshing fixes lag" — the announcement): the player the other phone noted as gone
+            // came back within 2 minutes — a refresh, not a leave: undone (their points back, the stayer's win taken back). The
+            // note names its leave by the moment it was seen (both times are the stayer's clock), so a late copy of an old
+            // note never undoes a later leave
+            const br = it.back.role === 'a' || it.back.role === 'b' ? it.back.role : '';
+            const gidB = it.code + '_' + it.start + '_left_' + br;
+            const LB = br ? st.games[gidB] : null;
+            if (br && !LB) {   // its leave note isn't here yet (written first, but a stalled line can deliver it later)
+                const f = backSeen.get(it.key) || now; backSeen.set(it.key, f);
+                if (now - f < BACK_HOLD_MS) continue;
+            }
+            backSeen.delete(it.key);
+            const bAt = Number(it.back.at) || 0, lat = Number(LB && LB.lat) || 0;
+            if (LB && LB.leave && LB.applied && !LB.reversed && lat && Number(it.back.since) === lat && bAt >= lat && bAt - lat <= BACK_MS) {
+                const u = undoLeave(st, gidB, now);
+                if (u) {
+                    u.back = true; u.backAt = bAt; u.why = 'came back after ' + Math.round((bAt - lat) / 1000) + ' s (a refresh) — undone';
+                    changed.add(u.uid); if (u.ouid) changed.add(u.ouid); done.push(u); log('leave undone ' + gidB + ' — ' + u.why);
+                }
+            }
+            await io.del(QUEUE + '/' + it.key);
+            continue;
+        }
         if (it.left) {   // V506: a leave the other player noted
             // V521 (the owner: "that didn't happen when someone left my game" — OMJG: his hidden tab was reported first, the
             // real leave 2 min later was dropped as the game's second note): one note per LEAVER (…_left_a / _left_b), and
             // a leaver who then reports the other was still there — that earlier leave is undone first
             const lr = it.left.role === 'a' || it.left.role === 'b' ? it.left.role : '', by = it.left.by === 'a' || it.left.by === 'b' ? it.left.by : '';
             const gidL = it.code + '_' + it.start + '_left' + (lr ? '_' + lr : '');
-            if (st.games[gidL] || (!INCLUDE_TEST && /^Z\d/.test(it.code))) { await io.del(QUEUE + '/' + it.key); continue; }
+            // V529: a leave undone because they came back can happen again (they left for real later)
+            const prevL = st.games[gidL], reLeave = !!(prevL && prevL.reversed && prevL.back && Number(it.left.at) > Number(prevL.backAt || Infinity));
+            if ((prevL && !reLeave) || (!INCLUDE_TEST && /^Z\d/.test(it.code))) { await io.del(QUEUE + '/' + it.key); continue; }
             if (now - it.t < LEAVE_WAIT_MS) continue;   // they may come back and finish the game
             for (const k0 of [it.code + '_' + it.start + '_left_' + by, it.code + '_' + it.start + '_left']) {
                 const old = by && st.games[k0];
@@ -257,7 +289,7 @@ async function publish(st, io, changed, done, now) {
     if (done.length) {
         const g = {};
         for (const d of done) g[d.gid] = d.leave
-            ? { leave: true, applied: !!d.applied, reversed: !!d.reversed, rule: d.rule || '', penalty: d.penalty || 0, role: d.role || '', why: d.why || '', at: d.at, a: d.a || null, b: d.b || null }
+            ? { leave: true, applied: !!d.applied, reversed: !!d.reversed, rule: d.rule || '', penalty: d.penalty || 0, role: d.role || '', why: d.why || '', at: d.at, lat: d.lat || 0, a: d.a || null, b: d.b || null }   // V529: lat = which leave (a game can have a refresh, then a real one)
             : { ranked: d.ranked, why: d.why || '', at: d.at, lobby: d.lobby, a: d.a || null, b: d.b || null };
         await io.patch(PUB + '/g', g);
     }

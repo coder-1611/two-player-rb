@@ -198,6 +198,61 @@ const queue = (entries) => { const q = {}; entries.forEach(([c, s, t]) => q[c + 
         check('E12 a leave reported for a player who then reports the other leaving is undone; the real leaver pays and the stayer wins (OMJG)', ok,
               JSON.stringify({ mid, aReversed: La.reversed, b: Lb && [Lb.rule, Lb.penalty, Lb.gain], end: [st.players.pa.r, st.players.pb.r, st.players.pa.w, st.players.pb.w] }));
     }
+    // E14-E17 (V529, the owner: "refreshing fixes lag" — make it an announcement): a refresh is not a leave. The page that
+    // noted the leave sees them come back and sends a "back" note; within 2 minutes the leave is undone
+    {
+        const mk = () => ({ players: { pa: { r: 1000, n: 20, w: 10, l: 10, d: 0, nm: 'Ann', fd: {}, peak: 1000 }, pb: { r: 1000, n: 20, w: 10, l: 10, d: 0, nm: 'Bob', fd: {}, peak: 1000 } }, games: {} });
+        const rec = { mode: 'same', uids: { a: 'pa', b: 'pb' }, fin: {} };
+        const lv = (t) => ({ c: 'BACK', s: T0, t, left: { role: 'a', by: 'b', q: 3, clk: 100, qmins: 3, su: 6, so: 14, at: t } });
+        const bk = (t, since) => ({ c: 'BACK', s: T0, t, back: { role: 'a', by: 'b', at: t, since: since || T0 + 1000 } });
+        const K_L = 'BACK_' + T0 + '_left_a', K_B = 'BACK_' + T0 + '_back_a';
+        // E14
+        const st = mk(), io = fakeDb({ rooms: { BACK: { games: { [T0]: rec }, names: { a: 'Ann', b: 'Bob' } }, '~elo': { q: { [K_L]: lv(T0 + 1000) } } } });
+        await E.run(st, io, T0 + 2000);
+        const mid = [st.players.pa.r, st.players.pb.r, st.players.pb.w, st.players.pb.n];
+        io.db.rooms['~elo'].q = { [K_B]: bk(T0 + 20000) };
+        const o14 = await E.run(st, io, T0 + 21000);
+        const L14 = st.games[K_L];
+        check('E14 they came back 18 s after the leave (a refresh): the leave is undone — both back to 1000, the stayer\'s win taken back; published as reversed',
+              mid[0] < 1000 && mid[1] > 1000 && mid[2] === 11 && L14.reversed && L14.back && st.players.pa.r === 1000 && st.players.pb.r === 1000 && st.players.pb.w === 10 && st.players.pb.n === 20 &&
+              o14.done.some(d => d.leave && d.reversed) && Object.keys(io.db.rooms['~elo'].q || {}).length === 0,
+              JSON.stringify({ mid, end: [st.players.pa.r, st.players.pb.r, st.players.pb.w, st.players.pb.n], L14: L14 && [L14.reversed, L14.back, L14.why] }));
+        // E15: they left for real later in the same game — applied again
+        io.db.rooms['~elo'].q = { [K_L]: lv(T0 + 300000) };
+        await E.run(st, io, T0 + 301000);
+        check('E15 after a refresh, a real leave later in the same game counts again', st.games[K_L].applied && !st.games[K_L].reversed && st.players.pa.r < 1000 && st.players.pb.r > 1000,
+              JSON.stringify({ L: [st.games[K_L].applied, st.games[K_L].reversed], end: [st.players.pa.r, st.players.pb.r] }));
+        // E16: back after more than 2 minutes — a leave, not a refresh
+        const st2 = mk(), io2 = fakeDb({ rooms: { BACK: { games: { [T0]: rec }, names: { a: 'Ann', b: 'Bob' } }, '~elo': { q: { [K_L]: lv(T0 + 1000) } } } });
+        await E.run(st2, io2, T0 + 2000);
+        io2.db.rooms['~elo'].q = { [K_B]: bk(T0 + 200000) };
+        await E.run(st2, io2, T0 + 201000);
+        check('E16 back after more than 2 minutes: the leave stands', !st2.games[K_L].reversed && st2.players.pa.r < 1000, JSON.stringify([st2.games[K_L].reversed, st2.players.pa.r]));
+        // E17: the leave and the back land in the same pass (the back sorted after its leave): nothing changes in the end
+        const st3 = mk(), io3 = fakeDb({ rooms: { BACK: { games: { [T0]: rec }, names: { a: 'Ann', b: 'Bob' } }, '~elo': { q: { [K_B]: bk(T0 + 9000), [K_L]: lv(T0 + 1000) } } } });
+        await E.run(st3, io3, T0 + 10000);
+        check('E17 a leave and its "back" in the same pass: the leave lands and is undone — no change', st3.games[K_L] && st3.games[K_L].reversed && st3.players.pa.r === 1000 && st3.players.pb.r === 1000,
+              JSON.stringify([st3.games[K_L] && st3.games[K_L].reversed, st3.players.pa.r, st3.players.pb.r]));
+        // E18: a late copy of the first leave note (a stalled line delivers it after the "back") is not a new leave
+        const st4 = mk(), io4 = fakeDb({ rooms: { BACK: { games: { [T0]: rec }, names: { a: 'Ann', b: 'Bob' } }, '~elo': { q: { [K_L]: lv(T0 + 1000) } } } });
+        await E.run(st4, io4, T0 + 2000);
+        io4.db.rooms['~elo'].q = { [K_B]: bk(T0 + 20000) }; await E.run(st4, io4, T0 + 21000);
+        io4.db.rooms['~elo'].q = { [K_L]: lv(T0 + 1000) }; await E.run(st4, io4, T0 + 40000);
+        check('E18 a late copy of the leave note after the refresh was undone: not counted again', st4.games[K_L].reversed && st4.players.pa.r === 1000 && st4.players.pb.r === 1000,
+              JSON.stringify([st4.games[K_L].reversed, st4.players.pa.r, st4.players.pb.r]));
+        // E19: a late copy of the first "back" note after a real leave later: it names the first leave, so the real one stands
+        io4.db.rooms['~elo'].q = { [K_L]: lv(T0 + 300000) }; await E.run(st4, io4, T0 + 301000);
+        io4.db.rooms['~elo'].q = { [K_B]: bk(T0 + 20000) }; await E.run(st4, io4, T0 + 320000);
+        check('E19 a late copy of an old "back" note does not undo a later real leave', !st4.games[K_L].reversed && st4.players.pa.r < 1000 && st4.players.pb.r > 1000,
+              JSON.stringify([st4.games[K_L].reversed, st4.players.pa.r, st4.players.pb.r]));
+        // E20: the "back" note got to the queue before its leave note: it waits (up to a minute) and then undoes it
+        const st5 = mk(), io5 = fakeDb({ rooms: { BACK: { games: { [T0]: rec }, names: { a: 'Ann', b: 'Bob' } }, '~elo': { q: { [K_B]: bk(T0 + 20000) } } } });
+        await E.run(st5, io5, T0 + 21000);
+        const held = !!(io5.db.rooms['~elo'].q || {})[K_B];
+        io5.db.rooms['~elo'].q[K_L] = lv(T0 + 1000); await E.run(st5, io5, T0 + 24000);
+        check('E20 a "back" that arrives before its leave waits for it, then undoes it', held && st5.games[K_L] && st5.games[K_L].reversed && st5.players.pa.r === 1000 && st5.players.pb.r === 1000 &&
+              Object.keys(io5.db.rooms['~elo'].q || {}).length === 0, JSON.stringify({ held, L: st5.games[K_L] && st5.games[K_L].reversed, r: [st5.players.pa.r, st5.players.pb.r], q: Object.keys(io5.db.rooms['~elo'].q || {}) }));
+    }
     // E13 (V521): points lost to leaving — the board and each player's record carry them (leaves + the owner's penalties)
     {
         const st = { players: {}, games: {}, manual: [] };

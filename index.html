@@ -1147,12 +1147,12 @@
         /* V526 (the owner: "from now on always add a back button to the pop ups"): every popup's ◀ BACK — top left, and
            sticky, so it stays in sight when a tall popup scrolls */
         #rb-news .box .rb-back, #rb-inbox .box .rb-back, #rb-potd-congrats .box .rb-back, #rb-a2hs .box .rb-back, #rb-complain-panel .rb-back,
-        #rb-match .rb-match-card .rb-back, .rb-pop .rb-pop-card .rb-back {
+        #rb-match .rb-match-card .rb-back, .rb-pop .rb-pop-card .rb-back, #rb-announce .box .rb-back {
             position: sticky; top: 0; z-index: 3; display: block; width: max-content; align-self: flex-start; margin: 0 auto 12px 0; padding: 7px 10px;
             font: 10px 'Press Start 2P', monospace; letter-spacing: 1px; line-height: 1; text-align: left; color: #fff; background: #0a1838;
             border: 2px solid #fff; border-radius: 0; box-shadow: 2px 2px 0 rgba(0,0,0,.45); cursor: pointer; transform: none; }
         #rb-news .box .rb-back:hover, #rb-inbox .box .rb-back:hover, #rb-potd-congrats .box .rb-back:hover, #rb-a2hs .box .rb-back:hover, #rb-complain-panel .rb-back:hover,
-        #rb-match .rb-match-card .rb-back:hover, .rb-pop .rb-pop-card .rb-back:hover,
+        #rb-match .rb-match-card .rb-back:hover, .rb-pop .rb-pop-card .rb-back:hover, #rb-announce .box .rb-back:hover, #rb-announce .box .rb-back:focus-visible,
         #rb-news .box .rb-back:focus-visible, #rb-inbox .box .rb-back:focus-visible, #rb-potd-congrats .box .rb-back:focus-visible, #rb-a2hs .box .rb-back:focus-visible,
         #rb-complain-panel .rb-back:focus-visible, #rb-match .rb-match-card .rb-back:focus-visible, .rb-pop .rb-pop-card .rb-back:focus-visible { background: #ffd23f; color: #0a1838; outline: none; }
         .rb-back[hidden] { display: none !important; }
@@ -1406,6 +1406,37 @@
         #rb-news .chip { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 2px solid #ffd23c; border-radius: 6px; color: #ffd23c; font-weight: bold; vertical-align: middle; }
         #rb-news button { display: block; margin: 16px auto 0; font: bold 12px 'Press Start 2P', monospace; letter-spacing: 2px; padding: 12px 24px;
             background: #ffd23f; color: #0a1838; border: 4px solid #0a1838; box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
+        /* V529: the announcement (V507's look: the news popup's box, the leaving warning in red, the refresh rule in green) */
+        #rb-announce { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(4,10,28,.84); }
+        #rb-announce[hidden] { display: none; }
+        #rb-announce .box { display: flex; flex-direction: column; width: min(560px, calc(100vw - 32px)); max-height: 90vh; overflow-y: auto; background: #0d2a6b; border: 5px solid #fff;
+            box-shadow: 8px 8px 0 #0a1838; padding: 22px 24px; color: #fff; text-align: left; box-sizing: border-box; font-family: 'Press Start 2P', monospace; -webkit-font-smoothing: none; }
+        #rb-announce h2 { margin: 0 0 14px; font: bold 13px 'Press Start 2P', monospace; letter-spacing: 2px; color: #ffd23f; text-align: center; line-height: 1.6; text-wrap: balance; }
+        #rb-announce p { margin: 0 0 12px; font-size: 10px; line-height: 1.9; }
+        #rb-announce b { color: #ffd23f; font-weight: normal; }
+        #rb-announce .warn, #rb-announce .fine { margin: 6px 0 4px; padding: 12px 14px; font-size: 10px; line-height: 1.9; }
+        #rb-announce .warn { border: 3px solid #ff5b5b; background: rgba(255,59,59,.16); color: #ffe3e3; }
+        #rb-announce .fine { margin-top: 10px; border: 3px solid #36e07a; background: rgba(54,224,122,.13); color: #e2ffee; }
+        #rb-announce .warn b, #rb-announce .fine b { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: 1px; }
+        #rb-announce .warn b { color: #ff6b6b; }
+        #rb-announce .fine b { color: #36e07a; }
+        #rb-announce .warn b.late { margin: 8px 0 0; color: #ffd23f; font-size: inherit; letter-spacing: 0; }
+        #rb-announce .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+        #rb-announce .row button { font: bold 11px 'Press Start 2P', monospace; letter-spacing: 1px; padding: 12px 18px; background: #ffd23f; color: #0a1838; border: 4px solid #0a1838;
+            box-shadow: 4px 4px 0 #0a1838; cursor: pointer; }
+        #rb-announce .row button:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #0a1838; }
+        #rb-announce .row button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+        @media (max-height: 520px) {   /* a sideways phone: everything on one screen, the button too */
+            #rb-announce .box { padding: 10px 16px; max-height: calc(100vh - 16px); }
+            #rb-announce .box .rb-back { margin-bottom: 6px; }
+            #rb-announce h2 { margin-bottom: 6px; font-size: 11px; }
+            #rb-announce p { margin-bottom: 4px; font-size: 8px; line-height: 1.7; }
+            #rb-announce .warn, #rb-announce .fine { margin-top: 4px; padding: 6px 10px; font-size: 8px; line-height: 1.7; }
+            #rb-announce .warn b, #rb-announce .fine b { margin-bottom: 2px; font-size: 9px; }
+            #rb-announce .warn b.late { margin-top: 4px; }
+            #rb-announce .row { margin-top: 8px; }
+            #rb-announce .row button { padding: 8px 14px; font-size: 9px; border-width: 3px; box-shadow: 3px 3px 0 #0a1838; }
+        }
         /* V457: iPhone — add the game to the Home Screen (first visit; above the turn-sideways screen, either way up) */
         #rb-a2hs { position: fixed; inset: 0; z-index: 2147483605; display: flex; align-items: center; justify-content: center;
             background: rgba(4,10,28,.84); padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-sizing: border-box; }
@@ -2160,6 +2191,17 @@
             <p id="rb-potd-congrats-msg" style="min-height:1em;margin-top:10px;font-size:12px;color:#c9d4e6"></p>
         </div>
     </div>
+    <!-- V529: an announcement — once per device, in the lobby: a refresh fixes lag, and the leave warning -->
+    <div id="rb-announce" hidden>
+        <div class="box" role="dialog" aria-modal="true" aria-labelledby="rb-announce-h">
+            <button class="rb-back" type="button" data-back="rb-announce-ok">&#9664; BACK</button>
+            <h2 id="rb-announce-h">&#9733; LAGGING? REFRESH &#9733;</h2>
+            <p>If your game starts to <b>lag</b>, <b>refresh the page</b> (Ctrl+R &mdash; on a Chromebook, the &#10227; key). It clears the lag, and your game picks back up where it was.</p>
+            <div class="warn"><b>&#9888; DON'T LEAVE EARLY</b>Leaving a ranked game before it ends costs you rating points &mdash; the more time left and the bigger the score gap, the more you lose &mdash; and the player who stayed gets a win right away. <b class="late">Leave in the last minute and you lose 3&times; what a loss costs.</b></div>
+            <div class="fine"><b>&#10003; A REFRESH ISN'T LEAVING</b>While your page reloads, it can count as leaving for a moment &mdash; but be back within 2 minutes and it's removed: your points come right back.</div>
+            <div class="row"><button id="rb-announce-ok" type="button">GOT IT</button></div>
+        </div>
+    </div>
     <div id="rb-a2hs" hidden>
         <div class="box" role="dialog" aria-modal="true" aria-labelledby="rb-a2hs-h">
             <button class="rb-back" type="button" data-back="rb-a2hs-ok">&#9664; BACK</button>
@@ -2197,7 +2239,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V528<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V529<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2451,7 +2493,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V528</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V529</span><span class="b">◇ 2P VERSION BY <a href="https://localwebtech.ai/?utm_source=retro-bowl-2p&utm_medium=footer" style="color:inherit;text-decoration:none">SOHAM STHITPRAGYA · LOCAL WEB TECH</a></span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -22122,6 +22164,25 @@
             el.textContent = txt; el.style.display = txt ? '' : 'none';
         }
         window._rb2p_eloFinalPaint = eloFinPaint;
+        // V529 (the owner: "we have realized that refreshing fixes lag right? Make this a pop up for an announcement"; "add the
+        // leave warning to the pop up but that it will be removed"): once per device, on the lobby's first screen, never in a
+        // game and never over another popup (it waits for them) — V507's way. GOT IT and BACK both close it for good.
+        (function announce() {
+            var KEY = 'rb2p_ann_refresh_v1', $an = document.getElementById('rb-announce'), $ok = document.getElementById('rb-announce-ok');
+            if (!$an || !$ok) return;
+            try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
+            if (window._rb2p_isTestRun && window._rb2p_isTestRun() && !window._rb2p_annForce) return;
+            var tries = 0;
+            $ok.addEventListener('click', function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} $an.hidden = true; });
+            (function tryShow() {
+                if (!$an.hidden || ++tries > 400) return;
+                var busy = document.documentElement.classList.contains('rb-in-match') || lobby.style.display === 'none' || lobby.dataset.active !== 'entry' ||
+                    ['rb-news', 'rb-inbox', 'rb-potd-congrats', 'rb-a2hs', 'rb-match', 'rb-complain-panel', 'rb-pcard', 'rb-chal'].some(function (id) { var e = document.getElementById(id); return e && !e.hidden; });
+                if (busy) { setTimeout(tryShow, 3000); return; }
+                $an.hidden = false;
+                try { $ok.focus({ preventScroll: true }); } catch (e) {}
+            })();
+        })();
         // V506: THE LEAVING PENALTY (the owner: "add a leaving penalty for pepole who leave first in a ranked game"; the
         // formula, 6 Oct: "elo - 0.25(minutes left in int)|point differential|"; "make any username with soham in it exempt").
         // When the other player has been gone for 2 minutes in a game still running — their page closed (its pagehide
@@ -22135,7 +22196,7 @@
         // reload that comes straight back never counts), or at once after a minute of silence; the job applies it at its
         // next run (every minute) and gives the points to the player who stayed — and undoes it if they come back and the
         // game is finished after all. This page then shows the points it got on the waiting screen.
-        var leaveW = { key: null, since: 0, snap: null, sent: false };
+        var leaveW = { key: null, since: 0, snap: null, sent: false, hbTs: 0, noted: null };
         window._rb2p_leaveGain = 0;
         // V527 (FTAV, the owner: "said he left in the middle but we were both playing and it gave me the points and just wait
         // screen happened"): it was THIS page's line that went quiet — its live socket stalled (FB-STALL x7 in 90 s, a failed
@@ -22181,12 +22242,12 @@
             }).then(function () { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); }, function () {});
         }
         function leaveResultPoll(gid, role) {   // the job's result for this leave (embedcode/elo/g/{gid}): the points I got
-            var tries = 0;
+            var tries = 0, w = leaveW;   // V529: a refresh (they came back) starts a new watch — this one's result no longer counts
             (function poll() {
-                if (++tries > 90 || gid.indexOf(leaveW.key + '_left') !== 0) return;   // V519: every 2 s for 3 minutes (was 8 s)
+                if (++tries > 90 || leaveW !== w || gid.indexOf(leaveW.key + '_left') !== 0) return;   // V519: every 2 s for 3 minutes (was 8 s)
                 eloGetX(eloPub() + '/g/' + gid, 6000).then(function (v) {
-                    if (gid.indexOf(leaveW.key + '_left') !== 0) return;
-                    if (v && v.leave) {
+                    if (leaveW !== w || gid.indexOf(leaveW.key + '_left') !== 0) return;
+                    if (v && v.leave && !(Number(v.lat) && w.noted && Number(v.lat) !== Number(w.noted.since))) {   // V529: this leave's result, not an earlier (refreshed) one's
                         var mine = v[role], d = mine ? Number(mine.d) || 0 : 0;
                         if (v.applied && !v.reversed && d > 0) { window._rb2p_leaveGain = d; if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the leave gave me +' + d + ' (' + (v.rule || '') + ')'); }
                         if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus();
@@ -22196,13 +22257,36 @@
                 }, function () { setTimeout(poll, 2000); });
             })();
         }
+        // V529 (the owner: "we have realized that refreshing fixes lag right? Make this a pop up for an announcement" — "add the
+        // leave warning to the pop up but that it will be removed"): a refresh closes the page for a few seconds, and this page
+        // notes that as a leave at once (V519) — the leaving penalty lands. When the other phone heartbeats again within 2
+        // minutes (a newer heartbeat that doesn't say "closed"), it was a refresh: a "came back" note goes to the Mac's job,
+        // which undoes that leave (their points back, my win taken back), and the watch starts over (a real leave later is
+        // noted again). My live line may be the quiet one (V527), so their heartbeat is also read over REST every 4 s.
+        var LEAVE_BACK_MS = 120000;
+        function leaveBack(gk, oppR) {
+            var n = leaveW.noted; if (!n) return;
+            var age = Date.now() - n.since;
+            if (age > (window._rb2p_leaveBackMs != null ? Number(window._rb2p_leaveBackMs) : LEAVE_BACK_MS)) return;   // too late: the leave stands (a finished game still undoes it, V510)
+            if (Date.now() - hbChk.at > 4000) hbCheck(oppR);
+            var h = window._rb2p_oppHb;
+            if (!(h && h.vis !== 'X' && (Number(h.ts) || 0) > n.hbTs)) return;
+            var at = Date.now(), note = { c: myRoom, s: Number(gk), t: at, back: { role: oppR, by: myRole, at: at, since: n.since } };
+            var bp = (window._rb2p_eloQueue || 'rooms/~elo/q') + '/' + myRoom + '_' + gk + '_back_' + oppR;
+            FB.set(FB.ref(db, bp), note).catch(function () {});
+            if (window._rb2p_fbRestPut) window._rb2p_fbRestPut(bp, note);
+            if (window._rb2p_diagLog) window._rb2p_diagLog('ELO the other player came back ' + Math.round(age / 1000) + ' s after leaving (a refresh) — noted, the leave is undone');
+            leaveW = { key: leaveW.key, since: 0, snap: null, sent: false, hbTs: 0, noted: null };
+            window._rb2p_leaveGain = 0; window._rb2p_leaveEst = null;
+            try { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); } catch (eW) {}
+        }
         function leaveTick() {
             try {
                 if (!myRoom || !myRole || window._rb2p_gameOverReported === true || !(window.RB && RB.isEngineInMatchRoom && RB.isEngineInMatchRoom())) { leaveW.since = 0; leaveW.snap = null; return; }
                 var gk = eloGameKey(); if (!gk) return;
-                if (leaveW.key !== myRoom + '_' + gk) { leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false }; window._rb2p_leaveGain = 0; window._rb2p_leaveEst = null; }
-                if (leaveW.sent) return;
+                if (leaveW.key !== myRoom + '_' + gk) { leaveW = { key: myRoom + '_' + gk, since: 0, snap: null, sent: false, hbTs: 0, noted: null }; window._rb2p_leaveGain = 0; window._rb2p_leaveEst = null; }
                 var oppR = myRole === 'a' ? 'b' : 'a';
+                if (leaveW.sent) { leaveBack(gk, oppR); return; }   // V529: noted — did they come back (a refresh)?
                 var closed = !!(window._rb2p_oppLeft && window._rb2p_oppLeft());
                 var silMs = (window._rb2p_oppSilentMs && window._rb2p_oppSilentMs()) || 0;
                 // V527: their heartbeat over REST — at once for a closed tab, every 4 s once my copy is 10 s old
@@ -22213,6 +22297,7 @@
                 if (!leaveW.since) {   // the moment they went: the score and the clock then
                     var em = RB.engineState(); if (!em) return;
                     leaveW.since = Date.now();
+                    leaveW.hbTs = Number(window._rb2p_oppHb && window._rb2p_oppHb.ts) || 0;   // V529: their last word — a newer one is them back
                     if (!window._rb2p_leaveEst) leaveEstimate(gk, myRole === 'a' ? 'b' : 'a');   // V521: the points, at once
                     leaveW.snap = { q: Number(em.engineQuarter) || 1, clk: (Number(em.engineMinutesLeft) || 0) * 60 + (Number(em.engineSecondsLeft) || 0),
                                     su: Number(em.userScore) || 0, so: Number(em.opponentScore) || 0 };
@@ -22221,6 +22306,7 @@
                 var waitMs = window._rb2p_leaveWaitMs != null ? Number(window._rb2p_leaveWaitMs) || 0 : 0;   // V519 (the owner: "needs to be immediate"): at once (V510: 20 s after a closed tab; was 2 min)
                 if (Date.now() - leaveW.since < waitMs) return;
                 leaveW.sent = true;
+                leaveW.noted = { since: leaveW.since, hbTs: leaveW.hbTs };   // V529: what a "came back" note names
                 var note = { c: myRoom, s: Number(gk), t: Date.now(),
                              left: Object.assign({ role: myRole === 'a' ? 'b' : 'a', by: myRole, at: leaveW.since, qmins: Number(window._rb2p_quarterMins) || 2 }, leaveW.snap) };
                 var lp = (window._rb2p_eloQueue || 'rooms/~elo/q') + '/' + myRoom + '_' + gk + '_left_' + note.left.role;   // V521: one note per leaver
@@ -22739,7 +22825,7 @@
             var bk = ev.target && ev.target.closest ? ev.target.closest('.rb-back[data-back]') : null;
             if (!bk) return;
             var t = document.getElementById(bk.getAttribute('data-back')); if (t) t.click();
-            var box = bk.closest('#rb-news, #rb-inbox, #rb-potd-congrats, #rb-a2hs, #rb-complain-panel, #rb-match');
+            var box = bk.closest('#rb-news, #rb-inbox, #rb-potd-congrats, #rb-a2hs, #rb-complain-panel, #rb-match, #rb-announce');
             if (box && !box.hidden) box.hidden = true;
         });
         function socChBack() {   // the challenge card's BACK: a challenge to me = NO THANKS (it can't be opened again); mine, waiting = CANCEL; an answer = OK

@@ -3,14 +3,14 @@
 //   P1  the announcement popup (NEW: RANKINGS / NEW: LEAVING RULE) is gone from the page
 //   P2  every popup has a ◀ BACK at its top left, in sight on the screen, and one tap of it closes the popup: the play of
 //       the day, the owner's inbox, the play-of-the-day congrats, the iPhone home-screen tip, the bug report, PLAYER FOUND,
-//       the player card (RANKINGS), the challenge card
+//       the player card (RANKINGS), the challenge card, V529's announcement (LAGGING? REFRESH)
 //   P3  the challenge card's BACK is not offered while a room is being made (nothing to go back to)
 //   P4  on a sideways phone the BACK of the tallest popup (the iPhone tip) is on the screen without scrolling
 const H = require('./harness');
 const sleep = H.sleep;
 let pass = 0, fail = 0;
 const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail++, console.log('  FAIL  ' + n + (d ? ' — ' + d : ''))); };
-const POPS = ['rb-news', 'rb-inbox', 'rb-potd-congrats', 'rb-a2hs', 'rb-complain-panel', 'rb-match'];
+const POPS = ['rb-news', 'rb-inbox', 'rb-potd-congrats', 'rb-a2hs', 'rb-complain-panel', 'rb-match', 'rb-announce'];   // V529: the announcement
 
 async function open(browser, vp, ua) {
     const ctx = await browser.createBrowserContext(), page = await ctx.newPage();
@@ -61,7 +61,7 @@ const backOf = (page, id) => page.evaluate(i => {
         res['rb-chal'].closed = await page.evaluate(() => document.getElementById('rb-chal').hidden);
         const bad = Object.entries(res).filter(([k, v]) => !(v.has && v.text === '◀ BACK' && v.visible && v.onScreen && v.first && v.closed));
         check('P2 every popup (' + Object.keys(res).length + ') has ◀ BACK first, at the top, on the screen, and one tap closes it',
-              bad.length === 0 && Object.keys(res).length === 8, JSON.stringify(bad.length ? Object.fromEntries(bad) : res));
+              bad.length === 0 && Object.keys(res).length === 9, JSON.stringify(bad.length ? Object.fromEntries(bad) : res));
         // P3
         await page.evaluate(() => window._rb2p_social.show('GAME ON!', 'Making a room for you and Card Test…', '', []));
         await sleep(200);
