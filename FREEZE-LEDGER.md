@@ -2158,6 +2158,30 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V528 (2026-10-09): the onside kick — Retro Bowl's own, odds 10% + 0.25 x the kicker's total
+- The owner: "just add normal retro bowl one, but raise odds to 10% + .25(kicker total points out of 40)"; "finish onside
+  kicks and make sure it doesn't break anything".
+- Retro Bowl's own offer, back (V299 had switched it off): my kickoff, Q4, tied or behind, at most 1:40 left (2:40 when down
+  9+) — the engine's NO / YES popup "You will have a N% chance". N = 10 + 0.25 x (skill + strength + speed + stamina) of
+  the K (Pineiro 21/40 = 15.25%, a perfect 40 = 20%). The roll uses the same N and names the kicker (the original looked the
+  kicker up and dropped him: it always rolled 5% and never named him).
+- YES, recovered: the kicking team keeps the ball, 1st & 10 at its own 45-50, no hand-off. The engine did that with two
+  possession flips (away and back) — in 2P each flip is a hand-off to the other phone (the V299 desync) — so the net effect
+  is applied directly and the drive is staged by the bridge like every 2P drive (forceUserOffenseDrive; the quarter-start
+  ball anchor retired — a new drive). YES, lost: one flip, a KICKOFF hand-off at the kicker's 45-50. NO: the normal kickoff.
+  Both lost and NO are marked as kickoffs before their flip (_2c1 = 1): a stale prior stage had typed one a PUNT.
+- 2P needs: no tap after a score, so the engine's onside steps (they wait for one) advance by themselves (~1-2 s each);
+  an unanswered popup is NO after 30 s (the other player is waiting); never offered inside the pick-six chain, with a
+  conversion owed, after the final, or at 0:00 (_rb2p_onsideAllowed); the V299 net stands down for this engine (a stale
+  cached engine still gets it). The computer-opponent onside stays off.
+- e2e/v528-onside.js 8/8 (real two-phone match: the offer and odds; recovered: kept, no hand-off; lost: KICKOFF at the
+  45-50; NO: normal kickoff; ahead: no offer; unanswered: NO by itself; the gate; never both on offense). e2e/v299-onside.js
+  retired (it asserted onside never happens).
+- Regression (18 tests on this build): conversion, convgate, pick6, endgame-pick6, xedg, ballgate, possession,
+  singleoffense, outcomehold, holdstamp, v394 fixes, retype, half-horn, endings, flow, commentary — all pass; horn 6/7 and
+  horn-outcomes M5: the "Q1 horn -> Q3" case — the same failure on V527 without onside (horn-outcomes M5 every time; horn
+  M1 Q1 1 run in 3 on V527, 0 in 3 on this build): a pre-existing intermittent horn bug, not this change.
+
 ## V527 (2026-10-08): a quiet line of my own is not the other player leaving
 - The owner (room FTAV, vs "soham elo farm"): "said he left in the middle but we were both playing and it gave me the points
   and just wait screen happened. We got our possessions though, it was weird, then i left for real".
