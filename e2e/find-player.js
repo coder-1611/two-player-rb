@@ -176,7 +176,7 @@ const banner = p => p.evaluate(() => { const b = document.getElementById('rb-lfg
         const c6c = await C.page.evaluate(() => ({ invite: !document.getElementById('rb-find-invite').hidden, clock: document.getElementById('rb-find-clock').textContent }));
         console.log('  F6: ' + JSON.stringify({ c6a, c6b, c6c }));
         check('F6 the search card: the clock runs; PLAY THE COMPUTER (a new tab) after the solo time, the open invite after the invite time; a quiet hour says so',
-              !c6a.solo && !c6a.invite && /Quiet right now/.test(c6a.est) && c6b.solo && !c6b.invite && /main-retro-bowl\.vercel\.app/.test(c6b.href) && c6b.target === '_blank' &&
+              !c6a.solo && !c6a.invite && /Quiet right now/.test(c6a.est) && c6b.solo && !c6b.invite && /retrobowlofficial\.com/.test(c6b.href) && c6b.target === '_blank' &&
               c6c.invite && /^0:0[4-9]$/.test(c6c.clock), JSON.stringify({ c6a, c6b, c6c }));
         // ---- F7: the open invite ----
         const sidC = await C.page.evaluate(() => window._rb2p_lfg.sid), c7 = code();

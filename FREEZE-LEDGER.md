@@ -2158,6 +2158,22 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V535 (2026-10-09): credit, the official game, a rights-holders contact; /unblocked/ retired
+- The owner: "do all these and use the email address localwebtechai@gmail.com" (the risk-softening list: a contact for
+  rights holders, send players to the official game, credit + not-affiliated on the page people play, no money).
+- Lobby: "NO ONE TO PLAY WITH? OFFICIAL RETRO BOWL ->" (retrobowlofficial.com — New Star Games + Poki's own unblocked
+  version) instead of the solo copy; the find-a-player wait link too. A credit line: RETRO BOWL (c) NEW STAR GAMES ·
+  AN UNOFFICIAL FREE FAN MODE, NOT AFFILIATED WITH NEW STAR GAMES OR POKI · NO ADS · RIGHTS HOLDERS:
+  LOCALWEBTECHAI@GMAIL.COM. On a short or narrow wide screen (max-height 720 or max-width 1180, the plays panel on) it
+  takes the landing-page links' row (14 px of slack at 1366x657); under 1180 px wide the short form (no "not affiliated
+  · no ads"). Measured at ten sizes against V534: no new collision (1024x768 collides on V534 too).
+- Landing pages: the full credit (no ads, no purchases; not affiliated with New Star Games or Poki), links to the official
+  game (retrobowlofficial.com, Poki, App Store id1478902583, Google Play com.newstargames.retrobowl) and "Rights holders:
+  email localwebtechai@gmail.com and anything will be changed or removed within 24 hours"; the solo copy's links point to
+  the official game; "no account / no sign-up" claims (false since V530) now say no email. /unblocked/ retired (it
+  competed with the official unblocked site for the same searches): a noindex redirect home, out of the sitemap and every
+  link row; the backup addresses are listed where it was linked.
+
 ## V533 (2026-10-09): the dashboard's week updates again
 - The owner (a screenshot of the transcripts page: "This week vs last week" stuck at 914 games, 2026-10-05..07, doors V517):
   "this doesn't update".

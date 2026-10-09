@@ -752,7 +752,7 @@
     <meta name="apple-mobile-web-app-title" content="Retro Bowl 2P" />
     <title>Retro Bowl 2P — Two-Player Retro Bowl Multiplayer &amp; Online</title>
     <meta name="description"
-        content="Play Retro Bowl two-player in your browser: Retro Bowl multiplayer online, head-to-head against a friend (create a room, share the code) or a random opponent. See their screen live, climb the rankings. No download, no sign-up." />
+        content="Play Retro Bowl two-player in your browser: Retro Bowl multiplayer online, head-to-head against a friend (create a room, share the code) or a random opponent. See their screen live, climb the rankings. No download, no email needed." />
     <!-- The cache-bust script above sends first-time visitors to ?v=<token>, which would
          otherwise present Google a brand-new URL on every crawl. This pins the indexable
          address to the clean homepage. -->
@@ -1992,6 +1992,18 @@
             .rb-solo { margin-top: 6px; line-height: 1.6; }
         }
         .rb-links a { color: #8fa1b3; text-decoration: none; }
+        /* V535: the credit, the not-affiliated line and the rights holders' contact — on the page people play */
+        .rb-legal { max-width: 760px; margin-left: auto; margin-right: auto; line-height: 1.75; }
+        .rb-legal a { color: #cfd8e3; text-decoration: underline; text-underline-offset: 2px; }
+        /* a short or narrow wide screen (a school Chromebook, 1366x657, or a small laptop, with the plays of the day): the
+           column had 14 px to spare — the credit line takes the place of the landing-page links' row there (the links stay in the page for search engines;
+           every taller screen shows both) */
+        @media (max-height: 720px), (max-width: 1180px) {
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-links:not(.rb-legal) { display: none; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-legal { margin-top: 4px; line-height: 1.55; }
+        }
+        /* a narrow wide screen (a small laptop or a tablet held sideways): the short form of the line (the landing pages carry it all) */
+        @media (max-width: 1180px) { html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-legal .rb-legal-x { display: none; } }
         /* V467: the entry screen in three parts — the lobby (.rb-entry-main), the plays of the day (#rb-potd), the small
            print (.rb-entry-foot). With no play of the day it is the one centered column it always was. */
         #rb-lobby .rb-entry-main { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
@@ -2431,7 +2443,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V534<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V535<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2487,14 +2499,15 @@
                 </div>
             </section>
             <div class="rb-entry-foot">
-                <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://main-retro-bowl.vercel.app/" id="rb-solo-link">PLAY SOLO RETRO BOWL &rarr;</a></p>
+                <p class="rb-solo">NO ONE TO PLAY WITH? <a href="https://retrobowlofficial.com/" id="rb-solo-link" target="_blank" rel="noopener">OFFICIAL RETRO BOWL &rarr;</a></p>
                 <div class="rb-gsites rb-gsites-foot" id="rb-gsites-foot">
                     <span class="rb-gsites-eye">AT SCHOOL?</span>
                     <a href="https://sites.google.com/view/mypersonalretrobowl/home" target="_blank" rel="noopener" title="Blocked at school? The same game on Google Sites — same room codes">GOOGLE SITES &#9654;</a>
                     <a href="https://sites.google.com/student.roundrockisd.org/testtest/" target="_blank" rel="noopener" title="Round Rock ISD students: the same game on your school's Google Sites — sign in with your school account">ROUND ROCK ISD &#9654;</a>
                 </div>
                 <p class="rb-solo rb-backup" id="rb-backup-doors" style="margin-top:6px">BLOCKED? PLAY AT <a href="https://coder-1611.github.io/two-player-rb/">coder-1611.github.io/two-player-rb</a> OR <a href="https://realretrobowl2p.web.app/">realretrobowl2p.web.app</a> &mdash; SAME ROOM CODES</p>
-                <p class="rb-solo rb-links"><a href="multiplayer/">RETRO BOWL MULTIPLAYER</a> &middot; <a href="online/">PLAY RETRO BOWL ONLINE</a> &middot; <a href="how-to-play/">HOW TO PLAY</a> &middot; <a href="play-with-friends/">PLAY WITH FRIENDS</a> &middot; <a href="unblocked/">UNBLOCKED</a></p>
+                <p class="rb-solo rb-links"><a href="multiplayer/">RETRO BOWL MULTIPLAYER</a> &middot; <a href="online/">PLAY RETRO BOWL ONLINE</a> &middot; <a href="how-to-play/">HOW TO PLAY</a> &middot; <a href="play-with-friends/">PLAY WITH FRIENDS</a></p>
+                <p class="rb-solo rb-links rb-legal">RETRO BOWL &copy; NEW STAR GAMES &middot; AN UNOFFICIAL FREE FAN MODE<span class="rb-legal-x">, NOT AFFILIATED WITH NEW STAR GAMES OR POKI &middot; NO ADS</span> &middot; RIGHTS HOLDERS: <a href="mailto:localwebtechai@gmail.com">LOCALWEBTECHAI@GMAIL.COM</a></p>
             </div>
         </div>
         <button id="rb-potd-cue" type="button" hidden>&#9660; PLAYS OF THE DAY</button>
@@ -2600,7 +2613,7 @@
                         <div class="rb-football rb-find-ball" aria-hidden="true"><span class="lace-h"></span><span class="lace-v"></span><span class="lace-rungs"></span></div>
                         <p class="rb-find-searching">FINDING YOU A PLAYER &nbsp;<span id="rb-find-clock">0:00</span></p>
                         <p class="rb-find-est" id="rb-find-est"></p>
-                        <p class="rb-find-extra" id="rb-find-solo" hidden>While you wait: <a id="rb-find-solo-link" href="https://main-retro-bowl.vercel.app/" target="_blank" rel="noopener">PLAY THE COMPUTER &#8599;</a><br>This tab keeps looking and calls you back.</p>
+                        <p class="rb-find-extra" id="rb-find-solo" hidden>While you wait: <a id="rb-find-solo-link" href="https://retrobowlofficial.com/" target="_blank" rel="noopener">PLAY THE OFFICIAL RETRO BOWL &#8599;</a><br>This tab keeps looking and calls you back.</p>
                         <p class="rb-find-extra" id="rb-find-invite" hidden>Invite anyone &mdash; the first person to open this link plays you. <button type="button" id="rb-find-copy">COPY LINK</button></p>
                         <button id="rb-find-stop" class="rb-join-btn" type="button">STOP LOOKING</button>
                     </div>
@@ -2703,7 +2716,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V534</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V535</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
