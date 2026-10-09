@@ -95,10 +95,12 @@ function rate(st, g, opts) {   // g = { gid, code, start, rec, names, lobby, now
     if (limit > 0 && !g.lobby && (codeGamesOn(st, ua, day) >= limit || codeGamesOn(st, ub, day) >= limit)) {
         out.why = 'a player already had ' + limit + ' ranked code games today'; return out;
     }
+    const stk = stakes(st, ua, ub, g.start), mult = stk.x2 ? 2 : 1;   // V536: neighbours on the board play for double
+    if (stk.x2) { out.x2 = true; out.ranks = { a: stk.ra, b: stk.rb }; }
     const A = player(st, ua), B = player(st, ub);
     const S = out.sa > out.sb ? 1 : out.sa < out.sb ? 0 : 0.5;
     const ea = expected(A.r, B.r), eb = 1 - ea;
-    const da = K(A.n) * (S - ea), db = K(B.n) * ((1 - S) - eb);
+    const da = mult * K(A.n) * (S - ea), db = mult * K(B.n) * ((1 - S) - eb);
     out.a = { r0: Math.round(A.r), r1: Math.round(A.r + da), d: Math.round(A.r + da) - Math.round(A.r) };
     out.b = { r0: Math.round(B.r), r1: Math.round(B.r + db), d: Math.round(B.r + db) - Math.round(B.r) };
     A.r += da; B.r += db; A.n++; B.n++;
@@ -130,13 +132,15 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     out.minutes = Math.floor(leftSec / 60); out.diff = Math.abs((Number(L.su) || 0) - (Number(L.so) || 0));
     out.lat = Number(L.at) || 0;   // V529: when the other phone saw them go (its clock) — a "came back" note names this leave by it
     if (leftSec < LATE_SEC && fin[role]) { out.why = 'the leaver\'s phone recorded the final'; return out; }
+    const stk = stakes(st, uid, ouid, g.start), mult = stk.x2 ? 2 : 1;   // V536: a leave between neighbours costs (and pays) double
+    if (stk.x2) { out.x2 = true; out.ranks = { [role]: stk.ra, [other]: stk.rb }; }
     const P = player(st, uid), O = ouid ? player(st, ouid) : null, pr = P.r, orr = O ? O.r : 1000;   // the ratings before
     // the player who left: V509 under a minute left, 3 x a loss; V506 otherwise, 0.25 x the whole minutes x the gap
     if (exempt) { out.rule = 'exempt'; out.exempt = true; out.penalty = 0; out.why = 'exempt: the name has soham in it (pays nothing; the stayer still wins)'; }
     else if (leftSec < LATE_SEC) {
         const lost = K(P.n) * expected(pr, orr);
-        out.rule = 'late'; out.secs = leftSec; out.lost = Math.round(lost * 100) / 100; out.penalty = Math.round(LATE_X * lost * 100) / 100;
-    } else { out.rule = 'min'; out.penalty = Math.round(0.25 * out.minutes * out.diff * 100) / 100; }
+        out.rule = 'late'; out.secs = leftSec; out.lost = Math.round(lost * 100) / 100; out.penalty = Math.round(mult * LATE_X * lost * 100) / 100;
+    } else { out.rule = 'min'; out.penalty = Math.round(mult * 0.25 * out.minutes * out.diff * 100) / 100; }
     out.r0 = Math.round(P.r); P.r -= out.penalty; out.r1 = Math.round(P.r); if (!exempt) P.left = (P.left || 0) + 1;
     out[role] = { r0: out.r0, r1: out.r1, d: out.r1 - out.r0 };
     if (name && !P.nm) P.nm = name.slice(0, 16);
@@ -144,7 +148,7 @@ function leavePenalty(st, g) {   // g = { gid, code, start, rec, names, left, no
     // wins the game — a win's points against that player (their own K x (1 - E), the ratings before the leave), counted
     // as a game and a win — whatever the leaver pays (a tied game's leave pays the stayer too)
     if (O) {
-        const win = K(O.n) * (1 - expected(orr, pr));
+        const win = mult * K(O.n) * (1 - expected(orr, pr));
         out.ouid = ouid; out.won = true; out.gain = Math.round(win * 100) / 100; out.or0 = Math.round(O.r);
         out.gx = win;   // V529: the exact gain, so an undo (a refresh) restores the rating exactly
         O.r += win; O.n++; O.w++; O.last = g.start; O.peak = Math.max(O.peak || 1000, O.r); out.or1 = Math.round(O.r);
@@ -187,6 +191,28 @@ function board(st) {
         .sort((x, y) => y.r - x.r || y.n - x.n).slice(0, BOARD_N)
         .map(p => { const lt = LT[p.u]; return Object.assign({ nm: cleanName(p.nm) || 'a player', r: Math.round(p.r), w: p.w, l: p.l, d: p.d, n: p.n, u: p.u.slice(0, 8) },
                                                           showLp(st, p.u, lt) ? { lp: Math.round(lt.pts), lc: lt.n } : {}); });
+}
+// V536 (the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes"): a game
+// between NEIGHBOURS on the RANKINGS (#7 vs #8) counts double — the win, the loss or the draw, and a leave's points (the
+// leaver's penalty and the stayer's win). Judged by the board as it stood when the game BEGAN (the one its players saw):
+// the board's order is remembered each time it changes (st.rankSnaps, 12 hours), so a game that finished while this one was
+// being played cannot change its stakes; with no remembered board that old, the board as it stands.
+const RANK_SNAP_MS = 12 * 3600e3;
+function noteBoard(st, list, now) {
+    const ids = list.map(p => p.u).join(','), S = st.rankSnaps = st.rankSnaps || [];
+    if (!S.length || S[S.length - 1].ids !== ids) S.push({ at: now, ids });
+    while (S.length > 1 && now - S[1].at > RANK_SNAP_MS) S.shift();   // the last one before the window stays (a lookup's floor)
+}
+function ranksAt(st, t) {
+    let snap = null;
+    for (const x of st.rankSnaps || []) { if (x.at <= t) snap = x; else break; }
+    const ids = snap ? snap.ids.split(',') : board(st).map(p => p.u), m = {};
+    ids.forEach((u, i) => { if (u) m[u] = i + 1; });
+    return m;
+}
+function stakes(st, ua, ub, t) {
+    const m = ranksAt(st, Number(t) || 0), ra = m[String(ua || '').slice(0, 8)] || 0, rb = m[String(ub || '').slice(0, 8)] || 0;
+    return { ra, rb, x2: !!(ra && rb && Math.abs(ra - rb) === 1) };
 }
 function pubPlayer(st, uid, now) {
     const p = st.players[uid], today = dayOf(now);
@@ -372,15 +398,17 @@ async function publish(st, io, changed, done, now) {
     if (done.length) {
         const g = {};
         for (const d of done) g[d.gid] = d.leave
-            ? { leave: true, applied: !!d.applied, reversed: !!d.reversed, rule: d.rule || '', penalty: d.penalty || 0, role: d.role || '', why: d.why || '', at: d.at, lat: d.lat || 0, a: d.a || null, b: d.b || null }   // V529: lat = which leave (a game can have a refresh, then a real one)
-            : { ranked: d.ranked, why: d.why || '', at: d.at, lobby: d.lobby, a: d.a || null, b: d.b || null };
+            ? { leave: true, applied: !!d.applied, reversed: !!d.reversed, rule: d.rule || '', penalty: d.penalty || 0, role: d.role || '', why: d.why || '', at: d.at, lat: d.lat || 0, a: d.a || null, b: d.b || null,   // V529: lat = which leave (a game can have a refresh, then a real one)
+                x2: !!d.x2, ranks: d.ranks || null }   // V536: double stakes (neighbours on the board)
+            : { ranked: d.ranked, why: d.why || '', at: d.at, lobby: d.lobby, a: d.a || null, b: d.b || null, x2: !!d.x2, ranks: d.ranks || null };
         await io.patch(PUB + '/g', g);
     }
     // old game notes go (the state keeps them); the board every run (cheap) so a censor change shows
     const gone = {};
     for (const gid of Object.keys(st.games)) if (now - (st.games[gid].at || 0) > KEEP_G_MS && !st.games[gid].pruned) { gone[gid] = null; st.games[gid].pruned = true; }
     if (Object.keys(gone).length) await io.patch(PUB + '/g', gone);
-    await io.put(PUB + '/top', { at: now, list: board(st) });
+    const list = board(st); noteBoard(st, list, now);   // V536
+    await io.put(PUB + '/top', { at: now, list });
 }
 
 function load() { try { const s = JSON.parse(fs.readFileSync(STATE, 'utf8')); s.players = s.players || {}; s.games = s.games || {}; return s; } catch (e) { return { players: {}, games: {} }; } }
@@ -417,7 +445,7 @@ async function main() {
     }
     const io = restIO(await ownerToken());
     if (has('--board')) {   // V512: the board now
-        await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        { const bl = board(st); noteBoard(st, bl, now); await io.put(PUB + '/top', { at: now, list: bl }); } st.boardAt = now; save(st);
         // V521b: and the record of everyone who has lost points to leaving, so a player's own line follows the same rule
         const r = {}; for (const u of Object.keys(leaveTotals(st))) if (st.players[u]) r[u] = pubPlayer(st, u, now);
         if (Object.keys(r).length) await io.patch(PUB + '/r', r);
@@ -433,7 +461,7 @@ async function main() {
         P.r -= d; (st.manual = st.manual || []).push({ uid: ids[0], d: -d, at: now, was, why: 'leaving' });
         save(st);
         await io.patch(PUB + '/r', { [ids[0]]: pubPlayer(st, ids[0], now) });
-        await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        { const bl = board(st); noteBoard(st, bl, now); await io.put(PUB + '/top', { at: now, list: bl }); } st.boardAt = now; save(st);
         log('PENALIZED ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + ') ' + was + ' -> ' + Math.round(P.r) + ' (-' + d + ', leaving)');
         return;
     }
@@ -447,7 +475,7 @@ async function main() {
         (st.manual = st.manual || []).push({ uid: ids[0], r, at: now, was });
         save(st);
         await io.patch(PUB + '/r', { [ids[0]]: pubPlayer(st, ids[0], now) });
-        await io.put(PUB + '/top', { at: now, list: board(st) }); st.boardAt = now; save(st);
+        { const bl = board(st); noteBoard(st, bl, now); await io.put(PUB + '/top', { at: now, list: bl }); } st.boardAt = now; save(st);
         log('SET ' + ids[0].slice(0, 8) + ' (' + (P.nm || '?') + ') ' + was + ' -> ' + r);
         return;
     }
@@ -477,4 +505,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { log('FATAL ' + (e && e.message || e)); process.exit(2); });
-else module.exports = { K, expected, dayOf, rate, leavePenalty, undoLeave, leaveTotals, run, publish, board, pubPlayer, mergeRecord, mergeMessages, alias };
+else module.exports = { K, expected, dayOf, rate, leavePenalty, undoLeave, leaveTotals, run, publish, board, pubPlayer, mergeRecord, mergeMessages, alias, noteBoard, stakes };

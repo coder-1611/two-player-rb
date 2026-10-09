@@ -2158,6 +2158,21 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V536 (2026-10-09): DOUBLE STAKES — neighbours on the RANKINGS play for double
+- The owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes".
+- tools/elo.js: a game between players next to each other on the board (#7 vs #8; the board = everyone with 5+ ranked
+  games) counts double — the win, the loss or the draw (both deltas x2), and a leave's points (the leaver's penalty and
+  the stayer's win x2; a refresh's undo restores the exact recorded values). Judged by the board as it stood when the
+  game BEGAN: the board's order is remembered each time it is published and has changed (st.rankSnaps, 12 hours; the
+  last one before the window kept), so games finishing during this one cannot change its stakes and no page can claim
+  them; with no remembered board that old, the board as it stands. Records carry x2 + ranks (published on g/{gid}).
+- Page: at kickoff (once both phones have named themselves in the game record) it reads the published board; neighbours
+  get a gold strip across the top for 9 s — "DOUBLE STAKES — YOU #4 VS #5 ON THE RANKINGS — EVERY RATING POINT COUNTS
+  TWICE" (never takes a tap); the stats screen's estimate and label ("DOUBLE STAKES · RATING a -> b") and the stayer's
+  OPPONENT LEFT estimate double to match the job.
+- Tests: e2e/elo-math.js X1-X6 (31/31; E2/E9 given an empty board — two players alone are neighbours); e2e/v536-stakes.js
+  2/2 (a real game at #4 vs #5: both pages, the banner); v519 3/3.
+
 ## V535 (2026-10-09): credit, the official game, a rights-holders contact; /unblocked/ retired
 - The owner: "do all these and use the email address localwebtechai@gmail.com" (the risk-softening list: a contact for
   rights holders, send players to the official game, credit + not-affiliated on the page people play, no money).

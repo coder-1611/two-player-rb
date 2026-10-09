@@ -1995,6 +1995,11 @@
         /* V535: the credit, the not-affiliated line and the rights holders' contact — on the page people play */
         .rb-legal { max-width: 760px; margin-left: auto; margin-right: auto; line-height: 1.75; }
         .rb-legal a { color: #cfd8e3; text-decoration: underline; text-underline-offset: 2px; }
+        /* V536: DOUBLE STAKES at kickoff — neighbours on the RANKINGS (a strip across the top; it never takes a tap) */
+        #rb-stakes { display: none; position: fixed; left: 0; right: 0; top: 0; z-index: 1601; pointer-events: none; padding: 9px 12px;
+            text-align: center; font: 11px/1.6 'Press Start 2P', monospace; letter-spacing: 1px; color: #0a1838; background: #ffd23f;
+            border-bottom: 3px solid #0a1838; box-shadow: 0 3px 0 rgba(10,24,56,.35); text-wrap: balance; }
+        @media (max-width: 700px), (max-height: 520px) { #rb-stakes { font-size: 8px; padding: 6px 10px; } }
         /* a short or narrow wide screen (a school Chromebook, 1366x657, or a small laptop, with the plays of the day): the
            column had 14 px to spare — the credit line takes the place of the landing-page links' row there (the links stay in the page for search engines;
            every taller screen shows both) */
@@ -2443,7 +2448,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V535<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V536<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2716,7 +2721,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V535</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V536</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -22591,16 +22596,55 @@
                 if (window._rb2p_diagLog) window._rb2p_diagLog('ELO result recorded (' + p2.slice(6) + ' ' + fin.su + '-' + fin.so + ')');
             } catch (e) {}
         };
+        // V536 (the owner: "if 2 ranks are adjacent then double the points possible to be gained or lost to raise stakes"): two
+        // players next to each other on the RANKINGS as the game begins (#7 vs #8) play for double — the Mac's job decides it
+        // by the board it had published when the game began. This page reads the same board at kickoff, says so (a banner),
+        // and doubles its own estimates to match; the job's numbers replace them as always.
+        var eloStakesMemo = {};
+        function eloStakesFor(room, gk, role) {
+            var key = room + '_' + gk;
+            if (eloStakesMemo[key] && eloStakesMemo[key].done) return Promise.resolve(eloStakesMemo[key]);
+            return Promise.all([eloGetX('rooms/' + room + '/games/' + gk, 5000), eloGetX(eloPub() + '/top', 8000)]).then(function (rr) {
+                var rec = rr[0] || {}, top = rr[1] || {}, list = Array.isArray(top.list) ? top.list : [];
+                var other = role === 'a' ? 'b' : 'a', mu = (rec.uids && rec.uids[role]) || eloUid(), ou = rec.uids && rec.uids[other];
+                if (!ou) return { key: key, done: false, x2: false };   // the other phone has not named itself yet
+                var rk = function (u) { u = String(u || '').slice(0, 8); for (var i = 0; i < list.length; i++) if (list[i] && list[i].u === u) return i + 1; return 0; };
+                var me = rk(mu), opp = rk(ou);
+                var st = { key: key, done: true, x2: rec.mode === 'same' && ou !== mu && !!(me && opp && Math.abs(me - opp) === 1), me: me, opp: opp };
+                eloStakesMemo[key] = st;
+                return st;
+            }, function () { return { key: key, done: false, x2: false }; });
+        }
+        function eloStakesBanner(me, opp) {
+            var el = document.getElementById('rb-stakes');
+            if (!el) { el = document.createElement('div'); el.id = 'rb-stakes'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+            el.textContent = '\u2605 DOUBLE STAKES \u2605 YOU #' + me + ' VS #' + opp + ' ON THE RANKINGS \u2014 EVERY RATING POINT COUNTS TWICE';
+            el.style.display = 'block';
+            clearTimeout(eloStakesBanner.t); eloStakesBanner.t = setTimeout(function () { el.style.display = 'none'; }, 9000);
+        }
+        window._rb2p_eloStakes = function (tries) {   // at kickoff: the stakes of this game (both phones name themselves within seconds)
+            tries = tries || 0;
+            var gk = eloGameKey(), room = myRoom, role = myRole;
+            if (!gk || !room || !role) { if (tries < 20) setTimeout(function () { window._rb2p_eloStakes(tries + 1); }, 3000); return; }
+            eloStakesFor(room, gk, role).then(function (st) {
+                if (!st.done) { if (tries < 20) setTimeout(function () { window._rb2p_eloStakes(tries + 1); }, 3000); return; }
+                if (st.x2 && !st.shown && room === myRoom) {
+                    st.shown = true; eloStakesBanner(st.me, st.opp);
+                    if (window._rb2p_diagLog) window._rb2p_diagLog('ELO double stakes: #' + st.me + ' vs #' + st.opp + ' on the RANKINGS');
+                }
+            });
+        };
+        window._rb2p_eloStakesNow = function () { var k = myRoom + '_' + eloGameKey(); return eloStakesMemo[k] || null; };   // test seam
         function eloEstimate(F) {
             eloGetX('rooms/' + F.room + '/games/' + F.gk).then(function (rec) {
                 rec = rec || {};
                 var other = F.role === 'a' ? 'b' : 'a', ou = rec.uids && rec.uids[other], mu = eloUid();
                 if (rec.mode !== 'same') { F.est = { off: 'NOT RANKED — THE PLAYERS HAD DIFFERENT DIFFICULTIES' }; eloFinPaint(); return; }
                 if (!ou || !mu || ou === mu) { F.est = { off: '' }; eloFinPaint(); return; }
-                return Promise.all([eloGetX(eloPub() + '/r/' + mu), eloGetX(eloPub() + '/r/' + ou)]).then(function (rr) {
-                    var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]);
+                return Promise.all([eloGetX(eloPub() + '/r/' + mu), eloGetX(eloPub() + '/r/' + ou), eloStakesFor(F.room, F.gk, F.role)]).then(function (rr) {
+                    var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]), x2 = !!(rr[2] && rr[2].x2);
                     var S = F.su > F.so ? 1 : F.su < F.so ? 0 : 0.5, E = 1 / (1 + Math.pow(10, (rb - ra) / 400));
-                    F.est = { r0: ra, d: Math.round(eloK(A.n) * (S - E)) };
+                    F.est = { r0: ra, d: Math.round((x2 ? 2 : 1) * eloK(A.n) * (S - E)), x2: x2 };   // V536: neighbours play for double
                     eloFinPaint();
                 });
             });
@@ -22618,10 +22662,10 @@
             var txt = '', sg = function (d) { return (d >= 0 ? '+' : '') + d; };
             if (F && F.off) {
                 var mine = F.off[F.role];
-                txt = F.off.ranked && mine ? 'RANKED · RATING ' + mine.r0 + ' → ' + mine.r1 + ' (' + sg(mine.d) + ')'
+                txt = F.off.ranked && mine ? (F.off.x2 ? 'DOUBLE STAKES · ' : 'RANKED · ') + 'RATING ' + mine.r0 + ' → ' + mine.r1 + ' (' + sg(mine.d) + ')'
                     : 'NOT RANKED' + (F.off.why ? ' — ' + String(F.off.why).toUpperCase() : '');
             } else if (F && F.est) {
-                txt = F.est.off != null ? F.est.off : 'RANKED · RATING ' + F.est.r0 + ' → ABOUT ' + (F.est.r0 + F.est.d) + ' (' + sg(F.est.d) + ') · CONFIRMING…';
+                txt = F.est.off != null ? F.est.off : (F.est.x2 ? 'DOUBLE STAKES · ' : 'RANKED · ') + 'RATING ' + F.est.r0 + ' → ABOUT ' + (F.est.r0 + F.est.d) + ' (' + sg(F.est.d) + ') · CONFIRMING…';
             }
             el.textContent = txt; el.style.display = txt ? '' : 'none';
         }
@@ -22697,9 +22741,9 @@
                 rec = rec || {};
                 var ou = rec.uids && rec.uids[oppRole], mu = (rec.uids && rec.uids[myRole]) || eloUid();
                 if (rec.mode !== 'same' || !ou || !mu || ou === mu) { if (leaveW.key === key) window._rb2p_leaveEst = { ranked: false }; return; }
-                return Promise.all([eloGetX(eloPub() + '/r/' + mu, 5000), eloGetX(eloPub() + '/r/' + ou, 5000)]).then(function (rr) {
-                    var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]), E = 1 / (1 + Math.pow(10, (rb - ra) / 400));
-                    if (leaveW.key === key) window._rb2p_leaveEst = { ranked: true, d: Math.max(1, Math.round(eloK(A.n) * (1 - E))) };
+                return Promise.all([eloGetX(eloPub() + '/r/' + mu, 5000), eloGetX(eloPub() + '/r/' + ou, 5000), eloStakesFor(myRoom, gk, myRole)]).then(function (rr) {
+                    var A = rr[0] || {}, ra = eloRating(A), rb = eloRating(rr[1]), E = 1 / (1 + Math.pow(10, (rb - ra) / 400)), m = rr[2] && rr[2].x2 ? 2 : 1;   // V536
+                    if (leaveW.key === key) window._rb2p_leaveEst = { ranked: true, d: Math.max(1, Math.round(m * eloK(A.n) * (1 - E))) };
                 });
             }).then(function () { if (window._rb2p_refreshWaitStatus) window._rb2p_refreshWaitStatus(); }, function () {});
         }
@@ -26371,6 +26415,7 @@
                     })(myRoom, 0);
                 }
                 if (window._rb2p_audit) window._rb2p_audit('game', { ms: gmMs, qmins: currentQuarterMins, ver: gmVer, mode: gmMode, dif: gmDif });
+                setTimeout(function () { try { if (window._rb2p_eloStakes) window._rb2p_eloStakes(0); } catch (eSk) {} }, 4000);   // V536: double stakes?
                 if (window._rb2p_diagLog) window._rb2p_diagLog('GAME-START qmins=' + currentQuarterMins + ' — games in this room are checked apart');
             } catch (eGM) {}
             try { sessionStorage.setItem('rb2p_matchLive', '1'); } catch (eML3) {}
