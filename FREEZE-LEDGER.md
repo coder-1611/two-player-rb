@@ -2158,6 +2158,25 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V527 (2026-10-08): a quiet line of my own is not the other player leaving
+- The owner (room FTAV, vs "soham elo farm"): "said he left in the middle but we were both playing and it gave me the points
+  and just wait screen happened. We got our possessions though, it was weird, then i left for real".
+- What happened (both audits): seat b snapped a play every few seconds the whole time; seat a (the owner, waiting) had a
+  stalling live socket — FB-STALL live -> REST x7 in 90 s, the direct picture link lost, a failed outcome poll — so its copy of
+  b's heartbeat (only ever updated by the SDK listener) froze; 30 s later its detector noted "the other player left" (it even
+  quoted a clock 40 s stale) and showed OPPONENT LEFT. The job then undid it when the owner really left (b, still there,
+  reported him) — so the ratings came out right, by luck. (SBZK, the same pair at 9:25 pm, was a real leave: b's tab closed.)
+- Fix (the leave detector, V519/V521): who is silent is decided over REST. Once the copy of the other phone's heartbeat is
+  10 s old it is read fresh (every 4 s) — newer = the copy is refreshed (the waiting screen and every watchdog see it: no
+  false OPPONENT LEFT / STOPPED RESPONDING); a leave needs a REST read from the last 6 s that answered and still showed
+  nothing new (a closed tab: one that still says closed); my own line not answering decides nothing. The note now goes
+  in the same tick (no wait since V519) and the REST answer re-runs the decision at once: a closed tab is noted faster.
+- e2e/v527-false-leave.js 2/2 (my socket down 45 s while the other phone plays: no leave, never OPPONENT LEFT; a frozen
+  phone — no heartbeat, picture or beacon — still noted within 45 s); e2e/v519-leave-instant.js 3/3 (closed tab noted
+  ≤ 3 s, the points ≤ 10 s, never OPPONENT LEFT without them).
+- The onside kick (in progress, V527 in its notes) is parked: git stash "V527 onside WIP (paused 2026-10-08)"; it will
+  ship under a later V.
+
 ## V526 (2026-10-08): no more announcement popup; a ◀ BACK on every popup
 - The owner: "remove the pop up, and from now on always add a back button to the pop ups" — the popup = "the
   announcements we sometimes do, like the rankings, leaving penalty".
