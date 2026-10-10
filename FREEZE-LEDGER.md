@@ -2158,6 +2158,19 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V546 (2026-10-10): recorded plays kept 2 days, then only the highlights' picks
+- The owner: "Why not just delete old plays except potds?" (the Mac's disk was 96% full; the 30-day archive was 3.7 GB and
+  grows ~0.5 GB a day).
+- tools/plays-archive.js: every play is kept 2 days (the 5 am highlights judge the last 24 h and re-judge until 7 am; a
+  video of a recent play stays possible), then only the plays the highlights picked — every run's top 5 (status.json /
+  top5.json picks, previews too), the plays of the day among them — are kept, for good. Was: every play for 30 days.
+  The plays of the day also live on as their Firebase replays (embedcode/potdPlays) and the MP4s in highlight plays/.
+- First run: 47,003 plays deleted (2,409 MB, 4-7 Oct), 40 picks kept there (all 47 picks on record still in the archive);
+  archive 3.7 -> 1.3 GB, disk free 13 GiB. --dry shows what would go.
+- Also fixed: V545 left the job's last log line reading a variable it had moved (flag -> pub.flag) — every hourly run
+  would have ended FATAL after publishing the switch and saving the ledger. Caught by this change's --dry run before the
+  first hourly run on V545.
+
 ## V545 (2026-10-10): record every play until something goes wrong, then stop by itself
 - The owner: "just record everything for now until an issue arises, what issues could possibly arise? Then turn it off".
 - No download budget (it stopped the recorder on 8 Oct). tools/playrec-switch.js holds the recording OFF

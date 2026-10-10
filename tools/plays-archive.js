@@ -9,7 +9,7 @@
 //      then deleted from Firebase (only that play's node). Rooms checked: the ones active since 26 h before this job's
 //      last run (the audit watcher's state: a play is recorded at a snap, which the audit sees — so a Mac that was off
 //      looks back over the gap), the live list, and every room this job has seen plays in until it is empty;
-//   2. deletes archived plays older than 30 days (whole day folders);
+//   2. deletes archived plays older than 2 days except the ones the daily highlights picked (V546; was: all, after 30 days);
 //   3. publishes the guard, embedcode/playrec {on, at, usedMB, budgetMB}: the phones record only while it is on and
 //      fresh (< 26 h) — off once this month's play downloads reach the budget (default 3000 MB of the plan's 10 GB),
 //      and a Mac that stops running this job stops the recording by itself.
@@ -18,7 +18,7 @@
 //   node tools/plays-archive.js --dry                 say what would move / be deleted; touch nothing, publish nothing
 //   node tools/plays-archive.js --room CODE --min-age-ms 0 --no-flag     (tests) only this room, any age
 //   node tools/plays-archive.js --record on | off [why]   V545: the recorder's switch (tools/playrec-switch.js) — publish only
-// Env: PLAYS_BUDGET_MB (none since V545), PLAYS_KEEP_DAYS (30), PLAYS_ARCHIVE (the folder), FIREBASE_BIN (firebase).
+// Env: PLAYS_BUDGET_MB (none since V545), PLAYS_KEEP_DAYS (2), PLAYS_ARCHIVE (the folder), FIREBASE_BIN (firebase).
 // V545 (the owner on 10 Oct: "just record everything for now until an issue arises ... Then turn it off"): no budget —
 // the 3,000 MB one stopped the recording on 8 Oct and the 10/10 plays of the day were 2 plays. The recording is on unless
 // tools/playrec-switch.js holds it off (Firebase's overage flags or storage, this Mac's disk, a day over 1.5 GB of plays).
@@ -34,7 +34,8 @@ const ARCH = process.env.PLAYS_ARCHIVE || path.join(RB2P, 'plays-archive');
 const LEDGER = path.join(ARCH, 'ledger.json');
 const BUDGET = Number(process.env.PLAYS_BUDGET_MB) > 0 ? Number(process.env.PLAYS_BUDGET_MB) * 1048576 : Infinity;   // V545: none unless set
 const SW = require('./playrec-switch.js');
-const KEEP_DAYS = Number(process.env.PLAYS_KEEP_DAYS) || 30;
+const KEEP_DAYS = Number(process.env.PLAYS_KEEP_DAYS) || 2;   // V546: every play 2 days, then only the highlights' picks (was: all 30)
+const RUNS_DIR = path.join(os.homedir(), 'Projects', 'two-player-rb', '.rb2p', 'highlights', 'runs');
 const FIREBASE = process.env.FIREBASE_BIN || 'firebase';
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -73,6 +74,18 @@ function candidateRooms(ledger) {
     return [...set].filter(c => /^[A-Z0-9]{4}$/.test(c));
 }
 
+// V546: the plays the daily highlights picked — every run's top 5 (status.json picks, top5.json picks), previews too.
+// An id is ROOM-role-pMS, the archive's {ROOM}/{role}-p{ms}.json.
+function highlightPicks() {
+    const ids = new Set();
+    let runs = []; try { runs = fs.readdirSync(RUNS_DIR); } catch (e) { return ids; }
+    for (const r of runs) {
+        const st = loadJson(path.join(RUNS_DIR, r, 'status.json'), null), t5 = loadJson(path.join(RUNS_DIR, r, 'top5.json'), null);
+        for (const id of (st && Array.isArray(st.picks) ? st.picks : [])) if (typeof id === 'string') ids.add(id);
+        for (const p of (t5 && Array.isArray(t5.picks) ? t5.picks : [])) if (p && typeof p.id === 'string') ids.add(p.id);
+    }
+    return ids;
+}
 // V545: the switch the phones read — embedcode/playrec {on, at, usedMB, budgetMB, plays, month, hold}; on unless held off
 // (or past a budget given in PLAYS_BUDGET_MB). Returns { flag, reason, error }.
 function publishFlag(ledger, now) {
@@ -164,16 +177,29 @@ function alertOff(why) {   // V545: the owner hears about it (a macOS notificati
         for (const [d, list] of Object.entries(c)) for (const [k, v] of Object.entries(list || {})) { bk[d] = bk[d] || {}; if (!bk[d][k]) { bk[d][k] = v; added++; } }
         if (added) { fs.writeFileSync(bf + '.tmp', JSON.stringify(bk, null, 1)); fs.renameSync(bf + '.tmp', bf); log('play-of-the-day comments: ' + added + ' new, backed up'); }
     } catch (e) { log('comments backup: ' + e.message); }
-    // 2. the 30-day local retention (whole day folders)
-    let purged = 0;
+    // 2. retention. V546 (the owner: "Why not just delete old plays except potds?" — the Mac's disk was 96% full, the
+    // archive 3.7 GB at ~0.5 GB a day): every play is kept KEEP_DAYS (2) — the 5 am highlights judge the last 24 h and
+    // re-judge until 7 am, and a video of a recent play stays possible — then only the plays the highlights PICKED (each
+    // day's top 5, the plays of the day among them; .rb2p/highlights/runs/*/status.json and top5.json) are kept, for good.
+    // Was: every play 30 days, whole day folders.
+    const keepers = highlightPicks();
+    let purged = 0, kept = 0, freed = 0;
     const cutoff = now - KEEP_DAYS * 86400e3;
     for (const day of fs.readdirSync(ARCH)) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-        if (new Date(day + 'T00:00:00').getTime() + 86400e3 < cutoff) {
-            if (DRY) log('would delete the archive day ' + day);
-            else fs.rmSync(path.join(ARCH, day), { recursive: true, force: true });
-            purged++;
+        if (new Date(day + 'T00:00:00').getTime() + 86400e3 >= cutoff) continue;
+        const dd = path.join(ARCH, day);
+        for (const room of fs.readdirSync(dd)) {
+            const rd = path.join(dd, room);
+            let files = []; try { if (!fs.statSync(rd).isDirectory()) continue; files = fs.readdirSync(rd); } catch (e) { continue; }
+            for (const f of files) {
+                if (!/^[ab]-p\d+\.json$/.test(f)) continue;
+                if (keepers.has(room + '-' + f.slice(0, -5))) { kept++; continue; }
+                try { const sz = fs.statSync(path.join(rd, f)).size; if (!DRY) fs.unlinkSync(path.join(rd, f)); freed += sz; purged++; } catch (e) {}
+            }
+            if (!DRY) { try { if (!fs.readdirSync(rd).length) fs.rmdirSync(rd); } catch (e) {} }
         }
+        if (!DRY) { try { if (!fs.readdirSync(dd).length) fs.rmdirSync(dd); } catch (e) {} }
     }
     // 3. the switch the phones read. V545: on unless held off (tools/playrec-switch.js) — this job holds it for this Mac's
     // disk and for a day of plays far over a busy day's; tools/fb-watch.js for Firebase's own numbers
@@ -186,7 +212,7 @@ function alertOff(why) {   // V545: the owner hears about it (a macOS notificati
     if (pub.error) { errors++; log('flag: ' + pub.error); }
     if (!DRY) { if (!ONLY && !errors) ledger.lastRun = now; fs.writeFileSync(LEDGER, JSON.stringify(ledger, null, 1)); }
     log('rooms ' + scanned + ', moved ' + moved + ' plays (' + Math.round(movedBytes / 1024) + ' KB), ' + waiting + ' under 24 h, ' +
-        purged + ' day(s) past ' + KEEP_DAYS + ' d, errors ' + errors + ' | month ' + ledger.month + ': ' + flag.usedMB + ' of ' + flag.budgetMB +
-        ' MB, recording ' + (on ? 'ON' : 'OFF (' + pub.reason + ')') + (NOFLAG ? ' (flag not published)' : ''));
+        (DRY ? 'would delete ' : 'deleted ') + purged + ' play(s) older than ' + KEEP_DAYS + ' d (' + Math.round(freed / 1048576) + ' MB), kept ' + kept + ' highlight pick(s), errors ' + errors + ' | month ' + ledger.month + ': ' + pub.flag.usedMB + ' MB downloaded' + (pub.flag.budgetMB ? ' of ' + pub.flag.budgetMB + ' MB' : '') +
+        ', recording ' + (on ? 'ON' : 'OFF (' + pub.reason + ')') + (NOFLAG ? ' (flag not published)' : ''));
     process.exit(errors ? 1 : 0);
 })().catch(e => { log('FATAL ' + (e && e.stack || e)); process.exit(2); });
