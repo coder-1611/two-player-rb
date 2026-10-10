@@ -2448,7 +2448,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V543<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V544<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2721,7 +2721,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V543</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V544</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -5988,7 +5988,7 @@
                     var all = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
                     var i, x, ball = null;
                     for (i = 0; i < all.length; i++) { x = all[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball') { ball = x; break; } }
-                    if (!ball) { rb2pPrevBallKp = null; return; }
+                    if (!ball) { rb2pPrevBallKp = null; window._rb2p_ballInPlay = false; return; }   // V544: no ball, no play in progress
                     var bkp = ball._kp;
                     var prev = rb2pPrevBallKp;
                     rb2pPrevBallKp = bkp;
@@ -6020,12 +6020,7 @@
                     // L1c "+6 since the snap", "played on after the hand-off") read _rb2p_lastSnapMs/Down, which only the
                     // pass snap (cSNAP) wrote: a 2-pt RUN try crossing the horn was invisible, and a rushing touchdown's
                     // baseline was the last PASS.
-                    try {
-                        if (bkp === 19 && prev !== 19 && prev !== 1 && prev !== 2) {
-                            var emRG = RB.engineState();
-                            if (emRG) { window._rb2p_scoreAtLastSnap = Number(emRG.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); window._rb2p_lastSnapDown = Number(emRG.engineDownNumber); }
-                        }
-                    } catch (eRG) {}
+                    // V544: the stamp itself is now the real-snap edge below (V415's block) — every play, a run included.
                     try {
                         if (bkp === 19 && prev !== 19 && prev !== 1 && prev !== 2 && window._rb2p_audit) {
                             var emRS = RB.engineState();
@@ -6052,12 +6047,24 @@
                         // the QB, and letting go without a pull puts the ball back at rest with no play (Romans held
                         // the QB 1.45 s and let go; the overtime hand-off read the resting ball as "the try is over"
                         // and his conversion never happened). A kick is played once its ball leaves rest (V405).
-                        // Stamped every frame the try's ball is in play, so its age is how long the ball has been dead.
-                        if (emTry && Number(emTry.engineDownNumber) === 6 && bkp !== 0 && bkp != null && (bkp !== 1 || Number(emTry.enginePatModeFlag))) {
-                            if (!(Number(window._rb2p_convTryLiveMs) > (Number(window._rb2p_convTrySnappedMs) || 0)) && window._rb2p_diagLog)
-                                window._rb2p_diagLog('CONV try in play (bkp ' + bkp + ')');
-                            window._rb2p_convTryLiveMs = Date.now();
+                        // V544 (the owner: "no not JUST in overtime, this should be the case everywhere"): the SNAP on
+                        // record is the REAL one for every play — the ball put in play by a pass snap (2), a hand-off
+                        // (19) or a kick (leaving rest in kick mode), never the press before it. _rb2p_lastSnapMs/Down
+                        // (and the score at it) were stamped by the commentary's latch at the press, so a press let go
+                        // read as "the try was played" at the horn (POST-CONV, C13, the Q3 law) and as "a new drive"
+                        // (V394). _rb2p_convTryPlayedMs is a try's own snap; _rb2p_convTryLiveMs is stamped every frame
+                        // its ball is in play, so its age is how long the try's ball has been dead (the OT check, the wall).
+                        var kickMode = !!(emTry && (Number(emTry.enginePatModeFlag) || (emTry.rawEngineMatch && emTry.rawEngineMatch._T11 === 1)));
+                        var inPlay = !!(emTry && bkp != null && bkp !== 0 && (bkp !== 1 || kickMode)) && window._rb2p_userIsWaitingForOpponent !== true;
+                        if (inPlay && !window._rb2p_ballInPlay) {
+                            window._rb2p_scoreAtLastSnap = Number(emTry.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); window._rb2p_lastSnapDown = Number(emTry.engineDownNumber);
+                            if (window._rb2p_lastSnapDown === 6) {
+                                window._rb2p_convTryPlayedMs = Date.now();
+                                if (window._rb2p_diagLog) window._rb2p_diagLog('CONV try in play (bkp ' + bkp + ')');
+                            }
                         }
+                        window._rb2p_ballInPlay = inPlay;
+                        if (inPlay && Number(emTry.engineDownNumber) === 6) window._rb2p_convTryLiveMs = Date.now();
                     } catch (eTry) {}
                     try {
                         if (window._rb2p_patPlayPending === true) {
@@ -6175,7 +6182,8 @@
                                             at:  Number(_Ai(p, 'stat_attempts')) || 0        // V346: pass attempts (the incompletion delta)
                                         };
                                     });
-                                    try { window._rb2p_scoreAtLastSnap = Number(fem.userScore) || 0; window._rb2p_lastSnapMs = Date.now(); window._rb2p_lastSnapDown = Number(fem.engineDownNumber); } catch (eSAS) {}   // V406, V410
+                                    // V406, V410: the snap on record — V544: stamped at the REAL snap (the observer's edge), not at
+                                    // this latch, which fires on the press (bkp 1: a finger on the QB, no play yet)
                                     if (window._rb2p_diagLog) window._rb2p_diagLog(   // V321 DEBUG
                                         'cSNAP y=' + Math.round(Number(fem.engineYardLineSigned)) + ' d=' + Number(fem.engineDownNumber));
                                     // V368: a REAL snap (the dead->live edge of the ball) is
@@ -10951,7 +10959,9 @@
                                                        // V415 (LNRI): a NORMAL touchdown's try was invisible to the
                                                        // wall (only pick-six tries were tracked); it fired 2.5s into
                                                        // a snapped 2-point try and turned it into a live down
-                                                       Number(window._rb2p_convTrySnappedMs) > (Number(window._rb2p_lastConvModalMs) || 0) ? Number(window._rb2p_convTrySnappedMs) : 0);
+                                                       // V544: the try's ball last IN PLAY — a press let go is not a try in flight
+                                                       // (that one is the V438 press rule below: 20 s from the last press, within 90 s)
+                                                       Number(window._rb2p_convTryLiveMs) > (Number(window._rb2p_lastConvModalMs) || 0) ? Number(window._rb2p_convTryLiveMs) : 0);
                             // V415: the player is looking at the 1 PT / 2 PT choice — give them 90s from the offer
                             if (!wallSnapped && typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp() &&
                                 Date.now() - (Number(window._rb2p_lastConvModalMs) || 0) < 90000) {

@@ -2158,6 +2158,24 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V544 (2026-10-10): a try counts only once it is snapped — everywhere, not just in overtime
+- The owner, on V542's "in overtime, a try now only counts once the ball is actually snapped (or kicked)": "no not JUST in
+  overtime, this should be the case everywhere".
+- The snap on record (_rb2p_lastSnapMs/Down and the score at it) was stamped by the commentary's latch at the PRESS (ball
+  1, a finger on the QB). _rb2p_tryCrossedHorn read it as "the try was played" (POST-CONV's horn hand-off of the ball at
+  the 2, C13 "the scorer kicks off", the Q3 law retiring the duty), V394's drive-end typing as "a new drive", and the 35 s
+  wall read V415's try timer (also the press) as "the try is in flight" — a press let go could forfeit a try at the horn.
+- Now one edge in the 16 ms observer stamps the snap at the REAL one for every play — the ball put in play by a pass snap
+  (2), a hand-off (19) or a kick (leaving rest in kick mode), on this phone's turn; _rb2p_convTryPlayedMs is a try's own
+  snap, _rb2p_convTryLiveMs (every frame its ball is in play) feeds the wall and the OT check (V542). The commentary
+  latch, its cSNAP line, QTR-PLAYED and the audit's snap entry still fire on the press.
+- Already real-snap based, unchanged: the pick-six try record (V378/V405). The PICK6 re-pop loop still stops at a press
+  (a player on the field has answered the choice; it decides nothing about the try).
+- e2e/v544-try-snap.js 3/3 (regulation: T0 a press on a scrimmage down is no snap; T1 a press on the try — no snap on
+  record, the horn test says not played, the try waits; T2 a real snap plays it); v542-ot-try-press 2/2 (T2 a 2-pt run);
+  v415-freezes 8/8 (F4 fakes the snapped try with the in-play stamp, and F4c: a press let go is not a try in flight);
+  v538-postconv 2/2.
+
 ## V543 (2026-10-10): plays of the day only from a real day
 - The owner: "what the actual fu*k are the plays of the day for 10/10. Absolute trash, what happened?"
 - What happened: tools/plays-archive.js turned the recorder off on 8 Oct at 12:54 pm — October's play downloads passed

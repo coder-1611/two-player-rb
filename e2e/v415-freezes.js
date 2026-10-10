@@ -78,17 +78,28 @@ const check = (n, ok, d) => { ok ? (pass++, console.log('  PASS  ' + n)) : (fail
         window._rb2p_patModalUp = () => true;
         out.a = window._rb2p_patOwed();
         out.aWaits = /PAT-INV wall waits — the conversion choice is on screen/.test(String(window._rb2p_readDiagLog()));
-        // (b) the try was snapped 2.5s ago: defer
+        // (b) the try was snapped 2.5s ago (V544: its ball last in play — the real snap, not the press): defer
         window._rb2p_patModalUp = () => false;
-        window._rb2p_patOwedSinceMs = Date.now() - 40000; window._rb2p_convTrySnappedMs = Date.now() - 2500;
+        window._rb2p_patOwedSinceMs = Date.now() - 40000; window._rb2p_convTrySnappedMs = Date.now() - 4000; window._rb2p_convTryLiveMs = Date.now() - 2500;
         out.b = window._rb2p_patOwed();
         out.bDefers = /PAT-INV wall deferred — the try is in flight/.test(String(window._rb2p_readDiagLog()));
         out.pendingKept = !!window._rb2p_patDutyMine;
-        window._rb2p_patModalUp = realUp; window._rb2p_patDutyMine = null; em.engineDownNumber = 1; window._rb2p_patOwedSinceMs = 0; window._rb2p_lastConvModalMs = 0; window._rb2p_convTrySnappedMs = 0;
+        // (c) V544: a press on the QB let go 2.5s ago (no snap: the try never in play) is not a try in flight — the wall
+        // waits for a player lining up the try (V438: 20 s from the last press, within 90 s of the offer)
+        const lp0 = window._rb2p_lastPressMs;
+        window._rb2p_diagLog('F4-C');
+        window._rb2p_lastConvModalMs = Date.now() - 37000; window._rb2p_patOwedSinceMs = Date.now() - 40000;
+        window._rb2p_convTryLiveMs = 0; window._rb2p_convTrySnappedMs = Date.now() - 2500; window._rb2p_lastPressMs = Date.now() - 2500;
+        out.c = window._rb2p_patOwed();
+        const logC = String(window._rb2p_readDiagLog()), afterC = logC.slice(logC.lastIndexOf('F4-C'));
+        out.cLiningUp = /PAT-INV wall waits — the player chose and is lining up the try/.test(afterC);
+        out.cNotInFlight = !/the try is in flight/.test(afterC);
+        window._rb2p_lastPressMs = lp0;
+        window._rb2p_patModalUp = realUp; window._rb2p_patDutyMine = null; em.engineDownNumber = 1; window._rb2p_patOwedSinceMs = 0; window._rb2p_lastConvModalMs = 0; window._rb2p_convTrySnappedMs = 0; window._rb2p_convTryLiveMs = 0;
         try { window._rb2p_setPatDuty(null); } catch (e) {}
         return out;
     });
-    check('F4 the 35s wall waits for the choice on screen and never fires into a snapped try', !!f4.a && f4.aWaits && !!f4.b && f4.bDefers && f4.pendingKept, JSON.stringify(f4));
+    check('F4 the 35s wall waits for the choice on screen and never fires into a snapped try; a press let go is not a snapped try (V544)', !!f4.a && f4.aWaits && !!f4.b && f4.bDefers && f4.pendingKept && !!f4.c && f4.cLiningUp && f4.cNotInFlight, JSON.stringify(f4));
 
     // ---- F5 + F6 ----
     const f56 = await def.page.evaluate((role) => {
