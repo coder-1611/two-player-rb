@@ -2158,6 +2158,26 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V542 (2026-10-09): CFCX — an overtime try given away before it was played
+- The owner: "there was a bug in ssiphone vs him in which his conversion never showed up in overtime. Fix" (and "make
+  romans 6 23 a 1096": --set-rating, 1074 -> 1096).
+- CFCX game 3 (8:16 pm), Q5: Romans 6:23 (b) scored to lead 22-16, chose 2 PT, pressed the QB at 789.26 s ("CONV try started
+  (bkp 1)"), held 1.45 s and let go without a pull ("hold 1454ms") — no snap, the ball back at rest. At 791.98 s, the first
+  overtime check past 2.5 s from that press, the bridge called the try over ("UNWEDGE (OT touchdown hand-off): down 6 -> 1",
+  "OT-TD drive over (the try is over)") and handed the ball to ssiphone, whose touchdown and 1 PT won 23-22.
+- Cause: _rb2p_otTdCheck's step 2 timed the try from its first TOUCH (_rb2p_convTrySnappedMs, stamped at bkp 1 = a finger
+  on the QB) and read one resting-ball sample 2.5 s later as "the try is over". Reproduced exactly by
+  e2e/probe-ot2pt-play.js hold (press 1.45 s, let go: hand-off 2.56 s after the press). Its other modes (throwaway, pick,
+  sack, a stray snap/throw before the offer): the engine ends a played try itself ~1.7 s after the ball dies.
+- Fix: the frame observer stamps _rb2p_convTryLiveMs while the try's ball is IN PLAY (past the press; a kick once it
+  leaves rest, V405) — diag "CONV try in play (bkp N)". A scoreless try is over only once it was played and its ball has
+  been dead 3 s ("the try was played, no points"); a scored try hands off as before ("the try is over"). Liveness reads
+  ANY ball (otAnyBallLive). A press let go without a snap leaves the try waiting (the 90 s limit still stands).
+- In 26 overtime hand-offs on record (since 25 Sep), CFCX is the only try handed off with no points — the others came
+  right after a +1 kick (21), 4 at the 30 s limit.
+- e2e/v542-ot-try-press.js 2/2 (T1 the CFCX press: 6 s later still ours, down 6, nothing sent; T2 then a real snap and
+  throw, and only then the hand-off); e2e/v415-freezes.js 8/8 (F7: a scored OT try hands off as before).
+
 ## V541 (2026-10-09): owner adjustments — wins onto a record (--add-wins)
 - The owner: "add those wins to soham account bringing win loss to 40-10" (SohamDesktop's three wins: WWE ROSTERS 35-8 +28,
   Tyrone left +20.21, Desten_elite10 left +32.59 = +80.8). Earlier the same evening: Desten +15 twice (1060 -> 1090) and

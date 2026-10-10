@@ -2448,7 +2448,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V541<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V542<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2721,7 +2721,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V541</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V542</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -6047,6 +6047,16 @@
                             Date.now() - (Number(window._rb2p_convTrySnappedMs) || 0) > 3000) {
                             window._rb2p_convTrySnappedMs = Date.now();
                             if (window._rb2p_diagLog) window._rb2p_diagLog('CONV try started (bkp ' + bkp + ')');
+                        }
+                        // V542 (CFCX): the try is PLAYED only past the press. bkp 1 on a snapped try is a finger on
+                        // the QB, and letting go without a pull puts the ball back at rest with no play (Romans held
+                        // the QB 1.45 s and let go; the overtime hand-off read the resting ball as "the try is over"
+                        // and his conversion never happened). A kick is played once its ball leaves rest (V405).
+                        // Stamped every frame the try's ball is in play, so its age is how long the ball has been dead.
+                        if (emTry && Number(emTry.engineDownNumber) === 6 && bkp !== 0 && bkp != null && (bkp !== 1 || Number(emTry.enginePatModeFlag))) {
+                            if (!(Number(window._rb2p_convTryLiveMs) > (Number(window._rb2p_convTrySnappedMs) || 0)) && window._rb2p_diagLog)
+                                window._rb2p_diagLog('CONV try in play (bkp ' + bkp + ')');
+                            window._rb2p_convTryLiveMs = Date.now();
                         }
                     } catch (eTry) {}
                     try {
@@ -15422,6 +15432,15 @@
                 } catch (e) {}
                 return false;
             }
+            // V542: ANY ball off rest — a finger on the QB included (rb2pPlayInProgress reads only the first ball,
+            // and the engine briefly holds two while it sets a play up: "instance_number(obj_ball) == 2")
+            function otAnyBallLive() {
+                try {
+                    var f = (_Sc2 && _Sc2._GL2 && _Sc2._GL2._oq2) || [];
+                    for (var i = 0; i < f.length; i++) { var x = f[i]; if (x && !x._HL2 && x._eE2 && x._eE2._fE2 === 'obj_ball' && Number(x._kp) !== 0) return true; }
+                } catch (e) {}
+                return false;
+            }
             function otPrepareTry(em) {
                 var cleared = 0;
                 try {
@@ -15502,8 +15521,10 @@
                     if (Number(window._rb2p_lastSentOutcomeMs) > otTd.at || window._rb2p_userIsWaitingForOpponent === true) { otTd = null; return 'handed off'; }
                     var modal = typeof window._rb2p_patModalUp === 'function' && window._rb2p_patModalUp();
                     var down6 = Number(em.engineDownNumber) === 6;
-                    var tryAt = Number(window._rb2p_convTrySnappedMs) || 0;
-                    var tryLive = tryAt > otTd.at && (typeof rb2pPlayInProgress === 'function' && rb2pPlayInProgress());
+                    var tryAt = Number(window._rb2p_convTrySnappedMs) || 0;   // the try's first touch (a press counts)
+                    var playedAt = Number(window._rb2p_convTryLiveMs) || 0;   // V542: its ball last seen in play
+                    var ballLive = otAnyBallLive();
+                    var tryLive = tryAt > otTd.at && ballLive;
                     // 1. offer the conversion the engine skipped
                     if (!otTd.offered && now - otTd.at > 900) {
                         otTd.offered = true;
@@ -15536,9 +15557,13 @@
                         if (window._rb2p_audit) window._rb2p_audit('guard', { what: 'ot-try-setup', pts: ch.pts, ok: otFieldHasTry() });
                         return 'try set up';
                     }
-                    // 2. the try is over (points credited, or it was snapped and the ball is dead) -> hand off
-                    var tryOver = u > otTd.score || (tryAt > otTd.at && !tryLive && now - tryAt > 2500);
-                    if (tryOver && !tryLive) { otTd = null; return otHandOffAsTd(u > otTdPrevScore ? 'the try is over' : 'the try is over') ? 'handed off after the try' : 'hand-off failed'; }
+                    // 2. the try is over (points credited, or it was played and its ball has been dead 3 s) -> hand off.
+                    // V542 (CFCX): this called a try over 2.5 s after its first TOUCH with the ball at rest — a press
+                    // the player let go of without a snap gave the ball away with the try never played. Now the try
+                    // must have been played (past the press), and a failed try's ball must stay dead (the engine's
+                    // own hand-off comes ~1.7 s after a dead try's ball, so this is only the net under it).
+                    var tryOver = u > otTd.score || (playedAt > otTd.at && !ballLive && now - playedAt > 3000);
+                    if (tryOver && !ballLive) { var scoredTry = u > otTd.score; otTd = null; return otHandOffAsTd(scoredTry ? 'the try is over' : 'the try was played, no points') ? 'handed off after the try' : 'hand-off failed'; }
                     // 3. nothing in the air 30s after the touchdown (the choice is still up counts as waiting, up to 60s).
                     // V424: a try lined up on the field waits for its snap — the player can play it — up to 90s
                     // (a formation that cannot be snapped must still not hold the game forever)
