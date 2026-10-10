@@ -2158,6 +2158,22 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V545 (2026-10-10): record every play until something goes wrong, then stop by itself
+- The owner: "just record everything for now until an issue arises, what issues could possibly arise? Then turn it off".
+- No download budget (it stopped the recorder on 8 Oct). tools/playrec-switch.js holds the recording OFF
+  (.rb2p/playrec-hold.json) on: Firebase's "disabled for overages" flags, storage past 125% of the free plan (101% now),
+  this Mac's free disk under 5 GB (10.4 GB free now; the 30-day archive grows ~0.5 GB a day), or more than 1.5 GB of plays
+  archived in one day. tools/fb-watch.js checks every 10 min (and switches the phones off at once + a macOS notification
+  + a GitHub issue); tools/plays-archive.js every hour (disk, the day's plays). A hold stays until
+  `node tools/plays-archive.js --record on` (`--record off [why]` sets one by hand).
+- Phones: the switch counts as fresh for 3 h (was 26 h): the job republishes it hourly, and a Mac that stops leaves at most
+  ~3 h of plays waiting in a database already at its storage limit.
+- Numbers on 10 Oct (Cloud Monitoring): downloads this cycle 49.8 of 10.7 GB (464%) from the game itself, storage 1.08 of
+  1.07 GB, neither overage flag set; recording adds ~0.5 GB a day of downloads.
+- Turned on at 6:49 am (embedcode/playrec on:true, no hold). Tested: the switch's rules (today's numbers no issue; an
+  overage flag, 130% storage, a disk under the floor each an issue; hold kept and cleared); --record off/on with a scratch
+  hold file; fb-watch --report runs.
+
 ## V544 (2026-10-10): a try counts only once it is snapped — everywhere, not just in overtime
 - The owner, on V542's "in overtime, a try now only counts once the ball is actually snapped (or kicked)": "no not JUST in
   overtime, this should be the case everywhere".

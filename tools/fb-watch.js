@@ -21,6 +21,7 @@ const STATE = path.join(RB2P, 'fb-watch-state.json');
 const FIREBASE = fs.existsSync('/opt/homebrew/bin/firebase') ? '/opt/homebrew/bin/firebase' : 'firebase';
 const GH = ['/opt/homebrew/bin/gh', '/usr/local/bin/gh'].find(p => fs.existsSync(p)) || 'gh';
 const REPORT = process.argv.includes('--report');
+const SW = require('./playrec-switch.js');   // V545: the play recorder's off switch
 const log = m => console.log(new Date().toISOString().slice(0, 19).replace('T', ' ') + ' ' + m);
 const load = () => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch (e) { return {}; } };
 
@@ -104,6 +105,22 @@ function notifyGitHub(kind, title, body) {   // the workflow (as github-actions)
             notifyMac(title, fresh.map(f => f[1]).join(' · '));
             notifyGitHub(down ? 'down' : 'usage', title, body);
             log('ALERT: ' + fresh.map(f => f[0]).join(', '));
+        }
+        // V545 (the owner: "just record everything for now until an issue arises ... Then turn it off"): the play recorder
+        // turns itself off on an issue (tools/playrec-switch.js) — at once: the switch the phones read (they look every 10 min)
+        if (!SW.hold()) {
+            const recWhy = SW.firebaseIssues(u).concat(SW.diskIssue() ? [SW.diskIssue()] : []);
+            if (recWhy.length) {
+                const why = recWhy.join('; ');
+                SW.setHold(why, 'fb-watch');
+                let pubd = false;
+                try { const r = await fetch(DB + 'embedcode/playrec.json?access_token=' + encodeURIComponent(adminToken()), { method: 'PATCH', body: JSON.stringify({ on: false, at: now, hold: why }) }); pubd = r.ok; } catch (e) {}
+                const msg = 'Play recording turned OFF: ' + why + '.' + (pubd ? '' : ' (The switch could not be published now; the hourly archive job publishes it.)') +
+                            '\n\nTurn it back on: node tools/plays-archive.js --record on';
+                notifyMac('Play recording OFF', why);
+                notifyGitHub('usage', 'Play recording turned OFF', msg + '\n\nNow: ' + summary);
+                log('RECORDING OFF: ' + why + (pubd ? ' (switch published)' : ' (switch NOT published)'));
+            }
         }
         if (recovered) {
             notifyMac('Firebase is back', 'The database answers again. ' + summary);

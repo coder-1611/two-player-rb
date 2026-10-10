@@ -450,7 +450,7 @@ async function guardState() {
             const gtxt = !g ? 'the recording guard could not be read' :
                 'the recording guard (embedcode/playrec) says ' + (g.on ? 'ON' : 'OFF') + ', last published ' + new Date(Number(g.at) || 0).toLocaleString() +
                 (Date.now() - Number(g.at) > 26 * 3600e3 ? ' — STALE: the phones stop recording when it is older than 26 h (is com.rb2p.plays-archive running?)' : '') +
-                ' (' + g.usedMB + ' of ' + g.budgetMB + ' MB used this month)';
+                ' (' + (g.hold ? 'held off: ' + g.hold + '; ' : '') + g.usedMB + ' MB downloaded this month' + (g.budgetMB ? ' of ' + g.budgetMB : '') + ')';
             writeAtomic(path.join(dayDir, 'README.md'), '# Top 5 plays — ' + new Date(UNTIL).toDateString() + '\n\nNo plays were recorded in the 24 hours to ' +
                 new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '. Recording: ' + gtxt + '.\n');
             status.ok = true; status.judge = 'none (no plays)'; saveStatus();
@@ -554,7 +554,7 @@ async function guardState() {
             : !potdWorthy.length ? 'no pick reached the plays-of-the-day mark (' + (judged ? POTD_MIN_POINTS + ' points' : POTD_MIN_BASE + ' measured points') + '; the best: ' + (picks.length ? potdPts(picks[0]).v : 0) + ')' : '';
         if (potdHold && !PREVIEW) {
             const g = await guardState().catch(() => null);
-            status.potdHold = potdHold + (g && !g.on ? ' — the recorder is OFF (' + g.usedMB + ' of ' + g.budgetMB + ' MB of this month\'s play budget used)' : '');
+            status.potdHold = potdHold + (g && !g.on ? ' — the recorder is OFF (' + (g.hold || (g.usedMB + ' of ' + g.budgetMB + ' MB of this month\'s play budget used')) + ')' : '');
             log('plays of the day NOT published: ' + status.potdHold);
         }
         // 5. the videos and the README

@@ -2448,7 +2448,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V544<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V545<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2721,7 +2721,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V544</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V545</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -16656,6 +16656,9 @@
     // play to rooms/{code}/plays/{role}/p{ms}. A Mac job moves each play to a local archive after 24 h (deleted there
     // after 30 days) and publishes embedcode/playrec {on, at}: the phones record only while that flag is on and fresh
     // (< 26 h) — a budget hit or a Mac that stopped running both stop the recording by themselves.
+    // V545 (the owner: "just record everything for now until an issue arises ... Then turn it off"): no budget; the Mac turns
+    // the flag off on an issue (tools/playrec-switch.js), and fresh is < 3 h — the job republishes it hourly, and a Mac that
+    // stops leaves at most 3 hours of plays waiting in a database already at its storage limit (26 h was ~500 MB).
     var REC = { active: false, failed: false, enabledFlag: false, flagAt: 0, flagReadAt: 0, flagBusy: false, lastCapAt: 0, t0: 0, lastT: 0,
                 prev: null, prevSeq: 0, seq: 0, lastKeyAt: 0, parts: [], raw: 0, meta: null, res: null, end: '', stopAt: 0, stopTimer: null,
                 costMs: 0, plays: 0, uploads: 0, upBytes: 0, upFails: 0, skipped: 0, queue: Promise.resolve(), last: null };
@@ -16668,7 +16671,7 @@
         if (window._rb2p_recForce === true) return true;
         if (window._rb2p_recForce === false) return false;
         try { if (window._rb2p_isTestRun && window._rb2p_isTestRun()) return false; } catch (e) {}
-        return REC.enabledFlag === true && Date.now() - REC.flagAt < 26 * 3600000;
+        return REC.enabledFlag === true && Date.now() - REC.flagAt < 3 * 3600000;   // V545: 3 h (was 26)
     }
     function recFlagRefresh(force) {
         if (REC.flagBusy || (!force && Date.now() - REC.flagReadAt < 10 * 60000)) return;
