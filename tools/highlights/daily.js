@@ -67,6 +67,14 @@ const NOFB = has('--no-firebase'), NOVIDEO = has('--no-video'), FORCE = has('--f
 // V470: --preview — the owner's look at "the top 5 so far": judged and rendered like a real run, never published, in its
 // own folder ("YYYY-MM-DD preview"; runs/YYYY-MM-DD-preview), and not a day's run (the next real run still judges its plays)
 const PREVIEW = has('--preview');
+// V543 (the owner on 10 Oct: "what the actual fu*k are the plays of the day for 10/10. Absolute trash, what happened?"):
+// the recorder had been off since 8 Oct 12:54 pm (October's play budget spent), the window held 2 plays — an incompletion
+// and a sack — and both went to every lobby as the plays of the day. Plays of the day go up only from a real day: enough
+// plays recorded, and only picks that earned it (the days before: 9,232-25,838 plays, their top 3 at 103-188 points; that
+// day's best 64). Otherwise the last real plays of the day stay up and the README says why. The videos are still made.
+const POTD_MIN_PLAYS = Number(opt('--potd-min-plays', '')) || Number(process.env.POTD_MIN_PLAYS) || 500;
+const POTD_MIN_POINTS = Number(opt('--potd-min-points', '')) || Number(process.env.POTD_MIN_POINTS) || 90;   // a judged total
+const POTD_MIN_BASE = Number(process.env.POTD_MIN_BASE) || 70;   // unjudged (the judge failed): the measured base points
 // V481: --formula points — the owner's points formula (features.js points()): the judge scores only "spectacularness"
 // (0-16) for every candidate; the code adds the measured points and ranks by the total (V515: the raw score x3, overtime x1.1)
 const FORMULA = opt('--formula', 'points');   // V484 (the owner: "I like this formula"): the standard from 6 Oct; --formula weights: JUDGE.md's 40/30/20/10
@@ -539,6 +547,16 @@ async function guardState() {
             log('the judge failed (' + judgeNote + ') — the measured top ' + want + ' stands');
         }
         status.picks = picks.map(p => p.id);
+        // V543: is this a day worth publishing? (see POTD_MIN_PLAYS)
+        const potdPts = p => { if (judged && p.total != null) return { v: Number(p.total) || 0, min: POTD_MIN_POINTS }; const e = byId.get(p.id), pt = e && e.f.points; return { v: pt ? Number(pt.base) || 0 : 0, min: POTD_MIN_BASE }; };
+        const potdWorthy = FORMULA === 'points' ? picks.filter(p => { const x = potdPts(p); return x.v >= x.min; }) : picks.slice();
+        const potdHold = feats.length < POTD_MIN_PLAYS ? 'only ' + feats.length + ' play' + (feats.length === 1 ? ' was' : 's were') + ' recorded in the window (a real day has thousands; at least ' + POTD_MIN_PLAYS + ' needed)'
+            : !potdWorthy.length ? 'no pick reached the plays-of-the-day mark (' + (judged ? POTD_MIN_POINTS + ' points' : POTD_MIN_BASE + ' measured points') + '; the best: ' + (picks.length ? potdPts(picks[0]).v : 0) + ')' : '';
+        if (potdHold && !PREVIEW) {
+            const g = await guardState().catch(() => null);
+            status.potdHold = potdHold + (g && !g.on ? ' — the recorder is OFF (' + g.usedMB + ' of ' + g.budgetMB + ' MB of this month\'s play budget used)' : '');
+            log('plays of the day NOT published: ' + status.potdHold);
+        }
         // 5. the videos and the README
         const lines = ['# Top ' + picks.length + ' plays' + (PREVIEW ? ' so far (a preview, ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + ')' : '') + ' — ' + new Date(UNTIL).toDateString(), '',
             (Math.abs(UNTIL - SINCE - 24 * 3600e3) < 60000 ? 'The 24 hours to ' + new Date(UNTIL).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })   // V514: a preview's own window
@@ -563,6 +581,7 @@ async function guardState() {
                 p.why, '', '*What the engine recorded:* ' + f.story, '');
         }
         if (notes) lines.push('---', '', '**The day:** ' + notes, '');
+        if (status.potdHold) lines.push('---', '', '**Not published as the plays of the day:** ' + status.potdHold + '. The last real plays of the day stay on the site.', '');
         lines.push('---', '', '<sub>Every play\'s numbers, the short list and the contact sheets the judge saw: `' + runDir + '`. Run ' + Math.round((Date.now() - t0) / 1000) + ' s.</sub>', '');
         writeAtomic(path.join(dayDir, 'README.md'), lines.join('\n'));
         status.ok = NOVIDEO || status.videos.length === picks.length;
@@ -573,7 +592,8 @@ async function guardState() {
                 catch (e) { status.inbox = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('inbox: ' + status.inbox); log('inbox ' + status.inbox); }
             }
         }
-        else try { status.potd = await publishPotd(picks.slice(0, 3).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), judged); log('plays of the day ' + status.potd); }
+        else if (status.potdHold) status.potd = 'held: ' + status.potdHold;
+        else try { status.potd = await publishPotd(potdWorthy.slice(0, 3).map(p => byId.get(p.id) && { pick: p, f: byId.get(p.id).f, play: byId.get(p.id).play }), judged); log('plays of the day ' + status.potd); }
         catch (e) { status.potd = 'FAILED: ' + String(e.message || e).split('\n')[0].slice(0, 160); status.errors.push('potd: ' + status.potd); log('play of the day ' + status.potd); }
         notify(PREVIEW ? 'Retro Bowl 2P — the top ' + picks.length + ' so far (preview)' : 'Retro Bowl 2P — today\'s top ' + picks.length, (judged ? '' : '(unjudged) ') + picks.map(p => p.rank + '. ' + p.headline).join('  ').slice(0, 170));
         log('done: ' + dayDir);

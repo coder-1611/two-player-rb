@@ -2158,6 +2158,23 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V543 (2026-10-10): plays of the day only from a real day
+- The owner: "what the actual fu*k are the plays of the day for 10/10. Absolute trash, what happened?"
+- What happened: tools/plays-archive.js turned the recorder off on 8 Oct at 12:54 pm — October's play downloads passed
+  the 3,000 MB budget (3,551 MB; ~67,700 plays in 8 days). The 10/9 window still held the morning of 8 Oct (25,838 plays);
+  the 10/10 window held 2 (an incompletion, game IXMH, and a sack, RHHH). The 5 am job judged both and published them to
+  every lobby as the plays of the day.
+- tools/highlights/daily.js: the plays of the day are published only when the window has >= 500 plays (normal days
+  9,232-25,838) and only picks at >= 90 points (judged total; 70 measured base if the judge fails). Past top-3 picks scored
+  103-188, the 10/10 best 64. Otherwise the last real plays of the day stay up; the README and the log say why (and that
+  the recorder is off). --potd-min-plays / --potd-min-points (or POTD_MIN_PLAYS / POTD_MIN_POINTS) change the marks.
+- Tested without publishing: the 10/10 window holds ("only 2 plays were recorded ... the recorder is OFF"); the 10/9 window
+  (25,839 plays) still reaches the publish step.
+- Taken down by hand: embedcode/potd back to 10/9's top 3 (ian, Cainan, Jerkin Goff — the lobby labels it 9 Oct);
+  potdIndex/2026-10-10, potdPlays/2026-10-10 and ~2 removed (copies in the session scratchpad).
+- Still off: the recorder itself, until the budget is raised or November starts (an owner decision: the free plan's
+  10 GB/month download quota is already exceeded by the game itself).
+
 ## V542 (2026-10-09): CFCX — an overtime try given away before it was played
 - The owner: "there was a bug in ssiphone vs him in which his conversion never showed up in overtime. Fix" (and "make
   romans 6 23 a 1096": --set-rating, 1074 -> 1096).
