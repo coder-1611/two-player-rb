@@ -2038,6 +2038,14 @@
             }
             html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > * { margin-top: 0; margin-bottom: 0; }
             html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-main { grid-area: main; min-height: 0; }
+            /* V547 (the owner, with a screenshot of the app: "the official retro bowl thing covers the find a player"): the left
+               column's row is capped at the height left over and its content centered in it, so a column taller than that
+               spilled out BOTH ends — the title off the top, FIND A PLAYER / RANKINGS over the footer's NO ONE TO PLAY WITH?
+               line (the V530 account line made it taller: a 1624x750 touch window overlapped). potd-tall (the potd script's
+               tallCheck: the column taller than the room above the footer) lets the row grow to it — the footer moves down and
+               the screen scrolls (it already scrolls). A column that fits keeps the layout as it was. */
+            html.rb-wide #rb-lobby[data-active="entry"] .rb-screen[data-view="entry"].potd-on.potd-tall { grid-template-rows: minmax(min-content, 1fr) auto; }
+            html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on.potd-tall > .rb-entry-main { min-height: min-content; }
             html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot { grid-area: foot; align-self: end; }
             html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > .rb-entry-foot .rb-solo { margin-top: 4px; line-height: 1.6; }
             html.rb-wide #rb-lobby .rb-screen[data-view="entry"].potd-on > #rb-potd { grid-area: potd; width: 100%; max-width: 940px; justify-self: center; }
@@ -2448,7 +2456,7 @@
                     </div>
                     <h1 class="rb-wordmark">RETRO BOWL <span class="accent">2P</span> <span class="rb-h1-sub">TWO-PLAYER &middot; ONLINE MULTIPLAYER</span></h1>
                 </div>
-                <p class="prompt">TAP PLAY TO START A GAME — V546<span class="rb-cursor">_</span></p>
+                <p class="prompt">TAP PLAY TO START A GAME — V547<span class="rb-cursor">_</span></p>
                 <p class="rb-playing-as" id="rb-playing-as"></p>
                 <button id="rb-play2p" class="rb-cta">PLAY 2P</button>
                 <div class="rb-stack">
@@ -2721,7 +2729,7 @@
         <!-- scoreboard ticker footer -->
         <div class="rb-ticker" aria-hidden="true">
             <div class="rb-ticker-track">
-                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V546</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
+                <span>● 2-PLAYER CO-OP</span><span class="g">◆ ONLINE</span><span class="w">★ RETRO BOWL 2P</span><span class="o">V547</span><span class="b">◇ 2P VERSION BY SOHAM STHITPRAGYA</span>
             </div>
         </div>
         <!-- CRT overlays -->
@@ -2957,9 +2965,50 @@
                     // cancel was the only thing stopping them (a phone's touch-action:none on html/body stops at
                     // their own scroll box)
                     if (t && t.closest && t.closest('#rb-roster-overlay, #rb-roster-body, .rb-screen, #rb-final, #rb-complain-choices, #rb-news')) return;
+                    // V547 (the owner: "all the html elements are rough on phone, they take multiple attempts to click"): only the
+                    // GAME surface — the canvas and the bare page around it. A finger on a button, a link, a chip, a panel or a list
+                    // is left alone: a canceled move there can cost the tap its click, and it kept the in-game chat's lines from
+                    // scrolling
+                    if (!(t === document.body || t === document.documentElement || (t && t.id === 'canvas'))) return;
                     e.preventDefault();
                 } catch (eT) {}
             }, { passive: false });
+            // V547 (the owner: "all the html elements are rough on phone, they take multiple attempts to click but it is
+            // perfect on desktop"): a finger's tap on a button or a link ACTS on the finger lifting — as the CHAT chip (V486)
+            // and the roster preview buttons (V494) already did, each after taps that lost their click — and the browser's
+            // own click for that tap, if it still comes, is dropped. A phone drops a tap's click when the finger moves a few
+            // pixels or the page is busy deciding between a tap and a scroll; this never waits for it. Touch only (a mouse is
+            // untouched). A press that slides off its control, moves more than 14 px, lasts over a second or is taken by a
+            // scroll (pointercancel) does nothing, as before. Typing fields keep their own taps; data-own-tap opts a control out.
+            (function () {
+                var SEL = 'button, a, [role="button"], summary, label';
+                var start = null, ackAt = 0, ours = false;
+                function field(el) { return !!(el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|OPTION)$/.test(el.tagName))); }
+                document.addEventListener('pointerdown', function (e) {
+                    start = null;
+                    if (e.pointerType !== 'touch' || !e.isPrimary || field(e.target)) return;
+                    var el = e.target && e.target.closest ? e.target.closest(SEL) : null;
+                    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true' || el.closest('[data-own-tap]')) return;
+                    start = { id: e.pointerId, el: el, x: e.clientX, y: e.clientY, t: Date.now() };
+                }, true);
+                document.addEventListener('pointermove', function (e) {
+                    if (start && e.pointerId === start.id && Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) > 14) start = null;
+                }, true);
+                document.addEventListener('pointercancel', function (e) { if (start && e.pointerId === start.id) start = null; }, true);
+                document.addEventListener('pointerup', function (e) {   // bubble: a control's own pointerup runs first
+                    var s = start; start = null;
+                    if (!s || e.pointerId !== s.id || Date.now() - s.t > 1000) return;
+                    var el = s.el, at = document.elementFromPoint(e.clientX, e.clientY);
+                    if (!at || !(at === el || el.contains(at)) || !el.isConnected || el.disabled) return;
+                    ackAt = Date.now(); ours = true;
+                    try { el.click(); } catch (eC) {} finally { ours = false; }
+                });
+                document.addEventListener('click', function (e) {
+                    if (ours) return;
+                    if (ackAt && Date.now() - ackAt < 1000) { ackAt = 0; e.preventDefault(); e.stopImmediatePropagation(); }
+                }, true);
+                window._rb2p_tapAck = function () { return ackAt; };   // tests
+            })();
             document.addEventListener('gesturestart', function (e) {
                 try { e.preventDefault(); } catch (eG) {}
             }, { passive: false });
@@ -5539,6 +5588,7 @@
             }, true);
             function previewTapButton(btn, act) {
                 var down = false, firedAt = 0;
+                btn.setAttribute('data-own-tap', '');   // V547: acts on its own lift
                 function pdiag(m) { try { if (window._rb2p_diagLog) window._rb2p_diagLog('PREVIEW ' + btn.id + ' ' + m); } catch (e) {} }   // V494: what each press did
                 btn.addEventListener('pointerdown', function (e) { down = true; pdiag('down ' + e.pointerType); });
                 btn.addEventListener('pointercancel', function () { down = false; pdiag('cancel'); });
@@ -18923,7 +18973,14 @@
                         var inMH = document.documentElement.classList.contains('rb-in-match');
                         if (document.documentElement.classList.contains('rb-mobile') && inMH) {
                             var sxH = window.scrollX | 0, syH = window.scrollY | 0;
-                            if ((Math.abs(sxH) > 2 || Math.abs(syH) > 2) &&
+                            // V547 (the owner: "the chat when u click it mid game opens up for a sec and then closes which I think is
+                            // because of the no scroll rule"): a box the player is TYPING in (the game's chat, the bug report) is not
+                            // focus residue — iOS moves the page to show it over the keyboard, and this put the page back and blurred
+                            // the box within a second: the keyboard shut, the chat could not be used. Neither runs while it has the
+                            // focus; the chat puts the page back itself when it closes.
+                            var aeT = document.activeElement;
+                            var typingH = !!(aeT && /^(INPUT|TEXTAREA)$/.test(aeT.tagName) && aeT.closest && aeT.closest('#rb-gchat, #rb-complain-panel'));
+                            if (!typingH && (Math.abs(sxH) > 2 || Math.abs(syH) > 2) &&
                                 Date.now() - (window.__rbScrollHealMs || 0) > 10000) {
                                 window.__rbScrollHealMs = Date.now();
                                 window.scrollTo(0, 0);
@@ -18932,7 +18989,7 @@
                             // V262: keyboard focus residue keeps iOS's visual
                             // viewport in a transitional state — blur it.
                             var aeH = document.activeElement;
-                            if (aeH && /^(INPUT|TEXTAREA|SELECT)$/.test(aeH.tagName) &&
+                            if (aeH && /^(INPUT|TEXTAREA|SELECT)$/.test(aeH.tagName) && !typingH &&
                                 !(aeH.closest && aeH.closest('#rb-verjump'))) {
                                 aeH.blur();
                                 diagLog('blurred lingering input focus');
@@ -21034,6 +21091,42 @@
                     $stage.style.width = Math.round(w) + 'px';
                 } catch (e) {}
             }
+            // V547: the left column against the room above the footer (the CSS's potd-tall). Measured from the column's own
+            // children (their top and bottom on screen), so it reads the same with the class on or off — no flip-flop
+            function tallCheck() {
+                try {
+                    var main = $scr.querySelector('.rb-entry-main'), foot = $scr.querySelector('.rb-entry-foot');
+                    if (!main || !wide()) { $scr.classList.remove('potd-tall'); return; }
+                    var px = function (v) { return parseFloat(v) || 0; }, cs = getComputedStyle($scr), cm = getComputedStyle(main);
+                    // the column's content (every child) and the part of it with something to see (an empty message line takes room
+                    // but shows nothing): their offsets inside the column do not change with the class, so this never flip-flops
+                    var ct = Infinity, cb = -Infinity, vt = Infinity, vb = -Infinity;
+                    Array.prototype.forEach.call(main.children, function (c) {
+                        var b = c.getBoundingClientRect(); if (!b.height) return;
+                        ct = Math.min(ct, b.top); cb = Math.max(cb, b.bottom);
+                        if (String(c.textContent || '').trim() || c.querySelector('img, canvas, svg, button, input, a, video')) { vt = Math.min(vt, b.top); vb = Math.max(vb, b.bottom); }
+                    });
+                    if (!(cb > ct) || !(vb > vt)) { $scr.classList.remove('potd-tall'); return; }
+                    var need = cb - ct + px(cm.paddingTop) + px(cm.paddingBottom);
+                    var fb = foot ? foot.getBoundingClientRect() : null, ft = Infinity;
+                    if (foot) Array.prototype.forEach.call(foot.children, function (c) { var b = c.getBoundingClientRect(); if (b.height) ft = Math.min(ft, b.top); });
+                    var room = $scr.clientHeight - px(cs.paddingTop) - px(cs.paddingBottom) - (fb ? fb.height : 0) - px(cs.rowGap);
+                    // centered in its row, a column over by X spills X/2 at each end; what can be SEEN spills less by its distance
+                    // from the column's edge. Harmless into the screen's top padding and into the gap above the footer's first
+                    // line — the layout stays as it was until what can be seen would reach either
+                    var spill = (need - room) / 2, topSpill = spill - (vt - ct), botSpill = spill - (cb - vb);
+                    var tall = topSpill > px(cs.paddingTop) - 2 || botSpill > px(cs.rowGap) + (fb && isFinite(ft) ? Math.max(0, ft - fb.top) : 0) - 2;
+                    $scr.classList.toggle('potd-tall', tall);
+                } catch (e) {}
+            }
+            var fit0 = fit;
+            fit = function () { fit0(); tallCheck(); };
+            try {
+                var tallRO = new ResizeObserver(function () { tallCheck(); });
+                var mainT = $scr.querySelector('.rb-entry-main');
+                if (mainT) Array.prototype.forEach.call(mainT.children, function (c) { tallRO.observe(c); });
+            } catch (eRO) {}
+            window._rb2p_potdTallCheck = tallCheck;   // tests
             // a narrow screen: the section starts below the first screen — a chip points down to it until it is in sight
             function cue() {
                 if (!$cue) return;
@@ -22333,6 +22426,7 @@
         $gc.innerHTML = '<div class="rb-gchat-head"><span>CHAT</span><button type="button" class="rb-gchat-x" aria-label="Close the chat">&times;</button></div>' +
             '<ul class="rb-gchat-log" id="rb-gchat-log"></ul><form id="rb-gchat-form"><input id="rb-gchat-input" maxlength="200" placeholder="Say something" autocomplete="off"><button type="submit">SEND</button></form>';
         $gcBtn.id = 'rb-gchat-btn'; $gcBtn.type = 'button'; $gcBtn.hidden = true; $gcBtn.innerHTML = 'CHAT<span class="n"></span>'; $gcBtn.setAttribute('aria-label', 'Chat with your opponent');
+        $gcBtn.setAttribute('data-own-tap', '');   // V547: it acts on its own finger lift (below)
         $gcPeek.id = 'rb-gchat-peek'; $gcPeek.hidden = true; $gcPeek.setAttribute('aria-live', 'polite');
         document.body.appendChild($gc); document.body.appendChild($gcBtn); document.body.appendChild($gcPeek);
         var $gcLog = document.getElementById('rb-gchat-log'), $gcIn = document.getElementById('rb-gchat-input'), $gcN = $gcBtn.querySelector('.n');
@@ -22358,8 +22452,12 @@
             if (open) lfgGcOpenedAt = Date.now();
             lfgGcOpen = !!open; $gc.hidden = !lfgGcOpen;
             if (lfgGcOpen) { lfgGcSeen = lfgGcLast; $gcN.textContent = ''; $gcPeek.hidden = true; $gcBtn.classList.remove('new'); if ($gcLog) $gcLog.scrollTop = $gcLog.scrollHeight; }
-            else { try { $gcIn.blur(); } catch (e) {} }
+            else { try { $gcIn.blur(); } catch (e) {} gcPageBack(); }
         }
+        function gcPageBack() {   // V547: the page iOS moved to show the box over the keyboard goes back (the game's taps map from it)
+            setTimeout(function () { try { if (document.activeElement !== $gcIn && ((window.scrollX | 0) || (window.scrollY | 0))) window.scrollTo(0, 0); } catch (e) {} }, 250);
+        }
+        if ($gcIn) $gcIn.addEventListener('blur', gcPageBack);
         (function () {   // acts on the finger lifting off it (a click can be dropped when the finger moves a little), once
             var down = false;
             $gcBtn.addEventListener('pointerdown', function () { down = true; });

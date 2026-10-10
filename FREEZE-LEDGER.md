@@ -2158,6 +2158,36 @@ each day into a viewable section".
   device = once over the period. Finished days cached in .rb2p/rbstats-cache; today read incrementally ($key startAt).
   The single-player site and test runs are left out. The site itself: ~/Projects/2rbstats (its own repo).
 
+## V547 (2026-10-10): phone taps, the chat box on a phone, the lobby's left column
+- The owner (with a screenshot of the app): "all the html elements are rough on phone, they take multiple attempts to click
+  but it is perfect on desktop. It has something to do with your phone controls and the chat when u click it mid game opens
+  up for a sec and then closes which I think is because of the no scroll rule. Also in the app, the official retro bowl
+  thing covers the find a player. Fix all these".
+- Taps: a finger's tap on a button, link, [role=button], summary or label now ACTS on the finger lifting (el.click() in a
+  document pointerup listener, touch only) and the browser's own click for that tap, if it still comes within 1 s, is
+  dropped — the method the CHAT chip (V486) and the roster preview buttons (V494) already used after taps that lost their
+  click. A press that slides off, moves > 14 px, lasts > 1 s or is taken by a scroll does nothing; typing fields keep
+  their own taps; data-own-tap opts a control out (the CHAT chip, the preview buttons). V256's touchmove cancel now covers
+  only the game surface (the canvas and the bare page): a finger on any HTML control or panel is left alone (it also kept
+  the in-game chat's lines from scrolling). Chrome's touch emulation does not drop these clicks even on V546, so the iPhone
+  effect is unconfirmed here; measured: 1 click per tap at 0-9 px of wobble, 0 for a 30 px drag, a mouse click 1.
+- Chat: V262's heartbeat (phones, in a match) blurred ANY focused box ("blurred lingering input focus") and scrolled the
+  page back — the keyboard shut on the game's CHAT box within a second (the owner's CFCX log: CHAT open, 3.5 s later the
+  blur). A box being typed in (#rb-gchat, #rb-complain-panel) is exempt from both; the chat puts the page back (scrollTo
+  0,0) when it closes or its box lets go. e2e/v547-chat-typing.js 4/4 (two landscape phones, real touches: chip opens
+  once, typing survives 4 s, ENTER sends, x closes); on V546 C2/C3 fail.
+- Lobby: the wide layout's left column sat in a row capped at the height left (minmax(0,1fr), min-height 0) with its
+  content centered, so a taller column spilled out both ends — the title off the top, FIND A PLAYER / RANKINGS over the
+  footer's NO ONE TO PLAY WITH? line (the V530 account line made it taller; a 1624x750 touch window overlapped 6 px with
+  28 px cut off the top, 1024x768 20 px / 50 px). The potd script's tallCheck sets potd-tall when what can be SEEN of the
+  column would spill past the screen's top padding or into the footer's first line: the row then grows to the column and
+  the screen scrolls. Columns that fit keep the old layout exactly (1280x800 touch, 1194x834, 1280x720, 1920x1080
+  unchanged); no size overlaps or cuts off any more.
+- Also: e2e/find-player.js swallowed a mid-run error in its finally (the run "passed" with the rest skipped) — it now
+  fails with the error; this caught a V547 slip (a // comment appended mid-line had cut off the CHAT chip's markup).
+- e2e: find-player 12/12, v547-chat-typing 4/4, blue-circle 5/5 (T1-T4, T6: canvas taps on a landscape phone).
+  v419-touchbot fails M1-M4 the same on V546 (its calibration predates V440 — known).
+
 ## V546 (2026-10-10): recorded plays kept 2 days, then only the highlights' picks
 - The owner: "Why not just delete old plays except potds?" (the Mac's disk was 96% full; the 30-day archive was 3.7 GB and
   grows ~0.5 GB a day).

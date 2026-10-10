@@ -214,6 +214,8 @@ const banner = p => p.evaluate(() => { const b = document.getElementById('rb-lfg
         const s9 = await B.page.evaluate(() => ({ waiting: window._rb2p_lfg.state().waiting, idle: !document.getElementById('rb-find-idle').hidden, search: !document.getElementById('rb-find-search').hidden, state: document.getElementById('rb-find-state').textContent }));
         const q9 = await get(ROOT + '/q');
         check('F9 STOP LOOKING: out of the line, back to FIND A GAME', w9 && !s9.waiting && s9.idle && !s9.search && /Stopped looking/.test(s9.state) && !q9, JSON.stringify({ w9, s9, q9 }));
+    } catch (e) {   // V547: an error mid-run was swallowed by the finally's exit (the run "passed" with the rest never run)
+        fail++; console.log('  FAIL  the run stopped: ' + String(e && e.stack || e).split('\n').slice(0, 3).join(' | '));
     } finally {
         await browser.close();
         console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===');
